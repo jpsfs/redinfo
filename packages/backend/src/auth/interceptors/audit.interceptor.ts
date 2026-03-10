@@ -15,7 +15,7 @@ export class AuditInterceptor implements NestInterceptor {
 
   constructor(private reflector: Reflector) {}
 
-  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
+  intercept<T>(context: ExecutionContext, next: CallHandler<T>): Observable<T> {
     const req = context.switchToHttp().getRequest();
     const user = req.user;
 

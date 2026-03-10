@@ -84,6 +84,24 @@ describe('ROLE_METADATA', () => {
 
 // ── RolesGuard tests ──────────────────────────────────────────────────────────
 
+type MetadataKey = string | symbol;
+type MetadataMock = (key: MetadataKey) => MetadataKey[] | undefined;
+
+function spyReflectorWith(reflector: Reflector, fn: MetadataMock): void {
+  const spy = jest.spyOn(reflector, 'getAllAndOverride');
+  (spy as jest.Mock).mockImplementation(fn);
+}
+
+function makeCtx(role: UserRole | null): ExecutionContext {
+  return {
+    getHandler: jest.fn(),
+    getClass: jest.fn(),
+    switchToHttp: jest.fn().mockReturnValue({
+      getRequest: jest.fn().mockReturnValue({ user: role ? { role } : null }),
+    }),
+  } as unknown as ExecutionContext;
+}
+
 describe('RolesGuard', () => {
   let reflector: Reflector;
 
@@ -94,103 +112,42 @@ describe('RolesGuard', () => {
   it('allows all requests when no roles or actions required', () => {
     const guard = new RolesGuard(reflector);
     jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(undefined);
-    const ctx = {
-      getHandler: jest.fn(),
-      getClass: jest.fn(),
-      switchToHttp: jest.fn().mockReturnValue({
-        getRequest: jest.fn().mockReturnValue({ user: { role: UserRole.EMERGENCY_OPERATIONAL } }),
-      }),
-    } as unknown as ExecutionContext;
-    expect(guard.canActivate(ctx)).toBe(true);
+    expect(guard.canActivate(makeCtx(UserRole.EMERGENCY_OPERATIONAL))).toBe(true);
   });
 
   it('SYSTEM_ADMIN passes action-based guard for MANAGE_USERS', () => {
     const guard = new RolesGuard(reflector);
-    jest.spyOn(reflector, 'getAllAndOverride').mockImplementation((key: unknown) =>
-      key === ACTIONS_KEY ? [Action.MANAGE_USERS] : undefined,
-    );
-    const ctx = {
-      getHandler: jest.fn(),
-      getClass: jest.fn(),
-      switchToHttp: jest.fn().mockReturnValue({
-        getRequest: jest.fn().mockReturnValue({ user: { role: UserRole.SYSTEM_ADMIN } }),
-      }),
-    } as unknown as ExecutionContext;
-    expect(guard.canActivate(ctx)).toBe(true);
+    spyReflectorWith(reflector, (key) => key === ACTIONS_KEY ? [Action.MANAGE_USERS] : undefined);
+    expect(guard.canActivate(makeCtx(UserRole.SYSTEM_ADMIN))).toBe(true);
   });
 
   it('EMERGENCY_OPERATIONAL is denied for MANAGE_USERS (Scenario 2)', () => {
     const guard = new RolesGuard(reflector);
-    jest.spyOn(reflector, 'getAllAndOverride').mockImplementation((key: unknown) =>
-      key === ACTIONS_KEY ? [Action.MANAGE_USERS] : undefined,
-    );
-    const ctx = {
-      getHandler: jest.fn(),
-      getClass: jest.fn(),
-      switchToHttp: jest.fn().mockReturnValue({
-        getRequest: jest.fn().mockReturnValue({ user: { role: UserRole.EMERGENCY_OPERATIONAL } }),
-      }),
-    } as unknown as ExecutionContext;
-    expect(guard.canActivate(ctx)).toBe(false);
+    spyReflectorWith(reflector, (key) => key === ACTIONS_KEY ? [Action.MANAGE_USERS] : undefined);
+    expect(guard.canActivate(makeCtx(UserRole.EMERGENCY_OPERATIONAL))).toBe(false);
   });
 
   it('EMERGENCY_COORDINATOR passes MANAGE_EMERGENCY_CONFIG guard (Scenario 4)', () => {
     const guard = new RolesGuard(reflector);
-    jest.spyOn(reflector, 'getAllAndOverride').mockImplementation((key: unknown) =>
-      key === ACTIONS_KEY ? [Action.MANAGE_EMERGENCY_CONFIG] : undefined,
-    );
-    const ctx = {
-      getHandler: jest.fn(),
-      getClass: jest.fn(),
-      switchToHttp: jest.fn().mockReturnValue({
-        getRequest: jest.fn().mockReturnValue({ user: { role: UserRole.EMERGENCY_COORDINATOR } }),
-      }),
-    } as unknown as ExecutionContext;
-    expect(guard.canActivate(ctx)).toBe(true);
+    spyReflectorWith(reflector, (key) => key === ACTIONS_KEY ? [Action.MANAGE_EMERGENCY_CONFIG] : undefined);
+    expect(guard.canActivate(makeCtx(UserRole.EMERGENCY_COORDINATOR))).toBe(true);
   });
 
   it('EMERGENCY_COORDINATOR is denied for MANAGE_LOGISTICS (Scenario 4 cross-domain)', () => {
     const guard = new RolesGuard(reflector);
-    jest.spyOn(reflector, 'getAllAndOverride').mockImplementation((key: unknown) =>
-      key === ACTIONS_KEY ? [Action.MANAGE_LOGISTICS] : undefined,
-    );
-    const ctx = {
-      getHandler: jest.fn(),
-      getClass: jest.fn(),
-      switchToHttp: jest.fn().mockReturnValue({
-        getRequest: jest.fn().mockReturnValue({ user: { role: UserRole.EMERGENCY_COORDINATOR } }),
-      }),
-    } as unknown as ExecutionContext;
-    expect(guard.canActivate(ctx)).toBe(false);
+    spyReflectorWith(reflector, (key) => key === ACTIONS_KEY ? [Action.MANAGE_LOGISTICS] : undefined);
+    expect(guard.canActivate(makeCtx(UserRole.EMERGENCY_COORDINATOR))).toBe(false);
   });
 
   it('SYSTEM_ADMIN passes role-based guard (Scenario 1)', () => {
     const guard = new RolesGuard(reflector);
-    jest.spyOn(reflector, 'getAllAndOverride').mockImplementation((key: unknown) =>
-      key === ROLES_KEY ? [UserRole.SYSTEM_ADMIN] : undefined,
-    );
-    const ctx = {
-      getHandler: jest.fn(),
-      getClass: jest.fn(),
-      switchToHttp: jest.fn().mockReturnValue({
-        getRequest: jest.fn().mockReturnValue({ user: { role: UserRole.SYSTEM_ADMIN } }),
-      }),
-    } as unknown as ExecutionContext;
-    expect(guard.canActivate(ctx)).toBe(true);
+    spyReflectorWith(reflector, (key) => key === ROLES_KEY ? [UserRole.SYSTEM_ADMIN] : undefined);
+    expect(guard.canActivate(makeCtx(UserRole.SYSTEM_ADMIN))).toBe(true);
   });
 
   it('returns false when user has no role', () => {
     const guard = new RolesGuard(reflector);
-    jest.spyOn(reflector, 'getAllAndOverride').mockImplementation((key: unknown) =>
-      key === ACTIONS_KEY ? [Action.MANAGE_USERS] : undefined,
-    );
-    const ctx = {
-      getHandler: jest.fn(),
-      getClass: jest.fn(),
-      switchToHttp: jest.fn().mockReturnValue({
-        getRequest: jest.fn().mockReturnValue({ user: null }),
-      }),
-    } as unknown as ExecutionContext;
-    expect(guard.canActivate(ctx)).toBe(false);
+    spyReflectorWith(reflector, (key) => key === ACTIONS_KEY ? [Action.MANAGE_USERS] : undefined);
+    expect(guard.canActivate(makeCtx(null))).toBe(false);
   });
 });
