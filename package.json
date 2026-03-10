@@ -8,7 +8,10 @@
     "lint": "pnpm --parallel -r lint",
     "typecheck": "pnpm --parallel -r typecheck",
     "db:migrate": "pnpm --filter backend prisma:migrate",
-    "db:studio": "pnpm --filter backend prisma:studio"
+    "db:studio": "pnpm --filter backend prisma:studio",
+    "validate:env": "node scripts/validate-env.js",
+    "setup:ci": "node scripts/setup-ci.js",
+    "policy-check": "node scripts/validate-env.js"
   },
   "devDependencies": {
     "typescript": "^5.4.5"

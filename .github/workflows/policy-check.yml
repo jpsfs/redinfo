@@ -1,0 +1,21 @@
+name: PR Policy Check
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize]
+
+jobs:
+  policy-check:
+    name: Validate PR metadata and evidence
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Run policy check
+        run: |
+          node scripts/policy-check.js
+        env:
+          GITHUB_EVENT_PATH: ${{ github.event_path }}
