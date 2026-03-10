@@ -11,7 +11,8 @@
     "db:studio": "pnpm --filter backend prisma:studio",
     "validate:env": "node scripts/validate-env.js",
     "setup:ci": "node scripts/setup-ci.js",
-    "policy-check": "node scripts/validate-env.js"
+    "policy-check": "node scripts/validate-env.js",
+    "ado:mcp": "npx -y @azure-devops/mcp jpsfs"
   },
   "devDependencies": {
     "typescript": "^5.4.5"
