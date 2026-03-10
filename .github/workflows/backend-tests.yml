@@ -1,0 +1,60 @@
+name: Backend Tests
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    types: [opened, edited, synchronize]
+
+jobs:
+  unit:
+    name: Unit tests (backend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: pnpm install
+      - name: Run backend unit tests
+        run: pnpm --filter backend test
+
+  integration:
+    name: Integration tests (backend)
+    runs-on: ubuntu-latest
+    needs: unit
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: redinfo
+          POSTGRES_PASSWORD: redinfo_dev_password
+          POSTGRES_DB: redinfo
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U $${POSTGRES_USER:-redinfo} -d $${POSTGRES_DB:-redinfo}"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: pnpm install
+      - name: Wait for Postgres
+        run: |
+          for i in {1..30}; do
+            pg_isready -h localhost -p 5432 && break || sleep 2
+          done
+      - name: Export DATABASE_URL
+        run: echo "DATABASE_URL=postgresql://redinfo:redinfo_dev_password@localhost:5432/redinfo" >> $GITHUB_ENV
+      - name: Generate Prisma client
+        run: pnpm --filter backend prisma:generate
+      - name: Deploy migrations (non-interactive)
+        run: pnpm --filter backend prisma:migrate:deploy
+      - name: Run backend integration tests
+        run: pnpm --filter backend test -- -t "integration"

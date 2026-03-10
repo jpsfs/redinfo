@@ -1,0 +1,22 @@
+name: Frontend E2E (placeholder)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    types: [opened, edited, synchronize]
+
+jobs:
+  e2e:
+    name: Frontend e2e (placeholder)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: pnpm install
+      - name: Run frontend e2e (placeholder)
+        run: pnpm --filter frontend test:e2e
