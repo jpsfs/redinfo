@@ -19,9 +19,10 @@ const userFilters = [
     source="role"
     key="role"
     choices={[
-      { id: 'ADMIN', name: 'Admin' },
-      { id: 'STAFF', name: 'Staff' },
-      { id: 'VOLUNTEER', name: 'Volunteer' },
+      { id: 'SYSTEM_ADMIN', name: 'System Administrator' },
+      { id: 'EMERGENCY_OPERATIONAL', name: 'Emergency Operational' },
+      { id: 'EMERGENCY_COORDINATOR', name: 'Emergency Coordinator' },
+      { id: 'LOGISTICS_COORDINATOR', name: 'Logistics Coordinator' },
     ]}
   />,
 ];
