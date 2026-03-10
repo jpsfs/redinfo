@@ -137,3 +137,20 @@ dist
 # Vite logs files
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
+
+# pnpm
+.pnpm-store/
+
+# Prisma migrations (keep in source control — remove this line if desired)
+# packages/backend/prisma/migrations/
+
+# Build outputs
+packages/*/dist/
+packages/*/build/
+
+# IDE
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
