@@ -10,9 +10,10 @@ import {
 } from 'react-admin';
 
 const roleChoices = [
-  { id: 'ADMIN', name: 'Admin' },
-  { id: 'STAFF', name: 'Staff' },
-  { id: 'VOLUNTEER', name: 'Volunteer' },
+  { id: 'SYSTEM_ADMIN', name: 'System Administrator' },
+  { id: 'EMERGENCY_OPERATIONAL', name: 'Emergency Operational' },
+  { id: 'EMERGENCY_COORDINATOR', name: 'Emergency Coordinator' },
+  { id: 'LOGISTICS_COORDINATOR', name: 'Logistics Coordinator' },
 ];
 
 export const UserCreate = () => (
@@ -25,7 +26,7 @@ export const UserCreate = () => (
       <SelectInput
         source="role"
         choices={roleChoices}
-        defaultValue="VOLUNTEER"
+        defaultValue="EMERGENCY_OPERATIONAL"
         validate={required()}
       />
     </SimpleForm>

@@ -21,7 +21,7 @@ export class CreateUserDto {
   @MinLength(8)
   password?: string;
 
-  @ApiPropertyOptional({ enum: UserRole, default: UserRole.VOLUNTEER })
+  @ApiPropertyOptional({ enum: UserRole, default: UserRole.EMERGENCY_OPERATIONAL })
   @IsOptional()
   @IsEnum(UserRole)
   role?: UserRole;

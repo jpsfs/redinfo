@@ -19,8 +19,17 @@ export default defineConfig({
     },
   },
   resolve: {
-    alias: {
-      '@redinfo/shared': new URL('../shared/src/index.ts', import.meta.url).pathname,
-    },
+    alias: [
+      // Route all @mui/icons-material CJS sub-path imports to the ESM build to
+      // avoid Vite's __toESM interop exporting the whole module object as default.
+      {
+        find: /^@mui\/icons-material\/(?!esm\/)(.+)$/,
+        replacement: '@mui/icons-material/esm/$1',
+      },
+      {
+        find: '@redinfo/shared',
+        replacement: new URL('../shared/src/index.ts', import.meta.url).pathname,
+      },
+    ],
   },
 });

@@ -64,7 +64,7 @@ export class UsersService {
     return this.prisma.user.create({
       data: {
         ...params,
-        role: UserRole.VOLUNTEER,
+        role: UserRole.EMERGENCY_OPERATIONAL,
         isActive: true,
       },
     });
@@ -82,7 +82,7 @@ export class UsersService {
         firstName: dto.firstName,
         lastName: dto.lastName,
         passwordHash,
-        role: dto.role ?? UserRole.VOLUNTEER,
+        role: dto.role ?? UserRole.EMERGENCY_OPERATIONAL,
         provider: AuthProvider.LOCAL,
         isActive: true,
       },
