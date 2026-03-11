@@ -12,12 +12,17 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '22'
       - name: Install dependencies
         run: pnpm install
+      - name: Build shared package
+        run: pnpm --filter @redinfo/shared build
       - name: Run backend unit tests
         run: pnpm --filter backend test
 
@@ -39,12 +44,17 @@ jobs:
           --health-interval 10s --health-timeout 5s --health-retries 5
     steps:
       - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '22'
       - name: Install dependencies
         run: pnpm install
+      - name: Build shared package
+        run: pnpm --filter @redinfo/shared build
       - name: Wait for Postgres
         run: |
           for i in {1..30}; do

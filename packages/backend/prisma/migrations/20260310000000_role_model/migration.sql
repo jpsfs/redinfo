@@ -1,3 +1,6 @@
+-- Drop the default value first (was 'VOLUNTEER'::"UserRole") so the enum type can be dropped
+ALTER TABLE "User" ALTER COLUMN role DROP DEFAULT;
+
 -- Decouple the column from the enum type to allow recreation
 ALTER TABLE "User" ALTER COLUMN role TYPE text;
 
