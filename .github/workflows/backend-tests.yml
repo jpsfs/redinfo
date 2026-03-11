@@ -21,6 +21,8 @@ jobs:
           node-version: '22'
       - name: Install dependencies
         run: pnpm install
+      - name: Build shared package
+        run: pnpm --filter @redinfo/shared build
       - name: Run backend unit tests
         run: pnpm --filter backend test
 
@@ -51,6 +53,8 @@ jobs:
           node-version: '22'
       - name: Install dependencies
         run: pnpm install
+      - name: Build shared package
+        run: pnpm --filter @redinfo/shared build
       - name: Wait for Postgres
         run: |
           for i in {1..30}; do
