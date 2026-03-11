@@ -223,6 +223,10 @@ export const theme = createTheme({
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          // react-admin's overridesResolver only applies `root` — hide the
+          // default lock-icon avatar using a nested selector instead of the
+          // `avatar` slot key, which is not processed by overridesResolver.
+          '& .RaLogin-avatar': { display: 'none' },
         },
         card: {
           borderRadius: borderRadiusMedium,
@@ -230,6 +234,17 @@ export const theme = createTheme({
           boxShadow: '0 4px 24px rgba(0,0,0,0.18)',
           width: '100%',
           maxWidth: 400,
+        },
+      },
+    },
+
+    // ── react-admin LoginForm: make content fill the card width ────────────
+    RaLoginForm: {
+      styleOverrides: {
+        content: {
+          // react-admin hard-codes width:300 — override so inputs fill the card
+          width: '100%',
+          boxSizing: 'border-box',
         },
       },
     },
