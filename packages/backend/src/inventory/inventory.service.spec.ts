@@ -4,6 +4,8 @@ import { VehicleType, InventoryItemType } from '@redinfo/shared';
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 
+type InventoryRow = { templateItem: { id: string }; status: string };
+
 const EMERGENCY_TEMPLATE = {
   id: 'tpl-1',
   vehicleType: VehicleType.EMERGENCY,
@@ -222,9 +224,9 @@ describe('InventoryService', () => {
 
       const result = await service.getVehicleInventory('v1');
       expect(result.rows).toHaveLength(2);
-      const firstRow = result.rows.find((r) => r.templateItem.id === 'item-1');
+      const firstRow = result.rows.find((r: InventoryRow) => r.templateItem.id === 'item-1');
       expect(firstRow?.status).toBe('low'); // 1 actual < 2 recommended
-      const secondRow = result.rows.find((r) => r.templateItem.id === 'item-2');
+      const secondRow = result.rows.find((r: InventoryRow) => r.templateItem.id === 'item-2');
       expect(secondRow?.status).toBe('unlimited');
     });
 
@@ -243,7 +245,7 @@ describe('InventoryService', () => {
       ]);
 
       const result = await service.getVehicleInventory('v1');
-      const row = result.rows.find((r) => r.templateItem.id === 'item-1');
+      const row = result.rows.find((r: InventoryRow) => r.templateItem.id === 'item-1');
       expect(row?.status).toBe('ok');
     });
 
@@ -262,7 +264,7 @@ describe('InventoryService', () => {
       ]);
 
       const result = await service.getVehicleInventory('v1');
-      const row = result.rows.find((r) => r.templateItem.id === 'item-1');
+      const row = result.rows.find((r: InventoryRow) => r.templateItem.id === 'item-1');
       expect(row?.status).toBe('over');
     });
 
