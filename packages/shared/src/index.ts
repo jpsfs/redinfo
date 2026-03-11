@@ -44,17 +44,21 @@ export enum Action {
   EMERGENCY_OPERATION = 'EMERGENCY_OPERATION',
   MANAGE_EMERGENCY_CONFIG = 'MANAGE_EMERGENCY_CONFIG',
   MANAGE_LOGISTICS = 'MANAGE_LOGISTICS',
+  MANAGE_VEHICLES = 'MANAGE_VEHICLES',
+  VIEW_VEHICLES = 'VIEW_VEHICLES',
 }
 
 export const ROLE_PERMISSIONS: Record<UserRole, Action[]> = {
   [UserRole.SYSTEM_ADMIN]: Object.values(Action) as Action[],
-  [UserRole.EMERGENCY_OPERATIONAL]: [Action.EMERGENCY_OPERATION],
+  [UserRole.EMERGENCY_OPERATIONAL]: [Action.EMERGENCY_OPERATION, Action.VIEW_VEHICLES],
   [UserRole.EMERGENCY_COORDINATOR]: [
     Action.EMERGENCY_OPERATION,
     Action.MANAGE_EMERGENCY_CONFIG,
     Action.VIEW_USERS,
+    Action.MANAGE_VEHICLES,
+    Action.VIEW_VEHICLES,
   ],
-  [UserRole.LOGISTICS_COORDINATOR]: [Action.MANAGE_LOGISTICS],
+  [UserRole.LOGISTICS_COORDINATOR]: [Action.MANAGE_LOGISTICS, Action.MANAGE_VEHICLES, Action.VIEW_VEHICLES],
 };
 
 export function hasPermission(role: UserRole, action: Action): boolean {
@@ -113,4 +117,50 @@ export interface ApiError {
   statusCode: number;
   message: string | string[];
   error: string;
+}
+
+// ─── Vehicles ─────────────────────────────────────────────────────────────────
+
+export enum VehicleType {
+  EMERGENCY = 'EMERGENCY',
+  TRANSPORT = 'TRANSPORT',
+}
+
+/**
+ * Portuguese licence-plate formats (case-insensitive on input, stored uppercased):
+ *   AA-99-99  (pre-1992)
+ *   99-99-AA  (1992–2005)
+ *   99-AA-99  (2005–2020)
+ *   AA-99-AA  (2020+)
+ */
+export const PT_LICENSE_PLATE_REGEX =
+  /^([A-Z]{2}-\d{2}-\d{2}|\d{2}-\d{2}-[A-Z]{2}|\d{2}-[A-Z]{2}-\d{2}|[A-Z]{2}-\d{2}-[A-Z]{2})$/;
+
+export interface MaintenanceEntry {
+  id: string;
+  vehicleId: string;
+  date: string;
+  description: string;
+  serviceProvider: string;
+  cost: number;
+  vatAmount?: number | null;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Vehicle {
+  id: string;
+  licensePlate: string;
+  numeroCauda: string;
+  vehicleType: VehicleType;
+  insuranceRenewalDate: string;
+  nextImtInspectionDate: string;
+  manufacturer?: string | null;
+  model?: string | null;
+  notes?: string | null;
+  isDeleted: boolean;
+  createdAt: string;
+  updatedAt: string;
+  maintenanceEntries?: MaintenanceEntry[];
 }

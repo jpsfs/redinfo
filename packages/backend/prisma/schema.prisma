@@ -53,3 +53,44 @@ model RefreshToken {
 
   @@index([userId])
 }
+
+enum VehicleType {
+  EMERGENCY
+  TRANSPORT
+}
+
+model Vehicle {
+  id                    String      @id @default(cuid())
+  licensePlate          String      @unique
+  numeroCauda           String      @unique
+  vehicleType           VehicleType
+  insuranceRenewalDate  DateTime    @db.Date
+  nextImtInspectionDate DateTime    @db.Date
+  manufacturer          String?
+  model                 String?
+  notes                 String?
+  isDeleted             Boolean     @default(false)
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+
+  maintenanceEntries MaintenanceEntry[]
+
+  @@index([vehicleType])
+  @@index([isDeleted])
+}
+
+model MaintenanceEntry {
+  id              String   @id @default(cuid())
+  vehicleId       String
+  vehicle         Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  date            DateTime @db.Date
+  description     String
+  serviceProvider String
+  cost            Decimal  @db.Decimal(10, 2)
+  vatAmount       Decimal? @db.Decimal(10, 2)
+  notes           String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([vehicleId])
+}

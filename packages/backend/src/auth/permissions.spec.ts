@@ -53,6 +53,24 @@ describe('hasPermission', () => {
     expect(hasPermission(UserRole.LOGISTICS_COORDINATOR, Action.MANAGE_USERS)).toBe(false);
   });
 
+  // ── Vehicle permissions ───────────────────────────────────────────────────────
+
+  it('LOGISTICS_COORDINATOR can perform MANAGE_VEHICLES', () => {
+    expect(hasPermission(UserRole.LOGISTICS_COORDINATOR, Action.MANAGE_VEHICLES)).toBe(true);
+  });
+
+  it('EMERGENCY_COORDINATOR can perform MANAGE_VEHICLES', () => {
+    expect(hasPermission(UserRole.EMERGENCY_COORDINATOR, Action.MANAGE_VEHICLES)).toBe(true);
+  });
+
+  it('EMERGENCY_OPERATIONAL can perform VIEW_VEHICLES (read-only)', () => {
+    expect(hasPermission(UserRole.EMERGENCY_OPERATIONAL, Action.VIEW_VEHICLES)).toBe(true);
+  });
+
+  it('EMERGENCY_OPERATIONAL cannot perform MANAGE_VEHICLES', () => {
+    expect(hasPermission(UserRole.EMERGENCY_OPERATIONAL, Action.MANAGE_VEHICLES)).toBe(false);
+  });
+
   // Scenario 3: new emergency action added → EMERGENCY_OPERATIONAL gains it after mapping
   it('new emergency action is accessible to EMERGENCY_OPERATIONAL once added to ROLE_PERMISSIONS', () => {
     const DISPATCH_AMBULANCE = 'DISPATCH_AMBULANCE' as Action;
