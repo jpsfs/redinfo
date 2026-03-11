@@ -86,9 +86,12 @@ export const elevationCard = 1;
 export const elevationAppBar = 2;
 
 // ─── Logo assets ──────────────────────────────────────────────────────────────
-/** Remote URL for the full Delegação de Campo logotype (HTTPS). */
-export const logoDelegacaoCampoUrl = 'https://www.cvpcampo.org/imagens/cvp.jpg';
+/** Primary local path for the full Delegação de Campo logotype (/public). */
+export const logoDelegacaoCampoUrl = '/logo-delegacao-campo.jpg';
 
+/** Remote URL fallback for the full Delegação de Campo logotype (HTTPS). */
+export const logoDelegacaoCampoRemoteUrl =
+  'https://www.cvpcampo.org/imagens/cvp.jpg';
 /** Local path for the compact Red Cross emblem (SVG in /public). */
 export const logoRedCrossEmblemPath = '/logo-red-cross.svg';
 
