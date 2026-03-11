@@ -239,12 +239,15 @@ export const theme = createTheme({
     },
 
     // ── react-admin LoginForm: make content fill the card width ────────────
+    // overridesResolver only exposes `root`, so use a nested selector (same
+    // technique as the avatar fix above) to override the hardcoded width:300.
     RaLoginForm: {
       styleOverrides: {
-        content: {
-          // react-admin hard-codes width:300 — override so inputs fill the card
-          width: '100%',
-          boxSizing: 'border-box',
+        root: {
+          '& .RaLoginForm-content': {
+            width: '100%',
+            boxSizing: 'border-box',
+          },
         },
       },
     },
