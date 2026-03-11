@@ -24,7 +24,7 @@ export const DelegacaoCampoLogo = ({ sx }: DelegacaoCampoLogoProps) => {
       src={useFallback ? logoRedCrossEmblemPath : logoDelegacaoCampoUrl}
       alt="Cruz Vermelha Portuguesa – Delegação de Campo"
       onError={() => setUseFallback(true)}
-      sx={useFallback ? { width: logoFallbackSize, ...((sx as object) ?? {}) } : sx}
+      sx={useFallback ? [{ width: logoFallbackSize }, sx] : sx}
     />
   );
 };
