@@ -7,7 +7,9 @@ async function main() {
   const adminEmail = 'admin@redcross.local';
 
   const existing = await prisma.user.findUnique({ where: { email: adminEmail } });
-  if (!existing) {
+  if (existing) {
+    console.log('Seed already applied — admin user exists.');
+  } else {
     const passwordHash = await bcrypt.hash('Admin1234!', 12);
 
     await prisma.user.create({
@@ -23,8 +25,6 @@ async function main() {
     });
 
     console.log('✅ Seed complete — admin@redcross.local / Admin1234!');
-  } else {
-    console.log('Seed already applied — admin user exists.');
   }
 
   // ── Default Inventory Templates ──────────────────────────────────────────────

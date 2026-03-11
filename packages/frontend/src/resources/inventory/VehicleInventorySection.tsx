@@ -102,6 +102,7 @@ export const VehicleInventorySection = () => {
 
   useEffect(() => {
     fetchInventory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [record?.id]);
 
   const handleSave = async (templateItemId: string, vehicleInventoryItemId: string | null) => {

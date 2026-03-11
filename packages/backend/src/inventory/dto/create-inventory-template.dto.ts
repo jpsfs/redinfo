@@ -1,9 +1,9 @@
 import { IsEnum, IsOptional, IsString } from 'class-validator';
-import { ApiPropertyOptional } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { VehicleType } from '@redinfo/shared';
 
 export class CreateInventoryTemplateDto {
-  @ApiPropertyOptional({ enum: VehicleType })
+  @ApiProperty({ enum: VehicleType })
   @IsEnum(VehicleType)
   vehicleType: VehicleType;
 
