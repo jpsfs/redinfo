@@ -1,16 +1,23 @@
 import { Card, CardContent, Typography, Box } from '@mui/material';
-import FavoriteIcon from '@mui/icons-material/Favorite';
+import { DelegacaoCampoLogo } from '../components/DelegacaoCampoLogo';
 
 export const Dashboard = () => (
   <Box sx={{ mt: 2 }}>
     <Card>
       <CardContent sx={{ textAlign: 'center', py: 6 }}>
-        <FavoriteIcon sx={{ fontSize: 64, color: 'primary.main', mb: 2 }} />
+        <DelegacaoCampoLogo
+          sx={{
+            maxWidth: { xs: 160, sm: 220 },
+            height: 'auto',
+            mb: 3,
+            borderRadius: 1,
+          }}
+        />
         <Typography variant="h4" gutterBottom fontWeight={700}>
-          Welcome to RedInfo
+          Bem-vindo ao RedInfo
         </Typography>
         <Typography variant="body1" color="text.secondary">
-          Information system for Cruz Vermelha Portuguesa – local branch.
+          Sistema de informação da Cruz Vermelha Portuguesa – Delegação de Campo.
         </Typography>
       </CardContent>
     </Card>
