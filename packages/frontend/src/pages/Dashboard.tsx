@@ -7,12 +7,17 @@ import {
   Chip,
   Stack,
   Divider,
+  CircularProgress,
 } from '@mui/material';
 import { DelegacaoCampoLogo } from '../components/DelegacaoCampoLogo';
 import { useGetList, Link } from 'react-admin';
+import { useEffect, useState } from 'react';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
+import InventoryIcon from '@mui/icons-material/Inventory';
+
+const API_URL = import.meta.env.VITE_API_URL ?? '';
 
 const DAYS_WARN = 30;
 
@@ -37,6 +42,90 @@ interface VehicleRecord {
   insuranceRenewalDate: string;
   nextImtInspectionDate: string;
 }
+
+interface LowStockVehicle {
+  vehicle: {
+    id: string;
+    licensePlate: string;
+    numeroCauda: string;
+    vehicleType: 'EMERGENCY' | 'TRANSPORT';
+  };
+  hasLowStock: boolean;
+  lowStockItems: Array<{
+    templateItem: { name: string; recommendedQuantity: number | null; unit: string };
+    vehicleInventoryItem: { actualQuantity: number | null } | null;
+  }>;
+}
+
+const LowStockPanel = () => {
+  const [data, setData] = useState<{ grouped: Record<string, LowStockVehicle[]>; total: number } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const token = localStorage.getItem('auth')
+      ? JSON.parse(localStorage.getItem('auth') ?? '{}').accessToken
+      : null;
+    const headers: HeadersInit = { 'Content-Type': 'application/json' };
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    fetch(`${API_URL}/vehicles/low-stock`, { headers })
+      .then((r) => r.json())
+      .then(setData)
+      .catch(() => setData(null))
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <CircularProgress size={20} sx={{ mt: 2 }} />;
+  if (!data || data.total === 0) return null;
+
+  return (
+    <Card sx={{ mt: 2 }}>
+      <CardContent>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+          <InventoryIcon color="error" />
+          <Typography variant="h6" fontWeight={700} color="error">
+            Low Stock Vehicles ({data.total})
+          </Typography>
+        </Box>
+        <Stack spacing={1.5} divider={<Divider flexItem />}>
+          {Object.entries(data.grouped).flatMap(([, vehicles]) =>
+            vehicles.map((item) => (
+              <Box
+                key={item.vehicle.id}
+                component={Link}
+                to={`/vehicles/${item.vehicle.id}/show`}
+                sx={{ textDecoration: 'none', color: 'inherit', display: 'block' }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+                  {item.vehicle.vehicleType === 'EMERGENCY' ? (
+                    <DirectionsCarIcon fontSize="small" color="error" />
+                  ) : (
+                    <LocalShippingIcon fontSize="small" color="primary" />
+                  )}
+                  <Typography variant="body2" fontWeight={600}>
+                    {item.vehicle.licensePlate} – {item.vehicle.numeroCauda}
+                  </Typography>
+                  {item.lowStockItems.slice(0, 3).map((li, idx) => (
+                    <Chip
+                      key={idx}
+                      size="small"
+                      color="error"
+                      variant="outlined"
+                      label={`${li.templateItem.name}: ${li.vehicleInventoryItem?.actualQuantity ?? 0}/${li.templateItem.recommendedQuantity} ${li.templateItem.unit}`}
+                    />
+                  ))}
+                  {item.lowStockItems.length > 3 && (
+                    <Chip size="small" label={`+${item.lowStockItems.length - 3} more`} variant="outlined" />
+                  )}
+                </Box>
+              </Box>
+            )),
+          )}
+        </Stack>
+      </CardContent>
+    </Card>
+  );
+};
 
 const UpcomingAlertsPanel = () => {
   const { data: vehicles, isLoading } = useGetList<VehicleRecord>('vehicles', {
@@ -130,6 +219,7 @@ export const Dashboard = () => (
       </CardContent>
     </Card>
     <UpcomingAlertsPanel />
+    <LowStockPanel />
     <Alert severity="info" sx={{ mt: 2 }}>
       Vehicles with insurance or IMT inspection dates within{' '}
       <strong>{DAYS_WARN} days</strong> are flagged above.
