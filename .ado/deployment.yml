@@ -41,6 +41,9 @@ stages:
           command: 'buildAndPush'
           Dockerfile: 'packages/frontend/Dockerfile'
           buildContext: '$(Build.SourcesDirectory)'
+          # Build only the production stage so the dev stage is never run in CI.
+          # The dev stage is used by docker compose locally only.
+          arguments: '--target prod'
           tags: '$(Build.SourceBranchName)'
 
   - stage: Deploy
