@@ -1,0 +1,68 @@
+replicaCount: 1
+namespace: dev
+
+image:
+  backend:
+    repository: redinfo/backend
+    tag: "dev"
+    pullPolicy: IfNotPresent
+  frontend:
+    repository: redinfo/frontend
+    tag: "dev"
+    pullPolicy: IfNotPresent
+
+service:
+  backend:
+    type: ClusterIP
+    port: 3000
+  frontend:
+    type: ClusterIP
+    port: 80
+
+ingress:
+  enabled: true
+  hosts:
+    - host: dev.redcross.jpsfs.com
+      paths:
+        - path: /
+          service: frontend
+          servicePort: 80
+  tls: []
+
+resources:
+  backend:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 250m
+      memory: 256Mi
+  frontend:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 150m
+      memory: 128Mi
+
+env:
+  backend:
+    NODE_ENV: "development"
+  frontend:
+    NODE_ENV: "development"
+
+# Enable a bundled Postgres instance for development (ephemeral)
+postgresql:
+  enabled: true
+  auth:
+    username: redinfo
+    database: redinfo_dev
+    # Use a simple dev password; CI/Secrets manager should override this for real dev clusters
+    postgresPassword: devpassword
+  primary:
+    persistence:
+      enabled: false
+  frontend:
+    NODE_ENV: "development"
+
+# Development defaults: single replica, no ingress, minimal resources

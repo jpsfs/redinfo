@@ -1,0 +1,11 @@
+*.tgz
+.DS_Store
+.git
+.gitignore
+node_modules
+.idea
+venv
+dist
+coverage
+*.log
+charts

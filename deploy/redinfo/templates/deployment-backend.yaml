@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "redinfo.fullname" . }}-backend
+  labels:
+    app.kubernetes.io/name: {{ include "redinfo.name" . }}
+    app.kubernetes.io/component: backend
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "redinfo.name" . }}
+      app.kubernetes.io/component: backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "redinfo.name" . }}
+        app.kubernetes.io/component: backend
+    spec:
+      containers:
+        - name: backend
+          image: "{{ .Values.image.backend.repository }}:{{ .Values.image.backend.tag }}"
+          imagePullPolicy: {{ .Values.image.backend.pullPolicy }}
+          ports:
+            - containerPort: 3000
+          env:
+{{ toYaml .Values.env.backend | indent 12 }}
+            - name: DATABASE_HOST
+              value: "{{ printf "%s-postgresql" (include "redinfo.fullname" .) }}"
+            - name: DATABASE_PORT
+              value: "5432"
+            - name: DATABASE_NAME
+              value: "{{ .Values.postgresql.auth.database | default "redinfo" }}"
+            - name: DATABASE_USER
+              value: "{{ .Values.postgresql.auth.username | default "postgres" }}"
+            - name: DATABASE_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: "{{ printf "%s-postgresql" (include "redinfo.fullname" .) }}"
+                  key: postgresql-password
+          resources:
+{{ toYaml .Values.resources.backend | indent 12 }}

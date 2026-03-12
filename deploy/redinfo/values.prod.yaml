@@ -1,0 +1,19 @@
+replicaCount: 3
+namespace: production
+
+image:
+  backend:
+    repository: redinfo/backend
+    tag: "latest"
+    pullPolicy: IfNotPresent
+  frontend:
+    repository: redinfo/frontend
+    tag: "latest"
+    pullPolicy: IfNotPresent
+
+ingress:
+  enabled: true
+
+resources: {}
+
+# TODO: populate production values (secrets, TLS, HPA, resource sizing)

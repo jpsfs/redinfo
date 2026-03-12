@@ -1,0 +1,51 @@
+replicaCount: 1
+namespace: dev
+
+image:
+  backend:
+    repository: redinfo/backend
+    tag: "dev"
+    pullPolicy: IfNotPresent
+  frontend:
+    repository: redinfo/frontend
+    tag: "dev"
+    pullPolicy: IfNotPresent
+
+service:
+  backend:
+    type: ClusterIP
+    port: 3000
+  frontend:
+    type: ClusterIP
+    port: 80
+
+ingress:
+  enabled: false
+  annotations: {}
+  hosts: []
+  tls: []
+
+resources:
+  backend: {}
+  frontend: {}
+
+env:
+  backend: {}
+  frontend: {}
+
+autoscaling: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# PostgreSQL subchart defaults (disabled by default; enable in env-specific values)
+postgresql:
+  enabled: false
+  auth:
+    username: postgres
+    password: "changeme"
+    database: redinfo
+  primary:
+    persistence:
+      enabled: false
+

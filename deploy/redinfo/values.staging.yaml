@@ -1,0 +1,19 @@
+replicaCount: 2
+namespace: staging
+
+image:
+  backend:
+    repository: redinfo/backend
+    tag: "staging"
+    pullPolicy: IfNotPresent
+  frontend:
+    repository: redinfo/frontend
+    tag: "staging"
+    pullPolicy: IfNotPresent
+
+ingress:
+  enabled: true
+
+resources: {}
+
+# TODO: populate staging values (secrets, ingress host, DB)

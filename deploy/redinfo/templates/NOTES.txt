@@ -1,0 +1,9 @@
+Thank you for installing redinfo.
+
+To verify the rendered resources locally:
+
+  helm template redinfo ./deploy/redinfo --values deploy/redinfo/values.dev.yaml
+
+To run a dry-run install into the `dev` namespace:
+
+  helm install --create-namespace --namespace dev redinfo-dev ./deploy/redinfo --values deploy/redinfo/values.dev.yaml --dry-run --debug
