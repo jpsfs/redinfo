@@ -39,7 +39,7 @@ stages:
           containerRegistry: '$(DOCKER_SERVICE_CONNECTION)'
           repository: 'jpsfs/redinfo-frontend'
           command: 'buildAndPush'
-          Dockerfile: 'frontend/Dockerfile'
+          Dockerfile: 'packages/frontend/Dockerfile'
           buildContext: '$(Build.SourcesDirectory)'
           tags: '$(Build.SourceBranchName)'
 
