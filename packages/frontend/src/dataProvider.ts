@@ -24,7 +24,7 @@ const httpClient = (url: string, options: fetchUtils.Options = {}) => {
 
 export const dataProvider: DataProvider = {
   async getList(resource: string, params: GetListParams) {
-    const { page, perPage } = params.pagination;
+    const { page = 1, perPage = 25 } = params.pagination ?? {};
     const url = `${API_URL}/${resource}?page=${page}&perPage=${perPage}`;
     const { json } = await httpClient(url);
     return {
@@ -46,7 +46,7 @@ export const dataProvider: DataProvider = {
   },
 
   async getManyReference(resource: string, params: GetManyReferenceParams) {
-    const { page, perPage } = params.pagination;
+    const { page = 1, perPage = 25 } = params.pagination ?? {};
     const url = `${API_URL}/${resource}?${params.target}=${params.id}&page=${page}&perPage=${perPage}`;
     const { json } = await httpClient(url);
     return {
