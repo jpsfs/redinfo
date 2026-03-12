@@ -26,7 +26,7 @@ stages:
         displayName: 'Build and push backend image'
         inputs:
           containerRegistry: '$(DOCKER_SERVICE_CONNECTION)'
-          repository: 'jpsfs/redinfo/backend'
+          repository: 'jpsfs/redinfo-backend'
           command: 'buildAndPush'
           Dockerfile: 'packages/backend/Dockerfile'
           # Use repository root as build context since the backend Dockerfile copies files from the repo root
@@ -37,7 +37,7 @@ stages:
         displayName: 'Build and push frontend image'
         inputs:
           containerRegistry: '$(DOCKER_SERVICE_CONNECTION)'
-          repository: 'jpsfs/redinfo/frontend'
+          repository: 'jpsfs/redinfo-frontend'
           command: 'buildAndPush'
           Dockerfile: 'frontend/Dockerfile'
           buildContext: '$(Build.SourcesDirectory)'
@@ -88,7 +88,7 @@ stages:
             DEPLOY_ENV="$(Build.SourceBranchName)"
             VALUES_FILE="/tmp/redinfo/values.${DEPLOY_ENV}.yaml"
             # force image pull by setting pullPolicy=Always and set the repo/tag to the pushed images
-            IMAGE_OVERRIDES="--set image.backend.repository=jpsfs/redinfo/backend,image.backend.tag=${DEPLOY_ENV},image.backend.pullPolicy=Always,image.frontend.repository=jpsfs/redinfo/frontend,image.frontend.tag=${DEPLOY_ENV},image.frontend.pullPolicy=Always"
+            IMAGE_OVERRIDES="--set image.backend.repository=jpsfs/redinfo-backend,image.backend.tag=${DEPLOY_ENV},image.backend.pullPolicy=Always,image.frontend.repository=jpsfs/redinfo-frontend,image.frontend.tag=${DEPLOY_ENV},image.frontend.pullPolicy=Always"
 
             mkdir -p /tmp/redinfo
             tar -xzf /tmp/redinfo-chart.tgz -C /tmp

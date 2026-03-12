@@ -3,11 +3,11 @@ namespace: dev
 
 image:
   backend:
-    repository: redinfo/backend
+    repository: jpsfs/redinfo-backend
     tag: "dev"
     pullPolicy: IfNotPresent
   frontend:
-    repository: redinfo/frontend
+    repository: jpsfs/redinfo-frontend
     tag: "dev"
     pullPolicy: IfNotPresent
 

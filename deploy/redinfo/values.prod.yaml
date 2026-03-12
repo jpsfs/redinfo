@@ -3,11 +3,11 @@ namespace: production
 
 image:
   backend:
-    repository: redinfo/backend
+    repository: jpsfs/redinfo-backend
     tag: "latest"
     pullPolicy: IfNotPresent
   frontend:
-    repository: redinfo/frontend
+    repository: jpsfs/redinfo-frontend
     tag: "latest"
     pullPolicy: IfNotPresent
 
