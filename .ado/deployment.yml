@@ -5,18 +5,13 @@ trigger:
       - staging
       - prod
 
-concurrency:
-  cancelInProgress: true
-  group: 'deploy-$(Build.SourceBranchName)'
-
 variables:
   # Azure DevOps SSH service connection ID or name
   SSH_SERVICE_CONNECTION: 'ffb6f58f-b7ba-49d3-bb90-001211d610b7' # SSH RedCross (Liberty-Server)
   # Docker Hub service connection ID or name
   DOCKER_SERVICE_CONNECTION: '74055803-059c-40b0-bb65-0318f1294758' # Docker Hub Registry
 
-pool:
-  stages:
+stages:
 
   - stage: BuildAndPush
     displayName: Build and push images ($(Build.SourceBranchName))
@@ -121,7 +116,3 @@ pool:
           inline: |
             rm -f /tmp/redinfo-chart.tgz || true
             rm -rf /tmp/redinfo || true
-      runOptions: 'inline'
-      inline: |
-        rm -f /tmp/redinfo-chart.tgz || true
-        rm -rf /tmp/redinfo || true
