@@ -56,6 +56,9 @@ RUN pnpm build
 WORKDIR /app/packages/backend
 RUN pnpm prisma:generate
 RUN pnpm build
+# Copy generated Prisma client into package-local node_modules so PROD stage can COPY it reliably
+RUN mkdir -p /app/packages/backend/node_modules && \
+    if [ -d "/app/node_modules/.prisma" ]; then cp -R /app/node_modules/.prisma /app/packages/backend/node_modules/.prisma; fi
 
 
 # ─── Production stage ─────────────────────────────────────────────────────────
