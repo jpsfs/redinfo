@@ -29,7 +29,8 @@ stages:
           repository: 'jpsfs/redinfo/backend'
           command: 'buildAndPush'
           Dockerfile: 'packages/backend/Dockerfile'
-          buildContext: 'packages/backend'
+          # Use repository root as build context since the backend Dockerfile copies files from the repo root
+          buildContext: '$(Build.SourcesDirectory)'
           tags: '$(Build.SourceBranchName)'
 
       - task: Docker@2
@@ -39,7 +40,7 @@ stages:
           repository: 'jpsfs/redinfo/frontend'
           command: 'buildAndPush'
           Dockerfile: 'frontend/Dockerfile'
-          buildContext: 'frontend'
+          buildContext: '$(Build.SourcesDirectory)'
           tags: '$(Build.SourceBranchName)'
 
   - stage: Deploy
