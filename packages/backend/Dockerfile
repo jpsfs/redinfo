@@ -1,7 +1,11 @@
 # ─── Development stage ────────────────────────────────────────────────────────
 FROM node:22-bookworm-slim AS dev
 
-RUN npm install -g pnpm
+# Pin pnpm to the major that generated pnpm-lock.yaml (lockfileVersion 9.0).
+# "npm install -g pnpm" without a version picks the latest release, which
+# can be pnpm 10+ with a different node_modules linker and would break the
+# Prisma-client placement expected by subsequent build steps.
+RUN npm install -g pnpm@9
 
 # OpenSSL required by Prisma on Debian
 RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
@@ -34,7 +38,7 @@ CMD ["sh", "-c", \
 # ─── Build stage ──────────────────────────────────────────────────────────────
 FROM node:22-bookworm-slim AS build
 
-RUN npm install -g pnpm
+RUN npm install -g pnpm@9
 
 RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 
@@ -56,15 +60,12 @@ RUN pnpm build
 WORKDIR /app/packages/backend
 RUN pnpm prisma:generate
 RUN pnpm build
-# Copy generated Prisma client into package-local node_modules so PROD stage can COPY it reliably
-RUN mkdir -p /app/packages/backend/node_modules && \
-    if [ -d "/app/node_modules/.prisma" ]; then cp -R /app/node_modules/.prisma /app/packages/backend/node_modules/.prisma; fi
 
 
 # ─── Production stage ─────────────────────────────────────────────────────────
 FROM node:22-bookworm-slim AS prod
 
-RUN npm install -g pnpm
+RUN npm install -g pnpm@9
 
 RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 
@@ -79,10 +80,15 @@ COPY packages/backend/package.json ./packages/backend/
 # Install only prod deps
 RUN pnpm install --prod
 
-# Copy generated Prisma client + compiled output
+# Copy compiled output and Prisma schema
 COPY --from=build /app/packages/backend/dist ./packages/backend/dist
-COPY --from=build /app/packages/backend/node_modules/.prisma ./packages/backend/node_modules/.prisma
 COPY packages/backend/prisma ./packages/backend/prisma
+
+# Generate the Prisma client inside the production node_modules so pnpm
+# places it at the correct virtual-store location that @prisma/client
+# resolves at runtime.  prisma must be in dependencies (not devDependencies)
+# for this to work – and for the entrypoint's "prisma migrate deploy" too.
+RUN pnpm --filter @redinfo/backend run prisma:generate
 
 WORKDIR /app/packages/backend
 
