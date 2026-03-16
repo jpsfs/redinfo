@@ -1,0 +1,85 @@
+{
+  "name": "redinfo",
+  "dockerComposeFile": "docker-compose.yml",
+  "service": "app",
+  "workspaceFolder": "/workspaces/redinfo",
+
+  // Give access to the host Docker daemon so `docker compose` works inside the container.
+  "features": {
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {}
+  },
+
+  // Forward backend, frontend dev server, and PostgreSQL to the host.
+  "forwardPorts": [3000, 5173, 5432],
+  "portsAttributes": {
+    "3000": { "label": "Backend — NestJS", "onAutoForward": "notify" },
+    "5173": { "label": "Frontend — Vite", "onAutoForward": "openBrowser" },
+    "5432": { "label": "PostgreSQL", "onAutoForward": "silent" }
+  },
+
+  // One-time setup: pnpm → install deps → prisma generate → wait for DB → migrate.
+  "postCreateCommand": "bash .devcontainer/post-create.sh",
+
+  "remoteUser": "node",
+
+  // Forward the host SSH agent for Git authentication inside the container.
+  // Binds the host SSH_AUTH_SOCK into the container at /ssh-agent and
+  // sets SSH_AUTH_SOCK so Git/ssh can use the agent.
+  "mounts": [
+    "source=${env:SSH_AUTH_SOCK},target=/ssh-agent,type=bind,consistency=cached"
+  ],
+  "remoteEnv": {
+    "SSH_AUTH_SOCK": "/ssh-agent"
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        // TypeScript / linting
+        "ms-vscode.vscode-typescript-next",
+        "dbaeumer.vscode-eslint",
+        "esbenp.prettier-vscode",
+        // NestJS / Prisma
+        "prisma.prisma",
+        // Testing
+        "Orta.vscode-jest",
+        // Git
+        "eamodio.gitlens",
+        // API / HTTP client
+        "humao.rest-client",
+        // Database explorer
+        "mtxr.sqltools",
+        "mtxr.sqltools-driver-pg",
+        // Docker / containers
+        "ms-azuretools.vscode-docker",
+        // Azure DevOps / pipelines YAML
+        "ms-azure-devops.azure-pipelines",
+        // Copilot
+        "github.copilot",
+        "github.copilot-chat"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode",
+        "[typescript]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+        "[typescriptreact]": {
+          "editor.defaultFormatter": "esbenp.prettier-vscode"
+        },
+        "typescript.preferences.importModuleSpecifier": "relative",
+        // Point ESLint to each package root so it finds the right config.
+        "eslint.workingDirectories": [{ "pattern": "packages/*/" }],
+        // Pre-configured SQLTools connection for the devcontainer postgres service.
+        "sqltools.connections": [
+          {
+            "name": "redinfo-dev",
+            "driver": "PostgreSQL",
+            "server": "postgres",
+            "port": 5432,
+            "database": "redinfo",
+            "username": "redinfo",
+            "password": "redinfo_dev_password"
+          }
+        ]
+      }
+    }
+  }
+}

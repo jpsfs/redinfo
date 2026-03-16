@@ -1,0 +1,53 @@
+name: redinfo-devcontainer
+
+services:
+  # ── Workspace container ─────────────────────────────────────────────────────
+  app:
+    image: mcr.microsoft.com/devcontainers/typescript-node:1-22-bookworm
+    volumes:
+      - ../:/workspaces/redinfo:cached
+    # Keeps the container alive; VS Code attaches to it.
+    # Use a POSIX-safe keep-alive command that's reliable across images.
+    command: tail -f /dev/null
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - redinfo-dev
+    environment:
+      # ── Database ─────────────────────────────────────────────────────────────
+      DATABASE_URL: postgresql://redinfo:redinfo_dev_password@postgres:5432/redinfo
+      # ── Backend ──────────────────────────────────────────────────────────────
+      NODE_ENV:     development
+      PORT:         "3000"
+      FRONTEND_URL: http://localhost:5173
+      # ── JWT — dev-only values; NEVER use in production ───────────────────────
+      JWT_SECRET:              devcontainer_dev_only_jwt_secret_DO_NOT_USE_IN_PRODUCTION_padded64x
+      JWT_ACCESS_EXPIRES_IN:  15m
+      JWT_REFRESH_EXPIRES_IN: 7d
+      # ── Frontend ─────────────────────────────────────────────────────────────
+      VITE_API_URL: http://localhost:3000
+
+  # ── PostgreSQL 16 ───────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     redinfo
+      POSTGRES_PASSWORD: redinfo_dev_password
+      POSTGRES_DB:       redinfo
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - redinfo-dev
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U redinfo -d redinfo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+networks:
+  redinfo-dev:
+
+volumes:
+  postgres-data:

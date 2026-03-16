@@ -1,7 +1,8 @@
 # ─── Development stage ────────────────────────────────────────────────────────
 FROM node:22-alpine AS dev
 
-RUN npm install -g pnpm
+# Pin pnpm to the major that generated pnpm-lock.yaml (lockfileVersion 9.0)
+RUN npm install -g pnpm@9
 
 WORKDIR /app
 
@@ -27,7 +28,7 @@ FROM node:22-alpine AS build
 
 ARG VITE_API_URL=/api
 
-RUN npm install -g pnpm
+RUN npm install -g pnpm@9
 
 WORKDIR /app
 
