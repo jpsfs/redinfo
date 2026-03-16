@@ -7,116 +7,112 @@ trigger:
 
 variables:
   # Azure DevOps SSH service connection ID or name
-  SSH_SERVICE_CONNECTION: 'ffb6f58f-b7ba-49d3-bb90-001211d610b7' # SSH RedCross (Liberty-Server)
+  SSH_SERVICE_CONNECTION: "ffb6f58f-b7ba-49d3-bb90-001211d610b7" # SSH RedCross (Liberty-Server)
   # Docker Hub service connection ID or name
-  DOCKER_SERVICE_CONNECTION: '74055803-059c-40b0-bb65-0318f1294758' # Docker Hub Registry
+  DOCKER_SERVICE_CONNECTION: "74055803-059c-40b0-bb65-0318f1294758" # Docker Hub Registry
 
 stages:
-
   - stage: BuildAndPush
     displayName: Build and push images ($(Build.SourceBranchName))
     jobs:
-    - job: BuildPushImages
-      pool:
-        vmImage: 'ubuntu-latest'
-      steps:
-      - checkout: self
+      - job: BuildPushImages
+        pool:
+          vmImage: "ubuntu-latest"
+        steps:
+          - checkout: self
 
-      - task: Docker@2
-        displayName: 'Build and push backend image'
-        inputs:
-          containerRegistry: '$(DOCKER_SERVICE_CONNECTION)'
-          repository: 'jpsfs/redinfo-backend'
-          command: 'buildAndPush'
-          Dockerfile: 'packages/backend/Dockerfile'
-          # Use repository root as build context since the backend Dockerfile copies files from the repo root
-          buildContext: '$(Build.SourcesDirectory)'
-          tags: '$(Build.SourceBranchName)'
+          - task: Docker@2
+            displayName: "Build and push backend image"
+            inputs:
+              containerRegistry: "$(DOCKER_SERVICE_CONNECTION)"
+              repository: "jpsfs/redinfo-backend"
+              command: "buildAndPush"
+              Dockerfile: "packages/backend/Dockerfile"
+              # Use repository root as build context since the backend Dockerfile copies files from the repo root
+              buildContext: "$(Build.SourcesDirectory)"
+              tags: "$(Build.SourceBranchName)"
 
-      - task: Docker@2
-        displayName: 'Build and push frontend image'
-        inputs:
-          containerRegistry: '$(DOCKER_SERVICE_CONNECTION)'
-          repository: 'jpsfs/redinfo-frontend'
-          command: 'buildAndPush'
-          Dockerfile: 'packages/frontend/Dockerfile'
-          buildContext: '$(Build.SourcesDirectory)'
-          # Build only the production stage so the dev stage is never run in CI.
-          # The dev stage is used by docker compose locally only.
-          arguments: '--target prod'
-          tags: '$(Build.SourceBranchName)'
+          - task: Docker@2
+            displayName: "Build and push frontend image"
+            inputs:
+              containerRegistry: "$(DOCKER_SERVICE_CONNECTION)"
+              repository: "jpsfs/redinfo-frontend"
+              command: "buildAndPush"
+              Dockerfile: "packages/frontend/Dockerfile"
+              buildContext: "$(Build.SourcesDirectory)"
+              # Build only the production stage so the dev stage is never run in CI.
+              # The dev stage is used by docker compose locally only.
+              arguments: "--target prod"
+              tags: "$(Build.SourceBranchName)"
 
   - stage: Deploy
     displayName: Deploy to cluster ($(Build.SourceBranchName))
     dependsOn: BuildAndPush
     jobs:
-    - job: DeployToMicroK8s
-      displayName: Deploy Helm chart to microk8s ($(Build.SourceBranchName))
-      steps:
-      - checkout: self
+      - job: DeployToMicroK8s
+        displayName: Deploy Helm chart to microk8s ($(Build.SourceBranchName))
+        steps:
+          - checkout: self
 
-      - task: Bash@3
-        displayName: 'Install prerequisites'
-        inputs:
-          targetType: 'inline'
-          script: |
-            set -euo pipefail
-            sudo apt-get update -y
-            sudo apt-get install -y openssh-client tar
+          - task: Bash@3
+            displayName: "Install prerequisites"
+            inputs:
+              targetType: "inline"
+              script: |
+                set -euo pipefail
+                sudo apt-get update -y
+                sudo apt-get install -y openssh-client tar
 
-      - task: Bash@3
-        displayName: 'Package chart ($(Build.SourceBranchName))'
-        inputs:
-          targetType: 'inline'
-          script: |
-            set -euo pipefail
-            cd "$(Build.SourcesDirectory)/deploy"
-            tar -czf "$(Build.ArtifactStagingDirectory)/redinfo-chart.tgz" redinfo
+          - task: Bash@3
+            displayName: "Package chart ($(Build.SourceBranchName))"
+            inputs:
+              targetType: "inline"
+              script: |
+                set -euo pipefail
+                cd "$(Build.SourcesDirectory)/deploy"
+                tar -czf "$(Build.ArtifactStagingDirectory)/redinfo-chart.tgz" redinfo
 
-      - task: CopyFilesOverSSH@0
-        displayName: 'Copy packaged chart to remote host ($(Build.SourceBranchName))'
-        inputs:
-          sshEndpoint: '$(SSH_SERVICE_CONNECTION)'
-          sourceFolder: '$(Build.ArtifactStagingDirectory)'
-          contents: 'redinfo-chart.tgz'
-          targetFolder: '/tmp'
+          - task: CopyFilesOverSSH@0
+            displayName: "Copy packaged chart to remote host ($(Build.SourceBranchName))"
+            inputs:
+              sshEndpoint: "$(SSH_SERVICE_CONNECTION)"
+              sourceFolder: "$(Build.ArtifactStagingDirectory)"
+              contents: "redinfo-chart.tgz"
+              targetFolder: "/tmp"
 
-      - task: SSH@0
-        displayName: 'Extract and deploy chart on remote host ($(Build.SourceBranchName))'
-        inputs:
-          sshEndpoint: '$(SSH_SERVICE_CONNECTION)'
-          runOptions: 'inline'
-          inline: |
-            set -euo pipefail
-            DEPLOY_ENV="$(Build.SourceBranchName)"
-            VALUES_FILE="/tmp/redinfo/values.${DEPLOY_ENV}.yaml"
-            # force image pull by setting pullPolicy=Always and set the repo/tag to the pushed images
-            IMAGE_OVERRIDES="--set image.backend.repository=jpsfs/redinfo-backend,image.backend.tag=${DEPLOY_ENV},image.backend.pullPolicy=Always,image.frontend.repository=jpsfs/redinfo-frontend,image.frontend.tag=${DEPLOY_ENV},image.frontend.pullPolicy=Always"
+          - task: SSH@0
+            displayName: "Extract and deploy chart on remote host ($(Build.SourceBranchName))"
+            inputs:
+              sshEndpoint: "$(SSH_SERVICE_CONNECTION)"
+              runOptions: "inline"
+              inline: |
+                set -euo pipefail
+                cleanup() {
+                  rm -f /tmp/redinfo-chart.tgz || true
+                  rm -rf /tmp/redinfo || true
+                }
+                trap cleanup EXIT
 
-            mkdir -p /tmp/redinfo
-            tar -xzf /tmp/redinfo-chart.tgz -C /tmp
-            if command -v microk8s.helm3 >/dev/null 2>&1; then
-              microk8s.status --wait || true
-              if [ -f "${VALUES_FILE}" ]; then
-                microk8s.helm3 upgrade --install redinfo /tmp/redinfo -n "${DEPLOY_ENV}" --create-namespace --dependency-update -f "${VALUES_FILE}" ${IMAGE_OVERRIDES}
-              else
-                microk8s.helm3 upgrade --install redinfo /tmp/redinfo -n "${DEPLOY_ENV}" --create-namespace --dependency-update ${IMAGE_OVERRIDES}
-              fi
-            elif command -v helm >/dev/null 2>&1; then
-              if [ -f "${VALUES_FILE}" ]; then
-                helm upgrade --install redinfo /tmp/redinfo -n "${DEPLOY_ENV}" --create-namespace --dependency-update -f "${VALUES_FILE}" ${IMAGE_OVERRIDES}
-              else
-                helm upgrade --install redinfo /tmp/redinfo -n "${DEPLOY_ENV}" --create-namespace --dependency-update ${IMAGE_OVERRIDES}
-              fi
-            else
-              echo "No helm found on remote host (expected microk8s.helm3 or helm)" >&2; exit 2
-            fi
+                DEPLOY_ENV="$(Build.SourceBranchName)"
+                VALUES_FILE="/tmp/redinfo/values.${DEPLOY_ENV}.yaml"
+                # force image pull by setting pullPolicy=Always and set the repo/tag to the pushed images
+                IMAGE_OVERRIDES="--set image.backend.repository=jpsfs/redinfo-backend,image.backend.tag=${DEPLOY_ENV},image.backend.pullPolicy=Always,image.frontend.repository=jpsfs/redinfo-frontend,image.frontend.tag=${DEPLOY_ENV},image.frontend.pullPolicy=Always"
 
-      - task: SSH@0
-        displayName: 'Cleanup remote temp chart (optional) ($(Build.SourceBranchName))'
-        inputs:
-          sshEndpoint: '$(SSH_SERVICE_CONNECTION)'
-          runOptions: 'inline'
-          inline: |
-            rm -f /tmp/redinfo-chart.tgz || true
-            rm -rf /tmp/redinfo || true
+                mkdir -p /tmp/redinfo
+                tar -xzf /tmp/redinfo-chart.tgz -C /tmp
+                if command -v microk8s.helm3 >/dev/null 2>&1; then
+                  microk8s.status --wait || true
+                  if [ -f "${VALUES_FILE}" ]; then
+                    microk8s.helm3 upgrade --install redinfo /tmp/redinfo -n "${DEPLOY_ENV}" --create-namespace --dependency-update -f "${VALUES_FILE}" ${IMAGE_OVERRIDES}
+                  else
+                    microk8s.helm3 upgrade --install redinfo /tmp/redinfo -n "${DEPLOY_ENV}" --create-namespace --dependency-update ${IMAGE_OVERRIDES}
+                  fi
+                elif command -v helm >/dev/null 2>&1; then
+                  if [ -f "${VALUES_FILE}" ]; then
+                    helm upgrade --install redinfo /tmp/redinfo -n "${DEPLOY_ENV}" --create-namespace --dependency-update -f "${VALUES_FILE}" ${IMAGE_OVERRIDES}
+                  else
+                    helm upgrade --install redinfo /tmp/redinfo -n "${DEPLOY_ENV}" --create-namespace --dependency-update ${IMAGE_OVERRIDES}
+                  fi
+                else
+                  echo "No helm found on remote host (expected microk8s.helm3 or helm)" >&2; exit 2
+                fi
