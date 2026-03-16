@@ -1,8 +1,8 @@
 # ─── Development stage ────────────────────────────────────────────────────────
 FROM node:22-alpine AS dev
 
-# Pin pnpm to the major that generated pnpm-lock.yaml (lockfileVersion 9.0)
-RUN npm install -g pnpm@9
+# Use the same pnpm version across dev/CI/Docker.
+RUN corepack enable && corepack prepare pnpm@10.32.1 --activate
 
 WORKDIR /app
 
@@ -28,7 +28,7 @@ FROM node:22-alpine AS build
 
 ARG VITE_API_URL=/api
 
-RUN npm install -g pnpm@9
+RUN corepack enable && corepack prepare pnpm@10.32.1 --activate
 
 WORKDIR /app
 
@@ -41,6 +41,9 @@ RUN pnpm install
 COPY tsconfig.base.json ./
 COPY packages/shared ./packages/shared
 COPY packages/frontend ./packages/frontend
+
+WORKDIR /app/packages/shared
+RUN pnpm build
 
 WORKDIR /app/packages/frontend
 RUN VITE_API_URL=$VITE_API_URL pnpm build

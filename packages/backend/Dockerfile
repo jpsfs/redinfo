@@ -1,11 +1,8 @@
 # ─── Development stage ────────────────────────────────────────────────────────
 FROM node:22-bookworm-slim AS dev
 
-# Pin pnpm to the major that generated pnpm-lock.yaml (lockfileVersion 9.0).
-# "npm install -g pnpm" without a version picks the latest release, which
-# can be pnpm 10+ with a different node_modules linker and would break the
-# Prisma-client placement expected by subsequent build steps.
-RUN npm install -g pnpm@9
+# Use the same pnpm version across dev/CI/Docker.
+RUN corepack enable && corepack prepare pnpm@10.32.1 --activate
 
 # OpenSSL required by Prisma on Debian
 RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
@@ -38,7 +35,7 @@ CMD ["sh", "-c", \
 # ─── Build stage ──────────────────────────────────────────────────────────────
 FROM node:22-bookworm-slim AS build
 
-RUN npm install -g pnpm@9
+RUN corepack enable && corepack prepare pnpm@10.32.1 --activate
 
 RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 
@@ -65,7 +62,7 @@ RUN pnpm build
 # ─── Production stage ─────────────────────────────────────────────────────────
 FROM node:22-bookworm-slim AS prod
 
-RUN npm install -g pnpm@9
+RUN corepack enable && corepack prepare pnpm@10.32.1 --activate
 
 RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 

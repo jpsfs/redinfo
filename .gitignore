@@ -148,6 +148,12 @@ vite.config.ts.timestamp-*
 packages/*/dist/
 packages/*/build/
 
+# Prevent accidentally generated TS build outputs in source folders
+packages/*/*.js
+packages/*/*.js.map
+packages/*/*.d.ts
+packages/*/*.d.ts.map
+
 # IDE
 .idea/
 

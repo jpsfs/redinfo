@@ -5,14 +5,14 @@ set -euo pipefail
 
 cd /workspaces/redinfo
 
-echo "==> Installing pnpm@9 via corepack..."
+echo "==> Installing pnpm@10.32.1 via corepack..."
 # Use corepack (ships with Node 22) instead of `npm install -g`.
 # postCreateCommand runs in a non-login shell, so nvm env vars may not be
 # sourced, making global npm installs write to a root-owned prefix and fail.
 # corepack shims land in /usr/local/bin (needs root), but after that pnpm
 # runs as the node user without any further elevation.
 sudo corepack enable
-corepack prepare pnpm@9 --activate
+corepack prepare pnpm@10.32.1 --activate
 echo "    pnpm $(pnpm --version) installed."
 
 echo "==> Installing workspace dependencies..."
