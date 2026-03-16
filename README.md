@@ -1,18 +1,18 @@
 # redinfo — Cruz Vermelha Portuguesa
 
-Information system platform for a local Red Cross (*Cruz Vermelha Portuguesa*) branch.
+Information system platform for a local Red Cross (_Cruz Vermelha Portuguesa_) branch.
 
 ## Stack
 
-| Layer | Technology |
-|---|---|
-| Frontend | React 18 + TypeScript + **React-Admin 5** + MUI |
-| Backend | **NestJS 10** + TypeScript |
-| ORM | **Prisma 5** |
-| Database | PostgreSQL 16 |
-| Auth | JWT (access + refresh) + Google OAuth2 + Microsoft OAuth2 |
-| Package manager | pnpm workspaces |
-| Containers | Docker + Docker Compose |
+| Layer           | Technology                                                |
+| --------------- | --------------------------------------------------------- |
+| Frontend        | React 18 + TypeScript + **React-Admin 5** + MUI           |
+| Backend         | **NestJS 10** + TypeScript                                |
+| ORM             | **Prisma 5**                                              |
+| Database        | PostgreSQL 18                                             |
+| Auth            | JWT (access + refresh) + Google OAuth2 + Microsoft OAuth2 |
+| Package manager | pnpm workspaces                                           |
+| Containers      | Docker + Docker Compose                                   |
 
 ## Project structure
 
@@ -66,6 +66,7 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml exec backend \
 ```
 
 Production services:
+
 - Frontend served by Nginx on **:80** (with API/auth proxy built in)
 - Backend NOT exposed externally — accessed via Nginx proxy only
 - Database NOT exposed externally
@@ -74,24 +75,26 @@ Production services:
 
 See [`.env.example`](.env.example) for the full list.
 
-| Variable | Description |
-|---|---|
-| `DATABASE_URL` | PostgreSQL connection string |
-| `JWT_SECRET` | Long random secret (≥ 64 chars) |
-| `JWT_ACCESS_EXPIRES_IN` | e.g. `15m` |
-| `JWT_REFRESH_EXPIRES_IN` | e.g. `7d` |
-| `GOOGLE_CLIENT_ID/SECRET` | Google OAuth app credentials |
-| `MICROSOFT_CLIENT_ID/SECRET/TENANT_ID` | Azure AD app credentials |
+| Variable                               | Description                     |
+| -------------------------------------- | ------------------------------- |
+| `DATABASE_URL`                         | PostgreSQL connection string    |
+| `JWT_SECRET`                           | Long random secret (≥ 64 chars) |
+| `JWT_ACCESS_EXPIRES_IN`                | e.g. `15m`                      |
+| `JWT_REFRESH_EXPIRES_IN`               | e.g. `7d`                       |
+| `GOOGLE_CLIENT_ID/SECRET`              | Google OAuth app credentials    |
+| `MICROSOFT_CLIENT_ID/SECRET/TENANT_ID` | Azure AD app credentials        |
 
 ## OAuth setup
 
 ### Google
+
 1. Go to [Google Cloud Console](https://console.cloud.google.com/) → APIs & Services → Credentials
 2. Create OAuth 2.0 Client ID (Web application)
 3. Add authorised redirect URI: `http://localhost:3000/auth/google/callback`
 
 ### Microsoft
+
 1. Go to [Azure Portal](https://portal.azure.com/) → App registrations → New registration
 2. Add redirect URI: `http://localhost:3000/auth/microsoft/callback`
-3. Create a client secret under *Certificates & secrets*
-An information system for the a local branch of Red Cross
+3. Create a client secret under _Certificates & secrets_
+   An information system for the a local branch of Red Cross

@@ -18,26 +18,26 @@ services:
       # ── Database ─────────────────────────────────────────────────────────────
       DATABASE_URL: postgresql://redinfo:redinfo_dev_password@postgres:5432/redinfo
       # ── Backend ──────────────────────────────────────────────────────────────
-      NODE_ENV:     development
-      PORT:         "3000"
+      NODE_ENV: development
+      PORT: "3000"
       FRONTEND_URL: http://localhost:5173
       # ── JWT — dev-only values; NEVER use in production ───────────────────────
-      JWT_SECRET:              devcontainer_dev_only_jwt_secret_DO_NOT_USE_IN_PRODUCTION_padded64x
-      JWT_ACCESS_EXPIRES_IN:  15m
+      JWT_SECRET: devcontainer_dev_only_jwt_secret_DO_NOT_USE_IN_PRODUCTION_padded64x
+      JWT_ACCESS_EXPIRES_IN: 15m
       JWT_REFRESH_EXPIRES_IN: 7d
       # ── Frontend ─────────────────────────────────────────────────────────────
       VITE_API_URL: http://localhost:3000
 
-  # ── PostgreSQL 16 ───────────────────────────────────────────────────────────
+  # ── PostgreSQL 18 ───────────────────────────────────────────────────────────
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER:     redinfo
+      POSTGRES_USER: redinfo
       POSTGRES_PASSWORD: redinfo_dev_password
-      POSTGRES_DB:       redinfo
+      POSTGRES_DB: redinfo
     volumes:
-      - postgres-data:/var/lib/postgresql/data
+      - postgres-data:/var/lib/postgresql
     networks:
       - redinfo-dev
     healthcheck:

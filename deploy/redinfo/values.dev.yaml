@@ -58,11 +58,10 @@ postgresql:
     username: redinfo
     database: redinfo_dev
     # Use a simple dev password; CI/Secrets manager should override this for real dev clusters
+    password: devpassword
     postgresPassword: devpassword
   primary:
     persistence:
       enabled: false
-  frontend:
-    NODE_ENV: "development"
 
 # Development defaults: single replica, no ingress, minimal resources

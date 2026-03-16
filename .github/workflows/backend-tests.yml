@@ -2,7 +2,7 @@ name: Backend Tests
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
     types: [opened, edited, synchronize]
 
@@ -18,7 +18,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: "22"
       - name: Install dependencies
         run: pnpm install
       - name: Build shared package
@@ -32,7 +32,7 @@ jobs:
     needs: unit
     services:
       postgres:
-        image: postgres:16-alpine
+        image: postgres:18-alpine
         env:
           POSTGRES_USER: redinfo
           POSTGRES_PASSWORD: redinfo_dev_password
@@ -50,7 +50,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: "22"
       - name: Install dependencies
         run: pnpm install
       - name: Build shared package
