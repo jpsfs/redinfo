@@ -24,7 +24,14 @@ spec:
           ports:
             - containerPort: 3000
           env:
-{{ toYaml .Values.env.backend | indent 12 }}
+            {{- if kindIs "map" .Values.env.backend }}
+            {{- range $name, $value := .Values.env.backend }}
+            - name: {{ $name }}
+              value: {{ $value | toString | quote }}
+            {{- end }}
+            {{- else if kindIs "slice" .Values.env.backend }}
+            {{- toYaml .Values.env.backend | nindent 12 }}
+            {{- end }}
             - name: DATABASE_HOST
               value: "{{ printf "%s-postgresql" (include "redinfo.fullname" .) }}"
             - name: DATABASE_PORT

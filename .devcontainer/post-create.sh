@@ -18,6 +18,15 @@ echo "    pnpm $(pnpm --version) installed."
 echo "==> Installing workspace dependencies..."
 pnpm install
 
+echo "==> Configuring Helm repositories..."
+if command -v helm >/dev/null 2>&1; then
+  # Needed for `deploy/redinfo` chart dependency builds.
+  helm repo add bitnami https://charts.bitnami.com/bitnami >/dev/null 2>&1 || true
+  helm repo update >/dev/null
+else
+  echo "    helm not found; skipping repo setup"
+fi
+
 echo "==> Generating Prisma client..."
 pnpm --filter backend exec prisma generate
 

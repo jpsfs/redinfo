@@ -23,7 +23,16 @@ spec:
           imagePullPolicy: {{ .Values.image.frontend.pullPolicy }}
           ports:
             - containerPort: 80
+          {{- if or (and (kindIs "map" .Values.env.frontend) (gt (len .Values.env.frontend) 0)) (and (kindIs "slice" .Values.env.frontend) (gt (len .Values.env.frontend) 0)) }}
           env:
-{{ toYaml .Values.env.frontend | indent 12 }}
+            {{- if kindIs "map" .Values.env.frontend }}
+            {{- range $name, $value := .Values.env.frontend }}
+            - name: {{ $name }}
+              value: {{ $value | toString | quote }}
+            {{- end }}
+            {{- else if kindIs "slice" .Values.env.frontend }}
+            {{- toYaml .Values.env.frontend | nindent 12 }}
+            {{- end }}
+          {{- end }}
           resources:
 {{ toYaml .Values.resources.frontend | indent 12 }}

@@ -3,7 +3,12 @@ name: redinfo-devcontainer
 services:
   # ── Workspace container ─────────────────────────────────────────────────────
   app:
-    image: mcr.microsoft.com/devcontainers/typescript-node:1-22-bookworm
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        HELM_VERSION: "3.16.3"
+    image: redinfo-devcontainer:local
     volumes:
       - ../:/workspaces/redinfo:cached
     # Keeps the container alive; VS Code attaches to it.
