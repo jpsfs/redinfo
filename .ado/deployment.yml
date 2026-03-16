@@ -98,15 +98,15 @@ stages:
             if command -v microk8s.helm3 >/dev/null 2>&1; then
               microk8s.status --wait || true
               if [ -f "${VALUES_FILE}" ]; then
-                microk8s.helm3 upgrade --install redinfo /tmp/redinfo -n "${DEPLOY_ENV}" --create-namespace -f "${VALUES_FILE}" ${IMAGE_OVERRIDES}
+                microk8s.helm3 upgrade --install redinfo /tmp/redinfo -n "${DEPLOY_ENV}" --create-namespace --dependency-update -f "${VALUES_FILE}" ${IMAGE_OVERRIDES}
               else
-                microk8s.helm3 upgrade --install redinfo /tmp/redinfo -n "${DEPLOY_ENV}" --create-namespace ${IMAGE_OVERRIDES}
+                microk8s.helm3 upgrade --install redinfo /tmp/redinfo -n "${DEPLOY_ENV}" --create-namespace --dependency-update ${IMAGE_OVERRIDES}
               fi
             elif command -v helm >/dev/null 2>&1; then
               if [ -f "${VALUES_FILE}" ]; then
-                helm upgrade --install redinfo /tmp/redinfo -n "${DEPLOY_ENV}" --create-namespace -f "${VALUES_FILE}" ${IMAGE_OVERRIDES}
+                helm upgrade --install redinfo /tmp/redinfo -n "${DEPLOY_ENV}" --create-namespace --dependency-update -f "${VALUES_FILE}" ${IMAGE_OVERRIDES}
               else
-                helm upgrade --install redinfo /tmp/redinfo -n "${DEPLOY_ENV}" --create-namespace ${IMAGE_OVERRIDES}
+                helm upgrade --install redinfo /tmp/redinfo -n "${DEPLOY_ENV}" --create-namespace --dependency-update ${IMAGE_OVERRIDES}
               fi
             else
               echo "No helm found on remote host (expected microk8s.helm3 or helm)" >&2; exit 2
