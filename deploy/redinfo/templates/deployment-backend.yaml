@@ -44,6 +44,6 @@ spec:
               valueFrom:
                 secretKeyRef:
                   name: "{{ printf "%s-postgresql" (include "redinfo.fullname" .) }}"
-                  key: postgresql-password
+                  key: password
           resources:
 {{ toYaml .Values.resources.backend | indent 12 }}
