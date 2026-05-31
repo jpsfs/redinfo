@@ -7,6 +7,11 @@
 {{- if .Values.fullnameOverride }}
 {{- .Values.fullnameOverride }}
 {{- else }}
-{{- printf "%s-%s" (include "redinfo.name" .) .Release.Name | trunc 63 | trimSuffix "-" }}
+{{- $name := include "redinfo.name" . }}
+{{- if contains $name .Release.Name }}
+{{- .Release.Name | trunc 63 | trimSuffix "-" }}
+{{- else }}
+{{- printf "%s-%s" .Release.Name $name | trunc 63 | trimSuffix "-" }}
+{{- end }}
 {{- end }}
 {{- end -}}
