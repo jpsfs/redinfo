@@ -73,7 +73,8 @@ model Vehicle {
   createdAt             DateTime    @default(now())
   updatedAt             DateTime    @updatedAt
 
-  maintenanceEntries MaintenanceEntry[]
+  maintenanceEntries    MaintenanceEntry[]
+  vehicleInventoryItems VehicleInventoryItem[]
 
   @@index([vehicleType])
   @@index([isDeleted])
@@ -93,4 +94,75 @@ model MaintenanceEntry {
   updatedAt       DateTime @updatedAt
 
   @@index([vehicleId])
+}
+
+// ─── Inventory ────────────────────────────────────────────────────────────────
+
+enum InventoryItemType {
+  COUNTABLE
+  UNLIMITED
+}
+
+model InventoryTemplate {
+  id          String      @id @default(cuid())
+  vehicleType VehicleType @unique
+  version     Int         @default(1)
+  notes       String?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+
+  items InventoryTemplateItem[]
+
+  @@index([vehicleType])
+}
+
+model InventoryTemplateItem {
+  id                  String            @id @default(cuid())
+  templateId          String
+  template            InventoryTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  name                String
+  type                InventoryItemType @default(COUNTABLE)
+  recommendedQuantity Int?
+  unit                String            @default("pcs")
+  notes               String?
+  order               Int               @default(0)
+  isDeleted           Boolean           @default(false)
+  createdAt           DateTime          @default(now())
+  updatedAt           DateTime          @updatedAt
+
+  vehicleInventoryItems VehicleInventoryItem[]
+
+  @@index([templateId])
+  @@index([isDeleted])
+}
+
+model VehicleInventoryItem {
+  id              String                @id @default(cuid())
+  vehicleId       String
+  vehicle         Vehicle               @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  templateItemId  String
+  templateItem    InventoryTemplateItem @relation(fields: [templateItemId], references: [id], onDelete: Cascade)
+  actualQuantity  Int?
+  templateVersion Int
+  updatedById     String?
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+
+  audits VehicleInventoryAudit[]
+
+  @@unique([vehicleId, templateItemId])
+  @@index([vehicleId])
+  @@index([templateItemId])
+}
+
+model VehicleInventoryAudit {
+  id                     String               @id @default(cuid())
+  vehicleInventoryItemId String
+  vehicleInventoryItem   VehicleInventoryItem @relation(fields: [vehicleInventoryItemId], references: [id], onDelete: Cascade)
+  changedById            String?
+  oldQuantity            Int?
+  newQuantity            Int?
+  changedAt              DateTime             @default(now())
+
+  @@index([vehicleInventoryItemId])
 }

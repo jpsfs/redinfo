@@ -16,9 +16,18 @@ import {
   MaintenanceCreate,
   MaintenanceEdit,
 } from './resources/vehicles';
+import {
+  InventoryTemplateList,
+  InventoryTemplateShow,
+  InventoryTemplateCreate,
+  InventoryTemplateEdit,
+  InventoryItemCreate,
+  InventoryItemEdit,
+} from './resources/inventory';
 import PeopleIcon from '@mui/icons-material/People';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import BuildIcon from '@mui/icons-material/Build';
+import InventoryIcon from '@mui/icons-material/Inventory';
 
 export default function App() {
   return (
@@ -62,6 +71,28 @@ export default function App() {
         create={MaintenanceCreate}
         edit={MaintenanceEdit}
         options={{ label: 'Maintenance' }}
+      />
+
+      <Resource
+        name="inventory-templates"
+        icon={InventoryIcon}
+        list={InventoryTemplateList}
+        show={InventoryTemplateShow}
+        create={InventoryTemplateCreate}
+        edit={InventoryTemplateEdit}
+        options={{ label: 'Inventory Templates' }}
+      />
+
+      <Resource
+        name="inventory-template-items"
+        create={InventoryItemCreate}
+        edit={InventoryItemEdit}
+        options={{ label: 'Inventory Items' }}
+      />
+
+      <Resource
+        name="vehicle-inventory"
+        options={{ label: 'Vehicle Inventory' }}
       />
     </Admin>
   );
