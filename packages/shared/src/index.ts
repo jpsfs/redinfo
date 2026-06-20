@@ -46,19 +46,30 @@ export enum Action {
   MANAGE_LOGISTICS = 'MANAGE_LOGISTICS',
   MANAGE_VEHICLES = 'MANAGE_VEHICLES',
   VIEW_VEHICLES = 'VIEW_VEHICLES',
+  MANAGE_VEHICLE_INVENTORY = 'MANAGE_VEHICLE_INVENTORY',
 }
 
 export const ROLE_PERMISSIONS: Record<UserRole, Action[]> = {
   [UserRole.SYSTEM_ADMIN]: Object.values(Action) as Action[],
-  [UserRole.EMERGENCY_OPERATIONAL]: [Action.EMERGENCY_OPERATION, Action.VIEW_VEHICLES],
+  [UserRole.EMERGENCY_OPERATIONAL]: [
+    Action.EMERGENCY_OPERATION,
+    Action.VIEW_VEHICLES,
+    Action.MANAGE_VEHICLE_INVENTORY,
+  ],
   [UserRole.EMERGENCY_COORDINATOR]: [
     Action.EMERGENCY_OPERATION,
     Action.MANAGE_EMERGENCY_CONFIG,
     Action.VIEW_USERS,
     Action.MANAGE_VEHICLES,
     Action.VIEW_VEHICLES,
+    Action.MANAGE_VEHICLE_INVENTORY,
   ],
-  [UserRole.LOGISTICS_COORDINATOR]: [Action.MANAGE_LOGISTICS, Action.MANAGE_VEHICLES, Action.VIEW_VEHICLES],
+  [UserRole.LOGISTICS_COORDINATOR]: [
+    Action.MANAGE_LOGISTICS,
+    Action.MANAGE_VEHICLES,
+    Action.VIEW_VEHICLES,
+    Action.MANAGE_VEHICLE_INVENTORY,
+  ],
 };
 
 export function hasPermission(role: UserRole, action: Action): boolean {
@@ -163,4 +174,62 @@ export interface Vehicle {
   createdAt: string;
   updatedAt: string;
   maintenanceEntries?: MaintenanceEntry[];
+}
+
+// ─── Inventory ─────────────────────────────────────────────────────────────────
+
+export enum InventoryItemType {
+  COUNTABLE = 'COUNTABLE',
+  UNLIMITED = 'UNLIMITED',
+}
+
+export interface InventoryTemplate {
+  id: string;
+  vehicleType: VehicleType;
+  version: number;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  items?: InventoryTemplateItem[];
+}
+
+export interface InventoryTemplateItem {
+  id: string;
+  templateId: string;
+  name: string;
+  type: InventoryItemType;
+  recommendedQuantity?: number | null;
+  unit: string;
+  notes?: string | null;
+  order: number;
+  isDeleted: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VehicleInventoryItem {
+  id: string;
+  vehicleId: string;
+  templateItemId: string;
+  templateItem?: InventoryTemplateItem;
+  actualQuantity?: number | null;
+  templateVersion: number;
+  updatedById?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface VehicleInventoryAudit {
+  id: string;
+  vehicleInventoryItemId: string;
+  changedById?: string | null;
+  oldQuantity?: number | null;
+  newQuantity?: number | null;
+  changedAt: string;
+}
+
+export interface VehicleInventoryRow {
+  templateItem: InventoryTemplateItem;
+  vehicleInventoryItem?: VehicleInventoryItem;
+  status: 'low' | 'ok' | 'over' | 'unlimited';
 }

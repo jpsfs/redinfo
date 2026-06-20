@@ -20,6 +20,7 @@ import {
 } from '@mui/material';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
+import { VehicleInventorySection } from '../inventory';
 
 const DAYS_WARN = 30;
 
@@ -127,6 +128,11 @@ export const VehicleShow = () => (
       <TextField source="notes" label="Notes" emptyText="—" />
       <DateField source="createdAt" label="Created" showTime />
       <DateField source="updatedAt" label="Last Updated" showTime />
+
+      <Divider sx={{ my: 2 }} />
+
+      {/* ── Inventory ────────────────────────────────────── */}
+      <VehicleInventorySection />
 
       <Divider sx={{ my: 2 }} />
 

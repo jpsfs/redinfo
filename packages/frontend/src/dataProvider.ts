@@ -25,7 +25,13 @@ const httpClient = (url: string, options: fetchUtils.Options = {}) => {
 export const dataProvider: DataProvider = {
   async getList(resource: string, params: GetListParams) {
     const { page, perPage } = params.pagination;
-    const url = `${API_URL}/${resource}?page=${page}&perPage=${perPage}`;
+    const filterParams = params.filter
+      ? Object.entries(params.filter)
+          .filter(([, v]) => v !== undefined && v !== null && v !== '')
+          .map(([k, v]) => `${encodeURIComponent(k)}=${encodeURIComponent(String(v))}`)
+          .join('&')
+      : '';
+    const url = `${API_URL}/${resource}?page=${page}&perPage=${perPage}${filterParams ? `&${filterParams}` : ''}`;
     const { json } = await httpClient(url);
     return {
       data: json.data,
