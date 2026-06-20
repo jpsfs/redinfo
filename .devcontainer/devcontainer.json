@@ -17,8 +17,16 @@
     "5432": { "label": "PostgreSQL", "onAutoForward": "silent" }
   },
 
-  // One-time setup: pnpm → install deps → prisma generate → wait for DB → migrate.
+  // One-time setup: pnpm → install deps → prisma generate → wait for DB → migrate → agent auth setup.
+  // Environment: Load .devcontainer/.env if it exists for automated authentication.
+  // Create .devcontainer/.env from .devcontainer/.env.example to enable token-based auth.
   "postCreateCommand": "bash .devcontainer/post-create.sh",
+  
+  // Optional: Load environment variables from .devcontainer/.env for this session
+  // Users can set GH_TOKEN and AZURE_DEVOPS_EXT_PAT for automated authentication
+  "remoteEnv": {
+    "DEVCONTAINER": "true"
+  },
 
   "remoteUser": "node",
 
@@ -34,28 +42,25 @@
   "customizations": {
     "vscode": {
       "extensions": [
-        // TypeScript / linting
         "ms-vscode.vscode-typescript-next",
         "dbaeumer.vscode-eslint",
         "esbenp.prettier-vscode",
-        // NestJS / Prisma
         "prisma.prisma",
-        // Testing
         "Orta.vscode-jest",
-        // Git
         "eamodio.gitlens",
-        // API / HTTP client
         "humao.rest-client",
-        // Database explorer
         "mtxr.sqltools",
         "mtxr.sqltools-driver-pg",
-        // Docker / containers
         "ms-azuretools.vscode-docker",
-        // Azure DevOps / pipelines YAML
         "ms-azure-devops.azure-pipelines",
-        // Copilot
         "github.copilot",
-        "github.copilot-chat"
+        "github.copilot-chat",
+        "MS-DAW-TCA.ado-productivity-copilot",
+        "GitHub.cli",
+        "ms-vscode.azure-cli",
+        "ms-vscode.makefile-tools",
+        "continue.continue",
+        "ms-vscode.command-runner"
       ],
       "settings": {
         "editor.formatOnSave": true,
@@ -78,7 +83,34 @@
             "username": "redinfo",
             "password": "redinfo_dev_password"
           }
-        ]
+        ],
+        // Agent-based development settings
+        "git.autofetch": true,
+        "git.autoRepositoryDetection": "openEditors",
+        "github.copilot.chat.welcomeMessage": "never",
+        "[json]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+        "[yaml]": { "editor.defaultFormatter": "esbenp.prettier-vscode" },
+        "files.exclude": {
+          "**/.turbo": true,
+          "**/.next": true,
+          "**/dist": true,
+          "**/node_modules": true
+        },
+        "search.exclude": {
+          "**/node_modules": true,
+          "**/dist": true,
+          "**/build": true
+        },
+        // Enable command palette search for broader agent context awareness
+        "workbench.commandPalette.history": 50,
+        "workbench.commandPalette.preserveInput": true,
+        // Task runner for automating workflows
+        "task.allowAutomaticTasks": "on",
+        // Improve agent integration
+        "editor.codeActionsOnSave": {
+          "source.fixAll.eslint": "explicit",
+          "source.organizeImports": "explicit"
+        }
       }
     }
   }

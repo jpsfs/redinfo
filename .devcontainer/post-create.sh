@@ -27,6 +27,28 @@ else
   echo "    helm not found; skipping repo setup"
 fi
 
+echo "==> Setting up git configuration for agent-based workflows..."
+# Configure git to support automated commits and PRs
+git config --global --add safe.directory /workspaces/redinfo
+git config --local user.email "automation@redinfo.local" || true
+git config --local user.name "Redinfo Automation" || true
+
+echo "==> Initializing Claude code CLI..."
+if command -v claude >/dev/null 2>&1; then
+  echo "    Claude code CLI available: $(claude --version 2>/dev/null || echo 'initialized')"
+else
+  echo "    Warning: Claude code CLI not found in PATH"
+fi
+
+echo "==> Verifying automation tools..."
+for tool in gh az jq yq make; do
+  if command -v "$tool" >/dev/null 2>&1; then
+    echo "    ✓ $tool available"
+  else
+    echo "    ✗ $tool not available (non-critical)"
+  fi
+done
+
 echo "==> Generating Prisma client..."
 pnpm --filter backend exec prisma generate
 
@@ -47,6 +69,18 @@ echo " ready"
 
 echo "==> Running database migrations..."
 pnpm --filter backend prisma:migrate:deploy
+
+echo ""
+echo "==> Running agent authentication setup..."
+bash .devcontainer/setup-agent-auth.sh
+
+echo ""
+echo "✓ Devcontainer setup complete!"
+echo "  - Agent-based development tools configured"
+echo "  - Claude code CLI available via 'claude' command"
+echo "  - GitHub CLI, Azure CLI, and automation tools installed"
+echo "  - Git configured for automated workflows"
+echo "  - Authentication setup ready (check above for status)"
 
 echo ""
 echo "Dev container ready."

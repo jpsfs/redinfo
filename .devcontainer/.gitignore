@@ -1,0 +1,8 @@
+# .devcontainer/.gitignore
+# Ignore environment files containing secrets
+.env
+.env.local
+.env.*.local
+
+# Claude CLI config (may contain tokens)
+.claude-config
