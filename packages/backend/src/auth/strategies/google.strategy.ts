@@ -7,16 +7,31 @@ import { AuthProvider } from '@prisma/client';
 
 @Injectable()
 export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
+  private readonly enabled: boolean;
+
   constructor(
     config: ConfigService,
     private usersService: UsersService,
   ) {
+    const clientID = config.get<string>('GOOGLE_CLIENT_ID');
+    const clientSecret = config.get<string>('GOOGLE_CLIENT_SECRET');
+    const callbackURL = config.get<string>('GOOGLE_CALLBACK_URL');
+    const enabled = Boolean(clientID && clientSecret && callbackURL);
+
+    if (!enabled) {
+      console.warn(
+        '[Auth] Google OAuth disabled: missing GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET / GOOGLE_CALLBACK_URL.',
+      );
+    }
+
     super({
-      clientID: config.get<string>('GOOGLE_CLIENT_ID')!,
-      clientSecret: config.get<string>('GOOGLE_CLIENT_SECRET')!,
-      callbackURL: config.get<string>('GOOGLE_CALLBACK_URL')!,
+      clientID: clientID ?? 'google-disabled',
+      clientSecret: clientSecret ?? 'google-disabled',
+      callbackURL: callbackURL ?? 'http://localhost:3000/auth/google/callback',
       scope: ['email', 'profile'],
     });
+
+    this.enabled = enabled;
   }
 
   async validate(
@@ -25,6 +40,10 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
     profile: Profile,
     done: VerifyCallback,
   ) {
+    if (!this.enabled) {
+      return done(null, false);
+    }
+
     const { id, name, emails } = profile;
     const email = emails?.[0]?.value ?? '';
 

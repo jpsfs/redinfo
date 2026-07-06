@@ -11,6 +11,9 @@ services:
     image: redinfo-devcontainer:local
     volumes:
       - ../:/workspaces/redinfo:cached
+      # Mount the host SSH agent socket for 1Password SSH key access inside the container.
+      # Only mounts if SSH_AUTH_SOCK is set on the host (e.g., from 1Password SSH agent).
+      - ${SSH_AUTH_SOCK}:/ssh-agent:ro
     # Keeps the container alive; VS Code attaches to it.
     # Use a POSIX-safe keep-alive command that's reliable across images.
     command: tail -f /dev/null

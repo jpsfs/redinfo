@@ -21,24 +21,22 @@
   // Environment: Load .devcontainer/.env if it exists for automated authentication.
   // Create .devcontainer/.env from .devcontainer/.env.example to enable token-based auth.
   "postCreateCommand": "bash .devcontainer/post-create.sh",
-  
+
   // Optional: Load environment variables from .devcontainer/.env for this session
   // Users can set GH_TOKEN and AZURE_DEVOPS_EXT_PAT for automated authentication
   "remoteEnv": {
-    "DEVCONTAINER": "true"
+    "DEVCONTAINER": "true",
+    // Forward the host SSH agent for Git authentication inside the container.
+    // Sets SSH_AUTH_SOCK so Git/ssh can use the agent mounted from the host.
+    "SSH_AUTH_SOCK": "/ssh-agent"
   },
 
   "remoteUser": "node",
 
-  // Forward the host SSH agent for Git authentication inside the container.
-  // Binds the host SSH_AUTH_SOCK into the container at /ssh-agent and
-  // sets SSH_AUTH_SOCK so Git/ssh can use the agent.
+  // Mount the host SSH agent socket so 1Password SSH agent works inside the container.
   "mounts": [
     "source=${env:SSH_AUTH_SOCK},target=/ssh-agent,type=bind,consistency=cached"
   ],
-  "remoteEnv": {
-    "SSH_AUTH_SOCK": "/ssh-agent"
-  },
   "customizations": {
     "vscode": {
       "extensions": [
