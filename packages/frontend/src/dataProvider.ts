@@ -24,7 +24,7 @@ const httpClient = (url: string, options: fetchUtils.Options = {}) => {
 
 export const dataProvider: DataProvider = {
   async getList(resource: string, params: GetListParams) {
-    const { page, perPage } = params.pagination;
+    const { page = 1, perPage = 25 } = params.pagination ?? {};
     const filterParams = params.filter
       ? Object.entries(params.filter)
           .filter(([, v]) => v !== undefined && v !== null && v !== '')
