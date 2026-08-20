@@ -84,7 +84,8 @@ export class UsersService {
         passwordHash,
         role: dto.role ?? UserRole.EMERGENCY_OPERATIONAL,
         provider: AuthProvider.LOCAL,
-        isActive: true,
+        isActive: dto.isActive ?? true,
+        isDriver: dto.isDriver ?? false,
       },
       select: this.safeSelect(),
     });
@@ -102,6 +103,11 @@ export class UsersService {
         ...(dto.lastName && { lastName: dto.lastName }),
         ...(dto.role && { role: dto.role }),
         ...(passwordHash && { passwordHash }),
+        // isActive and isDriver are booleans, so they need an explicit
+        // undefined check — `false` must still be persisted. isActive gates who
+        // appears on the availability roster, isDriver gates shift eligibility.
+        ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+        ...(dto.isDriver !== undefined && { isDriver: dto.isDriver }),
       },
       select: this.safeSelect(),
     });
@@ -121,6 +127,7 @@ export class UsersService {
       role: true,
       provider: true,
       isActive: true,
+      isDriver: true,
       createdAt: true,
       updatedAt: true,
       passwordHash: false,

@@ -24,10 +24,22 @@ import {
   InventoryItemCreate,
   InventoryItemEdit,
 } from './resources/inventory';
+import {
+  AvailabilityWindowList,
+  AvailabilityWindowCreate,
+  AvailabilityWindowShow,
+  HolidayList,
+  HolidayCreate,
+  HolidayEdit,
+} from './resources/availability';
+import { MyAvailabilityPage } from './pages/MyAvailabilityPage';
 import PeopleIcon from '@mui/icons-material/People';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import BuildIcon from '@mui/icons-material/Build';
 import InventoryIcon from '@mui/icons-material/Inventory';
+import EventAvailableIcon from '@mui/icons-material/EventAvailable';
+import DateRangeIcon from '@mui/icons-material/DateRange';
+import EventBusyIcon from '@mui/icons-material/EventBusy';
 
 export default function App() {
   return (
@@ -43,6 +55,12 @@ export default function App() {
     >
       <CustomRoutes noLayout>
         <Route path="/auth/callback" element={<OAuthCallback />} />
+      </CustomRoutes>
+
+      {/* Personal action page rather than a resource: it only ever shows the
+          signed-in user's own availability, so there is nothing to list. */}
+      <CustomRoutes>
+        <Route path="/my-availability" element={<MyAvailabilityPage />} />
       </CustomRoutes>
 
       <Resource
@@ -93,6 +111,24 @@ export default function App() {
       <Resource
         name="vehicle-inventory"
         options={{ label: 'Vehicle Inventory' }}
+      />
+
+      <Resource
+        name="availability-windows"
+        icon={DateRangeIcon}
+        list={AvailabilityWindowList}
+        create={AvailabilityWindowCreate}
+        show={AvailabilityWindowShow}
+        options={{ label: 'Availability Windows' }}
+      />
+
+      <Resource
+        name="holidays"
+        icon={EventBusyIcon}
+        list={HolidayList}
+        create={HolidayCreate}
+        edit={HolidayEdit}
+        options={{ label: 'Holidays' }}
       />
     </Admin>
   );

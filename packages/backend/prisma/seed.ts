@@ -96,6 +96,47 @@ async function main() {
   } else {
     console.log('Transport inventory template already exists — skipping.');
   }
+
+  // ── Holidays ─────────────────────────────────────────────────────────────────
+  // Portuguese public holidays for 2026, as a convenience starting point for the
+  // availability shift pattern (a holiday follows the weekend pattern: two
+  // shifts instead of one). Coordinators own this table — they can correct,
+  // remove, or extend it from the Holidays screen, so treat these as a default
+  // rather than authoritative.
+
+  const holidays2026: Array<{ date: string; name: string }> = [
+    { date: '2026-01-01', name: 'Ano Novo' },
+    // Carnaval is widely observed but not a statutory public holiday; kept here
+    // because field operations do staff it. Coordinators can remove it.
+    { date: '2026-02-17', name: 'Carnaval (não obrigatório)' },
+    { date: '2026-04-03', name: 'Sexta-Feira Santa' },
+    { date: '2026-04-05', name: 'Páscoa' },
+    { date: '2026-04-25', name: 'Dia da Liberdade' },
+    { date: '2026-05-01', name: 'Dia do Trabalhador' },
+    { date: '2026-06-04', name: 'Corpo de Deus' },
+    { date: '2026-06-10', name: 'Dia de Portugal' },
+    { date: '2026-08-15', name: 'Assunção de Nossa Senhora' },
+    { date: '2026-10-05', name: 'Implantação da República' },
+    { date: '2026-11-01', name: 'Todos os Santos' },
+    { date: '2026-12-01', name: 'Restauração da Independência' },
+    { date: '2026-12-08', name: 'Imaculada Conceição' },
+    { date: '2026-12-25', name: 'Natal' },
+  ];
+
+  let holidaysCreated = 0;
+  for (const holiday of holidays2026) {
+    const date = new Date(`${holiday.date}T00:00:00.000Z`);
+    const exists = await prisma.holiday.findUnique({ where: { date } });
+    if (exists) continue;
+    await prisma.holiday.create({ data: { date, name: holiday.name } });
+    holidaysCreated++;
+  }
+
+  if (holidaysCreated > 0) {
+    console.log(`✅ ${holidaysCreated} PT 2026 holiday(s) created.`);
+  } else {
+    console.log('Holidays already seeded — skipping.');
+  }
 }
 
 main()

@@ -1,4 +1,5 @@
 import {
+  BooleanInput,
   Create,
   SimpleForm,
   TextInput,
@@ -28,6 +29,11 @@ export const UserCreate = () => (
         choices={roleChoices}
         defaultValue="EMERGENCY_OPERATIONAL"
         validate={required()}
+      />
+      <BooleanInput
+        source="isDriver"
+        label="Certified driver"
+        helperText="A scheduled shift always needs at least one driver."
       />
     </SimpleForm>
   </Create>

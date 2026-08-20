@@ -25,6 +25,11 @@ export const UserEdit = () => (
       <SelectInput source="role" choices={roleChoices} validate={required()} />
       <PasswordInput source="password" label="New Password (leave blank to keep)" />
       <BooleanInput source="isActive" label="Active" />
+      <BooleanInput
+        source="isDriver"
+        label="Certified driver"
+        helperText="A scheduled shift always needs at least one driver."
+      />
     </SimpleForm>
   </Edit>
 );

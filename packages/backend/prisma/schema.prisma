@@ -33,13 +33,20 @@ model User {
   provider       AuthProvider @default(LOCAL)
   providerId     String?
   isActive       Boolean      @default(true)
+  isDriver       Boolean      @default(false)
   createdAt      DateTime     @default(now())
   updatedAt      DateTime     @updatedAt
 
   refreshTokens  RefreshToken[]
 
+  windowsOpened           AvailabilityWindow[]     @relation("WindowOpenedBy")
+  windowsClosed           AvailabilityWindow[]     @relation("WindowClosedBy")
+  availabilitySubmissions AvailabilitySubmission[]
+  availabilityResponses   AvailabilityResponse[]
+
   @@index([email])
   @@index([provider, providerId])
+  @@index([isActive, role])
 }
 
 model RefreshToken {
@@ -165,4 +172,90 @@ model VehicleInventoryAudit {
   changedAt              DateTime             @default(now())
 
   @@index([vehicleInventoryItemId])
+}
+
+// ─── Availability ─────────────────────────────────────────────────────────────
+
+/// MORNING/AFTERNOON apply to weekends and holidays, EVENING to workdays.
+/// The mapping itself lives in ShiftScheduleService — never re-derive it.
+enum ShiftCode {
+  MORNING
+  AFTERNOON
+  EVENING
+}
+
+enum AvailabilityWindowStatus {
+  OPEN
+  CLOSED
+}
+
+/// Only DECLINED is ever stored: absence of a row means "not yet responded".
+enum AvailabilityResponseStatus {
+  DECLINED
+}
+
+/// Coordinator-maintained holiday table (no external API). A holiday makes a
+/// weekday follow the weekend shift pattern.
+model Holiday {
+  id        String   @id @default(cuid())
+  date      DateTime @unique @db.Date
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([date])
+}
+
+model AvailabilityWindow {
+  id         String                   @id @default(cuid())
+  startDate  DateTime                 @db.Date
+  endDate    DateTime                 @db.Date
+  status     AvailabilityWindowStatus @default(OPEN)
+  openedById String
+  openedBy   User                     @relation("WindowOpenedBy", fields: [openedById], references: [id])
+  openedAt   DateTime                 @default(now())
+  closedById String?
+  closedBy   User?                    @relation("WindowClosedBy", fields: [closedById], references: [id])
+  closedAt   DateTime?
+  createdAt  DateTime                 @default(now())
+  updatedAt  DateTime                 @updatedAt
+
+  submissions AvailabilitySubmission[]
+  responses   AvailabilityResponse[]
+
+  @@index([status])
+  @@index([startDate, endDate])
+}
+
+model AvailabilitySubmission {
+  id        String             @id @default(cuid())
+  userId    String
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  windowId  String
+  window    AvailabilityWindow @relation(fields: [windowId], references: [id], onDelete: Cascade)
+  date      DateTime           @db.Date
+  shiftCode ShiftCode
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  @@unique([windowId, userId, date, shiftCode])
+  @@index([windowId])
+  @@index([date])
+  @@index([userId])
+}
+
+/// Tri-state response tracking: "submitted" is derived from
+/// AvailabilitySubmission rows existing, "declined" needs its own record since
+/// row-absence alone cannot tell it apart from "not yet responded".
+model AvailabilityResponse {
+  id          String                     @id @default(cuid())
+  windowId    String
+  window      AvailabilityWindow         @relation(fields: [windowId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status      AvailabilityResponseStatus @default(DECLINED)
+  respondedAt DateTime                   @default(now())
+
+  @@unique([windowId, userId])
+  @@index([windowId])
 }

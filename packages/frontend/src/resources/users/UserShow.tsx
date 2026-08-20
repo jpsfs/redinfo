@@ -18,6 +18,7 @@ export const UserShow = () => (
       <ChipField source="role" />
       <ChipField source="provider" />
       <BooleanField source="isActive" label="Active" />
+      <BooleanField source="isDriver" label="Certified driver" />
       <DateField source="createdAt" label="Created" showTime />
       <DateField source="updatedAt" label="Updated" showTime />
     </SimpleShowLayout>

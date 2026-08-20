@@ -71,6 +71,54 @@ describe('hasPermission', () => {
     expect(hasPermission(UserRole.EMERGENCY_OPERATIONAL, Action.MANAGE_VEHICLES)).toBe(false);
   });
 
+  // ── Availability permissions ──────────────────────────────────────────────────
+
+  it('EMERGENCY_OPERATIONAL can perform SUBMIT_AVAILABILITY', () => {
+    expect(hasPermission(UserRole.EMERGENCY_OPERATIONAL, Action.SUBMIT_AVAILABILITY)).toBe(true);
+  });
+
+  it('EMERGENCY_OPERATIONAL cannot manage availability windows', () => {
+    expect(
+      hasPermission(UserRole.EMERGENCY_OPERATIONAL, Action.MANAGE_AVAILABILITY_WINDOWS),
+    ).toBe(false);
+  });
+
+  it('EMERGENCY_OPERATIONAL cannot manage holidays', () => {
+    expect(hasPermission(UserRole.EMERGENCY_OPERATIONAL, Action.MANAGE_HOLIDAYS)).toBe(false);
+  });
+
+  it('EMERGENCY_OPERATIONAL cannot view the availability matrix (own data only)', () => {
+    expect(
+      hasPermission(UserRole.EMERGENCY_OPERATIONAL, Action.VIEW_AVAILABILITY_MATRIX),
+    ).toBe(false);
+  });
+
+  it('EMERGENCY_COORDINATOR can manage availability windows and holidays', () => {
+    expect(
+      hasPermission(UserRole.EMERGENCY_COORDINATOR, Action.MANAGE_AVAILABILITY_WINDOWS),
+    ).toBe(true);
+    expect(hasPermission(UserRole.EMERGENCY_COORDINATOR, Action.MANAGE_HOLIDAYS)).toBe(true);
+  });
+
+  it('EMERGENCY_COORDINATOR can view the availability matrix', () => {
+    expect(
+      hasPermission(UserRole.EMERGENCY_COORDINATOR, Action.VIEW_AVAILABILITY_MATRIX),
+    ).toBe(true);
+  });
+
+  it('EMERGENCY_COORDINATOR can submit their own availability', () => {
+    expect(hasPermission(UserRole.EMERGENCY_COORDINATOR, Action.SUBMIT_AVAILABILITY)).toBe(true);
+  });
+
+  it.each([
+    Action.SUBMIT_AVAILABILITY,
+    Action.MANAGE_AVAILABILITY_WINDOWS,
+    Action.MANAGE_HOLIDAYS,
+    Action.VIEW_AVAILABILITY_MATRIX,
+  ])('LOGISTICS_COORDINATOR cannot %s (cross-domain denied)', (action) => {
+    expect(hasPermission(UserRole.LOGISTICS_COORDINATOR, action)).toBe(false);
+  });
+
   // Scenario 3: new emergency action added → EMERGENCY_OPERATIONAL gains it after mapping
   it('new emergency action is accessible to EMERGENCY_OPERATIONAL once added to ROLE_PERMISSIONS', () => {
     const DISPATCH_AMBULANCE = 'DISPATCH_AMBULANCE' as Action;
