@@ -9,7 +9,7 @@ import { AvailabilityService, RequestUser } from './availability.service';
 import { AvailabilityWindowsService } from './availability-windows.service';
 import { HolidaysService } from './holidays.service';
 import { ShiftScheduleService } from './shift-schedule.service';
-import { AvailabilityWindowStatus, ShiftCode, UserRole } from '@redinfo/shared';
+import { AvailabilityWindowStatus, UserRole } from '@redinfo/shared';
 
 /**
  * Integration coverage for the availability module, run against a real
@@ -92,8 +92,8 @@ describeIntegration('Availability module (integration)', () => {
     await prisma.$connect();
 
     holidaysService = new HolidaysService(prisma);
-    shiftSchedule = new ShiftScheduleService(holidaysService);
-    windowsService = new AvailabilityWindowsService(prisma);
+    shiftSchedule = new ShiftScheduleService(holidaysService, prisma);
+    windowsService = new AvailabilityWindowsService(prisma, shiftSchedule);
     availability = new AvailabilityService(prisma, windowsService, shiftSchedule);
 
     [ana, bruno, carla, rui, marta, inactive, logistics, coordinator, systemAdmin] =
@@ -208,6 +208,168 @@ describeIntegration('Availability module (integration)', () => {
     });
   });
 
+  // ── the window's shift grid ────────────────────────────────────────────────
+
+  describe('shift grid', () => {
+    it('materialises the default grid, one row per day and shift', async () => {
+      const window = await openWindow();
+
+      const rows = await prisma.availabilityWindowShift.findMany({
+        where: { windowId: window.id },
+        orderBy: [{ date: 'asc' }, { slot: 'asc' }],
+      });
+
+      // 5 workdays × 1 shift + Sat, Sun and the holiday Monday × 2.
+      expect(rows).toHaveLength(11);
+      expect(rows.filter((row) => row.date.toISOString().startsWith('2026-09-28'))).toEqual([
+        expect.objectContaining({ slot: 1, startHour: 20, endHour: 24 }),
+      ]);
+      expect(
+        rows
+          .filter((row) => row.date.toISOString().startsWith('2026-10-05'))
+          .map((row) => [row.slot, row.startHour, row.endHour]),
+      ).toEqual([
+        [1, 8, 16],
+        [2, 16, 24],
+      ]);
+    });
+
+    it('stores per-day shifts a coordinator defined, and reads them back', async () => {
+      const stale = await windowsService.findActive();
+      if (stale) await windowsService.close(stale.id, coordinator.id);
+
+      const window = await windowsService.open(
+        {
+          startDate: '2026-09-28',
+          endDate: '2026-09-30',
+          days: [
+            // Out of order, and with hours the default grid has no notion of.
+            {
+              date: '2026-09-28',
+              shifts: [
+                { startHour: 18, endHour: 22 },
+                { startHour: 6, endHour: 10 },
+              ],
+            },
+            { date: '2026-09-29', shifts: [{ startHour: 10, endHour: 14 }] },
+            { date: '2026-09-30', shifts: [] },
+          ],
+        },
+        coordinator.id,
+      );
+      createdWindowIds.push(window.id);
+
+      const calendar = await windowsService.getCalendar(window.id);
+
+      expect(calendar.map((day) => day.shifts.map((shift) => shift.label))).toEqual([
+        ['06:00–10:00', '18:00–22:00'],
+        ['10:00–14:00'],
+        [],
+      ]);
+    });
+
+    it('accepts availability against a custom shift and shows it in the matrix', async () => {
+      const stale = await windowsService.findActive();
+      if (stale) await windowsService.close(stale.id, coordinator.id);
+
+      const window = await windowsService.open(
+        {
+          startDate: '2026-09-28',
+          endDate: '2026-09-28',
+          days: [
+            {
+              date: '2026-09-28',
+              shifts: [
+                { startHour: 6, endHour: 12 },
+                { startHour: 12, endHour: 18 },
+              ],
+            },
+          ],
+        },
+        coordinator.id,
+      );
+      createdWindowIds.push(window.id);
+
+      await availability.submitMine(volunteer, {
+        entries: [{ date: '2026-09-28', slots: [2] }],
+      });
+
+      const matrix = await availability.getMatrix(window.id);
+      const [day] = matrix.days;
+
+      expect(day.shifts.map((shift) => shift.label)).toEqual([
+        '06:00–12:00',
+        '12:00–18:00',
+      ]);
+      expect(day.shifts[0].availableUserIds).toEqual([]);
+      expect(day.shifts[1].availableUserIds).toEqual([ana.id]);
+      expect(day.shifts[1]).toMatchObject({ availableCount: 1, driverCount: 1 });
+    });
+
+    it('refuses a slot that does not exist in this window', async () => {
+      const stale = await windowsService.findActive();
+      if (stale) await windowsService.close(stale.id, coordinator.id);
+
+      const window = await windowsService.open(
+        {
+          startDate: '2026-10-03', // a Saturday, two shifts by default
+          endDate: '2026-10-03',
+          days: [{ date: '2026-10-03', shifts: [{ startHour: 9, endHour: 13 }] }],
+        },
+        coordinator.id,
+      );
+      createdWindowIds.push(window.id);
+
+      await expect(
+        availability.submitMine(volunteer, {
+          entries: [{ date: '2026-10-03', slots: [2] }],
+        }),
+      ).rejects.toThrow(/Shift 2 does not exist on 2026-10-03/);
+    });
+
+    it('drops a window’s shift rows with the window', async () => {
+      const window = await openWindow();
+      await prisma.availabilityWindow.delete({ where: { id: window.id } });
+
+      await expect(
+        prisma.availabilityWindowShift.count({ where: { windowId: window.id } }),
+      ).resolves.toBe(0);
+      createdWindowIds.length = 0;
+    });
+  });
+
+  // ── whole-month windows ────────────────────────────────────────────────────
+
+  describe('month windows', () => {
+    it('spans the 1st to the last day of the month on the default grid', async () => {
+      const stale = await windowsService.findActive();
+      if (stale) await windowsService.close(stale.id, coordinator.id);
+
+      const window = await windowsService.openMonth({ year: 2026, month: 11 }, coordinator.id);
+      createdWindowIds.push(window.id);
+
+      expect(window.startDate).toBe('2026-11-01');
+      expect(window.endDate).toBe('2026-11-30');
+
+      const calendar = await windowsService.getCalendar(window.id);
+      expect(calendar).toHaveLength(30);
+      // 1 Nov 2026 is a Sunday; 2 Nov a Monday.
+      expect(calendar[0].shifts.map((shift) => shift.label)).toEqual([
+        '08:00–16:00',
+        '16:00–24:00',
+      ]);
+      expect(calendar[1].shifts.map((shift) => shift.label)).toEqual(['20:00–24:00']);
+    });
+
+    it('is blocked while another window is open', async () => {
+      await openWindow();
+
+      await expect(
+        windowsService.openMonth({ year: 2026, month: 12 }, coordinator.id),
+      ).rejects.toThrow(ConflictException);
+    });
+  });
+
   // ── submission ─────────────────────────────────────────────────────────────
 
   describe('submission', () => {
@@ -216,15 +378,15 @@ describeIntegration('Availability module (integration)', () => {
 
       await availability.submitMine(volunteer, {
         entries: [
-          { date: '2026-09-28', shiftCodes: [ShiftCode.EVENING] },
-          { date: '2026-10-03', shiftCodes: [ShiftCode.MORNING, ShiftCode.AFTERNOON] },
-          { date: HOLIDAY_DATE, shiftCodes: [ShiftCode.MORNING] },
+          { date: '2026-09-28', slots: [1] },
+          { date: '2026-10-03', slots: [1, 2] },
+          { date: HOLIDAY_DATE, slots: [1] },
         ],
       });
 
       const rows = await prisma.availabilitySubmission.findMany({
         where: { windowId: window.id, userId: ana.id },
-        orderBy: [{ date: 'asc' }, { shiftCode: 'asc' }],
+        orderBy: [{ date: 'asc' }, { slot: 'asc' }],
       });
 
       expect(rows).toHaveLength(4);
@@ -239,7 +401,7 @@ describeIntegration('Availability module (integration)', () => {
     it('rejects a duplicate row at the database level', async () => {
       const window = await openWindow();
       await availability.submitMine(volunteer, {
-        entries: [{ date: '2026-09-28', shiftCodes: [ShiftCode.EVENING] }],
+        entries: [{ date: '2026-09-28', slots: [1] }],
       });
 
       await expect(
@@ -248,7 +410,7 @@ describeIntegration('Availability module (integration)', () => {
             userId: ana.id,
             windowId: window.id,
             date: new Date('2026-09-28T00:00:00.000Z'),
-            shiftCode: ShiftCode.EVENING,
+            slot: 1,
           },
         }),
       ).rejects.toThrow(/Unique constraint/);
@@ -259,8 +421,8 @@ describeIntegration('Availability module (integration)', () => {
 
       await availability.submitMine(volunteer, {
         entries: [
-          { date: '2026-09-28', shiftCodes: [ShiftCode.EVENING] },
-          { date: '2026-09-29', shiftCodes: [ShiftCode.EVENING] },
+          { date: '2026-09-28', slots: [1] },
+          { date: '2026-09-29', slots: [1] },
         ],
       });
       const before = await availability.getMine(ana.id);
@@ -272,8 +434,8 @@ describeIntegration('Availability module (integration)', () => {
 
       await availability.submitMine(volunteer, {
         entries: [
-          { date: '2026-09-28', shiftCodes: [ShiftCode.EVENING] }, // kept
-          { date: '2026-09-30', shiftCodes: [ShiftCode.EVENING] }, // added
+          { date: '2026-09-28', slots: [1] }, // kept
+          { date: '2026-09-30', slots: [1] }, // added
         ],
       });
       const after = await availability.getMine(ana.id);
@@ -291,9 +453,10 @@ describeIntegration('Availability module (integration)', () => {
     it('rejects a shift that does not exist on that day', async () => {
       await openWindow();
 
+      // A workday has one shift, so slot 2 is not a thing there.
       await expect(
         availability.submitMine(volunteer, {
-          entries: [{ date: '2026-09-28', shiftCodes: [ShiftCode.MORNING] }],
+          entries: [{ date: '2026-09-28', slots: [2] }],
         }),
       ).rejects.toThrow(/does not exist on 2026-09-28/);
 
@@ -306,7 +469,7 @@ describeIntegration('Availability module (integration)', () => {
 
       await expect(
         availability.submitMine(volunteer, {
-          entries: [{ date: '2026-10-06', shiftCodes: [ShiftCode.EVENING] }],
+          entries: [{ date: '2026-10-06', slots: [1] }],
         }),
       ).rejects.toThrow(/outside the availability window/);
     });
@@ -314,13 +477,13 @@ describeIntegration('Availability module (integration)', () => {
     it('blocks submissions once the window is closed, and writes nothing', async () => {
       const window = await openWindow();
       await availability.submitMine(volunteer, {
-        entries: [{ date: '2026-09-28', shiftCodes: [ShiftCode.EVENING] }],
+        entries: [{ date: '2026-09-28', slots: [1] }],
       });
       await windowsService.close(window.id, coordinator.id);
 
       await expect(
         availability.submitMine(volunteer, {
-          entries: [{ date: '2026-09-29', shiftCodes: [ShiftCode.EVENING] }],
+          entries: [{ date: '2026-09-29', slots: [1] }],
         }),
       ).rejects.toThrow(ForbiddenException);
 
@@ -333,7 +496,7 @@ describeIntegration('Availability module (integration)', () => {
     it('still shows a volunteer their final submissions after close, read-only', async () => {
       const window = await openWindow();
       await availability.submitMine(volunteer, {
-        entries: [{ date: '2026-09-28', shiftCodes: [ShiftCode.EVENING] }],
+        entries: [{ date: '2026-09-28', slots: [1] }],
       });
       await windowsService.close(window.id, coordinator.id);
 
@@ -342,7 +505,7 @@ describeIntegration('Availability module (integration)', () => {
       expect(mine.window?.id).toBe(window.id);
       expect(mine.canSubmit).toBe(false);
       expect(mine.entries).toEqual([
-        { date: '2026-09-28', shiftCodes: [ShiftCode.EVENING] },
+        { date: '2026-09-28', slots: [1] },
       ]);
     });
   });
@@ -353,7 +516,7 @@ describeIntegration('Availability module (integration)', () => {
     it('clears submitted shifts and records the decline', async () => {
       const window = await openWindow();
       await availability.submitMine(volunteer, {
-        entries: [{ date: '2026-09-28', shiftCodes: [ShiftCode.EVENING] }],
+        entries: [{ date: '2026-09-28', slots: [1] }],
       });
 
       const result = await availability.declineMine(volunteer);
@@ -384,7 +547,7 @@ describeIntegration('Availability module (integration)', () => {
       await availability.declineMine(volunteer);
 
       const result = await availability.submitMine(volunteer, {
-        entries: [{ date: '2026-09-28', shiftCodes: [ShiftCode.EVENING] }],
+        entries: [{ date: '2026-09-28', slots: [1] }],
       });
 
       expect(result.declined).toBe(false);
@@ -421,9 +584,9 @@ describeIntegration('Availability module (integration)', () => {
         { id: ana.id, role: UserRole.EMERGENCY_OPERATIONAL },
         {
           entries: [
-            { date: '2026-09-28', shiftCodes: [ShiftCode.EVENING] },
-            { date: '2026-10-03', shiftCodes: [ShiftCode.MORNING] },
-            { date: '2026-10-04', shiftCodes: [ShiftCode.MORNING] },
+            { date: '2026-09-28', slots: [1] },
+            { date: '2026-10-03', slots: [1] },
+            { date: '2026-10-04', slots: [1] },
           ],
         },
       );
@@ -431,8 +594,8 @@ describeIntegration('Availability module (integration)', () => {
         { id: bruno.id, role: UserRole.EMERGENCY_OPERATIONAL },
         {
           entries: [
-            { date: '2026-09-28', shiftCodes: [ShiftCode.EVENING] },
-            { date: '2026-10-03', shiftCodes: [ShiftCode.MORNING] },
+            { date: '2026-09-28', slots: [1] },
+            { date: '2026-10-03', slots: [1] },
           ],
         },
       );
@@ -440,15 +603,15 @@ describeIntegration('Availability module (integration)', () => {
         { id: carla.id, role: UserRole.EMERGENCY_OPERATIONAL },
         {
           entries: [
-            { date: '2026-09-28', shiftCodes: [ShiftCode.EVENING] },
-            { date: '2026-10-03', shiftCodes: [ShiftCode.MORNING, ShiftCode.AFTERNOON] },
-            { date: '2026-10-04', shiftCodes: [ShiftCode.MORNING] },
+            { date: '2026-09-28', slots: [1] },
+            { date: '2026-10-03', slots: [1, 2] },
+            { date: '2026-10-04', slots: [1] },
           ],
         },
       );
       await availability.submitMine(
         { id: rui.id, role: UserRole.EMERGENCY_OPERATIONAL },
-        { entries: [{ date: '2026-09-28', shiftCodes: [ShiftCode.EVENING] }] },
+        { entries: [{ date: '2026-09-28', slots: [1] }] },
       );
       // Marta declines; the inactive user and the logistics coordinator submit
       // nothing and must not appear on the roster at all.
@@ -462,7 +625,7 @@ describeIntegration('Availability module (integration)', () => {
       const byDate = Object.fromEntries(matrix.days.map((day) => [day.date, day]));
 
       expect(byDate['2026-09-28'].shifts[0]).toMatchObject({
-        shiftCode: ShiftCode.EVENING,
+        slot: 1,
         availableCount: 4,
         driverCount: 2,
         coverageLevel: 'green',
@@ -533,7 +696,7 @@ describeIntegration('Availability module (integration)', () => {
       await openWindow();
       await availability.submitMine(
         { id: systemAdmin.id, role: UserRole.SYSTEM_ADMIN },
-        { entries: [{ date: '2026-09-28', shiftCodes: [ShiftCode.EVENING] }] },
+        { entries: [{ date: '2026-09-28', slots: [1] }] },
       );
 
       const matrix = await availability.getMatrix();
@@ -594,12 +757,12 @@ describeIntegration('Availability module (integration)', () => {
     it('lets a coordinator read a volunteer’s availability', async () => {
       await openWindow();
       await availability.submitMine(volunteer, {
-        entries: [{ date: '2026-09-28', shiftCodes: [ShiftCode.EVENING] }],
+        entries: [{ date: '2026-09-28', slots: [1] }],
       });
 
       const seen = await availability.getForUser(ana.id, coordinatorUser);
 
-      expect(seen.entries).toEqual([{ date: '2026-09-28', shiftCodes: [ShiftCode.EVENING] }]);
+      expect(seen.entries).toEqual([{ date: '2026-09-28', slots: [1] }]);
     });
 
     it('stops a volunteer reading another volunteer’s availability', async () => {
@@ -622,22 +785,44 @@ describeIntegration('Availability module (integration)', () => {
   // ── holidays ───────────────────────────────────────────────────────────────
 
   describe('holidays', () => {
-    it('turns a plain weekday into a two-shift day, and back when removed', async () => {
+    it('turns a plain weekday into a two-shift day by default, and back when removed', async () => {
       const target = '2026-11-11'; // a Wednesday
-      await expect(shiftSchedule.getShiftsForDate(target)).resolves.toEqual([
-        ShiftCode.EVENING,
-      ]);
+      const EVENING = [{ startHour: 20, endHour: 24 }];
+      const SPECIAL = [
+        { startHour: 8, endHour: 16 },
+        { startHour: 16, endHour: 24 },
+      ];
+
+      await expect(shiftSchedule.getDefaultShiftsForDate(target)).resolves.toEqual(EVENING);
 
       const holiday = await holidaysService.create({ date: target, name: `Test ${RUN}` });
-      await expect(shiftSchedule.getShiftsForDate(target)).resolves.toEqual([
-        ShiftCode.MORNING,
-        ShiftCode.AFTERNOON,
-      ]);
+      await expect(shiftSchedule.getDefaultShiftsForDate(target)).resolves.toEqual(SPECIAL);
 
       await holidaysService.remove(holiday.id);
-      await expect(shiftSchedule.getShiftsForDate(target)).resolves.toEqual([
-        ShiftCode.EVENING,
-      ]);
+      await expect(shiftSchedule.getDefaultShiftsForDate(target)).resolves.toEqual(EVENING);
+    });
+
+    it('does not change the shifts of a window already open', async () => {
+      // The window materialises its grid when it opens, so a holiday declared
+      // afterwards cannot invalidate availability people already submitted.
+      const target = '2026-11-11'; // a Wednesday inside the window below
+      const window = await openWindow('2026-11-09', '2026-11-13');
+      await availability.submitMine(volunteer, { entries: [{ date: target, slots: [1] }] });
+
+      const holiday = await holidaysService.create({ date: target, name: `Test ${RUN}` });
+      try {
+        const calendar = await windowsService.getCalendar(window.id);
+        const day = calendar.find((entry) => entry.date === target)!;
+
+        expect(day.shifts.map((shift) => shift.label)).toEqual(['20:00–24:00']);
+        // The day is still flagged as a holiday for display purposes.
+        expect(day.isHoliday).toBe(true);
+        await expect(availability.getMine(ana.id)).resolves.toMatchObject({
+          entries: [{ date: target, slots: [1] }],
+        });
+      } finally {
+        await holidaysService.remove(holiday.id);
+      }
     });
 
     it('rejects a second holiday on the same date', async () => {

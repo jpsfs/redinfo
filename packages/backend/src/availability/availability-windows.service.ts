@@ -5,12 +5,27 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { CreateAvailabilityWindowDto } from './dto/create-availability-window.dto';
+import {
+  AvailabilityWindowDayDto,
+  CreateAvailabilityWindowDto,
+  CreateMonthlyAvailabilityWindowDto,
+} from './dto/create-availability-window.dto';
+import { ShiftScheduleService } from './shift-schedule.service';
 import { isIsoDate, isoDateRange, parseIsoDate, toIsoDate } from '../utils/date.util';
-import { AvailabilityWindow, AvailabilityWindowStatus } from '@redinfo/shared';
+import {
+  AvailabilityWindow,
+  AvailabilityWindowStatus,
+  DayShiftPattern,
+  defaultShiftsForDayType,
+  MAX_WINDOW_DAYS,
+  monthBounds,
+  ShiftTimes,
+  toShiftDefinitions,
+} from '@redinfo/shared';
 
-/** Longest window a coordinator may open, as a guard against fat-fingered years. */
-export const MAX_WINDOW_DAYS = 92;
+// Re-exported so this module stays the import site it has always been; the
+// value lives in @redinfo/shared because the window editor enforces it too.
+export { MAX_WINDOW_DAYS } from '@redinfo/shared';
 
 type ActorRow = { id: string; firstName: string; lastName: string };
 
@@ -35,7 +50,10 @@ const ACTOR_SELECT = { select: { id: true, firstName: true, lastName: true } };
 
 @Injectable()
 export class AvailabilityWindowsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly shiftSchedule: ShiftScheduleService,
+  ) {}
 
   async findAll(page = 1, perPage = 25) {
     const skip = (page - 1) * perPage;
@@ -85,6 +103,12 @@ export class AvailabilityWindowsService {
     return latest ? serializeWindow(latest) : null;
   }
 
+  /**
+   * Open a window and materialise its shifts, one row per day and shift.
+   *
+   * `dto.days` carries the per-day grid a coordinator built; without it the
+   * default grid is used, which is what the whole-month shortcut relies on.
+   */
   async open(dto: CreateAvailabilityWindowDto, openedById: string) {
     const startDate = this.assertIsoDate(dto.startDate, 'startDate');
     const endDate = this.assertIsoDate(dto.endDate, 'endDate');
@@ -93,10 +117,10 @@ export class AvailabilityWindowsService {
       throw new BadRequestException('endDate must be on or after startDate');
     }
 
-    const days = isoDateRange(startDate, endDate).length;
-    if (days > MAX_WINDOW_DAYS) {
+    const dates = isoDateRange(startDate, endDate);
+    if (dates.length > MAX_WINDOW_DAYS) {
       throw new BadRequestException(
-        `A window may span at most ${MAX_WINDOW_DAYS} days (got ${days})`,
+        `A window may span at most ${MAX_WINDOW_DAYS} days (got ${dates.length})`,
       );
     }
 
@@ -113,16 +137,107 @@ export class AvailabilityWindowsService {
       );
     }
 
-    const created = await this.prisma.availabilityWindow.create({
-      data: {
-        startDate: parseIsoDate(startDate),
-        endDate: parseIsoDate(endDate),
-        status: AvailabilityWindowStatus.OPEN,
-        openedById,
-      },
-      include: { openedBy: ACTOR_SELECT, closedBy: ACTOR_SELECT },
+    const shiftsByDate = await this.resolveShifts(dates, dto.days);
+
+    // One transaction: a window whose shift rows failed to write would look
+    // like a window with no shifts at all, and read back as the default grid.
+    const created = await this.prisma.$transaction(async (tx) => {
+      const window = await tx.availabilityWindow.create({
+        data: {
+          startDate: parseIsoDate(startDate),
+          endDate: parseIsoDate(endDate),
+          status: AvailabilityWindowStatus.OPEN,
+          openedById,
+        },
+        include: { openedBy: ACTOR_SELECT, closedBy: ACTOR_SELECT },
+      });
+
+      const rows = dates.flatMap((date) =>
+        toShiftDefinitions(shiftsByDate.get(date) ?? []).map((shift) => ({
+          windowId: window.id,
+          date: parseIsoDate(date),
+          slot: shift.slot,
+          startHour: shift.startHour,
+          endHour: shift.endHour,
+        })),
+      );
+      if (rows.length > 0) {
+        await tx.availabilityWindowShift.createMany({ data: rows });
+      }
+
+      return window;
     });
+
     return serializeWindow(created);
+  }
+
+  /**
+   * Open a window covering a whole calendar month on the default grid — the
+   * one-click path for "we need availability for next month".
+   */
+  async openMonth(dto: CreateMonthlyAvailabilityWindowDto, openedById: string) {
+    let bounds: { startDate: string; endDate: string };
+    try {
+      bounds = monthBounds(dto.year, dto.month);
+    } catch (error) {
+      throw new BadRequestException(
+        error instanceof Error ? error.message : 'Invalid year or month',
+      );
+    }
+    return this.open(bounds, openedById);
+  }
+
+  /** The window's own shifts, per day — what its calendar screens render. */
+  async getCalendar(id: string): Promise<DayShiftPattern[]> {
+    const window = await this.findOne(id);
+    return this.shiftSchedule.getPatternForWindow(window);
+  }
+
+  /**
+   * The shifts each day of the window will get.
+   *
+   * A supplied `days` list must cover the range exactly — no gaps, no strays,
+   * no repeats. Anything looser would silently drop days to "no shifts", which
+   * reads on the volunteer's calendar as a day nobody is needed.
+   */
+  private async resolveShifts(
+    dates: string[],
+    days?: AvailabilityWindowDayDto[],
+  ): Promise<Map<string, ShiftTimes[]>> {
+    if (!days) {
+      const contexts = await this.shiftSchedule.getDayContexts(
+        dates[0],
+        dates[dates.length - 1],
+      );
+      return new Map(
+        contexts.map((context) => [context.date, defaultShiftsForDayType(context.dayType)]),
+      );
+    }
+
+    const inRange = new Set(dates);
+    const byDate = new Map<string, ShiftTimes[]>();
+
+    for (const day of days) {
+      const date = this.assertIsoDate(day.date, 'days[].date');
+      if (!inRange.has(date)) {
+        throw new BadRequestException(
+          `${date} is outside the window (${dates[0]} – ${dates[dates.length - 1]})`,
+        );
+      }
+      if (byDate.has(date)) {
+        throw new BadRequestException(`Duplicate shifts supplied for ${date}`);
+      }
+      byDate.set(date, this.shiftSchedule.normaliseDayShifts(date, day.shifts ?? []));
+    }
+
+    const missing = dates.filter((date) => !byDate.has(date));
+    if (missing.length > 0) {
+      const shown = missing.slice(0, 5).join(', ');
+      const rest = missing.length > 5 ? ` and ${missing.length - 5} more` : '';
+      throw new BadRequestException(`Shifts are missing for ${shown}${rest}`);
+    }
+
+    return byDate;
   }
 
   async close(id: string, closedById: string) {

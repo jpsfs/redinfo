@@ -18,8 +18,10 @@ import { Alert, Button } from '@mui/material';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 
 const HOLIDAY_HELP =
-  'A holiday makes that weekday follow the weekend shift pattern: two shifts ' +
-  '(08:00–16:00 and 16:00–24:00) instead of the single 20:00–24:00 workday shift.';
+  'A holiday makes that weekday start on the weekend pattern when a window is ' +
+  'opened: two shifts (08:00–16:00 and 16:00–24:00) instead of the single ' +
+  '20:00–24:00 workday shift. Windows already open keep the shifts they were ' +
+  'given.';
 
 /**
  * Holidays have no menu entry of their own — they are reached from Availability

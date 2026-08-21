@@ -3,13 +3,13 @@ import {
   ArrayUnique,
   IsArray,
   IsDateString,
-  IsEnum,
+  IsInt,
   IsOptional,
   IsString,
+  Min,
   ValidateNested,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ShiftCode } from '@redinfo/shared';
 
 export class AvailabilityEntryDto {
   @ApiProperty({ example: '2026-10-03', description: 'Day being declared (YYYY-MM-DD)' })
@@ -17,16 +17,17 @@ export class AvailabilityEntryDto {
   date: string;
 
   @ApiProperty({
-    isArray: true,
-    enum: ShiftCode,
+    type: [Number],
+    example: [1, 2],
     description:
-      'Shifts the user is available for on that day. Must be valid for the ' +
-      'day type (1 shift on workdays, 2 on weekends/holidays).',
+      'Shift slots the user is available for on that day. Must exist on that ' +
+      "day of the window — the window defines each day's shifts when it opens.",
   })
   @IsArray()
   @ArrayUnique()
-  @IsEnum(ShiftCode, { each: true })
-  shiftCodes: ShiftCode[];
+  @IsInt({ each: true })
+  @Min(1, { each: true })
+  slots: number[];
 }
 
 export class SubmitAvailabilityDto {

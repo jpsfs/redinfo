@@ -7,11 +7,28 @@ import {
   AvailabilityWindowsService,
   MAX_WINDOW_DAYS,
 } from './availability-windows.service';
+import { ShiftScheduleService } from './shift-schedule.service';
+import { HolidaysService } from './holidays.service';
+import { PrismaService } from '../prisma/prisma.service';
 import { AvailabilityWindowStatus } from '@redinfo/shared';
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 
 const COORDINATOR = { id: 'user-coord', firstName: 'Maria', lastName: 'Santos' };
+
+/** Mon 5 Oct 2026 is a holiday, so it gets the two-shift default. */
+const HOLIDAYS: Record<string, string> = { '2026-10-05': 'Implantação da República' };
+
+function buildHolidaysStub() {
+  return {
+    findBetween: jest.fn(async (from: string, to: string) => {
+      return new Map(
+        Object.entries(HOLIDAYS).filter(([date]) => date >= from && date <= to),
+      );
+    }),
+    isHoliday: jest.fn(async (date: string) => date in HOLIDAYS),
+  };
+}
 
 function windowRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -32,7 +49,7 @@ function windowRow(overrides: Record<string, unknown> = {}) {
 }
 
 function buildPrismaStub(overrides: Record<string, unknown> = {}) {
-  return {
+  const stub: Record<string, unknown> = {
     availabilityWindow: {
       findMany: jest.fn().mockResolvedValue([]),
       findFirst: jest.fn().mockResolvedValue(null),
@@ -52,18 +69,64 @@ function buildPrismaStub(overrides: Record<string, unknown> = {}) {
         ),
       ),
     },
-    $transaction: jest.fn().mockImplementation((ops: unknown[]) => Promise.all(ops)),
+    availabilityWindowShift: {
+      findMany: jest.fn().mockResolvedValue([]),
+      createMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
+    // Both forms: the array form for batched writes, and the callback form for
+    // "create the window, then its shift rows".
+    $transaction: jest.fn().mockImplementation((arg: unknown) =>
+      Array.isArray(arg)
+        ? Promise.all(arg)
+        : (arg as (tx: unknown) => Promise<unknown>)(stub),
+    ),
     ...overrides,
   };
+  return stub as ReturnType<typeof buildStubShape>;
+}
+
+// Only for the return type above — keeps `prisma.availabilityWindow.create` typed.
+function buildStubShape() {
+  return {
+    availabilityWindow: {
+      findMany: jest.fn(),
+      findFirst: jest.fn(),
+      findUnique: jest.fn(),
+      count: jest.fn(),
+      create: jest.fn(),
+      update: jest.fn(),
+    },
+    availabilityWindowShift: { findMany: jest.fn(), createMany: jest.fn() },
+    $transaction: jest.fn(),
+  };
+}
+
+/** The shift rows a call to `open` materialised, flattened. */
+function createdShiftRows(prisma: ReturnType<typeof buildStubShape>) {
+  return prisma.availabilityWindowShift.createMany.mock.calls.flatMap(
+    (call) => (call[0] as { data: Array<Record<string, unknown>> }).data,
+  );
+}
+
+/** Shift rows for one date, as `HH-HH` strings in slot order. */
+function shiftsOn(prisma: ReturnType<typeof buildStubShape>, date: string) {
+  return createdShiftRows(prisma)
+    .filter((row) => (row.date as Date).toISOString().startsWith(date))
+    .sort((a, b) => (a.slot as number) - (b.slot as number))
+    .map((row) => `${row.startHour}-${row.endHour}`);
 }
 
 describe('AvailabilityWindowsService', () => {
   let service: AvailabilityWindowsService;
-  let prisma: ReturnType<typeof buildPrismaStub>;
+  let prisma: ReturnType<typeof buildStubShape>;
 
   beforeEach(() => {
     prisma = buildPrismaStub();
-    service = new AvailabilityWindowsService(prisma as never);
+    const shiftSchedule = new ShiftScheduleService(
+      buildHolidaysStub() as unknown as HolidaysService,
+      prisma as unknown as PrismaService,
+    );
+    service = new AvailabilityWindowsService(prisma as never, shiftSchedule);
   });
 
   // ── open (AC: only one window open at a time) ────────────────────────────────
@@ -139,6 +202,219 @@ describe('AvailabilityWindowsService', () => {
       );
       const { data } = prisma.availabilityWindow.create.mock.calls[0][0];
       expect(data.startDate.toISOString()).toBe('2026-09-28T00:00:00.000Z');
+    });
+  });
+
+  // ── materialising the shift grid ─────────────────────────────────────────────
+
+  describe('open — default grid', () => {
+    it('writes one shift row per day and shift when no days are supplied', async () => {
+      await service.open(
+        { startDate: '2026-09-28', endDate: '2026-10-05' },
+        COORDINATOR.id,
+      );
+
+      // Mon–Fri × 1 shift + Sat, Sun and the holiday Monday × 2 shifts.
+      expect(createdShiftRows(prisma)).toHaveLength(5 * 1 + 3 * 2);
+      expect(shiftsOn(prisma, '2026-09-28')).toEqual(['20-24']);
+      expect(shiftsOn(prisma, '2026-10-03')).toEqual(['8-16', '16-24']);
+      expect(shiftsOn(prisma, '2026-10-05')).toEqual(['8-16', '16-24']);
+    });
+
+    it('points every shift row at the window it just created', async () => {
+      await service.open(
+        { startDate: '2026-09-28', endDate: '2026-09-29' },
+        COORDINATOR.id,
+      );
+      expect(
+        createdShiftRows(prisma).every((row) => row.windowId === 'win-new'),
+      ).toBe(true);
+    });
+
+    it('creates the window and its shifts in one transaction', async () => {
+      await service.open(
+        { startDate: '2026-09-28', endDate: '2026-09-29' },
+        COORDINATOR.id,
+      );
+      expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  describe('open — per-day shifts', () => {
+    const DAYS = [
+      // A Monday given weekend-style cover, out of order on purpose.
+      { date: '2026-09-28', shifts: [{ startHour: 16, endHour: 24 }, { startHour: 8, endHour: 16 }] },
+      // A Tuesday with hours the default grid has no notion of.
+      { date: '2026-09-29', shifts: [{ startHour: 10, endHour: 14 }] },
+      // A Wednesday nobody is needed on.
+      { date: '2026-09-30', shifts: [] },
+    ];
+
+    it('stores the supplied times, sorted, with slots numbered from 1', async () => {
+      await service.open(
+        { startDate: '2026-09-28', endDate: '2026-09-30', days: DAYS },
+        COORDINATOR.id,
+      );
+
+      expect(shiftsOn(prisma, '2026-09-28')).toEqual(['8-16', '16-24']);
+      expect(shiftsOn(prisma, '2026-09-29')).toEqual(['10-14']);
+      expect(createdShiftRows(prisma).filter((row) => row.slot === 1)).toHaveLength(2);
+    });
+
+    it('leaves a day with no shifts unrepresented rather than filling it in', async () => {
+      await service.open(
+        { startDate: '2026-09-28', endDate: '2026-09-30', days: DAYS },
+        COORDINATOR.id,
+      );
+      expect(shiftsOn(prisma, '2026-09-30')).toEqual([]);
+    });
+
+    it('rejects a range with days missing, naming them', async () => {
+      await expect(
+        service.open(
+          { startDate: '2026-09-28', endDate: '2026-09-30', days: DAYS.slice(0, 1) },
+          COORDINATOR.id,
+        ),
+      ).rejects.toThrow(/missing for 2026-09-29, 2026-09-30/);
+      expect(prisma.availabilityWindow.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects a day outside the range', async () => {
+      await expect(
+        service.open(
+          {
+            startDate: '2026-09-28',
+            endDate: '2026-09-28',
+            days: [DAYS[0], { date: '2026-10-20', shifts: [] }],
+          },
+          COORDINATOR.id,
+        ),
+      ).rejects.toThrow(/2026-10-20 is outside the window/);
+    });
+
+    it('rejects the same day twice', async () => {
+      await expect(
+        service.open(
+          { startDate: '2026-09-28', endDate: '2026-09-28', days: [DAYS[0], DAYS[0]] },
+          COORDINATOR.id,
+        ),
+      ).rejects.toThrow(/Duplicate shifts supplied for 2026-09-28/);
+    });
+
+    it('rejects overlapping shifts on a day', async () => {
+      await expect(
+        service.open(
+          {
+            startDate: '2026-09-28',
+            endDate: '2026-09-28',
+            days: [
+              {
+                date: '2026-09-28',
+                shifts: [
+                  { startHour: 8, endHour: 16 },
+                  { startHour: 12, endHour: 20 },
+                ],
+              },
+            ],
+          },
+          COORDINATOR.id,
+        ),
+      ).rejects.toThrow(/2026-09-28.*overlap/);
+      expect(prisma.availabilityWindow.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects a shift that ends before it starts', async () => {
+      await expect(
+        service.open(
+          {
+            startDate: '2026-09-28',
+            endDate: '2026-09-28',
+            days: [{ date: '2026-09-28', shifts: [{ startHour: 20, endHour: 8 }] }],
+          },
+          COORDINATOR.id,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('accepts a window where every day is empty, and writes no shift rows', async () => {
+      await service.open(
+        {
+          startDate: '2026-09-28',
+          endDate: '2026-09-29',
+          days: [
+            { date: '2026-09-28', shifts: [] },
+            { date: '2026-09-29', shifts: [] },
+          ],
+        },
+        COORDINATOR.id,
+      );
+      expect(prisma.availabilityWindowShift.createMany).not.toHaveBeenCalled();
+      expect(prisma.availabilityWindow.create).toHaveBeenCalledTimes(1);
+    });
+  });
+
+  // ── the whole-month shortcut ─────────────────────────────────────────────────
+
+  describe('openMonth', () => {
+    it('spans the 1st to the last day of the month', async () => {
+      const result = await service.openMonth({ year: 2026, month: 10 }, COORDINATOR.id);
+      const { data } = prisma.availabilityWindow.create.mock.calls[0][0];
+
+      expect(data.startDate.toISOString()).toBe('2026-10-01T00:00:00.000Z');
+      expect(data.endDate.toISOString()).toBe('2026-10-31T00:00:00.000Z');
+      expect(result.startDate).toBe('2026-10-01');
+      expect(result.endDate).toBe('2026-10-31');
+    });
+
+    it('gets February right in a leap year', async () => {
+      await service.openMonth({ year: 2028, month: 2 }, COORDINATOR.id);
+      const { data } = prisma.availabilityWindow.create.mock.calls[0][0];
+      expect(data.endDate.toISOString()).toBe('2028-02-29T00:00:00.000Z');
+    });
+
+    it('uses the default grid, including for holidays inside the month', async () => {
+      await service.openMonth({ year: 2026, month: 10 }, COORDINATOR.id);
+      expect(shiftsOn(prisma, '2026-10-01')).toEqual(['20-24']);
+      expect(shiftsOn(prisma, '2026-10-05')).toEqual(['8-16', '16-24']);
+    });
+
+    it('is blocked by an already-open window like any other window', async () => {
+      prisma.availabilityWindow.findFirst.mockResolvedValue(windowRow());
+      await expect(
+        service.openMonth({ year: 2026, month: 11 }, COORDINATOR.id),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('rejects a month outside 1–12', async () => {
+      await expect(
+        service.openMonth({ year: 2026, month: 13 }, COORDINATOR.id),
+      ).rejects.toThrow(BadRequestException);
+    });
+  });
+
+  describe('getCalendar', () => {
+    it("returns the window's own shifts", async () => {
+      prisma.availabilityWindow.findUnique.mockResolvedValue(
+        windowRow({
+          startDate: new Date('2026-09-28T00:00:00.000Z'),
+          endDate: new Date('2026-09-29T00:00:00.000Z'),
+        }),
+      );
+      prisma.availabilityWindowShift.findMany.mockResolvedValue([
+        { date: new Date('2026-09-28T00:00:00.000Z'), slot: 1, startHour: 10, endHour: 14 },
+      ]);
+
+      const calendar = await service.getCalendar('win-1');
+
+      expect(calendar.map((day) => day.shifts.map((shift) => shift.label))).toEqual([
+        ['10:00–14:00'],
+        [],
+      ]);
+    });
+
+    it('throws NotFoundException for an unknown window', async () => {
+      prisma.availabilityWindow.findUnique.mockResolvedValue(null);
+      await expect(service.getCalendar('nope')).rejects.toThrow(NotFoundException);
     });
   });
 

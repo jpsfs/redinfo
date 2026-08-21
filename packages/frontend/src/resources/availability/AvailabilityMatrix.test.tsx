@@ -5,7 +5,7 @@ import { AvailabilityWindowStatus } from '@redinfo/shared';
 import { AvailabilityMatrix } from './AvailabilityMatrix';
 import { apiDownload, apiFetch } from '../../api';
 import { useIsMobile } from '../../hooks/useIsMobile';
-import { CLOSED_WINDOW, matrixResponse } from '../../test/fixtures';
+import { ANA, BRUNO, CLOSED_WINDOW, matrixResponse } from '../../test/fixtures';
 
 vi.mock('../../api', () => ({
   apiFetch: vi.fn(),
@@ -293,5 +293,121 @@ describe('AvailabilityMatrix', () => {
     render(<AvailabilityMatrix windowId="win-1" />);
 
     expect(await screen.findByText(/historical view/i)).toBeInTheDocument();
+  });
+
+  // ── windows that define their own shift times ───────────────────────────────
+  //
+  // A window carries its own grid, so the columns are whatever hours it uses
+  // and the same slot number means different hours on different days.
+
+  describe('with per-day shift times', () => {
+    const cell = (
+      slot: number,
+      startHour: number,
+      endHour: number,
+      availableUserIds: string[] = [],
+    ) => ({
+      slot,
+      startHour,
+      endHour,
+      label: `${String(startHour).padStart(2, '0')}:00–${String(endHour).padStart(2, '0')}:00`,
+      availableCount: availableUserIds.length,
+      driverCount: 0,
+      coverageLevel: 'red' as const,
+      availableUserIds,
+    });
+
+    const day = (date: string, shifts: ReturnType<typeof cell>[]) => ({
+      date,
+      isWeekend: false,
+      isHoliday: false,
+      holidayName: null,
+      shifts,
+    });
+
+    it('takes its columns from the hours the window actually uses', async () => {
+      mockApiFetch.mockResolvedValue(
+        matrixResponse({
+          days: [
+            day('2026-09-28', [cell(1, 6, 12), cell(2, 12, 18)]),
+            day('2026-09-29', [cell(1, 10, 14)]),
+          ],
+        }),
+      );
+
+      render(<AvailabilityMatrix windowId="win-1" />);
+
+      await screen.findByText('Date');
+      expect(screen.getAllByRole('columnheader').map((header) => header.textContent)).toEqual(
+        ['Date', '06:00–12:00', '10:00–14:00', '12:00–18:00'],
+      );
+    });
+
+    it('lines cells up by hours rather than by slot number', async () => {
+      mockApiFetch.mockResolvedValue(
+        matrixResponse({
+          days: [
+            day('2026-09-28', [cell(1, 6, 12), cell(2, 12, 18)]),
+            // Slot 1 here is the *later* shift, so it belongs in the other column.
+            day('2026-09-29', [cell(1, 12, 18, [ANA.id])]),
+          ],
+        }),
+      );
+
+      render(<AvailabilityMatrix windowId="win-1" />);
+      await screen.findByText('Date');
+
+      const tuesday = rowFor('Tue, 29 Sep');
+      expect(within(tuesday).getAllByText('—')).toHaveLength(1);
+      expect(
+        within(tuesday).getByLabelText('12:00–18:00: 1 available, 0 drivers, red'),
+      ).toBeInTheDocument();
+    });
+
+    it('drills down on the right shift when two days share a slot number', async () => {
+      mockApiFetch.mockResolvedValue(
+        matrixResponse({
+          days: [
+            day('2026-09-28', [cell(1, 6, 12, [BRUNO.id])]),
+            day('2026-09-29', [cell(1, 12, 18, [ANA.id])]),
+          ],
+        }),
+      );
+
+      render(<AvailabilityMatrix windowId="win-1" />);
+      await screen.findByText('Date');
+
+      await userEvent.click(
+        within(rowFor('Tue, 29 Sep')).getByLabelText(
+          '12:00–18:00: 1 available, 0 drivers, red',
+        ),
+      );
+
+      expect(await screen.findByText(/Tue, 29 Sep · 12:00–18:00/)).toBeInTheDocument();
+      expect(screen.getByText('Ana Silva')).toBeInTheDocument();
+    });
+
+    it('swaps to day cards when the window has more shift times than fit', async () => {
+      mockApiFetch.mockResolvedValue(
+        matrixResponse({
+          days: [
+            day('2026-09-28', [
+              cell(1, 0, 3),
+              cell(2, 3, 6),
+              cell(3, 6, 9),
+              cell(4, 9, 12),
+              cell(5, 12, 15),
+              cell(6, 15, 18),
+            ]),
+            day('2026-09-29', [cell(1, 18, 21)]),
+          ],
+        }),
+      );
+
+      render(<AvailabilityMatrix windowId="win-1" />);
+
+      expect(await screen.findByText('Mon, 28 Sep')).toBeInTheDocument();
+      expect(screen.queryByRole('columnheader')).not.toBeInTheDocument();
+    });
   });
 });

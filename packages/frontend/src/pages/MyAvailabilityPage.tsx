@@ -28,9 +28,9 @@ import SaveIcon from '@mui/icons-material/Save';
 import {
   AvailabilityEntry,
   DayShiftPattern,
+  formatShiftShortLabel,
   MyAvailabilityResponse,
-  ShiftCode,
-  SHIFT_DEFINITIONS,
+  ShiftDefinition,
 } from '@redinfo/shared';
 import { apiFetch } from '../api';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -45,63 +45,67 @@ import {
   weekdayLabels,
 } from '../utils/dates';
 
-/** Compact shift label for a calendar cell, e.g. "08–16h". */
-function shortLabel(code: ShiftCode): string {
-  const { startHour, endHour } = SHIFT_DEFINITIONS[code];
-  return `${String(startHour).padStart(2, '0')}–${endHour}h`;
-}
-
-type Selection = Record<string, ShiftCode[]>;
+/** Which shift slots the volunteer has ticked, per date. */
+type Selection = Record<string, number[]>;
 
 function selectionFromEntries(entries: AvailabilityEntry[]): Selection {
   return entries.reduce<Selection>((acc, entry) => {
-    acc[entry.date] = [...entry.shiftCodes];
+    acc[entry.date] = [...entry.slots];
     return acc;
   }, {});
 }
 
 function selectionToEntries(selection: Selection): AvailabilityEntry[] {
   return Object.entries(selection)
-    .filter(([, shiftCodes]) => shiftCodes.length > 0)
+    .filter(([, slots]) => slots.length > 0)
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([date, shiftCodes]) => ({ date, shiftCodes }));
+    .map(([date, slots]) => ({ date, slots }));
 }
 
 function sameSelection(a: Selection, b: Selection): boolean {
   const key = (selection: Selection) =>
     JSON.stringify(
-      selectionToEntries(selection).map((entry) => [entry.date, [...entry.shiftCodes].sort()]),
+      selectionToEntries(selection).map((entry) => [
+        entry.date,
+        [...entry.slots].sort((x, y) => x - y),
+      ]),
     );
   return key(a) === key(b);
 }
 
 // ─── Calendar (desktop) ────────────────────────────────────────────────────────
 
+/**
+ * Only the day-type colours: the shifts themselves are set per day when the
+ * window is opened, so no fixed times can be spelled out here.
+ */
 const CalendarLegend = () => (
   <Stack direction="row" spacing={3} flexWrap="wrap" useFlexGap sx={{ mb: 1.5 }}>
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
       <Box sx={{ width: 10, height: 10, borderRadius: '3px', backgroundColor: 'grey.300' }} />
       <Typography variant="caption" color="text.secondary">
-        Workday — 1 shift ({SHIFT_DEFINITIONS[ShiftCode.EVENING].label})
+        Workday
       </Typography>
     </Box>
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
       <Box sx={{ width: 10, height: 10, borderRadius: '3px', backgroundColor: 'warning.main' }} />
       <Typography variant="caption" color="text.secondary">
-        Weekend / holiday — 2 shifts ({SHIFT_DEFINITIONS[ShiftCode.MORNING].label},{' '}
-        {SHIFT_DEFINITIONS[ShiftCode.AFTERNOON].label})
+        Weekend / holiday
       </Typography>
     </Box>
+    <Typography variant="caption" color="text.secondary">
+      Each day shows the shifts your coordinator set for it.
+    </Typography>
   </Stack>
 );
 
 const ShiftToggle = ({
-  code,
+  shift,
   date,
   checked,
   onToggle,
 }: {
-  code: ShiftCode;
+  shift: ShiftDefinition;
   date: string;
   checked: boolean;
   onToggle: () => void;
@@ -113,7 +117,7 @@ const ShiftToggle = ({
     aria-pressed={checked}
     // The date belongs in the accessible name: a month of cells otherwise
     // exposes a dozen controls all called "20:00–24:00".
-    aria-label={`${formatDayLabel(date)} ${SHIFT_DEFINITIONS[code].label}`}
+    aria-label={`${formatDayLabel(date)} ${shift.label}`}
     sx={{
       display: 'flex',
       alignItems: 'center',
@@ -145,11 +149,17 @@ const ShiftToggle = ({
     >
       {checked && <CheckIcon sx={{ fontSize: 10 }} />}
     </Box>
-    {shortLabel(code)}
+    {formatShiftShortLabel(shift)}
   </Box>
 );
 
-const ReadOnlyShift = ({ code, available }: { code: ShiftCode; available: boolean }) => (
+const ReadOnlyShift = ({
+  shift,
+  available,
+}: {
+  shift: ShiftDefinition;
+  available: boolean;
+}) => (
   <Box
     sx={{
       display: 'flex',
@@ -165,7 +175,7 @@ const ReadOnlyShift = ({ code, available }: { code: ShiftCode; available: boolea
     }}
   >
     {available && <CheckIcon sx={{ fontSize: 11 }} />}
-    {shortLabel(code)}
+    {formatShiftShortLabel(shift)}
   </Box>
 );
 
@@ -183,7 +193,7 @@ const MonthCalendar = ({
   selection: Selection;
   editable: boolean;
   inWindow: (date: string) => boolean;
-  onToggle: (date: string, code: ShiftCode) => void;
+  onToggle: (date: string, slot: number) => void;
   onMonthChange: (month: string) => void;
 }) => {
   const cells = useMemo(() => monthGrid(month), [month]);
@@ -292,26 +302,26 @@ const MonthCalendar = ({
                 {canEdit &&
                   pattern?.shifts.map((shift) => (
                     <ShiftToggle
-                      key={shift.code}
-                      code={shift.code}
+                      key={shift.slot}
+                      shift={shift}
                       date={date}
-                      checked={selected.includes(shift.code)}
-                      onToggle={() => onToggle(date, shift.code)}
+                      checked={selected.includes(shift.slot)}
+                      onToggle={() => onToggle(date, shift.slot)}
                     />
                   ))}
 
                 {!canEdit && isInWindow &&
                   pattern?.shifts.map((shift) => (
                     <ReadOnlyShift
-                      key={shift.code}
-                      code={shift.code}
-                      available={selected.includes(shift.code)}
+                      key={shift.slot}
+                      shift={shift}
+                      available={selected.includes(shift.slot)}
                     />
                   ))}
 
                 {!isInWindow && pattern && (
                   <Typography variant="caption" sx={{ fontSize: 10.5, color: 'text.disabled' }}>
-                    {pattern.shifts.map((shift) => shortLabel(shift.code)).join(' · ')}
+                    {pattern.shifts.map(formatShiftShortLabel).join(' · ')}
                   </Typography>
                 )}
               </Stack>
@@ -334,7 +344,7 @@ const DayAgenda = ({
   days: DayShiftPattern[];
   selection: Selection;
   editable: boolean;
-  onToggle: (date: string, code: ShiftCode) => void;
+  onToggle: (date: string, slot: number) => void;
 }) => {
   const [expanded, setExpanded] = useState<string | null>(days[0]?.date ?? null);
 
@@ -394,9 +404,14 @@ const DayAgenda = ({
 
               <Collapse in={isExpanded} unmountOnExit>
                 <Stack sx={{ mt: 1 }} divider={<Divider flexItem />}>
+                  {day.shifts.length === 0 && (
+                    <Typography variant="body2" color="text.secondary" sx={{ py: 0.5 }}>
+                      No shifts on this day.
+                    </Typography>
+                  )}
                   {day.shifts.map((shift) => (
                     <Box
-                      key={shift.code}
+                      key={shift.slot}
                       sx={{
                         display: 'flex',
                         alignItems: 'center',
@@ -407,16 +422,16 @@ const DayAgenda = ({
                       <Typography variant="body2">{shift.label}</Typography>
                       {editable ? (
                         <Checkbox
-                          checked={selected.includes(shift.code)}
-                          onChange={() => onToggle(day.date, shift.code)}
+                          checked={selected.includes(shift.slot)}
+                          onChange={() => onToggle(day.date, shift.slot)}
                           inputProps={{
                             'aria-label': `${formatDayLabel(day.date)} ${shift.label}`,
                           }}
                         />
                       ) : (
                         <ReadOnlyShift
-                          code={shift.code}
-                          available={selected.includes(shift.code)}
+                          shift={shift}
+                          available={selected.includes(shift.slot)}
                         />
                       )}
                     </Box>
@@ -475,14 +490,18 @@ export const MyAvailabilityPage = () => {
     void load();
   }, [load]);
 
-  // The calendar previews whole months, including days outside the window, so
-  // the fixed shift pattern is visible at a glance.
+  // The calendar previews whole months, including days outside the window.
+  // Passing the window makes the days it covers show *its* shifts; the rest
+  // fall back to the default grid, so the month still reads as a calendar.
+  const windowId = data?.window?.id ?? null;
+
   useEffect(() => {
     if (!month || isMobile) return;
     let cancelled = false;
     const cells = monthGrid(month);
+    const windowParam = windowId ? `&windowId=${encodeURIComponent(windowId)}` : '';
     apiFetch<DayShiftPattern[]>(
-      `/availability/calendar?from=${cells[0]}&to=${cells[cells.length - 1]}`,
+      `/availability/calendar?from=${cells[0]}&to=${cells[cells.length - 1]}${windowParam}`,
     )
       .then((patterns) => {
         if (!cancelled) setMonthPatterns(patterns);
@@ -493,7 +512,7 @@ export const MyAvailabilityPage = () => {
     return () => {
       cancelled = true;
     };
-  }, [month, isMobile]);
+  }, [month, isMobile, windowId]);
 
   const patternsByDate = useMemo(
     () => new Map(monthPatterns.map((pattern) => [pattern.date, pattern])),
@@ -511,12 +530,12 @@ export const MyAvailabilityPage = () => {
     [window],
   );
 
-  const handleToggle = useCallback((date: string, code: ShiftCode) => {
+  const handleToggle = useCallback((date: string, slot: number) => {
     setSelection((current) => {
       const existing = current[date] ?? [];
-      const next = existing.includes(code)
-        ? existing.filter((candidate) => candidate !== code)
-        : [...existing, code];
+      const next = existing.includes(slot)
+        ? existing.filter((candidate) => candidate !== slot)
+        : [...existing, slot];
       return { ...current, [date]: next };
     });
   }, []);

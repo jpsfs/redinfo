@@ -109,6 +109,11 @@ export function weekdayLabels(): string[] {
   return [...WEEKDAY_LABELS];
 }
 
+/** January … December, for a month picker. */
+export function monthNames(): string[] {
+  return [...MONTH_NAMES];
+}
+
 /** e.g. "October 2026". */
 export function formatMonthLabel(month: string): string {
   const [year, monthNumber] = month.split('-').map(Number);

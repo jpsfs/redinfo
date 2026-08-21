@@ -33,8 +33,6 @@ import {
   AvailabilityMatrixShiftCell,
   AvailabilityWindowStatus,
   CoverageLevel,
-  ShiftCode,
-  SHIFT_DEFINITIONS,
   SHIFT_MAX_PEOPLE,
 } from '@redinfo/shared';
 import { apiDownload, apiFetch } from '../../api';
@@ -52,12 +50,26 @@ const COVERAGE_STYLE: Record<CoverageLevel, { bg: string; fg: string; border: st
   red: { bg: '#FDECEA', fg: '#C62828', border: '#EF9A9A' },
 };
 
-/** Column order for the desktop table; only columns in use are rendered. */
-const SHIFT_COLUMN_ORDER: ShiftCode[] = [
-  ShiftCode.MORNING,
-  ShiftCode.AFTERNOON,
-  ShiftCode.EVENING,
-];
+/**
+ * One column of the desktop table: a distinct set of shift hours somewhere in
+ * the window. Days carry their own shifts, so the columns are whatever times
+ * the window actually uses rather than a fixed list.
+ */
+interface ShiftColumn {
+  key: string;
+  label: string;
+  startHour: number;
+  endHour: number;
+}
+
+const shiftKey = (shift: { startHour: number; endHour: number }) =>
+  `${shift.startHour}-${shift.endHour}`;
+
+/**
+ * Past this many distinct shift times the table is wider than it is readable,
+ * so the day-card layout takes over — the same one mobile gets.
+ */
+const MAX_TABLE_COLUMNS = 6;
 
 const CAPACITY_NOTE =
   `A scheduled shift holds at most ${SHIFT_MAX_PEOPLE} people and always needs at ` +
@@ -68,7 +80,8 @@ const REMINDER_TOOLTIP =
 
 interface SelectedCell {
   date: string;
-  shiftCode: ShiftCode;
+  /** Slot within its own day — only unique together with the date. */
+  slot: number;
 }
 
 // ─── Small pieces ──────────────────────────────────────────────────────────────
@@ -256,7 +269,7 @@ const DesktopMatrix = ({
   onSelect,
 }: {
   matrix: AvailabilityMatrixResponse;
-  columns: ShiftCode[];
+  columns: ShiftColumn[];
   selected: SelectedCell | null;
   onSelect: (cell: SelectedCell | null) => void;
 }) => (
@@ -267,9 +280,9 @@ const DesktopMatrix = ({
           <TableCell sx={{ minWidth: 190 }}>
             <strong>Date</strong>
           </TableCell>
-          {columns.map((code) => (
-            <TableCell key={code}>
-              <strong>{SHIFT_DEFINITIONS[code].label}</strong>
+          {columns.map((column) => (
+            <TableCell key={column.key}>
+              <strong>{column.label}</strong>
             </TableCell>
           ))}
         </TableRow>
@@ -294,11 +307,13 @@ const DesktopMatrix = ({
                 <DayBadges day={day} />
               </Stack>
             </TableCell>
-            {columns.map((code) => {
-              const cell = day.shifts.find((shift) => shift.shiftCode === code);
+            {columns.map((column) => {
+              // Matched on the hours, not the slot: slot 1 is 20:00–24:00 on one
+              // day and 08:00–16:00 on another, so slots are not columns.
+              const cell = day.shifts.find((shift) => shiftKey(shift) === column.key);
               if (!cell) {
                 return (
-                  <TableCell key={code}>
+                  <TableCell key={column.key}>
                     <Typography component="span" color="text.disabled">
                       —
                     </Typography>
@@ -306,15 +321,15 @@ const DesktopMatrix = ({
                 );
               }
               const isSelected =
-                selected?.date === day.date && selected?.shiftCode === code;
+                selected?.date === day.date && selected?.slot === cell.slot;
               return (
-                <TableCell key={code}>
+                <TableCell key={column.key}>
                   <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
                     <CoveragePill
                       cell={cell}
                       selected={isSelected}
                       onClick={() =>
-                        onSelect(isSelected ? null : { date: day.date, shiftCode: code })
+                        onSelect(isSelected ? null : { date: day.date, slot: cell.slot })
                       }
                     />
                     <DriverBadge count={cell.driverCount} />
@@ -363,7 +378,7 @@ const MobileMatrix = ({
                     <DayBadges day={day} />
                     {!isExpanded &&
                       day.shifts.map((shift) => (
-                        <CoveragePill key={shift.shiftCode} cell={shift} />
+                        <CoveragePill key={shift.slot} cell={shift} />
                       ))}
                   </Stack>
                 </Box>
@@ -375,7 +390,7 @@ const MobileMatrix = ({
               <Collapse in={isExpanded} unmountOnExit>
                 <Stack spacing={1.5} sx={{ mt: 1.5 }}>
                   {day.shifts.map((shift) => (
-                    <Box key={shift.shiftCode}>
+                    <Box key={shift.slot}>
                       <Box
                         sx={{
                           display: 'flex',
@@ -474,17 +489,30 @@ export const AvailabilityMatrix = ({ windowId }: { windowId?: string }) => {
     [matrix],
   );
 
-  const columns = useMemo(() => {
-    const present = new Set(
-      (matrix?.days ?? []).flatMap((day) => day.shifts.map((shift) => shift.shiftCode)),
+  const columns = useMemo<ShiftColumn[]>(() => {
+    const byKey = new Map<string, ShiftColumn>();
+    for (const day of matrix?.days ?? []) {
+      for (const shift of day.shifts) {
+        const key = shiftKey(shift);
+        if (!byKey.has(key)) {
+          byKey.set(key, {
+            key,
+            label: shift.label,
+            startHour: shift.startHour,
+            endHour: shift.endHour,
+          });
+        }
+      }
+    }
+    return [...byKey.values()].sort(
+      (a, b) => a.startHour - b.startHour || a.endHour - b.endHour,
     );
-    return SHIFT_COLUMN_ORDER.filter((code) => present.has(code));
   }, [matrix]);
 
   const selectedCell = useMemo(() => {
     if (!selected || !matrix) return null;
     const day = matrix.days.find((candidate) => candidate.date === selected.date);
-    const shift = day?.shifts.find((candidate) => candidate.shiftCode === selected.shiftCode);
+    const shift = day?.shifts.find((candidate) => candidate.slot === selected.slot);
     return day && shift ? { day, shift } : null;
   }, [selected, matrix]);
 
@@ -581,7 +609,7 @@ export const AvailabilityMatrix = ({ windowId }: { windowId?: string }) => {
 
       <CoverageLegend />
 
-      {isMobile ? (
+      {isMobile || columns.length > MAX_TABLE_COLUMNS ? (
         <MobileMatrix matrix={matrix} peopleById={peopleById} />
       ) : (
         <>

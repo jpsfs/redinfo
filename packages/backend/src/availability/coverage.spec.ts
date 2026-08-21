@@ -4,13 +4,9 @@ import {
   coverageLevel,
   hasPermission,
   ROLE_PERMISSIONS,
-  SHIFT_DEFINITIONS,
   SHIFT_MAX_PEOPLE,
   SHIFT_MIN_DRIVERS,
-  ShiftCode,
-  SPECIAL_DAY_SHIFT_CODES,
   UserRole,
-  WORKDAY_SHIFT_CODES,
 } from '@redinfo/shared';
 
 // ── coverage colour rule ───────────────────────────────────────────────────────
@@ -64,34 +60,8 @@ describe('shift capacity constants', () => {
   });
 });
 
-// ── shift definitions ──────────────────────────────────────────────────────────
-
-describe('SHIFT_DEFINITIONS', () => {
-  it('defines the workday shift as a single 20:00–24:00 slot', () => {
-    expect(WORKDAY_SHIFT_CODES).toEqual([ShiftCode.EVENING]);
-    expect(SHIFT_DEFINITIONS[ShiftCode.EVENING]).toEqual({
-      code: ShiftCode.EVENING,
-      label: '20:00–24:00',
-      startHour: 20,
-      endHour: 24,
-    });
-  });
-
-  it('defines weekend/holiday days as two back-to-back slots covering 08:00–24:00', () => {
-    expect(SPECIAL_DAY_SHIFT_CODES).toEqual([ShiftCode.MORNING, ShiftCode.AFTERNOON]);
-    const [morning, afternoon] = SPECIAL_DAY_SHIFT_CODES.map((code) => SHIFT_DEFINITIONS[code]);
-    expect(morning.startHour).toBe(8);
-    expect(morning.endHour).toBe(afternoon.startHour);
-    expect(afternoon.endHour).toBe(24);
-  });
-
-  it('has a definition for every shift code', () => {
-    Object.values(ShiftCode).forEach((code) => {
-      expect(SHIFT_DEFINITIONS[code]).toBeDefined();
-      expect(SHIFT_DEFINITIONS[code].label).toBeTruthy();
-    });
-  });
-});
+// The default shift grid is covered by shifts.spec.ts, alongside the per-day
+// validation rules that now go with it.
 
 // ── who counts as personnel ────────────────────────────────────────────────────
 

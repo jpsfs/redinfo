@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AdminContext, Notification, testDataProvider } from 'react-admin';
-import { ShiftCode } from '@redinfo/shared';
 import { MyAvailabilityPage } from './MyAvailabilityPage';
 import { apiFetch } from '../api';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -64,7 +63,7 @@ const renderPage = () =>
   );
 
 /** The PUT body from the last save, if any. */
-function lastSaveBody(): { entries: { date: string; shiftCodes: ShiftCode[] }[] } | undefined {
+function lastSaveBody(): { entries: { date: string; slots: number[] }[] } | undefined {
   const call = [...mockApiFetch.mock.calls]
     .reverse()
     .find(([path, options]) => path === '/availability/me' && options?.method === 'PUT');
@@ -134,7 +133,7 @@ describe('MyAvailabilityPage', () => {
   it('pre-checks shifts already submitted', async () => {
     stubApi({
       me: myAvailability({
-        entries: [{ date: WINDOW_START, shiftCodes: [ShiftCode.EVENING] }],
+        entries: [{ date: WINDOW_START, slots: [1] }],
       }),
     });
 
@@ -171,8 +170,8 @@ describe('MyAvailabilityPage', () => {
     await waitFor(() => expect(lastSaveBody()).toBeDefined());
     expect(lastSaveBody()).toEqual({
       entries: [
-        { date: '2026-09-28', shiftCodes: [ShiftCode.EVENING] },
-        { date: '2026-10-03', shiftCodes: [ShiftCode.AFTERNOON] },
+        { date: '2026-09-28', slots: [1] },
+        { date: '2026-10-03', slots: [2] },
       ],
     });
   });
@@ -181,8 +180,8 @@ describe('MyAvailabilityPage', () => {
     stubApi({
       me: myAvailability({
         entries: [
-          { date: WINDOW_START, shiftCodes: [ShiftCode.EVENING] },
-          { date: '2026-09-29', shiftCodes: [ShiftCode.EVENING] },
+          { date: WINDOW_START, slots: [1] },
+          { date: '2026-09-29', slots: [1] },
         ],
       }),
     });
@@ -194,7 +193,7 @@ describe('MyAvailabilityPage', () => {
 
     await waitFor(() => expect(lastSaveBody()).toBeDefined());
     expect(lastSaveBody()).toEqual({
-      entries: [{ date: '2026-09-28', shiftCodes: [ShiftCode.EVENING] }],
+      entries: [{ date: '2026-09-28', slots: [1] }],
     });
   });
 
@@ -276,7 +275,7 @@ describe('MyAvailabilityPage', () => {
         me: myAvailability({
           window: CLOSED_WINDOW,
           canSubmit: false,
-          entries: [{ date: WINDOW_START, shiftCodes: [ShiftCode.EVENING] }],
+          entries: [{ date: WINDOW_START, slots: [1] }],
         }),
       });
     });
@@ -342,14 +341,14 @@ describe('MyAvailabilityPage', () => {
 
       await waitFor(() => expect(lastSaveBody()).toBeDefined());
       expect(lastSaveBody()).toEqual({
-        entries: [{ date: WINDOW_START, shiftCodes: [ShiftCode.EVENING] }],
+        entries: [{ date: WINDOW_START, slots: [1] }],
       });
     });
 
     it('summarises each collapsed day', async () => {
       stubApi({
         me: myAvailability({
-          entries: [{ date: WINDOW_END, shiftCodes: [ShiftCode.MORNING] }],
+          entries: [{ date: WINDOW_END, slots: [1] }],
         }),
       });
 
@@ -369,5 +368,95 @@ describe('MyAvailabilityPage', () => {
     renderPage();
 
     expect(await screen.findByText('Session expired')).toBeInTheDocument();
+  });
+
+  // ── windows that define their own shift times ───────────────────────────────
+
+  describe('with per-day shift times', () => {
+    /** A window whose Monday is 10:00–14:00 and whose Tuesday has no shifts. */
+    function customCalendar(from: string, to: string) {
+      return calendarFor(from, to).map((day) => {
+        if (day.date === WINDOW_START) {
+          return {
+            ...day,
+            shifts: [{ slot: 1, startHour: 10, endHour: 14, label: '10:00–14:00' }],
+          };
+        }
+        if (day.date === '2026-09-29') return { ...day, shifts: [] };
+        return day;
+      });
+    }
+
+    function stubCustomApi() {
+      const me = myAvailability({ calendar: customCalendar(WINDOW_START, WINDOW_END) });
+      mockApiFetch.mockImplementation(
+        (path: string, options?: { method?: string; body?: unknown }) => {
+          if (path.startsWith('/availability/calendar')) {
+            const params = new URL(`http://x${path}`).searchParams;
+            return Promise.resolve(customCalendar(params.get('from')!, params.get('to')!));
+          }
+          if (path === '/availability/me' && options?.method === 'PUT') {
+            return Promise.resolve(me);
+          }
+          return Promise.resolve(me);
+        },
+      );
+    }
+
+    it("asks for the calendar of the window in play, so its own shifts come back", async () => {
+      renderPage();
+
+      await screen.findByLabelText('Mon, 28 Sep 20:00–24:00');
+      const calendarCalls = mockApiFetch.mock.calls.filter(([path]) =>
+        String(path).startsWith('/availability/calendar'),
+      );
+      expect(calendarCalls.length).toBeGreaterThan(0);
+      expect(calendarCalls.every(([path]) => String(path).includes('windowId=win-1'))).toBe(
+        true,
+      );
+    });
+
+    it('offers the hours the window set, not the default grid', async () => {
+      stubCustomApi();
+
+      renderPage();
+
+      expect(await screen.findByLabelText('Mon, 28 Sep 10:00–14:00')).toBeInTheDocument();
+      expect(screen.queryByLabelText('Mon, 28 Sep 20:00–24:00')).not.toBeInTheDocument();
+    });
+
+    it('offers nothing on a day the window left without shifts', async () => {
+      stubCustomApi();
+
+      renderPage();
+
+      await screen.findByLabelText('Mon, 28 Sep 10:00–14:00');
+      expect(screen.queryByLabelText(/Tue, 29 Sep/)).not.toBeInTheDocument();
+    });
+
+    it('saves the slot of the shift that was ticked', async () => {
+      stubCustomApi();
+
+      renderPage();
+      await userEvent.click(await screen.findByLabelText('Mon, 28 Sep 10:00–14:00'));
+      await userEvent.click(screen.getByRole('button', { name: /save availability/i }));
+
+      await waitFor(() =>
+        expect(lastSaveBody()).toEqual({ entries: [{ date: WINDOW_START, slots: [1] }] }),
+      );
+    });
+
+    it('tells a volunteer on a phone that a day has no shifts', async () => {
+      mockUseIsMobile.mockReturnValue(true);
+      stubCustomApi();
+
+      renderPage();
+
+      const card = (await screen.findByText('Tue, 29 Sep')).closest(
+        '.MuiCard-root',
+      ) as HTMLElement;
+      await userEvent.click(within(card).getByLabelText('Expand'));
+      expect(within(card).getByText('No shifts on this day.')).toBeInTheDocument();
+    });
   });
 });

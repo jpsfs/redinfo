@@ -6,9 +6,9 @@ import {
   AvailabilityWindowStatus,
   coverageLevel,
   DayShiftPattern,
+  defaultShiftsForDayType,
   MyAvailabilityResponse,
-  ShiftCode,
-  SHIFT_DEFINITIONS,
+  toShiftDefinitions,
 } from '@redinfo/shared';
 import { isoDateRange, parseIsoDate } from '../utils/dates';
 
@@ -17,7 +17,7 @@ import { isoDateRange, parseIsoDate } from '../utils/dates';
  *
  * The window deliberately spans Mon 28 Sep → Mon 5 Oct 2026: five workdays
  * (one shift), a Saturday and Sunday (two shifts), and a holiday Monday (two
- * shifts) — every day type the shift grid has.
+ * shifts) — every day type the default grid has.
  */
 export const WINDOW_START = '2026-09-28';
 export const WINDOW_END = '2026-10-05';
@@ -47,21 +47,18 @@ export const CLOSED_WINDOW: AvailabilityWindow = {
   closedAt: '2026-10-05T23:59:00.000Z',
 };
 
-/** The same 1-shift/2-shift rule the backend applies, for building fixtures. */
+/** A window on the default grid, as the API materialises one. */
 export function patternFor(date: string): DayShiftPattern {
   const day = parseIsoDate(date).getUTCDay();
   const isWeekend = day === 0 || day === 6;
   const isHoliday = date === HOLIDAY_DATE;
-  const codes =
-    isWeekend || isHoliday
-      ? [ShiftCode.MORNING, ShiftCode.AFTERNOON]
-      : [ShiftCode.EVENING];
+  const dayType = isHoliday ? 'holiday' : isWeekend ? 'weekend' : 'workday';
   return {
     date,
     isWeekend,
     isHoliday,
     holidayName: isHoliday ? HOLIDAY_NAME : null,
-    shifts: codes.map((code) => SHIFT_DEFINITIONS[code]),
+    shifts: toShiftDefinitions(defaultShiftsForDayType(dayType)),
   };
 }
 
@@ -120,16 +117,16 @@ export const RUI: AvailabilityMatrixPerson = {
 
 const PERSONNEL = [ANA, BRUNO, CARLA, MARTA, RUI];
 
-/** Availability per `date|shiftCode`, used to build the matrix days. */
+/** Availability per `date|slot`, used to build the matrix days. */
 const AVAILABILITY: Record<string, string[]> = {
   // 4 available, 2 drivers → green
-  '2026-09-28|EVENING': [ANA.id, BRUNO.id, CARLA.id, RUI.id],
+  '2026-09-28|1': [ANA.id, BRUNO.id, CARLA.id, RUI.id],
   // 3 available, 2 drivers → green
-  '2026-10-03|MORNING': [ANA.id, BRUNO.id, CARLA.id],
+  '2026-10-03|1': [ANA.id, BRUNO.id, CARLA.id],
   // 1 available, 0 drivers → red
-  '2026-10-03|AFTERNOON': [CARLA.id],
+  '2026-10-03|2': [CARLA.id],
   // 2 available, 1 driver → yellow
-  '2026-10-04|MORNING': [ANA.id, CARLA.id],
+  '2026-10-04|1': [ANA.id, CARLA.id],
 };
 
 function matrixDay(date: string): AvailabilityMatrixDay {
@@ -140,13 +137,15 @@ function matrixDay(date: string): AvailabilityMatrixDay {
     isHoliday: pattern.isHoliday,
     holidayName: pattern.holidayName,
     shifts: pattern.shifts.map((shift) => {
-      const availableUserIds = AVAILABILITY[`${date}|${shift.code}`] ?? [];
+      const availableUserIds = AVAILABILITY[`${date}|${shift.slot}`] ?? [];
       const driverCount = availableUserIds.filter(
         (id) => PERSONNEL.find((person) => person.id === id)?.isDriver,
       ).length;
       return {
-        shiftCode: shift.code,
+        slot: shift.slot,
         label: shift.label,
+        startHour: shift.startHour,
+        endHour: shift.endHour,
         availableCount: availableUserIds.length,
         driverCount,
         coverageLevel: coverageLevel(availableUserIds.length, driverCount),

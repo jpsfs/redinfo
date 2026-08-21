@@ -21,7 +21,10 @@ import { AvailabilityWindowsService } from './availability-windows.service';
 import { HolidaysService } from './holidays.service';
 import { CreateHolidayDto } from './dto/create-holiday.dto';
 import { UpdateHolidayDto } from './dto/update-holiday.dto';
-import { CreateAvailabilityWindowDto } from './dto/create-availability-window.dto';
+import {
+  CreateAvailabilityWindowDto,
+  CreateMonthlyAvailabilityWindowDto,
+} from './dto/create-availability-window.dto';
 import { SubmitAvailabilityDto } from './dto/submit-availability.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -114,10 +117,27 @@ export class AvailabilityWindowsController {
     return this.windowsService.findOne(id);
   }
 
+  /** The window's own per-day shifts — not the default grid. */
+  @Get(':id/calendar')
+  @Actions(Action.MANAGE_AVAILABILITY_WINDOWS)
+  getCalendar(@Param('id') id: string) {
+    return this.windowsService.getCalendar(id);
+  }
+
   @Post()
   @Actions(Action.MANAGE_AVAILABILITY_WINDOWS)
   open(@Body() dto: CreateAvailabilityWindowDto, @CurrentUser() user: RequestUser) {
     return this.windowsService.open(dto, user.id);
+  }
+
+  /** Whole calendar month on the default grid; `days` is derived, not sent. */
+  @Post('month')
+  @Actions(Action.MANAGE_AVAILABILITY_WINDOWS)
+  openMonth(
+    @Body() dto: CreateMonthlyAvailabilityWindowDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.windowsService.openMonth(dto, user.id);
   }
 
   @Post(':id/close')
@@ -180,8 +200,18 @@ export class AvailabilityController {
   @Get('calendar')
   @ApiQuery({ name: 'from', required: true, type: String })
   @ApiQuery({ name: 'to', required: true, type: String })
-  getCalendar(@Query('from') from: string, @Query('to') to: string) {
-    return this.availabilityService.getCalendar(from, to);
+  @ApiQuery({
+    name: 'windowId',
+    required: false,
+    type: String,
+    description: "Use this window's own shifts for the days it covers.",
+  })
+  getCalendar(
+    @Query('from') from: string,
+    @Query('to') to: string,
+    @Query('windowId') windowId?: string,
+  ) {
+    return this.availabilityService.getCalendar(from, to, windowId);
   }
 
   @Get('matrix')

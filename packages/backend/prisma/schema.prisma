@@ -178,12 +178,6 @@ model VehicleInventoryAudit {
 
 /// MORNING/AFTERNOON apply to weekends and holidays, EVENING to workdays.
 /// The mapping itself lives in ShiftScheduleService — never re-derive it.
-enum ShiftCode {
-  MORNING
-  AFTERNOON
-  EVENING
-}
-
 enum AvailabilityWindowStatus {
   OPEN
   CLOSED
@@ -222,9 +216,31 @@ model AvailabilityWindow {
 
   submissions AvailabilitySubmission[]
   responses   AvailabilityResponse[]
+  shifts      AvailabilityWindowShift[]
 
   @@index([status])
   @@index([startDate, endDate])
+}
+
+/// The shifts of one day of one window, materialised when the window is opened.
+///
+/// Windows carry their own grid rather than deriving it: a coordinator may give
+/// any day any times, and a holiday added after the fact must not silently
+/// invalidate submissions already made against the day it lands on.
+model AvailabilityWindowShift {
+  id        String             @id @default(cuid())
+  windowId  String
+  window    AvailabilityWindow @relation(fields: [windowId], references: [id], onDelete: Cascade)
+  date      DateTime           @db.Date
+  /// 1-based position within the day, ordered by startHour. Submissions point here.
+  slot      Int
+  /// 0–23.
+  startHour Int
+  /// 1–24 (24 = midnight).
+  endHour   Int
+
+  @@unique([windowId, date, slot])
+  @@index([windowId])
 }
 
 model AvailabilitySubmission {
@@ -234,11 +250,14 @@ model AvailabilitySubmission {
   windowId  String
   window    AvailabilityWindow @relation(fields: [windowId], references: [id], onDelete: Cascade)
   date      DateTime           @db.Date
-  shiftCode ShiftCode
+  /// Slot of AvailabilityWindowShift for the same (windowId, date). Not a
+  /// foreign key: the shift row is identified by a composite the submission
+  /// would otherwise have to duplicate, and slots never move once opened.
+  slot      Int
   createdAt DateTime           @default(now())
   updatedAt DateTime           @updatedAt
 
-  @@unique([windowId, userId, date, shiftCode])
+  @@unique([windowId, userId, date, slot])
   @@index([windowId])
   @@index([date])
   @@index([userId])

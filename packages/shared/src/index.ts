@@ -247,19 +247,8 @@ export interface VehicleInventoryRow {
 
 // ─── Availability ──────────────────────────────────────────────────────────────
 
-export enum ShiftCode {
-  /** Weekend / holiday only. */
-  MORNING = 'MORNING',
-  /** Weekend / holiday only. */
-  AFTERNOON = 'AFTERNOON',
-  /** Workday only. */
-  EVENING = 'EVENING',
-}
-
-export interface ShiftDefinition {
-  code: ShiftCode;
-  /** Human label, e.g. "08:00–24:00". */
-  label: string;
+/** The clock span of one shift, in whole hours. `endHour` 24 means midnight. */
+export interface ShiftTimes {
   /** Start hour, 0–23. */
   startHour: number;
   /** End hour, 1–24 (24 = midnight of the following day). */
@@ -267,43 +256,144 @@ export interface ShiftDefinition {
 }
 
 /**
- * The fixed shift grid. Confirmed with the PO (ADO #160):
+ * One shift of one day of one window.
+ *
+ * `slot` is the shift's identity *within its day* — 1-based, ordered by start
+ * time. Submissions reference `(date, slot)` rather than a named shift, which
+ * is what lets each day carry its own times: slot 1 can be 20:00–24:00 on a
+ * Monday and 08:00–16:00 on the Saturday of the same window.
+ */
+export interface ShiftDefinition extends ShiftTimes {
+  slot: number;
+  /** Human label, e.g. "08:00–16:00". */
+  label: string;
+}
+
+export type DayType = 'workday' | 'weekend' | 'holiday';
+
+/**
+ * The default shift grid, as confirmed with the PO (ADO #160):
  *   workdays (Mon–Fri, non-holiday) → 1 shift, 20:00–24:00
  *   weekends (Sat/Sun) or holidays  → 2 shifts, 08:00–16:00 and 16:00–24:00
  *
- * Not user-configurable today, but every consumer must read the pattern from
- * `ShiftScheduleService` (backend) rather than re-deriving it, so the rule can
- * change in one place.
+ * These are only *defaults*: a window materialises its own shifts per day when
+ * it is opened, and a coordinator may edit any day's times. Every consumer must
+ * read the shifts of the window in play rather than re-deriving them from here.
  */
-export const SHIFT_DEFINITIONS: Record<ShiftCode, ShiftDefinition> = {
-  [ShiftCode.MORNING]: {
-    code: ShiftCode.MORNING,
-    label: '08:00–16:00',
-    startHour: 8,
-    endHour: 16,
-  },
-  [ShiftCode.AFTERNOON]: {
-    code: ShiftCode.AFTERNOON,
-    label: '16:00–24:00',
-    startHour: 16,
-    endHour: 24,
-  },
-  [ShiftCode.EVENING]: {
-    code: ShiftCode.EVENING,
-    label: '20:00–24:00',
-    startHour: 20,
-    endHour: 24,
-  },
-};
+export const DEFAULT_WORKDAY_SHIFTS: readonly ShiftTimes[] = [{ startHour: 20, endHour: 24 }];
 
-/** Shifts applicable to a workday (Mon–Fri, non-holiday). */
-export const WORKDAY_SHIFT_CODES: ShiftCode[] = [ShiftCode.EVENING];
-
-/** Shifts applicable to a weekend day or a holiday. */
-export const SPECIAL_DAY_SHIFT_CODES: ShiftCode[] = [
-  ShiftCode.MORNING,
-  ShiftCode.AFTERNOON,
+export const DEFAULT_SPECIAL_DAY_SHIFTS: readonly ShiftTimes[] = [
+  { startHour: 8, endHour: 16 },
+  { startHour: 16, endHour: 24 },
 ];
+
+/** Fresh, mutable copies — callers edit these, so never hand out the constants. */
+export function defaultShiftsForDayType(dayType: DayType): ShiftTimes[] {
+  const defaults =
+    dayType === 'workday' ? DEFAULT_WORKDAY_SHIFTS : DEFAULT_SPECIAL_DAY_SHIFTS;
+  return defaults.map(({ startHour, endHour }) => ({ startHour, endHour }));
+}
+
+/** Runaway guard on the per-day editor; not a domain rule. */
+export const MAX_SHIFTS_PER_DAY = 6;
+
+/**
+ * Longest window a coordinator may open, as a guard against fat-fingered
+ * years. Shared so the editor stops at the same day count the API rejects.
+ */
+export const MAX_WINDOW_DAYS = 92;
+
+const pad = (hour: number) => String(hour).padStart(2, '0');
+
+/** e.g. "08:00–16:00". */
+export function formatShiftLabel({ startHour, endHour }: ShiftTimes): string {
+  return `${pad(startHour)}:00–${pad(endHour)}:00`;
+}
+
+/** e.g. "08–16h", for calendar cells too small for the full label. */
+export function formatShiftShortLabel({ startHour, endHour }: ShiftTimes): string {
+  return `${pad(startHour)}–${endHour}h`;
+}
+
+/** By start time, then end time — the order slots are numbered in. */
+export function sortShifts(shifts: ShiftTimes[]): ShiftTimes[] {
+  return [...shifts].sort(
+    (a, b) => a.startHour - b.startHour || a.endHour - b.endHour,
+  );
+}
+
+/**
+ * The one rule for whether a day's shifts are coherent, returning a message
+ * fit to show a coordinator or null when they are fine.
+ *
+ * Shared so the per-day editor can block Save with the same wording the API
+ * would reject the payload with. Overlaps are rejected because one person
+ * cannot cover two shifts that share an hour — which is the whole point of
+ * splitting a day into shifts.
+ */
+export function validateDayShifts(shifts: ShiftTimes[]): string | null {
+  if (shifts.length > MAX_SHIFTS_PER_DAY) {
+    return `A day may have at most ${MAX_SHIFTS_PER_DAY} shifts (got ${shifts.length}).`;
+  }
+
+  for (const shift of shifts) {
+    if (!Number.isInteger(shift.startHour) || !Number.isInteger(shift.endHour)) {
+      return 'Shift times must be whole hours.';
+    }
+    if (shift.startHour < 0 || shift.startHour > 23) {
+      return 'A shift must start between 00:00 and 23:00.';
+    }
+    if (shift.endHour < 1 || shift.endHour > 24) {
+      return 'A shift must end between 01:00 and 24:00.';
+    }
+    if (shift.endHour <= shift.startHour) {
+      return `A shift must end after it starts (got ${formatShiftLabel(shift)}).`;
+    }
+  }
+
+  const sorted = sortShifts(shifts);
+  for (let index = 1; index < sorted.length; index += 1) {
+    if (sorted[index].startHour < sorted[index - 1].endHour) {
+      return `Shifts ${formatShiftLabel(sorted[index - 1])} and ${formatShiftLabel(
+        sorted[index],
+      )} overlap.`;
+    }
+  }
+
+  return null;
+}
+
+/** Sorted, slot-numbered and labelled: the shape every consumer reads. */
+export function toShiftDefinitions(shifts: ShiftTimes[]): ShiftDefinition[] {
+  return sortShifts(shifts).map((shift, index) => ({
+    slot: index + 1,
+    startHour: shift.startHour,
+    endHour: shift.endHour,
+    label: formatShiftLabel(shift),
+  }));
+}
+
+/**
+ * First and last day of a calendar month, as ISO dates — the range the
+ * "whole month" window covers. `month` is 1–12.
+ */
+export function monthBounds(
+  year: number,
+  month: number,
+): { startDate: string; endDate: string } {
+  if (!Number.isInteger(year) || !Number.isInteger(month)) {
+    throw new RangeError('year and month must be whole numbers');
+  }
+  if (month < 1 || month > 12) {
+    throw new RangeError(`month must be between 1 and 12, got ${month}`);
+  }
+  const iso = (date: Date) => date.toISOString().slice(0, 10);
+  return {
+    startDate: iso(new Date(Date.UTC(year, month - 1, 1))),
+    // Day 0 of the next month is the last day of this one, leap years included.
+    endDate: iso(new Date(Date.UTC(year, month, 0))),
+  };
+}
 
 /**
  * Capacity of a single *scheduled* shift. #160 does not enforce these on
@@ -397,18 +487,43 @@ export interface AvailabilityWindow {
   updatedAt: string;
 }
 
-/** The applicable shifts for one calendar day, plus why they apply. */
+/** The shifts of one calendar day, plus the day type that seeded them. */
 export interface DayShiftPattern {
   /** ISO date, `YYYY-MM-DD`. */
   date: string;
   isWeekend: boolean;
   isHoliday: boolean;
   holidayName?: string | null;
+  /** May be empty: a day can be left with no shifts at all. */
   shifts: ShiftDefinition[];
 }
 
 export interface AvailabilityWindowWithCalendar extends AvailabilityWindow {
   calendar: DayShiftPattern[];
+}
+
+/** One day's shifts as sent when opening a window. */
+export interface AvailabilityWindowDayInput {
+  /** ISO date, `YYYY-MM-DD`. */
+  date: string;
+  shifts: ShiftTimes[];
+}
+
+export interface CreateAvailabilityWindowRequest {
+  startDate: string;
+  endDate: string;
+  /**
+   * Per-day shifts. Must cover every day of the range exactly once when
+   * present; omit it entirely to materialise the default grid instead.
+   */
+  days?: AvailabilityWindowDayInput[];
+}
+
+/** `POST /availability-windows/month` — a whole month on the default grid. */
+export interface CreateMonthlyAvailabilityWindowRequest {
+  year: number;
+  /** 1–12. */
+  month: number;
 }
 
 export interface AvailabilitySubmission {
@@ -417,7 +532,8 @@ export interface AvailabilitySubmission {
   windowId: string;
   /** ISO date, `YYYY-MM-DD`. */
   date: string;
-  shiftCode: ShiftCode;
+  /** Shift slot within that day of the window. */
+  slot: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -426,7 +542,8 @@ export interface AvailabilitySubmission {
 export interface AvailabilityEntry {
   /** ISO date, `YYYY-MM-DD`. */
   date: string;
-  shiftCodes: ShiftCode[];
+  /** Slots the person is available for, from that day's shifts. */
+  slots: number[];
 }
 
 export interface SubmitAvailabilityRequest {
@@ -445,8 +562,9 @@ export interface MyAvailabilityResponse {
   entries: AvailabilityEntry[];
 }
 
-export interface AvailabilityMatrixShiftCell {
-  shiftCode: ShiftCode;
+export interface AvailabilityMatrixShiftCell extends ShiftTimes {
+  /** Slot within its own day; only unique together with the date. */
+  slot: number;
   label: string;
   availableCount: number;
   driverCount: number;

@@ -18,24 +18,46 @@ import {
   Stack,
   Typography,
 } from '@mui/material';
+import BoltIcon from '@mui/icons-material/Bolt';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
 import { AvailabilityWindow, AvailabilityWindowStatus, Holiday } from '@redinfo/shared';
 import { apiFetch } from '../../api';
 import { formatDate, formatDateRange, toIsoDate } from '../../utils/dates';
+import { EmergencyWindowDialog } from './EmergencyWindowDialog';
 
-const ListActions = () => (
-  <TopToolbar>
-    <Button
-      component={Link}
-      to="/holidays"
-      size="small"
-      startIcon={<EventBusyIcon />}
-    >
-      Manage holidays
-    </Button>
-    <CreateButton label="Open window" />
-  </TopToolbar>
-);
+/**
+ * Two ways to open a window: pick a month and go, or build the shifts day by
+ * day. The month shortcut covers the urgent case, where the standard grid is
+ * fine and the only question is which month.
+ */
+export const WindowListActions = () => {
+  const [emergencyOpen, setEmergencyOpen] = useState(false);
+
+  return (
+    <TopToolbar>
+      <Button
+        component={Link}
+        to="/holidays"
+        size="small"
+        startIcon={<EventBusyIcon />}
+      >
+        Manage holidays
+      </Button>
+      <Button
+        size="small"
+        startIcon={<BoltIcon />}
+        onClick={() => setEmergencyOpen(true)}
+      >
+        New Emergency Availability
+      </Button>
+      <CreateButton label="New availability window" />
+      <EmergencyWindowDialog
+        open={emergencyOpen}
+        onClose={() => setEmergencyOpen(false)}
+      />
+    </TopToolbar>
+  );
+};
 
 export const WindowStatusChip = ({ status }: { status?: string }) =>
   status === AvailabilityWindowStatus.OPEN ? (
@@ -100,7 +122,7 @@ const UpcomingHolidays = () => {
 
 export const AvailabilityWindowList = () => (
   <List
-    actions={<ListActions />}
+    actions={<WindowListActions />}
     sort={{ field: 'openedAt', order: 'DESC' }}
     empty={false}
   >
@@ -108,7 +130,8 @@ export const AvailabilityWindowList = () => (
       <UpcomingHolidays />
       <Alert severity="info" sx={{ mb: 2 }}>
         Only one availability window can be open at a time. Volunteers can submit
-        and amend their availability until the open window is closed.
+        and amend their availability until the open window is closed. Each window
+        carries its own shifts, set when it is opened.
       </Alert>
       <Datagrid rowClick="show" bulkActionButtons={false}>
         <FunctionField

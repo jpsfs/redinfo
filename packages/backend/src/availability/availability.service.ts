@@ -23,8 +23,6 @@ import {
   DayShiftPattern,
   hasPermission,
   MyAvailabilityResponse,
-  ShiftCode,
-  SHIFT_DEFINITIONS,
   UserRole,
 } from '@redinfo/shared';
 
@@ -66,10 +64,10 @@ export class AvailabilityService {
     }
 
     const [calendar, submissions, declined] = await Promise.all([
-      this.shiftSchedule.getPatternForRange(window.startDate, window.endDate),
+      this.shiftSchedule.getPatternForWindow(window),
       this.prisma.availabilitySubmission.findMany({
         where: { windowId: window.id, userId },
-        orderBy: [{ date: 'asc' }, { shiftCode: 'asc' }],
+        orderBy: [{ date: 'asc' }, { slot: 'asc' }],
       }),
       this.hasDeclined(window.id, userId),
     ]);
@@ -118,10 +116,7 @@ export class AvailabilityService {
    */
   async submitMine(user: RequestUser, dto: SubmitAvailabilityDto): Promise<MyAvailabilityResponse> {
     const window = await this.resolveSubmittableWindow(dto.windowId);
-    const patterns = await this.shiftSchedule.getPatternForRange(
-      window.startDate,
-      window.endDate,
-    );
+    const patterns = await this.shiftSchedule.getPatternForWindow(window);
     const patternByDate = new Map<string, DayShiftPattern>(
       patterns.map((pattern) => [pattern.date, pattern]),
     );
@@ -143,9 +138,9 @@ export class AvailabilityService {
         );
       }
 
-      for (const shiftCode of entry.shiftCodes ?? []) {
-        this.shiftSchedule.assertShiftValidForPattern(pattern, shiftCode);
-        desired.add(submissionKey(date, shiftCode));
+      for (const slot of entry.slots ?? []) {
+        this.shiftSchedule.assertSlotValidForPattern(pattern, slot);
+        desired.add(submissionKey(date, slot));
       }
     }
 
@@ -154,7 +149,7 @@ export class AvailabilityService {
     });
 
     const existingKeys = new Map(
-      existing.map((row) => [submissionKey(toIsoDate(row.date), row.shiftCode), row.id]),
+      existing.map((row) => [submissionKey(toIsoDate(row.date), row.slot), row.id]),
     );
 
     const idsToDelete = [...existingKeys.entries()]
@@ -164,12 +159,12 @@ export class AvailabilityService {
     const toCreate = [...desired]
       .filter((key) => !existingKeys.has(key))
       .map((key) => {
-        const [date, shiftCode] = key.split('|');
+        const [date, slot] = key.split('|');
         return {
           userId: user.id,
           windowId: window.id,
           date: parseIsoDate(date),
-          shiftCode: shiftCode as `${ShiftCode}`,
+          slot: Number(slot),
         };
       });
 
@@ -228,12 +223,28 @@ export class AvailabilityService {
 
   // ─── Coordinator views ──────────────────────────────────────────────────────
 
-  /** Applicable shifts per day for an arbitrary range (calendar preview). */
-  async getCalendar(from: string, to: string): Promise<DayShiftPattern[]> {
-    return this.shiftSchedule.getPatternForRange(
+  /**
+   * Shifts per day for an arbitrary range, for the calendar preview.
+   *
+   * With `windowId`, days that window covers come back with *its* shifts and
+   * the rest with the default grid — which is exactly what the month view
+   * needs, since it shows whole months around a window of a few weeks.
+   */
+  async getCalendar(
+    from: string,
+    to: string,
+    windowId?: string,
+  ): Promise<DayShiftPattern[]> {
+    const defaults = await this.shiftSchedule.getDefaultPatternForRange(
       normaliseIsoDate(from, 'from'),
       normaliseIsoDate(to, 'to'),
     );
+    if (!windowId) return defaults;
+
+    const window = await this.windows.findOne(windowId);
+    const windowDays = await this.shiftSchedule.getPatternForWindow(window);
+    const byDate = new Map(windowDays.map((day) => [day.date, day]));
+    return defaults.map((day) => byDate.get(day.date) ?? day);
   }
 
   /**
@@ -261,10 +272,10 @@ export class AvailabilityService {
     );
 
     const [calendar, submissions, declines] = await Promise.all([
-      this.shiftSchedule.getPatternForRange(window.startDate, window.endDate),
+      this.shiftSchedule.getPatternForWindow(window),
       this.prisma.availabilitySubmission.findMany({
         where: { windowId: window.id, userId: { in: personnelIds } },
-        orderBy: [{ date: 'asc' }, { shiftCode: 'asc' }],
+        orderBy: [{ date: 'asc' }, { slot: 'asc' }],
       }),
       this.prisma.availabilityResponse.findMany({
         where: { windowId: window.id, userId: { in: personnelIds } },
@@ -272,12 +283,12 @@ export class AvailabilityService {
       }),
     ]);
 
-    // date|shiftCode → userIds, in roster order so the drill-down list is stable.
+    // date|slot → userIds, in roster order so the drill-down list is stable.
     const rosterOrder = new Map(personnelIds.map((id, index) => [id, index]));
     const availabilityByCell = new Map<string, string[]>();
     const submittedUserIds = new Set<string>();
     for (const row of submissions) {
-      const key = submissionKey(toIsoDate(row.date), row.shiftCode);
+      const key = submissionKey(toIsoDate(row.date), row.slot);
       const bucket = availabilityByCell.get(key) ?? [];
       bucket.push(row.userId);
       availabilityByCell.set(key, bucket);
@@ -297,11 +308,13 @@ export class AvailabilityService {
       isHoliday: day.isHoliday,
       holidayName: day.holidayName ?? null,
       shifts: day.shifts.map((shift) => {
-        const availableUserIds = availabilityByCell.get(submissionKey(day.date, shift.code)) ?? [];
+        const availableUserIds = availabilityByCell.get(submissionKey(day.date, shift.slot)) ?? [];
         const driverCount = availableUserIds.filter((id) => driverIds.has(id)).length;
         return {
-          shiftCode: shift.code,
+          slot: shift.slot,
           label: shift.label,
+          startHour: shift.startHour,
+          endHour: shift.endHour,
           availableCount: availableUserIds.length,
           driverCount,
           coverageLevel: coverageLevel(availableUserIds.length, driverCount),
@@ -410,8 +423,8 @@ export class AvailabilityService {
 
 // ─── Module-local helpers ──────────────────────────────────────────────────────
 
-function submissionKey(date: string, shiftCode: ShiftCode | string): string {
-  return `${date}|${shiftCode}`;
+function submissionKey(date: string, slot: number): string {
+  return `${date}|${slot}`;
 }
 
 function normaliseIsoDate(value: string, field: string): string {
@@ -425,25 +438,18 @@ function normaliseIsoDate(value: string, field: string): string {
 }
 
 function groupEntries(
-  // Prisma's generated enum is a string union, so accept both it and the
-  // shared TS enum via the template-literal form.
-  submissions: Array<{ date: Date; shiftCode: `${ShiftCode}` }>,
+  submissions: Array<{ date: Date; slot: number }>,
 ): AvailabilityEntry[] {
-  const byDate = new Map<string, ShiftCode[]>();
+  const byDate = new Map<string, number[]>();
   for (const row of submissions) {
     const date = toIsoDate(row.date);
     const bucket = byDate.get(date) ?? [];
-    bucket.push(row.shiftCode as ShiftCode);
+    bucket.push(row.slot);
     byDate.set(date, bucket);
   }
   return [...byDate.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([date, shiftCodes]) => ({
-      date,
-      shiftCodes: shiftCodes.sort(
-        (a, b) => SHIFT_DEFINITIONS[a].startHour - SHIFT_DEFINITIONS[b].startHour,
-      ),
-    }));
+    .map(([date, slots]) => ({ date, slots: slots.sort((a, b) => a - b) }));
 }
 
 function csvEscape(value: string): string {
