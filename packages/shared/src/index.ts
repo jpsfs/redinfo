@@ -51,6 +51,8 @@ export enum Action {
   MANAGE_HOLIDAYS = 'MANAGE_HOLIDAYS',
   SUBMIT_AVAILABILITY = 'SUBMIT_AVAILABILITY',
   VIEW_AVAILABILITY_MATRIX = 'VIEW_AVAILABILITY_MATRIX',
+  MANAGE_SCHEDULES = 'MANAGE_SCHEDULES',
+  VIEW_SCHEDULES = 'VIEW_SCHEDULES',
 }
 
 export const ROLE_PERMISSIONS: Record<UserRole, Action[]> = {
@@ -72,6 +74,9 @@ export const ROLE_PERMISSIONS: Record<UserRole, Action[]> = {
     Action.MANAGE_HOLIDAYS,
     Action.VIEW_AVAILABILITY_MATRIX,
     Action.SUBMIT_AVAILABILITY,
+    // Building the rota is the same job as opening the window it comes from.
+    Action.MANAGE_SCHEDULES,
+    Action.VIEW_SCHEDULES,
   ],
   [UserRole.LOGISTICS_COORDINATOR]: [
     Action.MANAGE_LOGISTICS,
@@ -991,4 +996,351 @@ export interface AvailabilityMatrixResponse {
   personnel: AvailabilityMatrixPerson[];
   days: AvailabilityMatrixDay[];
   responseStats: AvailabilityResponseStats;
+}
+
+// ─── Schedules ─────────────────────────────────────────────────────────────────
+
+/**
+ * A schedule is built for one availability window, over that window's dates and
+ * against the shifts that window defined per day. Windows of different
+ * categories may cover the same dates, so there is no single "monthly schedule":
+ * each window is scheduled independently and carries its own history.
+ */
+export enum ScheduleStatus {
+  /** Being built. Nobody but a coordinator sees it. */
+  DRAFT = 'DRAFT',
+  /** Assigned personnel see their duties. Still editable — cover changes daily. */
+  PUBLISHED = 'PUBLISHED',
+}
+
+/** Why a shift is not fully crewed. */
+export type ScheduleGapKind =
+  /** Fewer certified drivers on the shift than it has vehicles to crew. */
+  | 'MISSING_DRIVER'
+  /** A role with a finite `maxPeople` that is not filled to it. */
+  | 'ROLE_SHORT'
+  /** A window with no roles at all, and nobody assigned to this shift. */
+  | 'EMPTY_SHIFT';
+
+export interface ScheduleGap {
+  kind: ScheduleGapKind;
+  /** Set for `ROLE_SHORT` only — which post is short. */
+  roleId?: string;
+  roleName?: string;
+  /** How many more people the gap wants. */
+  missing: number;
+}
+
+/**
+ * Where an assignment stands against what the person actually submitted, read
+ * live rather than from `isOverride`: someone may withdraw their availability
+ * after being scheduled, and the board should say so.
+ */
+export type AssignmentAvailability = AvailabilityResponseState;
+
+export interface SchedulePerson {
+  id: string;
+  firstName: string;
+  lastName: string;
+  isDriver: boolean;
+}
+
+export interface ScheduleAssignment {
+  id: string;
+  scheduleId: string;
+  /** ISO date, `YYYY-MM-DD`. */
+  date: string;
+  /** Shift slot within that day of the window. */
+  slot: number;
+  userId: string;
+  user: SchedulePerson;
+  /** Null only when the window defines no roles. */
+  roleId?: string | null;
+  roleName?: string | null;
+  /**
+   * The person had not submitted availability for this shift when they were
+   * assigned. Recorded at assignment time and never recomputed: it is the audit
+   * record of a decision, not a live view of the submission table.
+   */
+  isOverride: boolean;
+  /** Live state of the same person's submission, for display. */
+  availability: AssignmentAvailability;
+  assignedById: string;
+  assignedBy?: AvailabilityWindowActor | null;
+  assignedAt: string;
+}
+
+/** One shift of the board: what it needs, who is on it, what is missing. */
+export interface ScheduleShiftBoard extends ShiftSpec {
+  slot: number;
+  label: string;
+  assignments: ScheduleAssignment[];
+  /** Certified drivers across every role on this shift. */
+  driverCount: number;
+  gaps: ScheduleGap[];
+}
+
+export interface ScheduleDayBoard {
+  /** ISO date, `YYYY-MM-DD`. */
+  date: string;
+  isWeekend: boolean;
+  isHoliday: boolean;
+  holidayName?: string | null;
+  shifts: ScheduleShiftBoard[];
+}
+
+/**
+ * The same person on two shifts whose clock times overlap — including shifts in
+ * two different windows, which is the case a single window cannot see.
+ */
+export interface ScheduleConflict {
+  userId: string;
+  userName: string;
+  /** ISO date, `YYYY-MM-DD`. */
+  date: string;
+  /** The assignment on *this* schedule. */
+  slot: number;
+  /** What it collides with. */
+  otherWindowId: string;
+  otherWindowLabel: string;
+  otherLabel: string;
+  /** True when the collision is on another window rather than this one. */
+  crossWindow: boolean;
+}
+
+export interface ScheduleFillStats {
+  /** Slots the window's roles ask for, over every shift. Unlimited roles ask for none. */
+  requiredSlots: number;
+  /** Assignments that count towards those slots. */
+  filledSlots: number;
+  /** Shifts carrying at least one gap. */
+  shiftsWithGaps: number;
+  overrideCount: number;
+}
+
+export interface Schedule {
+  id: string;
+  windowId: string;
+  window?: AvailabilityWindow | null;
+  status: ScheduleStatus;
+  createdById: string;
+  createdBy?: AvailabilityWindowActor | null;
+  createdAt: string;
+  publishedById?: string | null;
+  publishedBy?: AvailabilityWindowActor | null;
+  publishedAt?: string | null;
+  updatedAt: string;
+  /** Present on list rows so the grid can show progress without the full board. */
+  stats?: ScheduleFillStats;
+}
+
+/** `GET /schedules/:id/board` — everything the builder screen needs. */
+export interface ScheduleBoardResponse {
+  schedule: Schedule;
+  window: AvailabilityWindow;
+  /** The window's own roles, in their own order. May be empty. */
+  roles: AvailabilityWindowRole[];
+  days: ScheduleDayBoard[];
+  conflicts: ScheduleConflict[];
+  stats: ScheduleFillStats;
+}
+
+/** One person the coordinator could put on a shift. */
+export interface ScheduleCandidate extends SchedulePerson {
+  /** Their response to the window this schedule belongs to. */
+  availability: AssignmentAvailability;
+  /** True when they submitted for *this* shift — the easy path. */
+  submittedForShift: boolean;
+  /** Already on this shift, in this role or another: cannot be assigned twice. */
+  alreadyOnShift: boolean;
+  /** Role they already hold on this shift, when `alreadyOnShift`. */
+  currentRoleName?: string | null;
+  /** Duties already given to them on this schedule — the fairness signal. */
+  dutyCount: number;
+  /** An overlapping duty elsewhere, if any, so the coordinator sees it first. */
+  conflictLabel?: string | null;
+}
+
+export interface ScheduleCandidatesResponse {
+  /** Submitted for this shift. Offered first and assignable in one action. */
+  available: ScheduleCandidate[];
+  /** Everyone else eligible. Assigning one is recorded as an override. */
+  others: ScheduleCandidate[];
+}
+
+export interface CreateScheduleRequest {
+  windowId: string;
+}
+
+export interface CreateScheduleAssignmentRequest {
+  /** ISO date, `YYYY-MM-DD`. */
+  date: string;
+  slot: number;
+  userId: string;
+  /** Required when the window defines roles; rejected when it defines none. */
+  roleId?: string | null;
+}
+
+/** Keep hand-placed people, or start again from availability. */
+export type AutofillMode = 'EMPTY' | 'REPLACE';
+
+export interface AutofillScheduleRequest {
+  mode?: AutofillMode;
+  /** Prefer whoever has fewest duties so far in this window. Default true. */
+  fairness?: boolean;
+}
+
+export interface AutofillReport {
+  placed: number;
+  /** Slots still open afterwards. */
+  unfilled: number;
+  /** Shifts left without a driver for every vehicle. */
+  shiftsWithoutDriver: number;
+}
+
+/** One published duty, as the person it belongs to sees it. */
+export interface MyDuty {
+  id: string;
+  scheduleId: string;
+  windowId: string;
+  windowCategory: AvailabilityWindowCategory;
+  windowLabel: string;
+  /** ISO date, `YYYY-MM-DD`. */
+  date: string;
+  slot: number;
+  startMinute: number;
+  endMinute: number;
+  label: string;
+  vehiclesNeeded: number;
+  roleName?: string | null;
+}
+
+/** `GET /schedules/me` — published duties only, split around today. */
+export interface MyDutiesResponse {
+  upcoming: MyDuty[];
+  past: MyDuty[];
+}
+
+/** Whether a role may take one more person on a shift. */
+export function roleCanTakeMore(
+  role: Pick<AvailabilityWindowRole, 'maxPeople'>,
+  currentCount: number,
+): boolean {
+  if (role.maxPeople === UNLIMITED_ROLE_PEOPLE) return true;
+  return currentCount < role.maxPeople;
+}
+
+/**
+ * Certified drivers among the people on a shift — in *any* role, not only the
+ * driver post.
+ *
+ * The two rules are deliberately separate: `maxPeople` caps a role, while
+ * `vehiclesNeeded` says how many people on the shift must be able to drive. A
+ * shift crewing two vehicles in a window whose `Driver` role holds one person
+ * is covered when the second certified driver sits in another role.
+ */
+export function assignedDriverCount(
+  assignments: Array<{ user: Pick<SchedulePerson, 'isDriver'> }>,
+): number {
+  return assignments.filter((assignment) => assignment.user.isDriver).length;
+}
+
+/**
+ * Everything missing from one shift, in the order a reader cares about: a
+ * vehicle nobody can drive first, then each role short of its people.
+ */
+export function shiftGaps({
+  vehiclesNeeded,
+  roles,
+  assignments,
+}: {
+  vehiclesNeeded: number;
+  roles: AvailabilityWindowRole[];
+  assignments: Array<{ roleId?: string | null; user: Pick<SchedulePerson, 'isDriver'> }>;
+}): ScheduleGap[] {
+  const gaps: ScheduleGap[] = [];
+
+  const drivers = assignedDriverCount(assignments);
+  if (vehiclesNeeded > 0 && drivers < vehiclesNeeded) {
+    gaps.push({ kind: 'MISSING_DRIVER', missing: vehiclesNeeded - drivers });
+  }
+
+  if (roles.length === 0) {
+    if (assignments.length === 0) {
+      gaps.push({ kind: 'EMPTY_SHIFT', missing: 1 });
+    }
+    return gaps;
+  }
+
+  for (const role of roles) {
+    // An unlimited role is a pool, not a post: it cannot be short.
+    if (role.maxPeople === UNLIMITED_ROLE_PEOPLE) continue;
+    const filled = assignments.filter((assignment) => assignment.roleId === role.id).length;
+    if (filled < role.maxPeople) {
+      gaps.push({
+        kind: 'ROLE_SHORT',
+        roleId: role.id,
+        roleName: role.name,
+        missing: role.maxPeople - filled,
+      });
+    }
+  }
+
+  return gaps;
+}
+
+/** Whether two shifts on the same day share any minute of the clock. */
+export function shiftsOverlap(a: ShiftTimes, b: ShiftTimes): boolean {
+  return a.startMinute < b.endMinute && b.startMinute < a.endMinute;
+}
+
+/** Slots a shift asks for: the sum of its finite roles, or 1 for a role-less window. */
+export function requiredSlotsForShift(roles: AvailabilityWindowRole[]): number {
+  if (roles.length === 0) return 1;
+  return roles.reduce(
+    (total, role) => total + (role.maxPeople === UNLIMITED_ROLE_PEOPLE ? 0 : role.maxPeople),
+    0,
+  );
+}
+
+/** Headline numbers for a whole board, computed the same way everywhere. */
+export function scheduleFillStats(
+  days: ScheduleDayBoard[],
+  roles: AvailabilityWindowRole[],
+): ScheduleFillStats {
+  let requiredSlots = 0;
+  let filledSlots = 0;
+  let shiftsWithGaps = 0;
+  let overrideCount = 0;
+
+  const perShift = requiredSlotsForShift(roles);
+
+  for (const day of days) {
+    for (const shift of day.shifts) {
+      requiredSlots += perShift;
+      filledSlots += shift.assignments.length;
+      if (shift.gaps.length > 0) shiftsWithGaps += 1;
+      overrideCount += shift.assignments.filter((a) => a.isOverride).length;
+    }
+  }
+
+  return { requiredSlots, filledSlots, shiftsWithGaps, overrideCount };
+}
+
+/** e.g. "3 of 4 people" / "no gaps". Short enough for a chip. */
+export function formatGap(gap: ScheduleGap): string {
+  switch (gap.kind) {
+    case 'MISSING_DRIVER':
+      return gap.missing === 1
+        ? 'No driver for the vehicle'
+        : `${gap.missing} drivers short for the vehicles`;
+    case 'ROLE_SHORT':
+      return gap.missing === 1
+        ? `${gap.roleName}: 1 person short`
+        : `${gap.roleName}: ${gap.missing} people short`;
+    case 'EMPTY_SHIFT':
+      return 'Nobody assigned';
+    default:
+      return 'Not fully crewed';
+  }
 }

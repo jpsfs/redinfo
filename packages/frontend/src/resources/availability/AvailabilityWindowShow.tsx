@@ -21,12 +21,15 @@ import {
   Divider,
   Typography,
 } from '@mui/material';
+import EventNoteIcon from '@mui/icons-material/EventNote';
 import LockIcon from '@mui/icons-material/Lock';
+import { useNavigate } from 'react-router-dom';
 import {
   AvailabilityMatrixResponse,
   AvailabilityWindow,
   availabilityWindowLabel,
   AvailabilityWindowStatus,
+  Schedule,
 } from '@redinfo/shared';
 import { apiFetch } from '../../api';
 import { formatDateRange } from '../../utils/dates';
@@ -144,8 +147,79 @@ const WindowHeader = () => {
           <WindowIdentity category={record.category} name={record.name} />
         </Box>
       </Box>
-      <CloseWindowButton />
+      <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+        <ScheduleButton />
+        <CloseWindowButton />
+      </Box>
     </Box>
+  );
+};
+
+/**
+ * Into the schedule for this window, starting it if there is none.
+ *
+ * Offered while the window is still open as well as after it closes:
+ * coordinators begin arranging cover before submissions end, and the builder
+ * says plainly that availability may still change.
+ */
+const ScheduleButton = () => {
+  const record = useRecordContext<AvailabilityWindow>();
+  const notify = useNotify();
+  const navigate = useNavigate();
+  const [schedule, setSchedule] = useState<Schedule | null | undefined>(undefined);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!record?.id) return;
+    let cancelled = false;
+    apiFetch<{ data: Schedule[] }>(
+      `/schedules?windowId=${encodeURIComponent(String(record.id))}&perPage=1`,
+    )
+      .then((result) => {
+        if (!cancelled) setSchedule(result.data[0] ?? null);
+      })
+      .catch(() => {
+        // A volunteer reading a window has no schedule permission; the button
+        // simply does not appear for them.
+        if (!cancelled) setSchedule(undefined);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [record?.id]);
+
+  if (!record || schedule === undefined) return null;
+
+  const open = async () => {
+    if (schedule) {
+      navigate(`/schedules/${schedule.id}/show`);
+      return;
+    }
+    setBusy(true);
+    try {
+      const created = await apiFetch<Schedule>('/schedules', {
+        method: 'POST',
+        body: { windowId: record.id },
+      });
+      navigate(`/schedules/${created.id}/show`);
+    } catch (e) {
+      notify(e instanceof Error ? e.message : 'Could not start the schedule', {
+        type: 'error',
+      });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Button
+      variant="outlined"
+      startIcon={busy ? <CircularProgress size={16} /> : <EventNoteIcon />}
+      disabled={busy}
+      onClick={() => void open()}
+    >
+      {schedule ? 'Open schedule' : 'Build schedule'}
+    </Button>
   );
 };
 

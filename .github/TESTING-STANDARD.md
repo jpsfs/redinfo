@@ -26,11 +26,17 @@ Run unit tests (backend):
 pnpm --filter backend test
 ```
 
-Run integration tests (example pattern):
+Run integration tests (needs `DATABASE_URL`):
 
 ```
-pnpm --filter backend test -- -t "integration"
+pnpm --filter backend test:integration
 ```
+
+Use the script rather than `test -- -t "integration"`: everything after the `--`
+reaches jest as a *path* pattern, not as flags, so the name filter never applies
+and the suites run in parallel. They share one database, and more than one of
+them assumes it is the only thing holding an availability window open — the
+script runs them in band and filters by name properly.
 
 Run e2e tests (example using Playwright):
 

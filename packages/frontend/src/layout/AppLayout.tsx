@@ -7,6 +7,7 @@ import {
   useResourceDefinitions,
 } from 'react-admin';
 import { Box, Divider } from '@mui/material';
+import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
 import EventAvailableIcon from '@mui/icons-material/EventAvailable';
 import { logoRedCrossEmblemPath } from './design-tokens';
 
@@ -58,6 +59,11 @@ export const RedInfoMenu = () => {
         to="/my-availability"
         primaryText="My Availability"
         leftIcon={<EventAvailableIcon />}
+      />
+      <Menu.Item
+        to="/my-duties"
+        primaryText="My Duties"
+        leftIcon={<AssignmentIndIcon />}
       />
     </Menu>
   );

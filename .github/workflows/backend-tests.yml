@@ -66,5 +66,8 @@ jobs:
         run: pnpm --filter backend prisma:generate
       - name: Deploy migrations (non-interactive)
         run: pnpm --filter backend prisma:migrate:deploy
+      # Serially, and via the script rather than `test -- -t`: every integration
+      # suite shares the one database, and more than one of them assumes it is
+      # the only thing holding an availability window open.
       - name: Run backend integration tests
-        run: pnpm --filter backend test -- -t "integration"
+        run: pnpm --filter backend test:integration

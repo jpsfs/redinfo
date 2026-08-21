@@ -11,7 +11,15 @@ import {
   DEFAULT_EMERGENCY_WINDOW_ROLES,
   defaultShiftsForDayType,
   MyAvailabilityResponse,
+  MyDuty,
   roleRequiresDriverCertification,
+  Schedule,
+  ScheduleAssignment,
+  ScheduleBoardResponse,
+  ScheduleCandidatesResponse,
+  SchedulePerson,
+  ScheduleShiftBoard,
+  ScheduleStatus,
   toShiftDefinitions,
 } from '@redinfo/shared';
 import { isoDateRange, parseIsoDate } from '../utils/dates';
@@ -200,3 +208,180 @@ export function matrixResponse(
     ...overrides,
   };
 }
+
+// ─── Schedules (#161) ──────────────────────────────────────────────────────────
+
+/**
+ * A two-shift board over the first weekend of the window.
+ *
+ * Saturday crews two vehicles with one Driver post, which is the case the whole
+ * feature turns on: the second certified driver has to sit in another role, and
+ * that still counts as covered.
+ */
+export const SCHEDULE_ID = 'sched-1';
+
+const [DRIVER_ROLE, LEADER_ROLE, MEMBER_ROLE] = EMERGENCY_ROLES;
+
+export const DRAFT_SCHEDULE: Schedule = {
+  id: SCHEDULE_ID,
+  windowId: OPEN_WINDOW.id,
+  window: OPEN_WINDOW,
+  status: ScheduleStatus.DRAFT,
+  createdById: 'coord-1',
+  createdBy: { id: 'coord-1', firstName: 'Maria', lastName: 'Santos' },
+  createdAt: '2026-09-20T09:00:00.000Z',
+  publishedById: null,
+  publishedBy: null,
+  publishedAt: null,
+  updatedAt: '2026-09-20T09:00:00.000Z',
+  stats: { requiredSlots: 6, filledSlots: 3, shiftsWithGaps: 1, overrideCount: 1 },
+};
+
+export function scheduleAssignment(
+  overrides: Partial<ScheduleAssignment> & { user: SchedulePerson },
+): ScheduleAssignment {
+  return {
+    id: `assign-${overrides.user.id}-${overrides.slot ?? 1}`,
+    scheduleId: SCHEDULE_ID,
+    date: '2026-10-03',
+    slot: 1,
+    userId: overrides.user.id,
+    roleId: DRIVER_ROLE.id,
+    roleName: DRIVER_ROLE.name,
+    isOverride: false,
+    availability: 'submitted',
+    assignedById: 'coord-1',
+    assignedBy: { id: 'coord-1', firstName: 'Maria', lastName: 'Santos' },
+    assignedAt: '2026-09-20T10:00:00.000Z',
+    ...overrides,
+  };
+}
+
+const person = (from: AvailabilityMatrixPerson): SchedulePerson => ({
+  id: from.id,
+  firstName: from.firstName,
+  lastName: from.lastName,
+  isDriver: from.isDriver,
+});
+
+export const ANA_PERSON = person(ANA);
+export const BRUNO_PERSON = person(BRUNO);
+export const CARLA_PERSON = person(CARLA);
+
+/**
+ * Saturday: Ana drives and Carla leads, so Team Member is short. Sunday: empty
+ * and crewing two vehicles, so it is short of both drivers and every role.
+ */
+export function scheduleBoard(
+  overrides: Partial<ScheduleBoardResponse> = {},
+): ScheduleBoardResponse {
+  const saturday: ScheduleShiftBoard = {
+    slot: 1,
+    startMinute: 8 * 60,
+    endMinute: 16 * 60,
+    vehiclesNeeded: 2,
+    label: '08:00–16:00',
+    driverCount: 1,
+    assignments: [
+      scheduleAssignment({ user: ANA_PERSON, date: '2026-10-03' }),
+      scheduleAssignment({
+        user: CARLA_PERSON,
+        date: '2026-10-03',
+        roleId: LEADER_ROLE.id,
+        roleName: LEADER_ROLE.name,
+        isOverride: true,
+        availability: 'pending',
+      }),
+    ],
+    gaps: [
+      { kind: 'MISSING_DRIVER', missing: 1 },
+      { kind: 'ROLE_SHORT', roleId: MEMBER_ROLE.id, roleName: MEMBER_ROLE.name, missing: 1 },
+    ],
+  };
+
+  const sunday: ScheduleShiftBoard = {
+    slot: 1,
+    startMinute: 8 * 60,
+    endMinute: 16 * 60,
+    vehiclesNeeded: 1,
+    label: '08:00–16:00',
+    driverCount: 0,
+    assignments: [],
+    gaps: [
+      { kind: 'MISSING_DRIVER', missing: 1 },
+      { kind: 'ROLE_SHORT', roleId: DRIVER_ROLE.id, roleName: DRIVER_ROLE.name, missing: 1 },
+      { kind: 'ROLE_SHORT', roleId: LEADER_ROLE.id, roleName: LEADER_ROLE.name, missing: 1 },
+      { kind: 'ROLE_SHORT', roleId: MEMBER_ROLE.id, roleName: MEMBER_ROLE.name, missing: 1 },
+    ],
+  };
+
+  return {
+    schedule: DRAFT_SCHEDULE,
+    window: OPEN_WINDOW,
+    roles: EMERGENCY_ROLES,
+    days: [
+      {
+        date: '2026-10-03',
+        isWeekend: true,
+        isHoliday: false,
+        holidayName: null,
+        shifts: [saturday],
+      },
+      {
+        date: '2026-10-04',
+        isWeekend: true,
+        isHoliday: false,
+        holidayName: null,
+        shifts: [sunday],
+      },
+    ],
+    conflicts: [],
+    stats: { requiredSlots: 6, filledSlots: 2, shiftsWithGaps: 2, overrideCount: 1 },
+    ...overrides,
+  };
+}
+
+export function scheduleCandidates(
+  overrides: Partial<ScheduleCandidatesResponse> = {},
+): ScheduleCandidatesResponse {
+  return {
+    available: [
+      {
+        ...BRUNO_PERSON,
+        availability: 'submitted',
+        submittedForShift: true,
+        alreadyOnShift: false,
+        currentRoleName: null,
+        dutyCount: 1,
+        conflictLabel: null,
+      },
+    ],
+    others: [
+      {
+        ...CARLA_PERSON,
+        availability: 'declined',
+        submittedForShift: false,
+        alreadyOnShift: false,
+        currentRoleName: null,
+        dutyCount: 0,
+        conflictLabel: null,
+      },
+    ],
+    ...overrides,
+  };
+}
+
+export const MY_DUTY: MyDuty = {
+  id: 'assign-1',
+  scheduleId: SCHEDULE_ID,
+  windowId: OPEN_WINDOW.id,
+  windowCategory: AvailabilityWindowCategory.EMERGENCY,
+  windowLabel: 'Emergency - October',
+  date: '2026-10-03',
+  slot: 1,
+  startMinute: 8 * 60,
+  endMinute: 16 * 60,
+  label: '08:00–16:00',
+  vehiclesNeeded: 2,
+  roleName: 'Driver',
+};

@@ -66,14 +66,18 @@ describe('RedInfoMenu', () => {
     expect(renderMenu()).not.toContain('/holidays');
   });
 
-  it('adds My Availability, which is a custom route rather than a resource', () => {
-    expect(renderMenu()).toContain('/my-availability');
+  it('adds the personal pages, which are custom routes rather than resources', () => {
+    const links = renderMenu();
+    expect(links).toContain('/my-availability');
+    expect(links).toContain('/my-duties');
   });
 
-  it('keeps the dashboard first and My Availability last', () => {
+  it('keeps the dashboard first and the personal pages last', () => {
     const links = renderMenu();
 
     expect(links[0]).toBe('/');
-    expect(links[links.length - 1]).toBe('/my-availability');
+    // What someone was asked for, then what they were given: availability then
+    // duties, in the order the two halves of the cycle happen.
+    expect(links.slice(-2)).toEqual(['/my-availability', '/my-duties']);
   });
 });

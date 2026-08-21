@@ -32,7 +32,9 @@ import {
   HolidayCreate,
   HolidayEdit,
 } from './resources/availability';
+import { ScheduleList, ScheduleShow } from './resources/schedules';
 import { MyAvailabilityPage } from './pages/MyAvailabilityPage';
+import { MyDutiesPage } from './pages/MyDutiesPage';
 import PeopleIcon from '@mui/icons-material/People';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import BuildIcon from '@mui/icons-material/Build';
@@ -40,6 +42,7 @@ import InventoryIcon from '@mui/icons-material/Inventory';
 import EventAvailableIcon from '@mui/icons-material/EventAvailable';
 import DateRangeIcon from '@mui/icons-material/DateRange';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
+import EventNoteIcon from '@mui/icons-material/EventNote';
 
 export default function App() {
   return (
@@ -61,6 +64,9 @@ export default function App() {
           signed-in user's own availability, so there is nothing to list. */}
       <CustomRoutes>
         <Route path="/my-availability" element={<MyAvailabilityPage />} />
+        {/* Duties span every rota someone is on, so this is not scoped to a
+            single window the way My Availability is. */}
+        <Route path="/my-duties" element={<MyDutiesPage />} />
       </CustomRoutes>
 
       <Resource
@@ -120,6 +126,14 @@ export default function App() {
         create={AvailabilityWindowCreate}
         show={AvailabilityWindowShow}
         options={{ label: 'Availability Windows' }}
+      />
+
+      <Resource
+        name="schedules"
+        icon={EventNoteIcon}
+        list={ScheduleList}
+        show={ScheduleShow}
+        options={{ label: 'Schedules' }}
       />
 
       <Resource

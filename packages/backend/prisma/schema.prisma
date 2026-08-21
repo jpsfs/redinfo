@@ -24,25 +24,30 @@ enum AuthProvider {
 }
 
 model User {
-  id             String       @id @default(cuid())
-  email          String       @unique
-  firstName      String
-  lastName       String
-  passwordHash   String?
-  role           UserRole     @default(EMERGENCY_OPERATIONAL)
-  provider       AuthProvider @default(LOCAL)
-  providerId     String?
-  isActive       Boolean      @default(true)
-  isDriver       Boolean      @default(false)
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+  id           String       @id @default(cuid())
+  email        String       @unique
+  firstName    String
+  lastName     String
+  passwordHash String?
+  role         UserRole     @default(EMERGENCY_OPERATIONAL)
+  provider     AuthProvider @default(LOCAL)
+  providerId   String?
+  isActive     Boolean      @default(true)
+  isDriver     Boolean      @default(false)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
 
-  refreshTokens  RefreshToken[]
+  refreshTokens RefreshToken[]
 
   windowsOpened           AvailabilityWindow[]     @relation("WindowOpenedBy")
   windowsClosed           AvailabilityWindow[]     @relation("WindowClosedBy")
   availabilitySubmissions AvailabilitySubmission[]
   availabilityResponses   AvailabilityResponse[]
+
+  schedulesCreated    Schedule[]           @relation("ScheduleCreatedBy")
+  schedulesPublished  Schedule[]           @relation("SchedulePublishedBy")
+  scheduleAssignments ScheduleAssignment[] @relation("ScheduleAssignedTo")
+  assignmentsMade     ScheduleAssignment[] @relation("ScheduleAssignedBy")
 
   @@index([email])
   @@index([provider, providerId])
@@ -50,13 +55,13 @@ model User {
 }
 
 model RefreshToken {
-  id          String   @id @default(cuid())
-  token       String   @unique
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  expiresAt   DateTime
-  createdAt   DateTime @default(now())
-  revokedAt   DateTime?
+  id        String    @id @default(cuid())
+  token     String    @unique
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
 
   @@index([userId])
 }
@@ -207,28 +212,29 @@ model Holiday {
 }
 
 model AvailabilityWindow {
-  id         String                   @id @default(cuid())
-  startDate  DateTime                 @db.Date
-  endDate    DateTime                 @db.Date
+  id         String                     @id @default(cuid())
+  startDate  DateTime                   @db.Date
+  endDate    DateTime                   @db.Date
   /// Which rota this window collects availability for. No default on purpose:
   /// every caller states it, so a missing category cannot silently become one.
   category   AvailabilityWindowCategory
   /// Optional free-text title, e.g. "Emergency - October". Not unique.
   name       String?
-  status     AvailabilityWindowStatus @default(OPEN)
+  status     AvailabilityWindowStatus   @default(OPEN)
   openedById String
-  openedBy   User                     @relation("WindowOpenedBy", fields: [openedById], references: [id])
-  openedAt   DateTime                 @default(now())
+  openedBy   User                       @relation("WindowOpenedBy", fields: [openedById], references: [id])
+  openedAt   DateTime                   @default(now())
   closedById String?
-  closedBy   User?                    @relation("WindowClosedBy", fields: [closedById], references: [id])
+  closedBy   User?                      @relation("WindowClosedBy", fields: [closedById], references: [id])
   closedAt   DateTime?
-  createdAt  DateTime                 @default(now())
-  updatedAt  DateTime                 @updatedAt
+  createdAt  DateTime                   @default(now())
+  updatedAt  DateTime                   @updatedAt
 
   submissions AvailabilitySubmission[]
   responses   AvailabilityResponse[]
   shifts      AvailabilityWindowShift[]
   roles       AvailabilityWindowRole[]
+  schedule    Schedule?
 
   @@index([status])
   @@index([startDate, endDate])
@@ -242,16 +248,16 @@ model AvailabilityWindow {
 /// any day any times, and a holiday added after the fact must not silently
 /// invalidate submissions already made against the day it lands on.
 model AvailabilityWindowShift {
-  id        String             @id @default(cuid())
-  windowId  String
-  window    AvailabilityWindow @relation(fields: [windowId], references: [id], onDelete: Cascade)
-  date        DateTime           @db.Date
+  id             String             @id @default(cuid())
+  windowId       String
+  window         AvailabilityWindow @relation(fields: [windowId], references: [id], onDelete: Cascade)
+  date           DateTime           @db.Date
   /// 1-based position within the day, ordered by startMinute. Submissions point here.
-  slot        Int
+  slot           Int
   /// Minutes from midnight the shift starts, 0–1439.
-  startMinute Int
+  startMinute    Int
   /// Minutes from midnight it ends, 1–1440 (1440 = midnight).
-  endMinute   Int
+  endMinute      Int
   /// Vehicles to be crewed on this shift; each needs its own driver, which is
   /// what the coverage colours are judged against. 0 = people only.
   vehiclesNeeded Int
@@ -266,17 +272,19 @@ model AvailabilityWindowShift {
 /// is collected without them (a volunteer says only when they can be there) and
 /// the coordinator allocates roles when building the schedule.
 model AvailabilityWindowRole {
-  id       String             @id @default(cuid())
-  windowId String
-  window   AvailabilityWindow @relation(fields: [windowId], references: [id], onDelete: Cascade)
-  name     String
+  id                          String             @id @default(cuid())
+  windowId                    String
+  window                      AvailabilityWindow @relation(fields: [windowId], references: [id], onDelete: Cascade)
+  name                        String
   /// Most people the schedule may put in this role on one shift. 0 = unlimited.
-  maxPeople Int
+  maxPeople                   Int
   /// Only a certified driver may fill this role. Always true for "Driver",
   /// derived from the name rather than chosen, so the rule cannot be turned off.
-  requiresDriverCertification Boolean @default(false)
+  requiresDriverCertification Boolean            @default(false)
   /// Position in the window's own role list, 0-based.
-  order    Int
+  order                       Int
+
+  assignments ScheduleAssignment[]
 
   /// One post per name: two roles a schedule cannot tell apart are not two roles.
   @@unique([windowId, name])
@@ -301,6 +309,66 @@ model AvailabilitySubmission {
   @@index([windowId])
   @@index([date])
   @@index([userId])
+}
+
+enum ScheduleStatus {
+  DRAFT
+  PUBLISHED
+}
+
+/// The duty roster built from one availability window.
+///
+/// One per window, and identified by it: windows of different categories may
+/// cover the same dates, so there is no single "monthly schedule" to hang this
+/// off. A schedule may be started while its window is still open — coordinators
+/// begin arranging cover before submissions close.
+model Schedule {
+  id            String             @id @default(cuid())
+  windowId      String             @unique
+  window        AvailabilityWindow @relation(fields: [windowId], references: [id], onDelete: Cascade)
+  status        ScheduleStatus     @default(DRAFT)
+  createdById   String
+  createdBy     User               @relation("ScheduleCreatedBy", fields: [createdById], references: [id])
+  createdAt     DateTime           @default(now())
+  publishedById String?
+  publishedBy   User?              @relation("SchedulePublishedBy", fields: [publishedById], references: [id])
+  publishedAt   DateTime?
+  updatedAt     DateTime           @updatedAt
+
+  assignments ScheduleAssignment[]
+
+  @@index([status])
+}
+
+/// One person on one shift of one schedule, in at most one role.
+model ScheduleAssignment {
+  id           String                  @id @default(cuid())
+  scheduleId   String
+  schedule     Schedule                @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  /// Identified the same way a submission is — by (date, slot) rather than a
+  /// foreign key to the shift row. Slots never move once a window is opened, and
+  /// this keeps a legacy window with no materialised shifts schedulable.
+  date         DateTime                @db.Date
+  slot         Int
+  userId       String
+  user         User                    @relation("ScheduleAssignedTo", fields: [userId], references: [id], onDelete: Cascade)
+  /// Null only when the window defines no roles at all.
+  roleId       String?
+  role         AvailabilityWindowRole? @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  /// The person had not submitted availability for this shift when they were
+  /// assigned. Computed server-side and never recomputed afterwards: it records
+  /// a decision, so a later change of availability must not rewrite history.
+  isOverride   Boolean                 @default(false)
+  assignedById String
+  assignedBy   User                    @relation("ScheduleAssignedBy", fields: [assignedById], references: [id])
+  assignedAt   DateTime                @default(now())
+
+  /// One person at most once per shift — the same person in two roles on one
+  /// shift is a data error, not a conflict to report.
+  @@unique([scheduleId, date, slot, userId])
+  @@index([scheduleId])
+  @@index([userId, date])
+  @@index([date])
 }
 
 /// Tri-state response tracking: "submitted" is derived from
