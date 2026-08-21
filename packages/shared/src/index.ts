@@ -247,12 +247,75 @@ export interface VehicleInventoryRow {
 
 // ─── Availability ──────────────────────────────────────────────────────────────
 
-/** The clock span of one shift, in whole hours. `endHour` 24 means midnight. */
+/** Minutes in a day; also the value that means "midnight" as an end time. */
+export const MINUTES_PER_DAY = 1440;
+
+/**
+ * The clock span of one shift, as minutes from midnight.
+ *
+ * Minutes rather than hours because shifts are set per day by a coordinator and
+ * real rotas do not fall on the hour (a handover at 08:30 is ordinary). Stored
+ * as integers so ordering, overlap and equality are plain arithmetic.
+ */
 export interface ShiftTimes {
-  /** Start hour, 0–23. */
-  startHour: number;
-  /** End hour, 1–24 (24 = midnight of the following day). */
-  endHour: number;
+  /** Minutes from midnight the shift starts, 0–1439 (510 = 08:30). */
+  startMinute: number;
+  /** Minutes from midnight it ends, 1–1440 (1440 = midnight, end of day). */
+  endMinute: number;
+}
+
+/** Minutes from midnight for a wall-clock time. */
+export function toMinuteOfDay(hour: number, minute = 0): number {
+  return hour * 60 + minute;
+}
+
+/** `HH:MM`, with 1440 rendered as "24:00" rather than wrapping to "00:00". */
+export function formatTimeOfDay(minuteOfDay: number): string {
+  const hour = Math.floor(minuteOfDay / 60);
+  const minute = minuteOfDay % 60;
+  return `${pad(hour)}:${pad(minute)}`;
+}
+
+/**
+ * The value a native `<input type="time">` can hold, which cannot express
+ * 24:00 — end-of-day shows there as "00:00", the usual convention for a shift
+ * that runs to midnight.
+ */
+export function toTimeInputValue(minuteOfDay: number): string {
+  return formatTimeOfDay(minuteOfDay % MINUTES_PER_DAY);
+}
+
+/**
+ * Parse `HH:MM` to minutes from midnight, or null when it is not a time.
+ *
+ * Accepts "24:00" for end-of-day; a caller reading an end time from a native
+ * picker maps the "00:00" it gets there to `MINUTES_PER_DAY` itself.
+ */
+export function parseTimeOfDay(value: string): number | null {
+  const match = /^(\d{1,2}):(\d{2})$/.exec(value?.trim() ?? '');
+  if (!match) return null;
+  const hour = Number(match[1]);
+  const minute = Number(match[2]);
+  if (hour > 24 || minute > 59 || (hour === 24 && minute !== 0)) return null;
+  return toMinuteOfDay(hour, minute);
+}
+
+/** Vehicles a shift needs when nobody has said otherwise. */
+export const DEFAULT_VEHICLES_NEEDED = 1;
+
+/** Runaway guard on the editor's vehicle field; not a domain rule. */
+export const MAX_VEHICLES_PER_SHIFT = 10;
+
+/**
+ * A shift as a coordinator defines it: when it runs, and what it needs.
+ *
+ * `vehiclesNeeded` drives the coverage colours — every vehicle has to be
+ * crewed by a driver, so two vehicles on a shift means two drivers before it
+ * counts as covered. Zero is meaningful: a shift that needs people but no
+ * vehicle (a phone watch, a static post) does not need a driver at all.
+ */
+export interface ShiftSpec extends ShiftTimes {
+  vehiclesNeeded: number;
 }
 
 /**
@@ -263,7 +326,7 @@ export interface ShiftTimes {
  * is what lets each day carry its own times: slot 1 can be 20:00–24:00 on a
  * Monday and 08:00–16:00 on the Saturday of the same window.
  */
-export interface ShiftDefinition extends ShiftTimes {
+export interface ShiftDefinition extends ShiftSpec {
   slot: number;
   /** Human label, e.g. "08:00–16:00". */
   label: string;
@@ -280,18 +343,24 @@ export type DayType = 'workday' | 'weekend' | 'holiday';
  * it is opened, and a coordinator may edit any day's times. Every consumer must
  * read the shifts of the window in play rather than re-deriving them from here.
  */
-export const DEFAULT_WORKDAY_SHIFTS: readonly ShiftTimes[] = [{ startHour: 20, endHour: 24 }];
+export const DEFAULT_WORKDAY_SHIFTS: readonly ShiftTimes[] = [
+  { startMinute: toMinuteOfDay(20), endMinute: toMinuteOfDay(24) },
+];
 
 export const DEFAULT_SPECIAL_DAY_SHIFTS: readonly ShiftTimes[] = [
-  { startHour: 8, endHour: 16 },
-  { startHour: 16, endHour: 24 },
+  { startMinute: toMinuteOfDay(8), endMinute: toMinuteOfDay(16) },
+  { startMinute: toMinuteOfDay(16), endMinute: toMinuteOfDay(24) },
 ];
 
 /** Fresh, mutable copies — callers edit these, so never hand out the constants. */
-export function defaultShiftsForDayType(dayType: DayType): ShiftTimes[] {
+export function defaultShiftsForDayType(dayType: DayType): ShiftSpec[] {
   const defaults =
     dayType === 'workday' ? DEFAULT_WORKDAY_SHIFTS : DEFAULT_SPECIAL_DAY_SHIFTS;
-  return defaults.map(({ startHour, endHour }) => ({ startHour, endHour }));
+  return defaults.map(({ startMinute, endMinute }) => ({
+    startMinute,
+    endMinute,
+    vehiclesNeeded: DEFAULT_VEHICLES_NEEDED,
+  }));
 }
 
 /** Runaway guard on the per-day editor; not a domain rule. */
@@ -303,22 +372,33 @@ export const MAX_SHIFTS_PER_DAY = 6;
  */
 export const MAX_WINDOW_DAYS = 92;
 
-const pad = (hour: number) => String(hour).padStart(2, '0');
+const pad = (value: number) => String(value).padStart(2, '0');
 
-/** e.g. "08:00–16:00". */
-export function formatShiftLabel({ startHour, endHour }: ShiftTimes): string {
-  return `${pad(startHour)}:00–${pad(endHour)}:00`;
+/** e.g. "08:00–16:30". */
+export function formatShiftLabel({ startMinute, endMinute }: ShiftTimes): string {
+  return `${formatTimeOfDay(startMinute)}–${formatTimeOfDay(endMinute)}`;
 }
 
-/** e.g. "08–16h", for calendar cells too small for the full label. */
-export function formatShiftShortLabel({ startHour, endHour }: ShiftTimes): string {
-  return `${pad(startHour)}–${endHour}h`;
+/**
+ * e.g. "8–16" or "8:30–16", for calendar cells too small for the full label:
+ * the leading zero and an on-the-hour ":00" are the first things to go.
+ */
+export function formatShiftShortLabel({ startMinute, endMinute }: ShiftTimes): string {
+  const short = (minuteOfDay: number) => {
+    const hour = Math.floor(minuteOfDay / 60);
+    const minute = minuteOfDay % 60;
+    return minute === 0 ? String(hour) : `${hour}:${pad(minute)}`;
+  };
+  return `${short(startMinute)}–${short(endMinute)}`;
 }
 
-/** By start time, then end time — the order slots are numbered in. */
-export function sortShifts(shifts: ShiftTimes[]): ShiftTimes[] {
+/**
+ * By start time, then end time — the order slots are numbered in. Generic so
+ * sorting a list of fuller shift objects keeps everything else about them.
+ */
+export function sortShifts<T extends ShiftTimes>(shifts: T[]): T[] {
   return [...shifts].sort(
-    (a, b) => a.startHour - b.startHour || a.endHour - b.endHour,
+    (a, b) => a.startMinute - b.startMinute || a.endMinute - b.endMinute,
   );
 }
 
@@ -331,29 +411,41 @@ export function sortShifts(shifts: ShiftTimes[]): ShiftTimes[] {
  * cannot cover two shifts that share an hour — which is the whole point of
  * splitting a day into shifts.
  */
-export function validateDayShifts(shifts: ShiftTimes[]): string | null {
+export function validateDayShifts(
+  // `vehiclesNeeded` is optional so the time rules can be checked on their own;
+  // when a count is given it is held to the same limits the API applies.
+  shifts: Array<ShiftTimes & { vehiclesNeeded?: number }>,
+): string | null {
   if (shifts.length > MAX_SHIFTS_PER_DAY) {
     return `A day may have at most ${MAX_SHIFTS_PER_DAY} shifts (got ${shifts.length}).`;
   }
 
   for (const shift of shifts) {
-    if (!Number.isInteger(shift.startHour) || !Number.isInteger(shift.endHour)) {
-      return 'Shift times must be whole hours.';
+    if (shift.vehiclesNeeded !== undefined) {
+      if (!Number.isInteger(shift.vehiclesNeeded) || shift.vehiclesNeeded < 0) {
+        return 'Vehicles needed must be a whole number, or 0 for none.';
+      }
+      if (shift.vehiclesNeeded > MAX_VEHICLES_PER_SHIFT) {
+        return `A shift may need at most ${MAX_VEHICLES_PER_SHIFT} vehicles (got ${shift.vehiclesNeeded}).`;
+      }
     }
-    if (shift.startHour < 0 || shift.startHour > 23) {
-      return 'A shift must start between 00:00 and 23:00.';
+    if (!Number.isInteger(shift.startMinute) || !Number.isInteger(shift.endMinute)) {
+      return 'Shift times must fall on a whole minute.';
     }
-    if (shift.endHour < 1 || shift.endHour > 24) {
-      return 'A shift must end between 01:00 and 24:00.';
+    if (shift.startMinute < 0 || shift.startMinute > MINUTES_PER_DAY - 1) {
+      return 'A shift must start between 00:00 and 23:59.';
     }
-    if (shift.endHour <= shift.startHour) {
+    if (shift.endMinute < 1 || shift.endMinute > MINUTES_PER_DAY) {
+      return 'A shift must end between 00:01 and 24:00.';
+    }
+    if (shift.endMinute <= shift.startMinute) {
       return `A shift must end after it starts (got ${formatShiftLabel(shift)}).`;
     }
   }
 
   const sorted = sortShifts(shifts);
   for (let index = 1; index < sorted.length; index += 1) {
-    if (sorted[index].startHour < sorted[index - 1].endHour) {
+    if (sorted[index].startMinute < sorted[index - 1].endMinute) {
       return `Shifts ${formatShiftLabel(sorted[index - 1])} and ${formatShiftLabel(
         sorted[index],
       )} overlap.`;
@@ -364,13 +456,41 @@ export function validateDayShifts(shifts: ShiftTimes[]): string | null {
 }
 
 /** Sorted, slot-numbered and labelled: the shape every consumer reads. */
-export function toShiftDefinitions(shifts: ShiftTimes[]): ShiftDefinition[] {
+export function toShiftDefinitions(
+  shifts: Array<ShiftTimes & { vehiclesNeeded?: number }>,
+): ShiftDefinition[] {
   return sortShifts(shifts).map((shift, index) => ({
     slot: index + 1,
-    startHour: shift.startHour,
-    endHour: shift.endHour,
+    startMinute: shift.startMinute,
+    endMinute: shift.endMinute,
+    vehiclesNeeded: shift.vehiclesNeeded ?? DEFAULT_VEHICLES_NEEDED,
     label: formatShiftLabel(shift),
   }));
+}
+
+/**
+ * Month names, in the one place both the backend (naming an emergency window)
+ * and the frontend (month pickers, calendar headers) read them from — so the
+ * name a window is given always matches the month the coordinator picked.
+ */
+export const MONTH_NAMES: readonly string[] = [
+  'January',
+  'February',
+  'March',
+  'April',
+  'May',
+  'June',
+  'July',
+  'August',
+  'September',
+  'October',
+  'November',
+  'December',
+];
+
+/** Name of a calendar month, 1–12. */
+export function monthName(month: number): string {
+  return MONTH_NAMES[month - 1] ?? String(month);
 }
 
 /**
@@ -402,24 +522,32 @@ export function monthBounds(
  * building the schedule.
  */
 export const SHIFT_MAX_PEOPLE = 3;
+
+/** Per vehicle: a vehicle nobody can drive is not cover. */
 export const SHIFT_MIN_DRIVERS = 1;
 
 export type CoverageLevel = 'red' | 'yellow' | 'green';
 
 /**
- * Coverage colour for one shift cell, from how many people are available and
- * how many of those are certified drivers.
+ * Coverage colour for one shift cell, from how many people are available, how
+ * many of those are certified drivers, and how many vehicles the shift needs.
  *
- *   red    — fewer than 2 available, or no driver available at all
- *   green  — a full shift is schedulable with a spare driver
+ *   red    — fewer than 2 available, or a vehicle is needed and nobody can drive
+ *   green  — a full shift is schedulable *and* every vehicle has a driver
  *   yellow — everything in between
+ *
+ * The driver test is per vehicle: one driver takes one vehicle, so a two-vehicle
+ * shift is not green on a single driver however many people are available. A
+ * shift needing no vehicle needs no driver, and is judged on headcount alone.
  */
 export function coverageLevel(
   availableCount: number,
   driverCount: number,
+  vehiclesNeeded: number = DEFAULT_VEHICLES_NEEDED,
 ): CoverageLevel {
-  if (availableCount < 2 || driverCount === 0) return 'red';
-  if (availableCount >= SHIFT_MAX_PEOPLE && driverCount >= 2) return 'green';
+  if (availableCount < 2) return 'red';
+  if (vehiclesNeeded > 0 && driverCount < SHIFT_MIN_DRIVERS) return 'red';
+  if (availableCount >= SHIFT_MAX_PEOPLE && driverCount >= vehiclesNeeded) return 'green';
   return 'yellow';
 }
 
@@ -442,6 +570,225 @@ export function availabilityEligibleRoles(): UserRole[] {
 export enum AvailabilityWindowStatus {
   OPEN = 'OPEN',
   CLOSED = 'CLOSED',
+}
+
+/**
+ * What a window is asking availability *for*.
+ *
+ * Categories are independent rotas: the same person may be asked for emergency
+ * cover and for local-support cover over the same dates, so two windows may
+ * overlap as long as their categories differ.
+ */
+export enum AvailabilityWindowCategory {
+  EMERGENCY = 'EMERGENCY',
+  LOCAL_SUPPORT = 'LOCAL_SUPPORT',
+  SALOP_SUPPORT = 'SALOP_SUPPORT',
+}
+
+export interface AvailabilityWindowCategoryMetadata {
+  label: string;
+  description: string;
+}
+
+export const AVAILABILITY_WINDOW_CATEGORY_METADATA: Record<
+  AvailabilityWindowCategory,
+  AvailabilityWindowCategoryMetadata
+> = {
+  [AvailabilityWindowCategory.EMERGENCY]: {
+    label: 'Emergency',
+    description: 'Emergency response cover — the standing on-call rota.',
+  },
+  [AvailabilityWindowCategory.LOCAL_SUPPORT]: {
+    label: 'Local Support',
+    description: 'Cover for local events and standby requests.',
+  },
+  [AvailabilityWindowCategory.SALOP_SUPPORT]: {
+    label: 'SALOP Support',
+    description: 'Cover for SALOP operations.',
+  },
+};
+
+/** Declaration order, which is the order every picker offers them in. */
+export const AVAILABILITY_WINDOW_CATEGORIES = Object.keys(
+  AVAILABILITY_WINDOW_CATEGORY_METADATA,
+) as AvailabilityWindowCategory[];
+
+/**
+ * Display label for a category, falling back to the raw value so a category
+ * added to the enum before this map still renders as something readable.
+ */
+export function availabilityWindowCategoryLabel(
+  category: AvailabilityWindowCategory | string,
+): string {
+  return (
+    AVAILABILITY_WINDOW_CATEGORY_METADATA[category as AvailabilityWindowCategory]?.label ??
+    String(category)
+  );
+}
+
+// ─── Window roles ──────────────────────────────────────────────────────────────
+
+/**
+ * A post people are scheduled into on the shifts of one window.
+ *
+ * Roles belong to the window, never to the person: availability is collected
+ * with no mention of them — a volunteer says only when they can be there — and
+ * the coordinator assigns roles when building the schedule (#161). That is why
+ * this shape carries no user, and why nothing on the submission screens reads it.
+ */
+export interface WindowRoleSpec {
+  name: string;
+  /**
+   * Most people the schedule may put in this role on one shift. `0` means
+   * unlimited, for a role that is a pool rather than a post.
+   */
+  maxPeople: number;
+}
+
+export interface AvailabilityWindowRole extends WindowRoleSpec {
+  id: string;
+  windowId: string;
+  /** Position in the window's own list, 0-based — the order it is offered in. */
+  order: number;
+  /**
+   * Only a certified driver may be assigned to this role. Always true for the
+   * driver post: a vehicle nobody may legally drive is not cover, so this is
+   * derived from the name rather than left to whoever fills the form in.
+   */
+  requiresDriverCertification: boolean;
+}
+
+/** What `maxPeople: 0` means — as many people as the coordinator assigns. */
+export const UNLIMITED_ROLE_PEOPLE = 0;
+
+/** The role that always requires the driver certification. */
+export const DRIVER_ROLE_NAME = 'Driver';
+
+/** Guards on the role editor; not domain rules. */
+export const MAX_ROLE_NAME_LENGTH = 60;
+export const MAX_ROLES_PER_WINDOW = 12;
+export const MAX_ROLE_PEOPLE = 20;
+
+/**
+ * Whether a role is the driver post. Matched on the name, case- and
+ * space-insensitively, so "driver" typed by hand is the same post as the one
+ * the Emergency defaults create.
+ */
+export function roleRequiresDriverCertification(name: string): boolean {
+  return name.trim().toLowerCase() === DRIVER_ROLE_NAME.toLowerCase();
+}
+
+/**
+ * The roles an Emergency window has unless the coordinator changes them: one
+ * crew, one person each, as confirmed with the PO.
+ */
+export const DEFAULT_EMERGENCY_WINDOW_ROLES: readonly WindowRoleSpec[] = [
+  { name: DRIVER_ROLE_NAME, maxPeople: 1 },
+  { name: 'Team Leader', maxPeople: 1 },
+  { name: 'Team Member', maxPeople: 1 },
+];
+
+/**
+ * Fresh, mutable copies of a category's default roles — callers edit these.
+ *
+ * Only Emergency has defaults. Other rotas are shaped by whoever opens them, so
+ * they start empty rather than inheriting a crew that may make no sense there.
+ */
+export function defaultRolesForCategory(
+  category: AvailabilityWindowCategory | string,
+): WindowRoleSpec[] {
+  if (category !== AvailabilityWindowCategory.EMERGENCY) return [];
+  return DEFAULT_EMERGENCY_WINDOW_ROLES.map((role) => ({ ...role }));
+}
+
+/** e.g. "1 person", "up to 3 people", "unlimited". */
+export function formatRoleCapacity(maxPeople: number): string {
+  if (maxPeople === UNLIMITED_ROLE_PEOPLE) return 'unlimited';
+  return maxPeople === 1 ? '1 person' : `up to ${maxPeople} people`;
+}
+
+/**
+ * The one rule for whether a window's roles are coherent, returning a message
+ * fit to show a coordinator or null when they are fine. Shared so the editor
+ * blocks Save with the same wording the API would reject the payload with.
+ *
+ * Names must differ case-insensitively: two roles called "Driver" and "driver"
+ * would read as the same post on the schedule and be impossible to tell apart.
+ * A window with no roles at all is allowed — people are then simply scheduled
+ * without one.
+ */
+export function validateWindowRoles(roles: WindowRoleSpec[]): string | null {
+  if (roles.length > MAX_ROLES_PER_WINDOW) {
+    return `A window may have at most ${MAX_ROLES_PER_WINDOW} roles (got ${roles.length}).`;
+  }
+
+  const seen = new Set<string>();
+  for (const role of roles) {
+    const name = role.name?.trim() ?? '';
+    if (!name) return 'Every role needs a name.';
+    if (name.length > MAX_ROLE_NAME_LENGTH) {
+      return `A role name may be at most ${MAX_ROLE_NAME_LENGTH} characters (got ${name.length}).`;
+    }
+    if (!Number.isInteger(role.maxPeople) || role.maxPeople < 0) {
+      return 'People per role must be a whole number, or 0 for unlimited.';
+    }
+    if (role.maxPeople > MAX_ROLE_PEOPLE) {
+      return `A role may take at most ${MAX_ROLE_PEOPLE} people (got ${role.maxPeople}), or 0 for unlimited.`;
+    }
+    const key = name.toLowerCase();
+    if (seen.has(key)) return `Two roles are both called "${name}".`;
+    seen.add(key);
+  }
+
+  return null;
+}
+
+/** Trimmed, ordered and with the driver rule applied — how roles are stored. */
+export function toWindowRoles(
+  roles: WindowRoleSpec[],
+): Array<WindowRoleSpec & { order: number; requiresDriverCertification: boolean }> {
+  return roles.map((role, index) => {
+    const name = role.name.trim();
+    return {
+      name,
+      maxPeople: role.maxPeople,
+      order: index,
+      requiresDriverCertification: roleRequiresDriverCertification(name),
+    };
+  });
+}
+
+/** Guard on the free-text window name; names need not be unique. */
+export const MAX_WINDOW_NAME_LENGTH = 120;
+
+/** The name the "New Emergency Availability" shortcut gives its window. */
+export function emergencyWindowName(month: number): string {
+  return `Emergency - ${monthName(month)}`;
+}
+
+/**
+ * How a window is titled on screen: its own name when it was given one, and
+ * its category otherwise, so a nameless window still reads as something.
+ */
+export function availabilityWindowLabel(window: {
+  category: AvailabilityWindowCategory | string;
+  name?: string | null;
+}): string {
+  return window.name?.trim() || availabilityWindowCategoryLabel(window.category);
+}
+
+/**
+ * Whether two inclusive date ranges share at least one day. Used both to
+ * refuse a second open window over the same dates in one category and to warn
+ * about re-asking for dates a closed window already covered.
+ */
+export function datesOverlap(
+  aStart: string,
+  aEnd: string,
+  bStart: string,
+  bEnd: string,
+): boolean {
+  return aStart <= bEnd && bStart <= aEnd;
 }
 
 /**
@@ -476,6 +823,10 @@ export interface AvailabilityWindow {
   startDate: string;
   /** ISO date, `YYYY-MM-DD`. */
   endDate: string;
+  /** Which rota this window collects availability for. */
+  category: AvailabilityWindowCategory;
+  /** Optional free-text title, e.g. "Emergency - October". Not unique. */
+  name?: string | null;
   status: AvailabilityWindowStatus;
   openedById: string;
   openedBy?: AvailabilityWindowActor | null;
@@ -483,6 +834,11 @@ export interface AvailabilityWindow {
   closedById?: string | null;
   closedBy?: AvailabilityWindowActor | null;
   closedAt?: string | null;
+  /**
+   * Roles the schedule for this window is built from, in their own order. May
+   * be empty; irrelevant to submitting availability, which never mentions them.
+   */
+  roles?: AvailabilityWindowRole[];
   createdAt: string;
   updatedAt: string;
 }
@@ -506,17 +862,31 @@ export interface AvailabilityWindowWithCalendar extends AvailabilityWindow {
 export interface AvailabilityWindowDayInput {
   /** ISO date, `YYYY-MM-DD`. */
   date: string;
-  shifts: ShiftTimes[];
+  shifts: ShiftSpec[];
 }
 
 export interface CreateAvailabilityWindowRequest {
   startDate: string;
   endDate: string;
+  category: AvailabilityWindowCategory;
+  /** Free-text title; omitted or blank leaves the window showing its category. */
+  name?: string | null;
   /**
    * Per-day shifts. Must cover every day of the range exactly once when
    * present; omit it entirely to materialise the default grid instead.
    */
   days?: AvailabilityWindowDayInput[];
+  /**
+   * Roles the schedule will be built from. Omit to take the category's defaults
+   * (a crew of Driver, Team Leader and Team Member for Emergency, none
+   * elsewhere); send an empty list to open a window with no roles at all.
+   */
+  roles?: WindowRoleSpec[];
+  /**
+   * Confirms the coordinator saw the "a closed window already covers these
+   * dates" warning and meant it. Never bypasses an *open* overlap.
+   */
+  acknowledgeOverlap?: boolean;
 }
 
 /** `POST /availability-windows/month` — a whole month on the default grid. */
@@ -524,6 +894,19 @@ export interface CreateMonthlyAvailabilityWindowRequest {
   year: number;
   /** 1–12. */
   month: number;
+  acknowledgeOverlap?: boolean;
+}
+
+/**
+ * `GET /availability-windows/overlaps` — windows of one category already
+ * covering a proposed range, so the create screens can warn before saving
+ * rather than only on the rejected request.
+ */
+export interface AvailabilityWindowOverlapsResponse {
+  /** Overlapping windows that are still open: opening another is refused. */
+  open: AvailabilityWindow[];
+  /** Overlapping windows already closed: allowed, but worth a warning. */
+  closed: AvailabilityWindow[];
 }
 
 export interface AvailabilitySubmission {
@@ -553,6 +936,11 @@ export interface SubmitAvailabilityRequest {
 /** `GET /availability/me` — everything the submission screen needs. */
 export interface MyAvailabilityResponse {
   window: AvailabilityWindow | null;
+  /**
+   * Windows the person can switch between: every open one, plus the window
+   * being shown when it is already closed. Empty only when none exists at all.
+   */
+  windows: AvailabilityWindow[];
   /** False when there is no window, or the window is closed. */
   canSubmit: boolean;
   /** True when the user explicitly declared "no availability this window". */
@@ -562,7 +950,7 @@ export interface MyAvailabilityResponse {
   entries: AvailabilityEntry[];
 }
 
-export interface AvailabilityMatrixShiftCell extends ShiftTimes {
+export interface AvailabilityMatrixShiftCell extends ShiftSpec {
   /** Slot within its own day; only unique together with the date. */
   slot: number;
   label: string;

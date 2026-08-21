@@ -17,6 +17,7 @@ import {
   AvailabilityMatrixResponse,
   AvailabilityResponseStatus,
   AvailabilityWindow,
+  availabilityWindowLabel,
   AvailabilityWindowStatus,
   availabilityEligibleRoles,
   coverageLevel,
@@ -60,20 +61,33 @@ export class AvailabilityService {
       : await this.windows.findActiveOrLatest();
 
     if (!window) {
-      return { window: null, canSubmit: false, declined: false, calendar: [], entries: [] };
+      return {
+        window: null,
+        windows: [],
+        canSubmit: false,
+        declined: false,
+        calendar: [],
+        entries: [],
+      };
     }
 
-    const [calendar, submissions, declined] = await Promise.all([
+    const [calendar, submissions, declined, open] = await Promise.all([
       this.shiftSchedule.getPatternForWindow(window),
       this.prisma.availabilitySubmission.findMany({
         where: { windowId: window.id, userId },
         orderBy: [{ date: 'asc' }, { slot: 'asc' }],
       }),
       this.hasDeclined(window.id, userId),
+      this.windows.findOpen(),
     ]);
 
     return {
       window,
+      // Every open window is answerable, and the one being shown belongs on the
+      // list even when closed — otherwise the screen offers no way back to it.
+      windows: open.some((candidate) => candidate.id === window.id)
+        ? open
+        : [window, ...open],
       canSubmit: window.status === AvailabilityWindowStatus.OPEN,
       declined,
       calendar,
@@ -313,11 +327,17 @@ export class AvailabilityService {
         return {
           slot: shift.slot,
           label: shift.label,
-          startHour: shift.startHour,
-          endHour: shift.endHour,
+          startMinute: shift.startMinute,
+          endMinute: shift.endMinute,
+          vehiclesNeeded: shift.vehiclesNeeded,
           availableCount: availableUserIds.length,
           driverCount,
-          coverageLevel: coverageLevel(availableUserIds.length, driverCount),
+          // Judged against this shift's own vehicle count: one driver per vehicle.
+          coverageLevel: coverageLevel(
+            availableUserIds.length,
+            driverCount,
+            shift.vehiclesNeeded,
+          ),
           availableUserIds,
         };
       }),
@@ -360,6 +380,7 @@ export class AvailabilityService {
       'dayType',
       'holiday',
       'shift',
+      'vehiclesNeeded',
       'availableCount',
       'driverCount',
       'coverage',
@@ -373,6 +394,7 @@ export class AvailabilityService {
           day.isHoliday ? 'holiday' : day.isWeekend ? 'weekend' : 'workday',
           csvEscape(day.holidayName ?? ''),
           shift.label,
+          String(shift.vehiclesNeeded),
           String(shift.availableCount),
           String(shift.driverCount),
           shift.coverageLevel,
@@ -396,9 +418,12 @@ export class AvailabilityService {
   }
 
   /**
-   * The window a write applies to. Anything other than the single OPEN window
-   * is refused — closing a window blocks submissions at the API, not just in
-   * the UI.
+   * The window a write applies to. A closed window is refused — closing blocks
+   * submissions at the API, not just in the UI.
+   *
+   * Without an explicit id, only an unambiguous single open window is assumed.
+   * Guessing between two open windows would silently write an answer to the
+   * wrong rota, so that is a 400 asking the caller to say which.
    */
   private async resolveSubmittableWindow(windowId?: string): Promise<AvailabilityWindow> {
     if (windowId) {
@@ -411,13 +436,21 @@ export class AvailabilityService {
       return window;
     }
 
-    const active = await this.windows.findActive();
-    if (!active) {
+    const open = await this.windows.findOpen();
+    if (open.length === 0) {
       throw new ForbiddenException(
         'No availability window is currently open; submissions are not accepted',
       );
     }
-    return active;
+    if (open.length > 1) {
+      const options = open
+        .map((window) => `${availabilityWindowLabel(window)} (${window.id})`)
+        .join(', ');
+      throw new BadRequestException(
+        `More than one availability window is open — say which one with windowId: ${options}`,
+      );
+    }
+    return open[0];
   }
 }
 

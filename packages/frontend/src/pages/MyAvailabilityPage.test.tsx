@@ -2,11 +2,14 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AdminContext, Notification, testDataProvider } from 'react-admin';
+import { toMinuteOfDay } from '@redinfo/shared';
 import { MyAvailabilityPage } from './MyAvailabilityPage';
 import { apiFetch } from '../api';
 import { useIsMobile } from '../hooks/useIsMobile';
 import {
   CLOSED_WINDOW,
+  LOCAL_SUPPORT_WINDOW,
+  OPEN_WINDOW,
   calendarFor,
   myAvailability,
   WINDOW_END,
@@ -22,6 +25,9 @@ vi.mock('../hooks/useIsMobile', () => ({ useIsMobile: vi.fn(() => false) }));
 
 const mockApiFetch = apiFetch as unknown as Mock;
 const mockUseIsMobile = useIsMobile as unknown as Mock;
+
+/** Minutes from midnight, so the expectations read in wall-clock time. */
+const at = (hour: number, minute = 0) => toMinuteOfDay(hour, minute);
 
 /**
  * Route the mocked client by path: the page loads its own state from
@@ -42,7 +48,7 @@ function stubApi(
         const to = new URL(`http://x${path}`).searchParams.get('to')!;
         return Promise.resolve(calendarFor(from, to));
       }
-      if (path === '/availability/me/decline') {
+      if (path.startsWith('/availability/me/decline')) {
         return Promise.resolve(handlers.onDecline?.(options?.method ?? 'POST') ?? me);
       }
       if (path === '/availability/me' && options?.method === 'PUT') {
@@ -80,7 +86,14 @@ describe('MyAvailabilityPage', () => {
 
   it('explains that nothing is open when there is no window', async () => {
     stubApi({
-      me: { window: null, canSubmit: false, declined: false, calendar: [], entries: [] },
+      me: {
+        window: null,
+        windows: [],
+        canSubmit: false,
+        declined: false,
+        calendar: [],
+        entries: [],
+      },
     });
 
     renderPage();
@@ -169,6 +182,8 @@ describe('MyAvailabilityPage', () => {
 
     await waitFor(() => expect(lastSaveBody()).toBeDefined());
     expect(lastSaveBody()).toEqual({
+      // The window is always named: with several open, the API refuses to guess.
+      windowId: 'win-1',
       entries: [
         { date: '2026-09-28', slots: [1] },
         { date: '2026-10-03', slots: [2] },
@@ -193,6 +208,7 @@ describe('MyAvailabilityPage', () => {
 
     await waitFor(() => expect(lastSaveBody()).toBeDefined());
     expect(lastSaveBody()).toEqual({
+      windowId: 'win-1',
       entries: [{ date: '2026-09-28', slots: [1] }],
     });
   });
@@ -236,9 +252,10 @@ describe('MyAvailabilityPage', () => {
     await userEvent.click(screen.getByRole('checkbox'));
 
     await waitFor(() =>
-      expect(mockApiFetch).toHaveBeenCalledWith('/availability/me/decline', {
-        method: 'POST',
-      }),
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        '/availability/me/decline?windowId=win-1',
+        { method: 'POST' },
+      ),
     );
     expect(
       await screen.findByText("You've told us you're not available this window"),
@@ -260,9 +277,10 @@ describe('MyAvailabilityPage', () => {
     await userEvent.click(checkbox);
 
     await waitFor(() =>
-      expect(mockApiFetch).toHaveBeenCalledWith('/availability/me/decline', {
-        method: 'DELETE',
-      }),
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        '/availability/me/decline?windowId=win-1',
+        { method: 'DELETE' },
+      ),
     );
     expect(await screen.findByText('September 2026')).toBeInTheDocument();
   });
@@ -297,7 +315,7 @@ describe('MyAvailabilityPage', () => {
       await screen.findByText('September 2026');
       expect(screen.queryByLabelText('Mon, 28 Sep 20:00–24:00')).not.toBeInTheDocument();
       // Read-only cells show the shift hours without a toggle.
-      expect(screen.getAllByText('20–24h').length).toBeGreaterThan(0);
+      expect(screen.getAllByText('20–24').length).toBeGreaterThan(0);
     });
   });
 
@@ -341,6 +359,7 @@ describe('MyAvailabilityPage', () => {
 
       await waitFor(() => expect(lastSaveBody()).toBeDefined());
       expect(lastSaveBody()).toEqual({
+        windowId: 'win-1',
         entries: [{ date: WINDOW_START, slots: [1] }],
       });
     });
@@ -370,6 +389,89 @@ describe('MyAvailabilityPage', () => {
     expect(await screen.findByText('Session expired')).toBeInTheDocument();
   });
 
+  // ── which window is being answered ──────────────────────────────────────────
+
+  describe('category and name', () => {
+    it('shows the category and name of the window alongside its dates', async () => {
+      renderPage();
+
+      expect(await screen.findByText('Emergency')).toBeInTheDocument();
+      expect(screen.getByText('Emergency - October')).toBeInTheDocument();
+      expect(screen.getByText('28 Sep 2026 – 5 Oct 2026')).toBeInTheDocument();
+    });
+
+    it('never asks about roles, which are the coordinator’s to assign', async () => {
+      // The window carries a crew (Driver, Team Leader, Team Member); a
+      // volunteer says only when they can be there, so none of it belongs here.
+      renderPage();
+
+      await screen.findByText('Emergency - October');
+      for (const role of ['Driver', 'Team Leader', 'Team Member']) {
+        expect(screen.queryByText(role)).not.toBeInTheDocument();
+      }
+    });
+
+    it('offers no picker when only one window is open', async () => {
+      renderPage();
+
+      await screen.findByText('Window open');
+      expect(screen.queryByLabelText('Availability window')).not.toBeInTheDocument();
+    });
+
+    it('lets a volunteer switch between the open windows', async () => {
+      stubApi({
+        me: myAvailability({ windows: [OPEN_WINDOW, LOCAL_SUPPORT_WINDOW] }),
+      });
+
+      renderPage();
+
+      const picker = await screen.findByLabelText('Availability window');
+      expect(
+        within(picker as HTMLElement).getByRole('option', {
+          name: 'Emergency - October · 28 Sep 2026 – 5 Oct 2026',
+        }),
+      ).toBeInTheDocument();
+      // The nameless one falls back to its category.
+      expect(
+        within(picker as HTMLElement).getByRole('option', {
+          name: 'Local Support · 28 Sep 2026 – 5 Oct 2026',
+        }),
+      ).toBeInTheDocument();
+    });
+
+    it('reloads for the window picked', async () => {
+      stubApi({
+        me: myAvailability({ windows: [OPEN_WINDOW, LOCAL_SUPPORT_WINDOW] }),
+      });
+
+      renderPage();
+
+      await userEvent.selectOptions(
+        await screen.findByLabelText('Availability window'),
+        'win-2',
+      );
+
+      await waitFor(() =>
+        expect(mockApiFetch).toHaveBeenCalledWith('/availability/me?windowId=win-2'),
+      );
+    });
+
+    it('keeps a closed window on the picker while it is the one shown', async () => {
+      stubApi({
+        me: myAvailability({
+          window: CLOSED_WINDOW,
+          canSubmit: false,
+          windows: [CLOSED_WINDOW, LOCAL_SUPPORT_WINDOW],
+        }),
+      });
+
+      renderPage();
+
+      expect(await screen.findByText('Window closed')).toBeInTheDocument();
+      expect(screen.getByLabelText('Availability window')).toHaveValue('win-1');
+    });
+  });
+
   // ── windows that define their own shift times ───────────────────────────────
 
   describe('with per-day shift times', () => {
@@ -379,7 +481,15 @@ describe('MyAvailabilityPage', () => {
         if (day.date === WINDOW_START) {
           return {
             ...day,
-            shifts: [{ slot: 1, startHour: 10, endHour: 14, label: '10:00–14:00' }],
+            shifts: [
+              {
+                slot: 1,
+                startMinute: at(10),
+                endMinute: at(14),
+                vehiclesNeeded: 1,
+                label: '10:00–14:00',
+              },
+            ],
           };
         }
         if (day.date === '2026-09-29') return { ...day, shifts: [] };
@@ -442,7 +552,10 @@ describe('MyAvailabilityPage', () => {
       await userEvent.click(screen.getByRole('button', { name: /save availability/i }));
 
       await waitFor(() =>
-        expect(lastSaveBody()).toEqual({ entries: [{ date: WINDOW_START, slots: [1] }] }),
+        expect(lastSaveBody()).toEqual({
+          windowId: 'win-1',
+          entries: [{ date: WINDOW_START, slots: [1] }],
+        }),
       );
     });
 

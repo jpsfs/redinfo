@@ -3,6 +3,10 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AdminContext, Notification, testDataProvider } from 'react-admin';
 import { defaultMonth, EmergencyWindowDialog } from './EmergencyWindowDialog';
+import {
+  AvailabilityWindow,
+  AvailabilityWindowStatus,
+} from '@redinfo/shared';
 import { apiFetch } from '../../api';
 import { OPEN_WINDOW } from '../../test/fixtures';
 
@@ -29,7 +33,9 @@ function renderDialog(today = SEPTEMBER) {
 }
 
 /** The body of the last month-window POST. */
-function lastCreateBody(): { year: number; month: number } | undefined {
+function lastCreateBody():
+  | { year: number; month: number; acknowledgeOverlap?: boolean }
+  | undefined {
   const call = [...mockApiFetch.mock.calls]
     .reverse()
     .find(([path]) => path === '/availability-windows/month');
@@ -46,10 +52,23 @@ describe('defaultMonth', () => {
   });
 });
 
+/** The dialog reads the overlaps for the month, then posts the window. */
+function stubApi({
+  open = [],
+  closed = [],
+}: { open?: AvailabilityWindow[]; closed?: AvailabilityWindow[] } = {}) {
+  mockApiFetch.mockImplementation((path: string) => {
+    if (path.startsWith('/availability-windows/overlaps')) {
+      return Promise.resolve({ open, closed });
+    }
+    return Promise.resolve({ ...OPEN_WINDOW, id: 'win-new' });
+  });
+}
+
 describe('EmergencyWindowDialog', () => {
   beforeEach(() => {
     mockApiFetch.mockReset();
-    mockApiFetch.mockResolvedValue({ ...OPEN_WINDOW, id: 'win-new' });
+    stubApi();
   });
 
   it('defaults to next month', () => {
@@ -97,13 +116,29 @@ describe('EmergencyWindowDialog', () => {
     ).toBeInTheDocument();
   });
 
+  it('says which crew the schedule will be built from', () => {
+    renderDialog();
+
+    expect(
+      screen.getByText(
+        /standard crew — Driver, Team Leader and Team Member, one person each/,
+      ),
+    ).toBeInTheDocument();
+  });
+
   it('posts the chosen year and month', async () => {
     renderDialog();
 
     await userEvent.selectOptions(screen.getByLabelText('Month'), '11');
     await userEvent.click(screen.getByRole('button', { name: 'Open window' }));
 
-    await waitFor(() => expect(lastCreateBody()).toEqual({ year: 2026, month: 11 }));
+    await waitFor(() =>
+      expect(lastCreateBody()).toEqual({
+        year: 2026,
+        month: 11,
+        acknowledgeOverlap: undefined,
+      }),
+    );
     expect(mockApiFetch).toHaveBeenCalledWith(
       '/availability-windows/month',
       expect.objectContaining({ method: 'POST' }),
@@ -116,23 +151,30 @@ describe('EmergencyWindowDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Open window' }));
 
     expect(
-      await screen.findByText('Availability window opened for October 2026'),
+      await screen.findByText(
+        'Emergency - October opened for 1 Oct 2026 – 31 Oct 2026',
+      ),
     ).toBeInTheDocument();
     expect(onClose).toHaveBeenCalled();
   });
 
   it('surfaces the API refusal when a window is already open, and stays open', async () => {
-    mockApiFetch.mockRejectedValue(
-      new Error(
-        'An availability window is already open (2026-09-28 – 2026-10-05). Close it before opening the next one.',
-      ),
-    );
+    mockApiFetch.mockImplementation((path: string) => {
+      if (path.startsWith('/availability-windows/overlaps')) {
+        return Promise.resolve({ open: [], closed: [] });
+      }
+      return Promise.reject(
+        new Error(
+          'An availability window for Emergency is already open over these dates.',
+        ),
+      );
+    });
     const { onClose } = renderDialog();
 
     await userEvent.click(screen.getByRole('button', { name: 'Open window' }));
 
     expect(
-      await screen.findByText(/An availability window is already open/),
+      await screen.findByText(/An availability window for Emergency is already open/),
     ).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
   });
@@ -143,6 +185,67 @@ describe('EmergencyWindowDialog', () => {
     await userEvent.click(screen.getByRole('button', { name: 'Cancel' }));
 
     expect(onClose).toHaveBeenCalled();
-    expect(mockApiFetch).not.toHaveBeenCalled();
+    expect(
+      mockApiFetch.mock.calls.some(([path]) => path === '/availability-windows/month'),
+    ).toBe(false);
+  });
+
+  // ── category, name and overlaps ─────────────────────────────────────────────
+
+  it('shows the category and the name the window will be given', () => {
+    renderDialog();
+
+    expect(screen.getByText('Emergency')).toBeInTheDocument();
+    expect(screen.getByText('Emergency - October')).toBeInTheDocument();
+  });
+
+  it('renames itself when another month is picked', async () => {
+    renderDialog();
+
+    await userEvent.selectOptions(screen.getByLabelText('Month'), '11');
+
+    expect(screen.getByText('Emergency - November')).toBeInTheDocument();
+  });
+
+  it('checks the month for Emergency windows that already cover it', async () => {
+    renderDialog();
+
+    await waitFor(() =>
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        '/availability-windows/overlaps?category=EMERGENCY' +
+          '&startDate=2026-10-01&endDate=2026-10-31',
+      ),
+    );
+  });
+
+  it('refuses up front when an Emergency window is open over the month', async () => {
+    stubApi({ open: [OPEN_WINDOW] });
+    renderDialog();
+
+    expect(
+      await screen.findByText(/An Emergency window is already open over this month/),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Open window' })).toBeDisabled(),
+    );
+  });
+
+  it('asks for confirmation when a closed window already covers the month', async () => {
+    stubApi({
+      closed: [{ ...OPEN_WINDOW, status: AvailabilityWindowStatus.CLOSED }],
+    });
+    renderDialog();
+
+    expect(
+      await screen.findByText(/A closed Emergency window already covers these dates/),
+    ).toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Open window' })).toBeDisabled(),
+    );
+
+    await userEvent.click(screen.getByLabelText('Ask for this month again anyway'));
+    await userEvent.click(screen.getByRole('button', { name: 'Open window' }));
+
+    await waitFor(() => expect(lastCreateBody()?.acknowledgeOverlap).toBe(true));
   });
 });

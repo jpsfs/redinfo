@@ -2,7 +2,14 @@ import { BadRequestException } from '@nestjs/common';
 import { ShiftScheduleService } from './shift-schedule.service';
 import { HolidaysService } from './holidays.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { DayShiftPattern } from '@redinfo/shared';
+import {
+  DayShiftPattern,
+  DEFAULT_VEHICLES_NEEDED,
+  toMinuteOfDay,
+} from '@redinfo/shared';
+
+/** Minutes from midnight, so the expectations read in wall-clock hours. */
+const at = (hour: number, minute = 0) => toMinuteOfDay(hour, minute);
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -19,7 +26,13 @@ function buildHolidaysStub(holidays: Record<string, string> = {}) {
   };
 }
 
-type ShiftRow = { date: Date; slot: number; startHour: number; endHour: number };
+type ShiftRow = {
+  date: Date;
+  slot: number;
+  startMinute: number;
+  endMinute: number;
+  vehiclesNeeded: number;
+};
 
 /** Prisma stub serving one window's stored shift rows. */
 function buildPrismaStub(rows: ShiftRow[] = []) {
@@ -39,8 +52,21 @@ const HOLIDAYS = {
 
 const WINDOW = { id: 'win-1', startDate: '2026-09-28', endDate: '2026-09-30' };
 
-function shiftRow(date: string, slot: number, startHour: number, endHour: number): ShiftRow {
-  return { date: new Date(`${date}T00:00:00.000Z`), slot, startHour, endHour };
+/** Hours in, minutes stored — the rows a window materialises. */
+function shiftRow(
+  date: string,
+  slot: number,
+  startHour: number,
+  endHour: number,
+  vehiclesNeeded = DEFAULT_VEHICLES_NEEDED,
+): ShiftRow {
+  return {
+    date: new Date(`${date}T00:00:00.000Z`),
+    slot,
+    startMinute: at(startHour),
+    endMinute: at(endHour),
+    vehiclesNeeded,
+  };
 }
 
 function build(rows: ShiftRow[] = []) {
@@ -93,31 +119,31 @@ describe('ShiftScheduleService', () => {
   // ── the default grid, which seeds a new window ───────────────────────────────
 
   describe('getDefaultShiftsForDate', () => {
-    it('gives a workday exactly one shift, 20:00–24:00', async () => {
+    it('gives a workday exactly one shift, 20:00–24:00, needing one vehicle', async () => {
       await expect(service.getDefaultShiftsForDate('2026-09-30')).resolves.toEqual([
-        { startHour: 20, endHour: 24 },
+        { startMinute: at(20), endMinute: at(24), vehiclesNeeded: 1 },
       ]);
     });
 
     it('gives a weekend day two shifts, 08:00–16:00 and 16:00–24:00', async () => {
       await expect(service.getDefaultShiftsForDate('2026-10-03')).resolves.toEqual([
-        { startHour: 8, endHour: 16 },
-        { startHour: 16, endHour: 24 },
+        { startMinute: at(8), endMinute: at(16), vehiclesNeeded: 1 },
+        { startMinute: at(16), endMinute: at(24), vehiclesNeeded: 1 },
       ]);
     });
 
     it('gives a holiday the weekend pattern', async () => {
       await expect(service.getDefaultShiftsForDate('2026-10-05')).resolves.toEqual([
-        { startHour: 8, endHour: 16 },
-        { startHour: 16, endHour: 24 },
+        { startMinute: at(8), endMinute: at(16), vehiclesNeeded: 1 },
+        { startMinute: at(16), endMinute: at(24), vehiclesNeeded: 1 },
       ]);
     });
 
     it('hands out copies, so an editor cannot mutate the defaults', async () => {
       const first = await service.getDefaultShiftsForDate('2026-09-30');
-      first[0].startHour = 6;
+      first[0].startMinute = at(6);
       await expect(service.getDefaultShiftsForDate('2026-09-30')).resolves.toEqual([
-        { startHour: 20, endHour: 24 },
+        { startMinute: at(20), endMinute: at(24), vehiclesNeeded: 1 },
       ]);
     });
   });
@@ -145,8 +171,20 @@ describe('ShiftScheduleService', () => {
     it('numbers slots from 1 in start-time order and labels them', async () => {
       const [pattern] = await service.getDefaultPatternForRange('2026-10-03', '2026-10-03');
       expect(pattern.shifts).toEqual([
-        { slot: 1, startHour: 8, endHour: 16, label: '08:00–16:00' },
-        { slot: 2, startHour: 16, endHour: 24, label: '16:00–24:00' },
+        {
+          slot: 1,
+          startMinute: at(8),
+          endMinute: at(16),
+          vehiclesNeeded: 1,
+          label: '08:00–16:00',
+        },
+        {
+          slot: 2,
+          startMinute: at(16),
+          endMinute: at(24),
+          vehiclesNeeded: 1,
+          label: '16:00–24:00',
+        },
       ]);
     });
 
@@ -216,7 +254,13 @@ describe('ShiftScheduleService', () => {
       expect(pattern.isHoliday).toBe(true);
       expect(pattern.holidayName).toBe('Implantação da República');
       expect(pattern.shifts).toEqual([
-        { slot: 1, startHour: 9, endHour: 12, label: '09:00–12:00' },
+        {
+          slot: 1,
+          startMinute: at(9),
+          endMinute: at(12),
+          vehiclesNeeded: 1,
+          label: '09:00–12:00',
+        },
       ]);
     });
 
@@ -225,7 +269,13 @@ describe('ShiftScheduleService', () => {
       const built = build([shiftRow('2026-09-28', 2, 16, 24)]);
       const [pattern] = await built.service.getPatternForWindow(WINDOW);
       expect(pattern.shifts).toEqual([
-        { slot: 2, startHour: 16, endHour: 24, label: '16:00–24:00' },
+        {
+          slot: 2,
+          startMinute: at(16),
+          endMinute: at(24),
+          vehiclesNeeded: 1,
+          label: '16:00–24:00',
+        },
       ]);
     });
 
@@ -252,42 +302,80 @@ describe('ShiftScheduleService', () => {
   // ── validation of an edited day ─────────────────────────────────────────────
 
   describe('normaliseDayShifts', () => {
-    it('sorts by start time and strips anything but the times', () => {
+    it('sorts by start time and strips anything but the times and vehicles', () => {
       expect(
         service.normaliseDayShifts('2026-10-03', [
-          { startHour: 16, endHour: 24 },
-          { startHour: 8, endHour: 16 },
+          { startMinute: at(16), endMinute: at(24), vehiclesNeeded: 2 },
+          { startMinute: at(8), endMinute: at(16) },
         ]),
       ).toEqual([
-        { startHour: 8, endHour: 16 },
-        { startHour: 16, endHour: 24 },
+        // The one given no count gets the default of one vehicle.
+        { startMinute: at(8), endMinute: at(16), vehiclesNeeded: 1 },
+        { startMinute: at(16), endMinute: at(24), vehiclesNeeded: 2 },
       ]);
+    });
+
+    it('keeps a vehicle count of zero rather than defaulting it', () => {
+      expect(
+        service.normaliseDayShifts('2026-10-03', [
+          { startMinute: at(8), endMinute: at(16), vehiclesNeeded: 0 },
+        ]),
+      ).toEqual([{ startMinute: at(8), endMinute: at(16), vehiclesNeeded: 0 }]);
+    });
+
+    it('rejects a negative or fractional vehicle count', () => {
+      expect(() =>
+        service.normaliseDayShifts('2026-10-03', [
+          { startMinute: at(8), endMinute: at(16), vehiclesNeeded: -1 },
+        ]),
+      ).toThrow(/whole number/);
+      expect(() =>
+        service.normaliseDayShifts('2026-10-03', [
+          { startMinute: at(8), endMinute: at(16), vehiclesNeeded: 1.5 },
+        ]),
+      ).toThrow(BadRequestException);
+    });
+
+    it('rejects more vehicles than a shift may need', () => {
+      expect(() =>
+        service.normaliseDayShifts('2026-10-03', [
+          { startMinute: at(8), endMinute: at(16), vehiclesNeeded: 99 },
+        ]),
+      ).toThrow(/at most 10 vehicles/);
     });
 
     it('accepts a day with no shifts at all', () => {
       expect(service.normaliseDayShifts('2026-10-03', [])).toEqual([]);
     });
 
+    it('keeps times that fall part-way through an hour', () => {
+      expect(
+        service.normaliseDayShifts('2026-10-03', [
+          { startMinute: at(8, 30), endMinute: at(16, 45) },
+        ]),
+      ).toEqual([{ startMinute: 510, endMinute: 1005, vehiclesNeeded: 1 }]);
+    });
+
     it('rejects overlapping shifts, naming the date', () => {
       expect(() =>
         service.normaliseDayShifts('2026-10-03', [
-          { startHour: 8, endHour: 16 },
-          { startHour: 12, endHour: 20 },
+          { startMinute: at(8), endMinute: at(16) },
+          { startMinute: at(12), endMinute: at(20) },
         ]),
       ).toThrow(/2026-10-03.*overlap/);
     });
 
     it('rejects a shift that ends before it starts', () => {
       expect(() =>
-        service.normaliseDayShifts('2026-10-03', [{ startHour: 20, endHour: 8 }]),
+        service.normaliseDayShifts('2026-10-03', [{ startMinute: at(20), endMinute: at(8) }]),
       ).toThrow(BadRequestException);
     });
 
     it('accepts back-to-back shifts, which do not overlap', () => {
       expect(
         service.normaliseDayShifts('2026-10-03', [
-          { startHour: 8, endHour: 16 },
-          { startHour: 16, endHour: 24 },
+          { startMinute: at(8), endMinute: at(16) },
+          { startMinute: at(16), endMinute: at(24) },
         ]),
       ).toHaveLength(2);
     });
@@ -302,8 +390,20 @@ describe('ShiftScheduleService', () => {
       isHoliday: false,
       holidayName: null,
       shifts: [
-        { slot: 1, startHour: 8, endHour: 16, label: '08:00–16:00' },
-        { slot: 2, startHour: 16, endHour: 24, label: '16:00–24:00' },
+        {
+          slot: 1,
+          startMinute: at(8),
+          endMinute: at(16),
+          vehiclesNeeded: 1,
+          label: '08:00–16:00',
+        },
+        {
+          slot: 2,
+          startMinute: at(16),
+          endMinute: at(24),
+          vehiclesNeeded: 1,
+          label: '16:00–24:00',
+        },
       ],
     };
 

@@ -4,9 +4,11 @@ import { PrismaService } from '../prisma/prisma.service';
 import {
   DayShiftPattern,
   DayType,
+  DEFAULT_VEHICLES_NEEDED,
   defaultShiftsForDayType,
   formatShiftLabel,
   ShiftDefinition,
+  ShiftSpec,
   ShiftTimes,
   sortShifts,
   toShiftDefinitions,
@@ -92,7 +94,7 @@ export class ShiftScheduleService {
   }
 
   /** The default shifts for one date, as the window editor seeds it. */
-  async getDefaultShiftsForDate(date: string): Promise<ShiftTimes[]> {
+  async getDefaultShiftsForDate(date: string): Promise<ShiftSpec[]> {
     return defaultShiftsForDayType(await this.getDayType(date));
   }
 
@@ -132,8 +134,9 @@ export class ShiftScheduleService {
       // they are never renumbered on read.
       bucket.push({
         slot: row.slot,
-        startHour: row.startHour,
-        endHour: row.endHour,
+        startMinute: row.startMinute,
+        endMinute: row.endMinute,
+        vehiclesNeeded: row.vehiclesNeeded,
         label: formatShiftLabel(row),
       });
       byDate.set(date, bucket);
@@ -150,12 +153,20 @@ export class ShiftScheduleService {
    * itself lives in `validateDayShifts` (shared), so the editor blocks Save on
    * exactly what the API would reject.
    */
-  normaliseDayShifts(date: string, shifts: ShiftTimes[]): ShiftTimes[] {
+  normaliseDayShifts(
+    date: string,
+    shifts: Array<ShiftTimes & { vehiclesNeeded?: number }>,
+  ): ShiftSpec[] {
     const error = validateDayShifts(shifts);
     if (error) {
       throw new BadRequestException(`${date}: ${error}`);
     }
-    return sortShifts(shifts).map(({ startHour, endHour }) => ({ startHour, endHour }));
+    return sortShifts(shifts).map(({ startMinute, endMinute, vehiclesNeeded }) => ({
+      startMinute,
+      endMinute,
+      // Omitted means the ordinary case: one vehicle, one driver.
+      vehiclesNeeded: vehiclesNeeded ?? DEFAULT_VEHICLES_NEEDED,
+    }));
   }
 
   /**

@@ -15,6 +15,7 @@ import {
   IconButton,
   Paper,
   Stack,
+  TextField,
   Typography,
 } from '@mui/material';
 import CheckIcon from '@mui/icons-material/Check';
@@ -27,12 +28,15 @@ import FlagIcon from '@mui/icons-material/Flag';
 import SaveIcon from '@mui/icons-material/Save';
 import {
   AvailabilityEntry,
+  AvailabilityWindow,
+  availabilityWindowLabel,
   DayShiftPattern,
   formatShiftShortLabel,
   MyAvailabilityResponse,
   ShiftDefinition,
 } from '@redinfo/shared';
 import { apiFetch } from '../api';
+import { WindowCategoryChip } from '../resources/availability/WindowIdentity';
 import { useIsMobile } from '../hooks/useIsMobile';
 import {
   addMonths,
@@ -446,6 +450,53 @@ const DayAgenda = ({
   );
 };
 
+// ─── Window picker ─────────────────────────────────────────────────────────────
+
+/**
+ * Which window is being answered.
+ *
+ * Several can be open at once — one per category — and the same day means
+ * different things in each, so the choice has to be explicit. Only shown when
+ * there is in fact a choice.
+ */
+const WindowPicker = ({
+  windows,
+  value,
+  disabled,
+  onChange,
+}: {
+  windows: AvailabilityWindow[];
+  value: string;
+  disabled?: boolean;
+  onChange: (windowId: string) => void;
+}) => {
+  if (windows.length < 2) return null;
+
+  return (
+    <TextField
+      select
+      size="small"
+      label="Availability window"
+      value={value}
+      disabled={disabled}
+      onChange={(event) => onChange(event.target.value)}
+      SelectProps={{
+        native: true,
+        inputProps: { 'aria-label': 'Availability window' },
+      }}
+      InputLabelProps={{ shrink: true }}
+      sx={{ mb: 2, minWidth: 280, maxWidth: '100%' }}
+    >
+      {windows.map((window) => (
+        <option key={window.id} value={window.id}>
+          {availabilityWindowLabel(window)} ·{' '}
+          {formatDateRange(window.startDate, window.endDate)}
+        </option>
+      ))}
+    </TextField>
+  );
+};
+
 // ─── Page ──────────────────────────────────────────────────────────────────────
 
 /**
@@ -462,29 +513,36 @@ export const MyAvailabilityPage = () => {
   const [savedSelection, setSavedSelection] = useState<Selection>({});
   const [month, setMonth] = useState<string | null>(null);
   const [monthPatterns, setMonthPatterns] = useState<DayShiftPattern[]>([]);
+  /** The window being answered; null until the API has picked a default. */
+  const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const applyResponse = useCallback((response: MyAvailabilityResponse) => {
     setData(response);
+    setSelectedId(response.window?.id ?? null);
     const next = selectionFromEntries(response.entries);
     setSelection(next);
     setSavedSelection(next);
-    setMonth((current) => current ?? (response.window ? isoMonth(response.window.startDate) : null));
+    setMonth(response.window ? isoMonth(response.window.startDate) : null);
   }, []);
 
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      applyResponse(await apiFetch<MyAvailabilityResponse>('/availability/me'));
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not load your availability.');
-    } finally {
-      setLoading(false);
-    }
-  }, [applyResponse]);
+  const load = useCallback(
+    async (windowId?: string) => {
+      setLoading(true);
+      setError(null);
+      try {
+        const query = windowId ? `?windowId=${encodeURIComponent(windowId)}` : '';
+        applyResponse(await apiFetch<MyAvailabilityResponse>(`/availability/me${query}`));
+      } catch (e) {
+        setError(e instanceof Error ? e.message : 'Could not load your availability.');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [applyResponse],
+  );
 
   useEffect(() => {
     void load();
@@ -546,7 +604,9 @@ export const MyAvailabilityPage = () => {
       applyResponse(
         await apiFetch<MyAvailabilityResponse>('/availability/me', {
           method: 'PUT',
-          body: { entries: selectionToEntries(selection) },
+          // Always explicit: with more than one window open the API refuses to
+          // guess, and rightly so.
+          body: { windowId: selectedId, entries: selectionToEntries(selection) },
         }),
       );
       notify('Availability saved', { type: 'success' });
@@ -562,8 +622,9 @@ export const MyAvailabilityPage = () => {
   const handleDeclineToggle = async (nextDeclined: boolean) => {
     setSaving(true);
     try {
+      const query = selectedId ? `?windowId=${encodeURIComponent(selectedId)}` : '';
       applyResponse(
-        await apiFetch<MyAvailabilityResponse>('/availability/me/decline', {
+        await apiFetch<MyAvailabilityResponse>(`/availability/me/decline${query}`, {
           method: nextDeclined ? 'POST' : 'DELETE',
         }),
       );
@@ -605,12 +666,25 @@ export const MyAvailabilityPage = () => {
               color={canSubmit ? 'success' : 'default'}
               label={canSubmit ? 'Window open' : 'Window closed'}
             />
+            <WindowCategoryChip category={window.category} />
+            {window.name && (
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                {window.name}
+              </Typography>
+            )}
             <Typography variant="body2" color="text.secondary">
               {formatDateRange(window.startDate, window.endDate)}
             </Typography>
           </Stack>
         )}
       </Box>
+
+      <WindowPicker
+        windows={data?.windows ?? []}
+        value={selectedId ?? ''}
+        disabled={saving}
+        onChange={(id) => void load(id)}
+      />
 
       {error && (
         <Alert severity="error" sx={{ mb: 2 }}>

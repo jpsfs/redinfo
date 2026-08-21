@@ -25,12 +25,14 @@ import LockIcon from '@mui/icons-material/Lock';
 import {
   AvailabilityMatrixResponse,
   AvailabilityWindow,
+  availabilityWindowLabel,
   AvailabilityWindowStatus,
 } from '@redinfo/shared';
 import { apiFetch } from '../../api';
 import { formatDateRange } from '../../utils/dates';
 import { AvailabilityMatrix } from './AvailabilityMatrix';
 import { WindowStatusChip } from './AvailabilityWindowList';
+import { WindowIdentity, WindowRoleChips } from './WindowIdentity';
 
 /**
  * Closing a window is irreversible and immediately blocks submissions, so the
@@ -93,9 +95,9 @@ const CloseWindowButton = () => {
         <DialogTitle>Close availability window?</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Submissions will no longer be accepted for{' '}
-            {formatDateRange(record.startDate, record.endDate)} once this window is closed.
-            This cannot be undone.
+            Submissions will no longer be accepted for {availabilityWindowLabel(record)} (
+            {formatDateRange(record.startDate, record.endDate)}) once this window is
+            closed. This cannot be undone.
           </DialogContentText>
           {stats && (
             <Alert severity="warning" sx={{ mt: 2 }}>
@@ -131,11 +133,16 @@ const WindowHeader = () => {
         flexWrap: 'wrap',
       }}
     >
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        <Typography variant="h6">
-          {formatDateRange(record.startDate, record.endDate)}
-        </Typography>
-        <WindowStatusChip status={record.status} />
+      <Box>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+          <Typography variant="h6">
+            {formatDateRange(record.startDate, record.endDate)}
+          </Typography>
+          <WindowStatusChip status={record.status} />
+        </Box>
+        <Box sx={{ mt: 0.5 }}>
+          <WindowIdentity category={record.category} name={record.name} />
+        </Box>
       </Box>
       <CloseWindowButton />
     </Box>
@@ -152,6 +159,11 @@ export const AvailabilityWindowShow = () => (
   <Show title="Availability window">
     <SimpleShowLayout>
       <WindowHeader />
+
+      <FunctionField
+        label="Roles for the schedule"
+        render={(record: AvailabilityWindow) => <WindowRoleChips roles={record.roles} />}
+      />
 
       <FunctionField
         label="Opened by"

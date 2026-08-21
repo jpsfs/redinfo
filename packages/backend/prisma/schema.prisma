@@ -176,11 +176,17 @@ model VehicleInventoryAudit {
 
 // ─── Availability ─────────────────────────────────────────────────────────────
 
-/// MORNING/AFTERNOON apply to weekends and holidays, EVENING to workdays.
-/// The mapping itself lives in ShiftScheduleService — never re-derive it.
 enum AvailabilityWindowStatus {
   OPEN
   CLOSED
+}
+
+/// Independent rotas. Two windows may cover the same dates as long as their
+/// categories differ; within one category only one open window may cover a day.
+enum AvailabilityWindowCategory {
+  EMERGENCY
+  LOCAL_SUPPORT
+  SALOP_SUPPORT
 }
 
 /// Only DECLINED is ever stored: absence of a row means "not yet responded".
@@ -204,6 +210,11 @@ model AvailabilityWindow {
   id         String                   @id @default(cuid())
   startDate  DateTime                 @db.Date
   endDate    DateTime                 @db.Date
+  /// Which rota this window collects availability for. No default on purpose:
+  /// every caller states it, so a missing category cannot silently become one.
+  category   AvailabilityWindowCategory
+  /// Optional free-text title, e.g. "Emergency - October". Not unique.
+  name       String?
   status     AvailabilityWindowStatus @default(OPEN)
   openedById String
   openedBy   User                     @relation("WindowOpenedBy", fields: [openedById], references: [id])
@@ -217,9 +228,12 @@ model AvailabilityWindow {
   submissions AvailabilitySubmission[]
   responses   AvailabilityResponse[]
   shifts      AvailabilityWindowShift[]
+  roles       AvailabilityWindowRole[]
 
   @@index([status])
   @@index([startDate, endDate])
+  /// Overlap checks are always "this category, these dates".
+  @@index([category, status])
 }
 
 /// The shifts of one day of one window, materialised when the window is opened.
@@ -231,15 +245,41 @@ model AvailabilityWindowShift {
   id        String             @id @default(cuid())
   windowId  String
   window    AvailabilityWindow @relation(fields: [windowId], references: [id], onDelete: Cascade)
-  date      DateTime           @db.Date
-  /// 1-based position within the day, ordered by startHour. Submissions point here.
-  slot      Int
-  /// 0–23.
-  startHour Int
-  /// 1–24 (24 = midnight).
-  endHour   Int
+  date        DateTime           @db.Date
+  /// 1-based position within the day, ordered by startMinute. Submissions point here.
+  slot        Int
+  /// Minutes from midnight the shift starts, 0–1439.
+  startMinute Int
+  /// Minutes from midnight it ends, 1–1440 (1440 = midnight).
+  endMinute   Int
+  /// Vehicles to be crewed on this shift; each needs its own driver, which is
+  /// what the coverage colours are judged against. 0 = people only.
+  vehiclesNeeded Int
 
   @@unique([windowId, date, slot])
+  @@index([windowId])
+}
+
+/// A post the schedule for this window assigns people to.
+///
+/// Roles hang off the window rather than off a person or a shift: availability
+/// is collected without them (a volunteer says only when they can be there) and
+/// the coordinator allocates roles when building the schedule.
+model AvailabilityWindowRole {
+  id       String             @id @default(cuid())
+  windowId String
+  window   AvailabilityWindow @relation(fields: [windowId], references: [id], onDelete: Cascade)
+  name     String
+  /// Most people the schedule may put in this role on one shift. 0 = unlimited.
+  maxPeople Int
+  /// Only a certified driver may fill this role. Always true for "Driver",
+  /// derived from the name rather than chosen, so the rule cannot be turned off.
+  requiresDriverCertification Boolean @default(false)
+  /// Position in the window's own role list, 0-based.
+  order    Int
+
+  /// One post per name: two roles a schedule cannot tell apart are not two roles.
+  @@unique([windowId, name])
   @@index([windowId])
 }
 

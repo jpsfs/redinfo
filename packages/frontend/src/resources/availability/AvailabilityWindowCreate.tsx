@@ -6,21 +6,32 @@ import {
   Button,
   Card,
   CardContent,
+  Checkbox,
   CircularProgress,
+  FormControlLabel,
   Stack,
   TextField,
   Typography,
 } from '@mui/material';
 import SaveIcon from '@mui/icons-material/Save';
 import {
-  AvailabilityWindow,
+  AVAILABILITY_WINDOW_CATEGORIES,
+  AvailabilityWindowCategory,
+  availabilityWindowCategoryLabel,
+  AvailabilityWindowOverlapsResponse,
+  AVAILABILITY_WINDOW_CATEGORY_METADATA,
   DayShiftPattern,
+  defaultRolesForCategory,
   MAX_WINDOW_DAYS,
+  MAX_WINDOW_NAME_LENGTH,
   validateDayShifts,
+  validateWindowRoles,
+  WindowRoleSpec,
 } from '@redinfo/shared';
 import { apiFetch } from '../../api';
 import { addIsoDays, formatDateRange, isoDateRange, toIsoDate } from '../../utils/dates';
 import { DayShiftEditor, WindowDayDraft } from './DayShiftEditor';
+import { WindowRoleEditor } from './WindowRoleEditor';
 
 /** A fortnight from today, which is the usual shape of a window. */
 function defaultRange(): { startDate: string; endDate: string } {
@@ -42,9 +53,24 @@ function draftsFromCalendar(
     holidayName: pattern.holidayName ?? null,
     shifts:
       edited.get(pattern.date) ??
-      pattern.shifts.map(({ startHour, endHour }) => ({ startHour, endHour })),
+      pattern.shifts.map(({ startMinute, endMinute, vehiclesNeeded }) => ({
+        startMinute,
+        endMinute,
+        vehiclesNeeded,
+      })),
   }));
 }
+
+const describeWindows = (
+  windows: AvailabilityWindowOverlapsResponse['open'],
+): string =>
+  windows
+    .map((window) =>
+      [window.name, formatDateRange(window.startDate, window.endDate)]
+        .filter(Boolean)
+        .join(', '),
+    )
+    .join('; ');
 
 /**
  * Open an availability window, defining each day's shifts.
@@ -52,7 +78,7 @@ function draftsFromCalendar(
  * Days are seeded from the default grid (one evening shift on workdays, two on
  * weekends and holidays) and then editable one by one, with copy actions for
  * the common "same pattern every working day" case. For a plain whole-month
- * window on the defaults, the list screen has the one-click shortcut instead.
+ * emergency window on the defaults, the list screen has the one-click shortcut.
  */
 export const AvailabilityWindowCreate = () => {
   const notify = useNotify();
@@ -60,27 +86,23 @@ export const AvailabilityWindowCreate = () => {
   const [create, { isPending: saving }] = useCreate();
 
   const [{ startDate, endDate }, setRange] = useState(defaultRange);
+  const [category, setCategory] = useState<AvailabilityWindowCategory>(
+    AvailabilityWindowCategory.EMERGENCY,
+  );
+  const [name, setName] = useState('');
+  const [roles, setRoles] = useState<WindowRoleSpec[]>(() =>
+    defaultRolesForCategory(AvailabilityWindowCategory.EMERGENCY),
+  );
+  // Whether the coordinator has touched the roles. Until they have, changing the
+  // category re-seeds them from that category's defaults; after, their own list
+  // stands — silently rewriting an edited crew would be worse than a stale one.
+  const [rolesEdited, setRolesEdited] = useState(false);
   const [days, setDays] = useState<WindowDayDraft[]>([]);
-  const [activeWindow, setActiveWindow] = useState<AvailabilityWindow | null>(null);
-  const [checkingActive, setCheckingActive] = useState(true);
+  const [overlaps, setOverlaps] = useState<AvailabilityWindowOverlapsResponse | null>(null);
+  const [checkingOverlaps, setCheckingOverlaps] = useState(true);
+  const [acknowledged, setAcknowledged] = useState(false);
   const [loadingDays, setLoadingDays] = useState(false);
   const [calendarError, setCalendarError] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-    apiFetch<AvailabilityWindow | null>('/availability-windows/active')
-      .then((window) => {
-        if (!cancelled) setActiveWindow(window ?? null);
-      })
-      .catch(() => notify('Could not check for an open window', { type: 'warning' }))
-      .finally(() => {
-        if (!cancelled) setCheckingActive(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   const rangeError = useMemo(() => {
     if (!startDate || !endDate) return 'Pick a start and an end date.';
@@ -91,6 +113,40 @@ export const AvailabilityWindowCreate = () => {
     }
     return null;
   }, [startDate, endDate]);
+
+  // Warn before saving rather than only on the rejected request: which windows
+  // already cover these dates is exactly what decides whether to go ahead.
+  useEffect(() => {
+    if (rangeError) {
+      setOverlaps(null);
+      setCheckingOverlaps(false);
+      return;
+    }
+    let cancelled = false;
+    setCheckingOverlaps(true);
+    setAcknowledged(false);
+    apiFetch<AvailabilityWindowOverlapsResponse>(
+      `/availability-windows/overlaps?category=${encodeURIComponent(
+        category,
+      )}&startDate=${startDate}&endDate=${endDate}`,
+    )
+      .then((result) => {
+        if (!cancelled) setOverlaps(result);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setOverlaps(null);
+          notify('Could not check for windows over these dates', { type: 'warning' });
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setCheckingOverlaps(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [category, startDate, endDate, rangeError]);
 
   // The day types (and holiday names) come from the API, so the editor is
   // seeded with the same grid the backend would have applied on its own.
@@ -124,6 +180,8 @@ export const AvailabilityWindowCreate = () => {
     };
   }, [startDate, endDate, rangeError]);
 
+  const roleError = useMemo(() => validateWindowRoles(roles), [roles]);
+
   const dayErrors = useMemo(
     () => days.filter((day) => validateDayShifts(day.shifts) !== null).length,
     [days],
@@ -134,10 +192,17 @@ export const AvailabilityWindowCreate = () => {
     [days],
   );
 
+  const categoryLabel = availabilityWindowCategoryLabel(category);
+  const openOverlaps = overlaps?.open ?? [];
+  const closedOverlaps = overlaps?.closed ?? [];
+  const needsAcknowledgement = openOverlaps.length === 0 && closedOverlaps.length > 0;
+
   const blocked =
-    checkingActive ||
-    activeWindow !== null ||
+    checkingOverlaps ||
+    openOverlaps.length > 0 ||
+    (needsAcknowledgement && !acknowledged) ||
     rangeError !== null ||
+    roleError !== null ||
     loadingDays ||
     days.length === 0 ||
     dayErrors > 0;
@@ -149,6 +214,12 @@ export const AvailabilityWindowCreate = () => {
         data: {
           startDate,
           endDate,
+          category,
+          name: name.trim() || undefined,
+          // Sent even when empty: an empty list means "no roles", which is not
+          // the same request as "give me the category defaults".
+          roles: roles.map((role) => ({ name: role.name.trim(), maxPeople: role.maxPeople })),
+          acknowledgeOverlap: acknowledged || undefined,
           days: days.map((day) => ({ date: day.date, shifts: day.shifts })),
         },
       },
@@ -164,7 +235,18 @@ export const AvailabilityWindowCreate = () => {
           ),
       },
     );
-  }, [create, days, endDate, notify, redirect, startDate]);
+  }, [
+    acknowledged,
+    category,
+    create,
+    days,
+    endDate,
+    name,
+    notify,
+    redirect,
+    roles,
+    startDate,
+  ]);
 
   return (
     <Box sx={{ p: { xs: 1, sm: 2 } }}>
@@ -172,24 +254,47 @@ export const AvailabilityWindowCreate = () => {
 
       <Card variant="outlined">
         <CardContent>
-          {checkingActive && <CircularProgress size={20} />}
+          <Alert severity="info" sx={{ mb: 2 }}>
+            Volunteers will be able to submit availability for every shift below. Days
+            start on the default grid — one 20:00–24:00 shift on working days, and
+            08:00–16:00 plus 16:00–24:00 on weekends and holidays, each needing one
+            vehicle — and you can change any of it. Vehicles matter for coverage: a
+            shift counts as covered only once every vehicle has a driver.
+          </Alert>
 
-          {!checkingActive && activeWindow && (
-            <Alert severity="warning" sx={{ mb: 2 }}>
-              An availability window is already open (
-              {formatDateRange(activeWindow.startDate, activeWindow.endDate)}). Close it
-              before opening the next one.
-            </Alert>
-          )}
-
-          {!checkingActive && !activeWindow && (
-            <Alert severity="info" sx={{ mb: 2 }}>
-              Volunteers will be able to submit availability for every shift below. Days
-              start on the default grid — one 20:00–24:00 shift on working days, and
-              08:00–16:00 plus 16:00–24:00 on weekends and holidays — and you can change
-              any of them.
-            </Alert>
-          )}
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 2 }}>
+            <TextField
+              select
+              size="small"
+              label="Category"
+              value={category}
+              onChange={(event) => {
+                const next = event.target.value as AvailabilityWindowCategory;
+                setCategory(next);
+                if (!rolesEdited) setRoles(defaultRolesForCategory(next));
+              }}
+              SelectProps={{ native: true, inputProps: { 'aria-label': 'Category' } }}
+              helperText={AVAILABILITY_WINDOW_CATEGORY_METADATA[category]?.description}
+              InputLabelProps={{ shrink: true }}
+              sx={{ minWidth: 200 }}
+            >
+              {AVAILABILITY_WINDOW_CATEGORIES.map((value) => (
+                <option key={value} value={value}>
+                  {availabilityWindowCategoryLabel(value)}
+                </option>
+              ))}
+            </TextField>
+            <TextField
+              size="small"
+              label="Name (optional)"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder={`${categoryLabel} - November`}
+              helperText="Shown to volunteers alongside the dates. Need not be unique."
+              inputProps={{ maxLength: MAX_WINDOW_NAME_LENGTH }}
+              sx={{ flex: 1 }}
+            />
+          </Stack>
 
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 2 }}>
             <TextField
@@ -220,11 +325,58 @@ export const AvailabilityWindowCreate = () => {
             </Alert>
           )}
 
+          {openOverlaps.length > 0 && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {`An availability window for ${categoryLabel} is already open over these ` +
+                `dates (${describeWindows(openOverlaps)}). Close it first, or pick dates ` +
+                'it does not cover. Windows of a different category may overlap freely.'}
+            </Alert>
+          )}
+
+          {needsAcknowledgement && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              {`A closed availability window for ${categoryLabel} already covers these ` +
+                `dates (${describeWindows(closedOverlaps)}). You can still open this ` +
+                'one — check below if you meant to ask for the same dates again.'}
+              <FormControlLabel
+                sx={{ display: 'block', mt: 1 }}
+                control={
+                  <Checkbox
+                    checked={acknowledged}
+                    onChange={(event) => setAcknowledged(event.target.checked)}
+                  />
+                }
+                label={`Open another ${categoryLabel} window over these dates`}
+              />
+            </Alert>
+          )}
+
           {calendarError && (
             <Alert severity="error" sx={{ mb: 2 }}>
               {calendarError}
             </Alert>
           )}
+
+          <Box sx={{ mb: 2 }}>
+            <Typography variant="subtitle2">Roles for the schedule</Typography>
+            <Typography
+              variant="caption"
+              color="text.secondary"
+              sx={{ display: 'block', mb: 1 }}
+            >
+              Volunteers are never asked which role they want — they say only when
+              they can be there. These are the roles you will assign them to when
+              building the schedule for this window.
+            </Typography>
+            <WindowRoleEditor
+              roles={roles}
+              onChange={(next) => {
+                setRoles(next);
+                setRolesEdited(true);
+              }}
+              disabled={saving}
+            />
+          </Box>
 
           {loadingDays && <CircularProgress size={20} sx={{ mb: 2 }} />}
 

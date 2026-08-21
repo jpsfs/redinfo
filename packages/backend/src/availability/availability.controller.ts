@@ -31,7 +31,11 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Actions } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuditInterceptor } from '../auth/interceptors/audit.interceptor';
-import { Action } from '@redinfo/shared';
+import {
+  Action,
+  AvailabilityWindowCategory,
+  AvailabilityWindowStatus,
+} from '@redinfo/shared';
 
 // ─── Holidays ─────────────────────────────────────────────────────────────────
 
@@ -98,17 +102,47 @@ export class AvailabilityWindowsController {
   @Actions(Action.MANAGE_AVAILABILITY_WINDOWS)
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'perPage', required: false, type: Number })
+  @ApiQuery({ name: 'category', required: false, enum: AvailabilityWindowCategory })
+  @ApiQuery({ name: 'status', required: false, enum: AvailabilityWindowStatus })
   findAll(
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('perPage', new DefaultValuePipe(25), ParseIntPipe) perPage: number,
+    @Query('category') category?: string,
+    @Query('status') status?: string,
   ) {
-    return this.windowsService.findAll(page, perPage);
+    return this.windowsService.findAll(page, perPage, { category, status });
   }
 
   // Ungated: any authenticated user may check whether submissions are open.
   @Get('active')
   findActive() {
     return this.windowsService.findActive();
+  }
+
+  /**
+   * Every open window. Several can be open at once — one per category — so this
+   * is what a caller needs rather than `active`, which only picks the latest.
+   */
+  @Get('open')
+  findOpen() {
+    return this.windowsService.findOpen();
+  }
+
+  /**
+   * Windows of one category already covering a proposed range, so the create
+   * screens can warn *before* saving instead of only on the rejected request.
+   */
+  @Get('overlaps')
+  @Actions(Action.MANAGE_AVAILABILITY_WINDOWS)
+  @ApiQuery({ name: 'category', required: true, enum: AvailabilityWindowCategory })
+  @ApiQuery({ name: 'startDate', required: true, type: String })
+  @ApiQuery({ name: 'endDate', required: true, type: String })
+  findOverlaps(
+    @Query('category') category: string,
+    @Query('startDate') startDate: string,
+    @Query('endDate') endDate: string,
+  ) {
+    return this.windowsService.findOverlaps(category, startDate, endDate);
   }
 
   @Get(':id')

@@ -38,6 +38,7 @@ import {
 import { apiDownload, apiFetch } from '../../api';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { formatDayLabel, formatDateRange } from '../../utils/dates';
+import { WindowIdentity } from './WindowIdentity';
 
 /**
  * Coverage colours, straight from the design. The level itself is computed
@@ -58,12 +59,12 @@ const COVERAGE_STYLE: Record<CoverageLevel, { bg: string; fg: string; border: st
 interface ShiftColumn {
   key: string;
   label: string;
-  startHour: number;
-  endHour: number;
+  startMinute: number;
+  endMinute: number;
 }
 
-const shiftKey = (shift: { startHour: number; endHour: number }) =>
-  `${shift.startHour}-${shift.endHour}`;
+const shiftKey = (shift: { startMinute: number; endMinute: number }) =>
+  `${shift.startMinute}-${shift.endMinute}`;
 
 /**
  * Past this many distinct shift times the table is wider than it is readable,
@@ -72,8 +73,9 @@ const shiftKey = (shift: { startHour: number; endHour: number }) =>
 const MAX_TABLE_COLUMNS = 6;
 
 const CAPACITY_NOTE =
-  `A scheduled shift holds at most ${SHIFT_MAX_PEOPLE} people and always needs at ` +
-  'least one driver — this matrix shows everyone who is available, not who ends up scheduled.';
+  `A scheduled shift holds at most ${SHIFT_MAX_PEOPLE} people, and every vehicle it ` +
+  'needs has to have a driver — this matrix shows everyone who is available, not who ' +
+  'ends up scheduled.';
 
 const REMINDER_TOOLTIP =
   'Reminders need a notification channel (email/SMS), which this system does not have yet.';
@@ -85,6 +87,12 @@ interface SelectedCell {
 }
 
 // ─── Small pieces ──────────────────────────────────────────────────────────────
+
+/** e.g. "2 vehicles needed", "no vehicle needed". */
+const describeVehicles = (vehiclesNeeded: number) =>
+  vehiclesNeeded === 0
+    ? 'no vehicle needed'
+    : `${vehiclesNeeded} vehicle${vehiclesNeeded === 1 ? '' : 's'} needed`;
 
 const CoveragePill = ({
   cell,
@@ -100,12 +108,15 @@ const CoveragePill = ({
     <Tooltip
       title={`${cell.availableCount} available, ${cell.driverCount} driver${
         cell.driverCount === 1 ? '' : 's'
-      }`}
+      }, ${describeVehicles(cell.vehiclesNeeded)}`}
     >
       <Box
         component={onClick ? 'button' : 'span'}
         onClick={onClick}
-        aria-label={`${cell.label}: ${cell.availableCount} available, ${cell.driverCount} drivers, ${cell.coverageLevel}`}
+        aria-label={
+          `${cell.label}: ${cell.availableCount} available, ${cell.driverCount} drivers, ` +
+          `${describeVehicles(cell.vehiclesNeeded)}, ${cell.coverageLevel}`
+        }
         sx={{
           display: 'inline-flex',
           alignItems: 'center',
@@ -131,14 +142,36 @@ const CoveragePill = ({
   );
 };
 
-const DriverBadge = ({ count }: { count: number }) => (
-  <Tooltip title={`${count} certified driver${count === 1 ? '' : 's'} available`}>
+/**
+ * Drivers available for one shift, against the vehicles it needs: short of that
+ * count the shift cannot run in full, however many people are free.
+ */
+const DriverBadge = ({
+  count,
+  vehiclesNeeded,
+}: {
+  count: number;
+  vehiclesNeeded: number;
+}) => (
+  <Tooltip
+    title={`${count} certified driver${count === 1 ? '' : 's'} available, ${describeVehicles(
+      vehiclesNeeded,
+    )}`}
+  >
     <Chip
       size="small"
       icon={<DirectionsCarIcon fontSize="small" />}
-      label={count}
+      label={vehiclesNeeded > 0 ? `${count}/${vehiclesNeeded}` : count}
       variant="outlined"
-      color={count === 0 ? 'error' : count === 1 ? 'warning' : 'success'}
+      color={
+        vehiclesNeeded === 0
+          ? 'default'
+          : count === 0
+            ? 'error'
+            : count < vehiclesNeeded
+              ? 'warning'
+              : 'success'
+      }
       sx={{ height: 22, '& .MuiChip-label': { px: 0.75, fontWeight: 700 } }}
     />
   </Tooltip>
@@ -173,9 +206,9 @@ const CoverageLegend = () => (
   <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap sx={{ mb: 1.5 }}>
     {(
       [
-        ['red', 'Fewer than 2 available, or no driver'],
-        ['yellow', '2+ available, 1 driver'],
-        ['green', `${SHIFT_MAX_PEOPLE}+ available, 2+ drivers`],
+        ['red', 'Fewer than 2 available, or no driver for a vehicle'],
+        ['yellow', 'Some cover, but not a driver for every vehicle'],
+        ['green', `${SHIFT_MAX_PEOPLE}+ available, one driver per vehicle`],
       ] as const
     ).map(([level, label]) => (
       <Box key={level} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
@@ -195,7 +228,7 @@ const CoverageLegend = () => (
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
       <DirectionsCarIcon fontSize="small" sx={{ color: 'text.secondary' }} />
       <Typography variant="caption" color="text.secondary">
-        Drivers available
+        Drivers available / vehicles needed
       </Typography>
     </Box>
   </Stack>
@@ -332,7 +365,7 @@ const DesktopMatrix = ({
                         onSelect(isSelected ? null : { date: day.date, slot: cell.slot })
                       }
                     />
-                    <DriverBadge count={cell.driverCount} />
+                    <DriverBadge count={cell.driverCount} vehiclesNeeded={cell.vehiclesNeeded} />
                   </Box>
                 </TableCell>
               );
@@ -404,7 +437,7 @@ const MobileMatrix = ({
                         </Typography>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
                           <CoveragePill cell={shift} />
-                          <DriverBadge count={shift.driverCount} />
+                          <DriverBadge count={shift.driverCount} vehiclesNeeded={shift.vehiclesNeeded} />
                         </Box>
                       </Box>
                       <Stack
@@ -498,14 +531,14 @@ export const AvailabilityMatrix = ({ windowId }: { windowId?: string }) => {
           byKey.set(key, {
             key,
             label: shift.label,
-            startHour: shift.startHour,
-            endHour: shift.endHour,
+            startMinute: shift.startMinute,
+            endMinute: shift.endMinute,
           });
         }
       }
     }
     return [...byKey.values()].sort(
-      (a, b) => a.startHour - b.startHour || a.endHour - b.endHour,
+      (a, b) => a.startMinute - b.startMinute || a.endMinute - b.endMinute,
     );
   }, [matrix]);
 
@@ -548,6 +581,12 @@ export const AvailabilityMatrix = ({ windowId }: { windowId?: string }) => {
             {formatDateRange(matrix.window.startDate, matrix.window.endDate)} ·{' '}
             {matrix.responseStats.total} eligible personnel
           </Typography>
+          <Box sx={{ mt: 0.5 }}>
+            <WindowIdentity
+              category={matrix.window.category}
+              name={matrix.window.name}
+            />
+          </Box>
         </Box>
         <Button
           size="small"

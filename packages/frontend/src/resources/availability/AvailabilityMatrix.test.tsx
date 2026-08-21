@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { AvailabilityWindowStatus } from '@redinfo/shared';
+import { AvailabilityWindowStatus, toMinuteOfDay } from '@redinfo/shared';
 import { AvailabilityMatrix } from './AvailabilityMatrix';
 import { apiDownload, apiFetch } from '../../api';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -51,6 +51,13 @@ describe('AvailabilityMatrix', () => {
     expect(
       await screen.findByText('28 Sep 2026 – 5 Oct 2026 · 5 eligible personnel'),
     ).toBeInTheDocument();
+  });
+
+  it('names the window it is showing, so two rotas cannot be confused', async () => {
+    render(<AvailabilityMatrix windowId="win-1" />);
+
+    expect(await screen.findByText('Emergency')).toBeInTheDocument();
+    expect(screen.getByText('Emergency - October')).toBeInTheDocument();
   });
 
   // ── tri-state response tracking ──────────────────────────────────────────────
@@ -105,16 +112,16 @@ describe('AvailabilityMatrix', () => {
     // Sat 3 Oct: morning 3 available / 2 drivers → green; afternoon 1/0 → red.
     const saturday = rowFor('Sat, 3 Oct');
     expect(
-      within(saturday).getByLabelText('08:00–16:00: 3 available, 2 drivers, green'),
+      within(saturday).getByLabelText('08:00–16:00: 3 available, 2 drivers, 1 vehicle needed, green'),
     ).toBeInTheDocument();
     expect(
-      within(saturday).getByLabelText('16:00–24:00: 1 available, 0 drivers, red'),
+      within(saturday).getByLabelText('16:00–24:00: 1 available, 0 drivers, 1 vehicle needed, red'),
     ).toBeInTheDocument();
 
     // Sun 4 Oct: 2 available / 1 driver → yellow.
     expect(
       within(rowFor('Sun, 4 Oct')).getByLabelText(
-        '08:00–16:00: 2 available, 1 drivers, yellow',
+        '08:00–16:00: 2 available, 1 drivers, 1 vehicle needed, yellow',
       ),
     ).toBeInTheDocument();
   });
@@ -127,7 +134,7 @@ describe('AvailabilityMatrix', () => {
     const monday = rowFor('Mon, 28 Sep');
     expect(within(monday).getAllByText('—')).toHaveLength(2);
     expect(
-      within(monday).getByLabelText('20:00–24:00: 4 available, 2 drivers, green'),
+      within(monday).getByLabelText('20:00–24:00: 4 available, 2 drivers, 1 vehicle needed, green'),
     ).toBeInTheDocument();
   });
 
@@ -150,7 +157,7 @@ describe('AvailabilityMatrix', () => {
 
     await userEvent.click(
       within(rowFor('Sat, 3 Oct')).getByLabelText(
-        '08:00–16:00: 3 available, 2 drivers, green',
+        '08:00–16:00: 3 available, 2 drivers, 1 vehicle needed, green',
       ),
     );
 
@@ -164,7 +171,7 @@ describe('AvailabilityMatrix', () => {
     render(<AvailabilityMatrix windowId="win-1" />);
     await screen.findByText('Date');
     const cell = within(rowFor('Sun, 4 Oct')).getByLabelText(
-      '08:00–16:00: 2 available, 1 drivers, yellow',
+      '08:00–16:00: 2 available, 1 drivers, 1 vehicle needed, yellow',
     );
 
     await userEvent.click(cell);
@@ -217,7 +224,7 @@ describe('AvailabilityMatrix', () => {
     render(<AvailabilityMatrix windowId="win-1" />);
 
     expect(
-      await screen.findByText(/holds at most 3 people and always needs at least one driver/i),
+      await screen.findByText(/holds at most 3 people, and every vehicle it needs has to have a driver/i),
     ).toBeInTheDocument();
   });
 
@@ -263,7 +270,7 @@ describe('AvailabilityMatrix', () => {
       render(<AvailabilityMatrix windowId="win-1" />);
 
       expect(
-        await screen.findByLabelText('20:00–24:00: 4 available, 2 drivers, green'),
+        await screen.findByLabelText('20:00–24:00: 4 available, 2 drivers, 1 vehicle needed, green'),
       ).toBeInTheDocument();
     });
   });
@@ -306,10 +313,12 @@ describe('AvailabilityMatrix', () => {
       startHour: number,
       endHour: number,
       availableUserIds: string[] = [],
+      vehiclesNeeded = 1,
     ) => ({
       slot,
-      startHour,
-      endHour,
+      startMinute: toMinuteOfDay(startHour),
+      endMinute: toMinuteOfDay(endHour),
+      vehiclesNeeded,
       label: `${String(startHour).padStart(2, '0')}:00–${String(endHour).padStart(2, '0')}:00`,
       availableCount: availableUserIds.length,
       driverCount: 0,
@@ -360,7 +369,7 @@ describe('AvailabilityMatrix', () => {
       const tuesday = rowFor('Tue, 29 Sep');
       expect(within(tuesday).getAllByText('—')).toHaveLength(1);
       expect(
-        within(tuesday).getByLabelText('12:00–18:00: 1 available, 0 drivers, red'),
+        within(tuesday).getByLabelText('12:00–18:00: 1 available, 0 drivers, 1 vehicle needed, red'),
       ).toBeInTheDocument();
     });
 
@@ -379,12 +388,52 @@ describe('AvailabilityMatrix', () => {
 
       await userEvent.click(
         within(rowFor('Tue, 29 Sep')).getByLabelText(
-          '12:00–18:00: 1 available, 0 drivers, red',
+          '12:00–18:00: 1 available, 0 drivers, 1 vehicle needed, red',
         ),
       );
 
       expect(await screen.findByText(/Tue, 29 Sep · 12:00–18:00/)).toBeInTheDocument();
       expect(screen.getByText('Ana Silva')).toBeInTheDocument();
+    });
+
+    it('shows the drivers available against the vehicles the shift needs', async () => {
+      mockApiFetch.mockResolvedValue(
+        matrixResponse({
+          days: [
+            day('2026-09-28', [
+              // Two drivers for three vehicles: short, and it has to look it.
+              { ...cell(1, 6, 12, [ANA.id, BRUNO.id], 3), driverCount: 2 },
+            ]),
+          ],
+        }),
+      );
+
+      render(<AvailabilityMatrix windowId="win-1" />);
+      await screen.findByText('Date');
+
+      expect(screen.getByText('2/3')).toBeInTheDocument();
+      expect(
+        screen.getByLabelText(
+          '06:00–12:00: 2 available, 2 drivers, 3 vehicles needed, red',
+        ),
+      ).toBeInTheDocument();
+    });
+
+    it('says so when a shift needs no vehicle at all', async () => {
+      mockApiFetch.mockResolvedValue(
+        matrixResponse({
+          days: [day('2026-09-28', [cell(1, 6, 12, [ANA.id, BRUNO.id], 0)])],
+        }),
+      );
+
+      render(<AvailabilityMatrix windowId="win-1" />);
+      await screen.findByText('Date');
+
+      expect(
+        screen.getByLabelText(
+          '06:00–12:00: 2 available, 0 drivers, no vehicle needed, red',
+        ),
+      ).toBeInTheDocument();
     });
 
     it('swaps to day cards when the window has more shift times than fit', async () => {

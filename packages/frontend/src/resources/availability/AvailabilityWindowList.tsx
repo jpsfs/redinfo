@@ -5,6 +5,8 @@ import {
   DateField,
   FunctionField,
   List,
+  SelectInput,
+  TextField,
   TopToolbar,
 } from 'react-admin';
 import { Link } from 'react-router-dom';
@@ -20,10 +22,17 @@ import {
 } from '@mui/material';
 import BoltIcon from '@mui/icons-material/Bolt';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
-import { AvailabilityWindow, AvailabilityWindowStatus, Holiday } from '@redinfo/shared';
+import {
+  AVAILABILITY_WINDOW_CATEGORIES,
+  AvailabilityWindow,
+  availabilityWindowCategoryLabel,
+  AvailabilityWindowStatus,
+  Holiday,
+} from '@redinfo/shared';
 import { apiFetch } from '../../api';
 import { formatDate, formatDateRange, toIsoDate } from '../../utils/dates';
 import { EmergencyWindowDialog } from './EmergencyWindowDialog';
+import { WindowCategoryChip } from './WindowIdentity';
 
 /**
  * Two ways to open a window: pick a month and go, or build the shifts day by
@@ -120,18 +129,42 @@ const UpcomingHolidays = () => {
   );
 };
 
+/** Categories are independent rotas, so filtering by one is the common view. */
+const windowFilters = [
+  <SelectInput
+    key="category"
+    source="category"
+    label="Category"
+    alwaysOn
+    choices={AVAILABILITY_WINDOW_CATEGORIES.map((category) => ({
+      id: category,
+      name: availabilityWindowCategoryLabel(category),
+    }))}
+  />,
+  <SelectInput
+    key="status"
+    source="status"
+    label="Status"
+    choices={[
+      { id: AvailabilityWindowStatus.OPEN, name: 'Open' },
+      { id: AvailabilityWindowStatus.CLOSED, name: 'Closed' },
+    ]}
+  />,
+];
+
 export const AvailabilityWindowList = () => (
   <List
     actions={<WindowListActions />}
+    filters={windowFilters}
     sort={{ field: 'openedAt', order: 'DESC' }}
     empty={false}
   >
     <>
       <UpcomingHolidays />
       <Alert severity="info" sx={{ mb: 2 }}>
-        Only one availability window can be open at a time. Volunteers can submit
-        and amend their availability until the open window is closed. Each window
-        carries its own shifts, set when it is opened.
+        One window per category can be open over any given day: an Emergency and a
+        Local Support window may cover the same dates at once, two Emergency windows
+        may not. Each window carries its own shifts, set when it is opened.
       </Alert>
       <Datagrid rowClick="show" bulkActionButtons={false}>
         <FunctionField
@@ -140,6 +173,13 @@ export const AvailabilityWindowList = () => (
             formatDateRange(record.startDate, record.endDate)
           }
         />
+        <FunctionField
+          label="Category"
+          render={(record: AvailabilityWindow) => (
+            <WindowCategoryChip category={record.category} />
+          )}
+        />
+        <TextField source="name" label="Name" emptyText="—" />
         <FunctionField
           label="Status"
           render={(record: AvailabilityWindow) => <WindowStatusChip status={record.status} />}

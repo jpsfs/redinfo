@@ -10,9 +10,15 @@ import { HolidaysService } from './holidays.service';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   AvailabilityWindow,
+  AvailabilityWindowCategory,
   AvailabilityWindowStatus,
+  DEFAULT_VEHICLES_NEEDED,
+  toMinuteOfDay,
   UserRole,
 } from '@redinfo/shared';
+
+/** Minutes from midnight, so the expectations read in wall-clock hours. */
+const at = (hour: number, minute = 0) => toMinuteOfDay(hour, minute);
 
 // ── fixtures ───────────────────────────────────────────────────────────────────
 //
@@ -32,6 +38,8 @@ const OPEN_WINDOW: AvailabilityWindow = {
   id: 'win-1',
   startDate: '2026-09-28',
   endDate: '2026-10-05',
+  category: AvailabilityWindowCategory.EMERGENCY,
+  name: 'Emergency - October',
   status: AvailabilityWindowStatus.OPEN,
   openedById: 'coord-1',
   openedBy: { id: 'coord-1', firstName: 'Maria', lastName: 'Santos' },
@@ -48,6 +56,14 @@ const CLOSED_WINDOW: AvailabilityWindow = {
   status: AvailabilityWindowStatus.CLOSED,
   closedById: 'coord-1',
   closedAt: '2026-10-05T23:59:00.000Z',
+};
+
+/** A second open window, so "which window?" has an answer worth testing. */
+const LOCAL_WINDOW: AvailabilityWindow = {
+  ...OPEN_WINDOW,
+  id: 'win-2',
+  category: AvailabilityWindowCategory.LOCAL_SUPPORT,
+  name: null,
 };
 
 const ANA = { id: 'u-ana', firstName: 'Ana', lastName: 'Silva', isDriver: true };
@@ -73,8 +89,21 @@ function submissionRow(userId: string, date: string, slot: number, id = `${userI
   };
 }
 
-function shiftRow(date: string, slot: number, startHour: number, endHour: number) {
-  return { date: new Date(`${date}T00:00:00.000Z`), slot, startHour, endHour };
+/** Hours in, minutes stored — the rows a window materialises. */
+function shiftRow(
+  date: string,
+  slot: number,
+  startHour: number,
+  endHour: number,
+  vehiclesNeeded = DEFAULT_VEHICLES_NEEDED,
+) {
+  return {
+    date: new Date(`${date}T00:00:00.000Z`),
+    slot,
+    startMinute: at(startHour),
+    endMinute: at(endHour),
+    vehiclesNeeded,
+  };
 }
 
 // ── stubs ──────────────────────────────────────────────────────────────────────
@@ -104,12 +133,21 @@ function buildPrismaStub(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function buildWindowsStub(active: AvailabilityWindow | null = OPEN_WINDOW) {
+function buildWindowsStub(
+  active: AvailabilityWindow | null = OPEN_WINDOW,
+  /** Every open window; defaults to whichever one `active` is. */
+  open: AvailabilityWindow[] = active && active.status === AvailabilityWindowStatus.OPEN
+    ? [active]
+    : [],
+) {
+  const known = [active, ...open].filter(Boolean) as AvailabilityWindow[];
   return {
     findActive: jest.fn().mockResolvedValue(active),
     findActiveOrLatest: jest.fn().mockResolvedValue(active),
+    findOpen: jest.fn().mockResolvedValue(open),
     findOne: jest.fn().mockImplementation((id: string) => {
-      if (id === OPEN_WINDOW.id) return Promise.resolve(OPEN_WINDOW);
+      const match = known.find((window) => window.id === id);
+      if (match) return Promise.resolve(match);
       return Promise.reject(new NotFoundException(`Availability window ${id} not found`));
     }),
   };
@@ -158,10 +196,47 @@ describe('AvailabilityService.getMine', () => {
 
     await expect(service.getMine(ANA.id)).resolves.toEqual({
       window: null,
+      windows: [],
       canSubmit: false,
       declined: false,
       calendar: [],
       entries: [],
+    });
+  });
+
+  it('lists every open window, so the screen can offer a choice', async () => {
+    const { service } = buildService({
+      windows: buildWindowsStub(OPEN_WINDOW, [OPEN_WINDOW, LOCAL_WINDOW]),
+    });
+
+    const result = await service.getMine(ANA.id);
+
+    expect(result.window?.id).toBe(OPEN_WINDOW.id);
+    expect(result.windows.map((window) => window.id)).toEqual(['win-1', 'win-2']);
+  });
+
+  it('keeps a closed window on the list while it is the one being shown', async () => {
+    // Otherwise the screen shows a window the selector cannot get back to.
+    const { service } = buildService({ windows: buildWindowsStub(CLOSED_WINDOW, []) });
+
+    const result = await service.getMine(ANA.id);
+
+    expect(result.canSubmit).toBe(false);
+    expect(result.windows.map((window) => window.id)).toEqual([CLOSED_WINDOW.id]);
+  });
+
+  it('does not list the shown window twice when it is itself open', async () => {
+    const { service } = buildService();
+    const result = await service.getMine(ANA.id);
+    expect(result.windows).toHaveLength(1);
+  });
+
+  it('carries the category and name of the window through', async () => {
+    const { service } = buildService();
+    const result = await service.getMine(ANA.id);
+    expect(result.window).toMatchObject({
+      category: AvailabilityWindowCategory.EMERGENCY,
+      name: 'Emergency - October',
     });
   });
 
@@ -192,7 +267,13 @@ describe('AvailabilityService.getMine', () => {
     const result = await service.getMine(ANA.id);
 
     expect(result.calendar[0].shifts).toEqual([
-      { slot: 1, startHour: 10, endHour: 14, label: '10:00–14:00' },
+      {
+        slot: 1,
+        startMinute: at(10),
+        endMinute: at(14),
+        vehiclesNeeded: 1,
+        label: '10:00–14:00',
+      },
     ]);
     // Every other day of that window was left with no shifts.
     expect(result.calendar.slice(1).every((day) => day.shifts.length === 0)).toBe(true);
@@ -352,6 +433,51 @@ describe('AvailabilityService.submitMine', () => {
       }),
     ).rejects.toThrow(ForbiddenException);
     expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('refuses to guess which window when two are open', async () => {
+    // Guessing would file the answer against the wrong rota, silently.
+    const prisma = buildPrismaStub();
+    const { service } = buildService({
+      prisma,
+      windows: buildWindowsStub(OPEN_WINDOW, [OPEN_WINDOW, LOCAL_WINDOW]),
+    });
+
+    await expect(
+      service.submitMine(VOLUNTEER, {
+        entries: [{ date: '2026-09-28', slots: [1] }],
+      }),
+    ).rejects.toThrow(/More than one availability window is open/);
+    expect(prisma.$transaction).not.toHaveBeenCalled();
+  });
+
+  it('names the open windows it could have meant', async () => {
+    const { service } = buildService({
+      windows: buildWindowsStub(OPEN_WINDOW, [OPEN_WINDOW, LOCAL_WINDOW]),
+    });
+
+    // The nameless one is identified by its category instead.
+    await expect(
+      service.submitMine(VOLUNTEER, { entries: [] }),
+    ).rejects.toThrow(/Emergency - October \(win-1\), Local Support \(win-2\)/);
+  });
+
+  it('accepts a named window while another is also open', async () => {
+    const prisma = buildPrismaStub();
+    const { service } = buildService({
+      prisma,
+      windows: buildWindowsStub(OPEN_WINDOW, [OPEN_WINDOW, LOCAL_WINDOW]),
+    });
+
+    await service.submitMine(VOLUNTEER, {
+      windowId: LOCAL_WINDOW.id,
+      entries: [{ date: '2026-09-28', slots: [1] }],
+    });
+
+    expect(createdKeys(prisma)).toEqual(['2026-09-28|1']);
+    expect(prisma.availabilitySubmission.createMany.mock.calls[0][0].data[0].windowId).toBe(
+      LOCAL_WINDOW.id,
+    );
   });
 
   it('throws ForbiddenException when the named window is closed', async () => {
@@ -695,10 +821,68 @@ describe('AvailabilityService.getMatrix', () => {
 
     expect(matrix.days[0].shifts[0]).toMatchObject({
       label: '20:00–24:00',
-      startHour: 20,
-      endHour: 24,
+      startMinute: at(20),
+      endMinute: at(24),
+      vehiclesNeeded: 1,
     });
     expect(matrix.days[5].shifts.map((s) => s.label)).toEqual(['08:00–16:00', '16:00–24:00']);
+  });
+
+  it("carries each shift's vehicle count into the cell", async () => {
+    const prisma = buildPrismaStub();
+    prisma.availabilityWindowShift.findMany.mockResolvedValue([
+      shiftRow('2026-09-28', 1, 8, 16, 3),
+      shiftRow('2026-09-28', 2, 16, 24, 0),
+    ]);
+    const { service } = buildService({ prisma });
+
+    const matrix = await service.getMatrix();
+
+    expect(matrix.days[0].shifts.map((shift) => shift.vehiclesNeeded)).toEqual([3, 0]);
+  });
+
+  it('colours a cell against the vehicles that shift needs', async () => {
+    // Three people, two of them drivers — enough for two vehicles, not three.
+    const prisma = buildPrismaStub();
+    prisma.availabilitySubmission.findMany.mockResolvedValue([
+      submissionRow(ANA.id, '2026-09-28', 1),
+      submissionRow(BRUNO.id, '2026-09-28', 1),
+      submissionRow(CARLA.id, '2026-09-28', 1),
+      submissionRow(ANA.id, '2026-09-28', 2),
+      submissionRow(BRUNO.id, '2026-09-28', 2),
+      submissionRow(CARLA.id, '2026-09-28', 2),
+    ]);
+    prisma.availabilityWindowShift.findMany.mockResolvedValue([
+      shiftRow('2026-09-28', 1, 8, 16, 2),
+      shiftRow('2026-09-28', 2, 16, 24, 3),
+    ]);
+    const { service } = buildService({ prisma });
+
+    const matrix = await service.getMatrix();
+    const [twoVehicles, threeVehicles] = matrix.days[0].shifts;
+
+    expect(twoVehicles).toMatchObject({ driverCount: 2, coverageLevel: 'green' });
+    expect(threeVehicles).toMatchObject({ driverCount: 2, coverageLevel: 'yellow' });
+  });
+
+  it('needs no driver at all for a shift that needs no vehicle', async () => {
+    const prisma = buildPrismaStub();
+    prisma.availabilitySubmission.findMany.mockResolvedValue([
+      submissionRow(CARLA.id, '2026-09-28', 1),
+      submissionRow(MARTA.id, '2026-09-28', 1),
+      submissionRow(RUI.id, '2026-09-28', 1),
+    ]);
+    prisma.availabilityWindowShift.findMany.mockResolvedValue([
+      shiftRow('2026-09-28', 1, 8, 16, 0),
+    ]);
+    const { service } = buildService({ prisma });
+
+    const matrix = await service.getMatrix();
+
+    expect(matrix.days[0].shifts[0]).toMatchObject({
+      driverCount: 0,
+      coverageLevel: 'green',
+    });
   });
 
   it("uses the window's own shift times when it has them", async () => {
@@ -843,14 +1027,14 @@ describe('AvailabilityService.getMatrixCsv', () => {
     const lines = csv.split('\n');
 
     expect(lines[0]).toBe(
-      'date,dayType,holiday,shift,availableCount,driverCount,coverage,available',
+      'date,dayType,holiday,shift,vehiclesNeeded,availableCount,driverCount,coverage,available',
     );
     // 5 workdays × 1 shift + 3 two-shift days × 2 = 11 data rows.
     expect(lines).toHaveLength(12);
-    expect(lines).toContain('2026-09-28,workday,,20:00–24:00,0,0,red,');
+    expect(lines).toContain('2026-09-28,workday,,20:00–24:00,1,0,0,red,');
     // Names are joined with "; " precisely so the column never needs quoting.
     expect(lines).toContain(
-      '2026-10-03,weekend,,08:00–16:00,3,2,green,Ana Silva (driver); Bruno Costa (driver); Carla Ferreira',
+      '2026-10-03,weekend,,08:00–16:00,1,3,2,green,Ana Silva (driver); Bruno Costa (driver); Carla Ferreira',
     );
   });
 
@@ -859,8 +1043,8 @@ describe('AvailabilityService.getMatrixCsv', () => {
 
     const csv = await service.getMatrixCsv();
 
-    expect(csv).toContain('2026-10-05,holiday,Implantação da República,08:00–16:00,0,0,red,');
-    expect(csv).toContain('2026-10-04,weekend,,08:00–16:00,0,0,red,');
+    expect(csv).toContain('2026-10-05,holiday,Implantação da República,08:00–16:00,1,0,0,red,');
+    expect(csv).toContain('2026-10-04,weekend,,08:00–16:00,1,0,0,red,');
   });
 
   it('quotes a holiday name containing a comma', async () => {
@@ -870,7 +1054,7 @@ describe('AvailabilityService.getMatrixCsv', () => {
 
     const csv = await service.getMatrixCsv();
 
-    expect(csv).toContain('2026-10-05,holiday,"Implantação, teste",08:00–16:00,0,0,red,');
+    expect(csv).toContain('2026-10-05,holiday,"Implantação, teste",08:00–16:00,1,0,0,red,');
   });
 
   it("exports the window's own shift times", async () => {
@@ -885,6 +1069,6 @@ describe('AvailabilityService.getMatrixCsv', () => {
 
     // One shift on one day, and nothing for the days left empty.
     expect(lines).toHaveLength(2);
-    expect(lines[1]).toBe('2026-09-28,workday,,06:00–12:00,0,0,red,');
+    expect(lines[1]).toBe('2026-09-28,workday,,06:00–12:00,1,0,0,red,');
   });
 });

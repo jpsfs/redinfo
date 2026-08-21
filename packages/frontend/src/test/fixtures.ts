@@ -3,11 +3,15 @@ import {
   AvailabilityMatrixPerson,
   AvailabilityMatrixResponse,
   AvailabilityWindow,
+  AvailabilityWindowCategory,
+  AvailabilityWindowRole,
   AvailabilityWindowStatus,
   coverageLevel,
   DayShiftPattern,
+  DEFAULT_EMERGENCY_WINDOW_ROLES,
   defaultShiftsForDayType,
   MyAvailabilityResponse,
+  roleRequiresDriverCertification,
   toShiftDefinitions,
 } from '@redinfo/shared';
 import { isoDateRange, parseIsoDate } from '../utils/dates';
@@ -24,10 +28,24 @@ export const WINDOW_END = '2026-10-05';
 export const HOLIDAY_DATE = '2026-10-05';
 export const HOLIDAY_NAME = 'Implantação da República';
 
+/** The default emergency crew, as the API returns it for a window. */
+export const EMERGENCY_ROLES: AvailabilityWindowRole[] = DEFAULT_EMERGENCY_WINDOW_ROLES.map(
+  (role, index) => ({
+    ...role,
+    id: `role-${index + 1}`,
+    windowId: 'win-1',
+    order: index,
+    requiresDriverCertification: roleRequiresDriverCertification(role.name),
+  }),
+);
+
 export const OPEN_WINDOW: AvailabilityWindow = {
   id: 'win-1',
   startDate: WINDOW_START,
   endDate: WINDOW_END,
+  category: AvailabilityWindowCategory.EMERGENCY,
+  name: 'Emergency - October',
+  roles: EMERGENCY_ROLES,
   status: AvailabilityWindowStatus.OPEN,
   openedById: 'coord-1',
   openedBy: { id: 'coord-1', firstName: 'Maria', lastName: 'Santos' },
@@ -45,6 +63,16 @@ export const CLOSED_WINDOW: AvailabilityWindow = {
   closedById: 'coord-1',
   closedBy: { id: 'coord-1', firstName: 'Maria', lastName: 'Santos' },
   closedAt: '2026-10-05T23:59:00.000Z',
+};
+
+/** A second open window, of another category and with no name of its own. */
+export const LOCAL_SUPPORT_WINDOW: AvailabilityWindow = {
+  ...OPEN_WINDOW,
+  id: 'win-2',
+  category: AvailabilityWindowCategory.LOCAL_SUPPORT,
+  name: null,
+  // Another category starts with no roles: they are whoever opens it to decide.
+  roles: [],
 };
 
 /** A window on the default grid, as the API materialises one. */
@@ -71,6 +99,7 @@ export function myAvailability(
 ): MyAvailabilityResponse {
   return {
     window: OPEN_WINDOW,
+    windows: [OPEN_WINDOW],
     canSubmit: true,
     declined: false,
     calendar: calendarFor(WINDOW_START, WINDOW_END),
@@ -144,11 +173,16 @@ function matrixDay(date: string): AvailabilityMatrixDay {
       return {
         slot: shift.slot,
         label: shift.label,
-        startHour: shift.startHour,
-        endHour: shift.endHour,
+        startMinute: shift.startMinute,
+        endMinute: shift.endMinute,
+        vehiclesNeeded: shift.vehiclesNeeded,
         availableCount: availableUserIds.length,
         driverCount,
-        coverageLevel: coverageLevel(availableUserIds.length, driverCount),
+        coverageLevel: coverageLevel(
+          availableUserIds.length,
+          driverCount,
+          shift.vehiclesNeeded,
+        ),
         availableUserIds,
       };
     }),

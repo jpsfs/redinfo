@@ -79,6 +79,17 @@ describe('WindowListActions', () => {
     expect(screen.getByLabelText('Month')).toBeInTheDocument();
   });
 
+  it('says the emergency shortcut is for the Emergency rota', async () => {
+    renderActions();
+
+    await userEvent.click(
+      screen.getByRole('button', { name: 'New Emergency Availability' }),
+    );
+
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog).toHaveTextContent('Emergency');
+  });
+
   it('closes the dialog on cancel', async () => {
     renderActions();
 

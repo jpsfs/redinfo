@@ -4,6 +4,7 @@ import {
   Button,
   Chip,
   IconButton,
+  InputAdornment,
   Menu,
   MenuItem,
   Paper,
@@ -20,11 +21,18 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import ContentCopyIcon from '@mui/icons-material/ContentCopy';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
+import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import {
   DayType,
+  DEFAULT_VEHICLES_NEEDED,
   MAX_SHIFTS_PER_DAY,
-  ShiftTimes,
+  MAX_VEHICLES_PER_SHIFT,
+  MINUTES_PER_DAY,
+  parseTimeOfDay,
+  ShiftSpec,
   sortShifts,
+  toMinuteOfDay,
+  toTimeInputValue,
   validateDayShifts,
 } from '@redinfo/shared';
 import { formatDayLabel } from '../../utils/dates';
@@ -36,7 +44,7 @@ export interface WindowDayDraft {
   isWeekend: boolean;
   isHoliday: boolean;
   holidayName?: string | null;
-  shifts: ShiftTimes[];
+  shifts: ShiftSpec[];
 }
 
 /** Which days a "copy to…" action writes to. */
@@ -88,41 +96,90 @@ export function countCopyTargets(days: WindowDayDraft[], target: CopyTarget): nu
     .length;
 }
 
-const pad = (hour: number) => String(hour).padStart(2, '0');
-
-const hoursBetween = (from: number, to: number) =>
-  Array.from({ length: to - from + 1 }, (_, index) => from + index);
-
-const HourSelect = ({
+/**
+ * One end of a shift, as a native time input.
+ *
+ * Native on purpose: `<input type="time">` gets the platform's own picker —
+ * the scrolling wheel on a phone, keyboard entry on a desktop — which no custom
+ * widget matches for a field this ordinary.
+ *
+ * A native picker cannot hold 24:00, so an end time shows midnight as 00:00 and
+ * is read back as end-of-day. That is only ever the *end* of a shift: 00:00 as a
+ * start time means exactly what it says.
+ */
+const TimeField = ({
   ariaLabel,
   value,
-  from,
-  to,
+  isEnd = false,
   disabled,
   onChange,
 }: {
   ariaLabel: string;
   value: number;
-  from: number;
-  to: number;
+  isEnd?: boolean;
   disabled?: boolean;
-  onChange: (hour: number) => void;
+  onChange: (minuteOfDay: number) => void;
 }) => (
   <TextField
-    select
+    type="time"
+    size="small"
+    value={toTimeInputValue(value)}
+    disabled={disabled}
+    onChange={(event) => {
+      const parsed = parseTimeOfDay(event.target.value);
+      // A half-typed or cleared field keeps the previous time: a shift is
+      // removed with the delete button, not by emptying a field.
+      if (parsed === null) return;
+      onChange(isEnd && parsed === 0 ? MINUTES_PER_DAY : parsed);
+    }}
+    // step 60s is minute granularity — the point of moving off whole hours.
+    inputProps={{ 'aria-label': ariaLabel, step: 60 }}
+    sx={{ width: 124 }}
+  />
+);
+
+/**
+ * How many vehicles this shift needs crewed.
+ *
+ * It drives the coverage colours — a vehicle without a driver is not cover — so
+ * it belongs next to the times rather than on a settings screen somewhere.
+ */
+const VehiclesField = ({
+  ariaLabel,
+  value,
+  disabled,
+  onChange,
+}: {
+  ariaLabel: string;
+  value: number;
+  disabled?: boolean;
+  onChange: (vehiclesNeeded: number) => void;
+}) => (
+  <TextField
+    type="number"
     size="small"
     value={value}
     disabled={disabled}
-    onChange={(event) => onChange(Number(event.target.value))}
-    SelectProps={{ native: true, inputProps: { 'aria-label': ariaLabel } }}
-    sx={{ width: 96 }}
-  >
-    {hoursBetween(from, to).map((hour) => (
-      <option key={hour} value={hour}>
-        {pad(hour)}:00
-      </option>
-    ))}
-  </TextField>
+    onChange={(event) => {
+      const parsed = Number(event.target.value);
+      if (!Number.isFinite(parsed)) return;
+      onChange(Math.max(0, Math.min(MAX_VEHICLES_PER_SHIFT, Math.trunc(parsed))));
+    }}
+    InputProps={{
+      startAdornment: (
+        <InputAdornment position="start">
+          <DirectionsCarIcon fontSize="small" color="action" />
+        </InputAdornment>
+      ),
+    }}
+    inputProps={{
+      'aria-label': ariaLabel,
+      min: 0,
+      max: MAX_VEHICLES_PER_SHIFT,
+      step: 1,
+    }}
+    sx={{ width: 104 }}
+  />
 );
 
 const DayTypeChip = ({ day }: { day: WindowDayDraft }) => {
@@ -161,17 +218,22 @@ export const DayShiftEditor = ({
     null,
   );
 
-  const updateDay = (date: string, shifts: ShiftTimes[]) => {
+  const updateDay = (date: string, shifts: ShiftSpec[]) => {
     onChange(days.map((day) => (day.date === date ? { ...day, shifts } : day)));
   };
 
   const addShift = (day: WindowDayDraft) => {
-    // Start the new shift after the last one, so the common case (a run of
+    // Start the new shift where the last one ended, so the common case (a run of
     // back-to-back shifts) needs no editing and never lands on an overlap.
     const last = sortShifts(day.shifts).at(-1);
-    const startHour = last ? Math.min(last.endHour, 23) : 8;
-    const endHour = Math.min(startHour + 4, 24);
-    updateDay(day.date, [...day.shifts, { startHour, endHour }]);
+    const startMinute = last
+      ? Math.min(last.endMinute, MINUTES_PER_DAY - 60)
+      : toMinuteOfDay(8);
+    const endMinute = Math.min(startMinute + 4 * 60, MINUTES_PER_DAY);
+    updateDay(day.date, [
+      ...day.shifts,
+      { startMinute, endMinute, vehiclesNeeded: DEFAULT_VEHICLES_NEEDED },
+    ]);
   };
 
   const handleCopy = (target: CopyTarget) => {
@@ -190,6 +252,9 @@ export const DayShiftEditor = ({
               </TableCell>
               <TableCell>
                 <strong>Shifts</strong>
+                <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                  start, end and vehicles needed
+                </Typography>
               </TableCell>
               <TableCell align="right" sx={{ minWidth: 190 }} />
             </TableRow>
@@ -234,19 +299,19 @@ export const DayShiftEditor = ({
                             direction="row"
                             spacing={1}
                             alignItems="center"
+                            flexWrap="wrap"
+                            useFlexGap
                           >
-                            <HourSelect
+                            <TimeField
                               ariaLabel={`${label} shift ${index + 1} start`}
-                              value={shift.startHour}
-                              from={0}
-                              to={23}
+                              value={shift.startMinute}
                               disabled={disabled}
-                              onChange={(startHour) =>
+                              onChange={(startMinute) =>
                                 updateDay(
                                   day.date,
                                   day.shifts.map((candidate, position) =>
                                     position === index
-                                      ? { ...candidate, startHour }
+                                      ? { ...candidate, startMinute }
                                       : candidate,
                                   ),
                                 )
@@ -255,18 +320,32 @@ export const DayShiftEditor = ({
                             <Typography variant="body2" color="text.secondary">
                               –
                             </Typography>
-                            <HourSelect
+                            <TimeField
                               ariaLabel={`${label} shift ${index + 1} end`}
-                              value={shift.endHour}
-                              from={1}
-                              to={24}
+                              value={shift.endMinute}
+                              isEnd
                               disabled={disabled}
-                              onChange={(endHour) =>
+                              onChange={(endMinute) =>
                                 updateDay(
                                   day.date,
                                   day.shifts.map((candidate, position) =>
                                     position === index
-                                      ? { ...candidate, endHour }
+                                      ? { ...candidate, endMinute }
+                                      : candidate,
+                                  ),
+                                )
+                              }
+                            />
+                            <VehiclesField
+                              ariaLabel={`${label} shift ${index + 1} vehicles`}
+                              value={shift.vehiclesNeeded}
+                              disabled={disabled}
+                              onChange={(vehiclesNeeded) =>
+                                updateDay(
+                                  day.date,
+                                  day.shifts.map((candidate, position) =>
+                                    position === index
+                                      ? { ...candidate, vehiclesNeeded }
                                       : candidate,
                                   ),
                                 )

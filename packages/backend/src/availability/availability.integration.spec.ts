@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import {
+  BadRequestException,
   ConflictException,
   ForbiddenException,
   NotFoundException,
@@ -9,7 +10,17 @@ import { AvailabilityService, RequestUser } from './availability.service';
 import { AvailabilityWindowsService } from './availability-windows.service';
 import { HolidaysService } from './holidays.service';
 import { ShiftScheduleService } from './shift-schedule.service';
-import { AvailabilityWindowStatus, UserRole } from '@redinfo/shared';
+import {
+  AvailabilityWindowCategory,
+  AvailabilityWindowStatus,
+  toMinuteOfDay,
+  UserRole,
+} from '@redinfo/shared';
+
+/** Minutes from midnight, so the expectations read in wall-clock hours. */
+const at = (hour: number, minute = 0) => toMinuteOfDay(hour, minute);
+
+const { EMERGENCY, LOCAL_SUPPORT, SALOP_SUPPORT } = AvailabilityWindowCategory;
 
 /**
  * Integration coverage for the availability module, run against a real
@@ -76,12 +87,58 @@ describeIntegration('Availability module (integration)', () => {
     });
   }
 
-  /** Open a fresh window, closing any window left open by a previous test. */
-  async function openWindow(start = WINDOW_START, end = WINDOW_END) {
-    const stale = await windowsService.findActive();
-    if (stale) await windowsService.close(stale.id, coordinator.id);
+  /**
+   * Close the windows *this run* left open, so the next `open` in the same test
+   * is not refused by one of its own.
+   *
+   * Deliberately scoped to `createdWindowIds`: closing a window is irreversible,
+   * and a developer's own open window in a shared dev database is not this
+   * suite's to close. If one overlaps these dates the suite fails with the
+   * conflict message, which says exactly what is in the way.
+   */
+  async function closeOpenWindows() {
+    for (const window of await windowsService.findOpen()) {
+      if (createdWindowIds.includes(window.id)) {
+        await windowsService.close(window.id, coordinator.id);
+      }
+    }
+  }
+
+  /**
+   * Open a fresh window, closing any left open by a previous test.
+   *
+   * Tests reuse the same dates over and over, which the "a closed window
+   * already covers these dates" warning exists to catch — so the helper
+   * acknowledges it, as a coordinator would.
+   */
+  async function openWindow(
+    start = WINDOW_START,
+    end = WINDOW_END,
+    options: { category?: AvailabilityWindowCategory; name?: string } = {},
+  ) {
+    await closeOpenWindows();
     const window = await windowsService.open(
-      { startDate: start, endDate: end },
+      {
+        startDate: start,
+        endDate: end,
+        category: options.category ?? EMERGENCY,
+        name: options.name,
+        acknowledgeOverlap: true,
+      },
+      coordinator.id,
+    );
+    createdWindowIds.push(window.id);
+    return window;
+  }
+
+  /** A window with per-day shifts, over dates earlier tests may have used. */
+  async function openCustomWindow(
+    dto: Omit<Parameters<AvailabilityWindowsService['open']>[0], 'category'>,
+    category: AvailabilityWindowCategory = EMERGENCY,
+  ) {
+    await closeOpenWindows();
+    const window = await windowsService.open(
+      { ...dto, category, acknowledgeOverlap: true },
       coordinator.id,
     );
     createdWindowIds.push(window.id);
@@ -174,11 +231,14 @@ describeIntegration('Availability module (integration)', () => {
       expect(active?.openedBy).toMatchObject({ firstName: 'Maria', lastName: 'Santos' });
     });
 
-    it('rejects opening a second window while one is open', async () => {
-      await openWindow();
+    it('rejects a second open window over the same dates in the same category', async () => {
+      await openWindow('2026-10-12', '2026-10-19');
 
       await expect(
-        windowsService.open({ startDate: '2026-10-12', endDate: '2026-10-19' }, coordinator.id),
+        windowsService.open(
+          { startDate: '2026-10-15', endDate: '2026-10-22', category: EMERGENCY },
+          coordinator.id,
+        ),
       ).rejects.toThrow(ConflictException);
     });
 
@@ -187,7 +247,7 @@ describeIntegration('Availability module (integration)', () => {
       await windowsService.close(first.id, coordinator.id);
 
       const second = await windowsService.open(
-        { startDate: '2026-10-12', endDate: '2026-10-19' },
+        { startDate: '2026-10-12', endDate: '2026-10-19', category: EMERGENCY },
         coordinator.id,
       );
       createdWindowIds.push(second.id);
@@ -208,6 +268,220 @@ describeIntegration('Availability module (integration)', () => {
     });
   });
 
+  // ── categories ─────────────────────────────────────────────────────────────
+
+  describe('categories', () => {
+    /** Open one window per category over exactly the same dates. */
+    async function openEachCategory() {
+      await closeOpenWindows();
+      const windows = [];
+      for (const category of [EMERGENCY, LOCAL_SUPPORT, SALOP_SUPPORT]) {
+        const window = await windowsService.open(
+          { startDate: '2026-10-12', endDate: '2026-10-18', category },
+          coordinator.id,
+        );
+        createdWindowIds.push(window.id);
+        windows.push(window);
+      }
+      return windows;
+    }
+
+    it('lets windows of different categories cover the same dates at once', async () => {
+      const windows = await openEachCategory();
+
+      expect(windows.map((window) => window.category)).toEqual([
+        EMERGENCY,
+        LOCAL_SUPPORT,
+        SALOP_SUPPORT,
+      ]);
+      const open = await windowsService.findOpen();
+      expect(open).toHaveLength(3);
+    });
+
+    it('stores a name, and reports no name as null', async () => {
+      const named = await openWindow(WINDOW_START, WINDOW_END, {
+        category: LOCAL_SUPPORT,
+        name: 'Marathon cover',
+      });
+      expect(await windowsService.findOne(named.id)).toMatchObject({
+        name: 'Marathon cover',
+        category: LOCAL_SUPPORT,
+      });
+
+      const nameless = await openWindow('2026-11-16', '2026-11-20', { category: SALOP_SUPPORT });
+      expect(await windowsService.findOne(nameless.id)).toMatchObject({ name: null });
+    });
+
+    it('refuses an overlapping open window of the same category', async () => {
+      await openEachCategory();
+
+      await expect(
+        windowsService.open(
+          { startDate: '2026-10-18', endDate: '2026-10-25', category: LOCAL_SUPPORT },
+          coordinator.id,
+        ),
+      ).rejects.toThrow(/window for Local Support is already open/);
+    });
+
+    it('allows two open windows of one category over dates that do not meet', async () => {
+      await closeOpenWindows();
+      const first = await windowsService.open(
+        { startDate: '2026-10-01', endDate: '2026-10-15', category: EMERGENCY },
+        coordinator.id,
+      );
+      const second = await windowsService.open(
+        { startDate: '2026-10-16', endDate: '2026-10-31', category: EMERGENCY },
+        coordinator.id,
+      );
+      createdWindowIds.push(first.id, second.id);
+
+      expect(second.status).toBe(AvailabilityWindowStatus.OPEN);
+    });
+
+    it('warns about a closed window over the same dates, then opens once told to', async () => {
+      const first = await openWindow('2026-10-12', '2026-10-18');
+      await windowsService.close(first.id, coordinator.id);
+
+      const dto = {
+        startDate: '2026-10-14',
+        endDate: '2026-10-20',
+        category: EMERGENCY,
+      };
+      await expect(windowsService.open(dto, coordinator.id)).rejects.toThrow(
+        /closed availability window for Emergency already covers these dates/,
+      );
+
+      const second = await windowsService.open(
+        { ...dto, acknowledgeOverlap: true },
+        coordinator.id,
+      );
+      createdWindowIds.push(second.id);
+      expect(second.status).toBe(AvailabilityWindowStatus.OPEN);
+    });
+
+    it('reports overlaps for a proposed range, split by status', async () => {
+      const closed = await openWindow('2026-10-12', '2026-10-18');
+      await windowsService.close(closed.id, coordinator.id);
+      const stillOpen = await windowsService.open(
+        { startDate: '2026-10-19', endDate: '2026-10-25', category: EMERGENCY },
+        coordinator.id,
+      );
+      createdWindowIds.push(stillOpen.id);
+
+      const overlaps = await windowsService.findOverlaps(
+        EMERGENCY,
+        '2026-10-15',
+        '2026-10-20',
+      );
+
+      expect(overlaps.closed.map((window) => window.id)).toEqual([closed.id]);
+      expect(overlaps.open.map((window) => window.id)).toEqual([stillOpen.id]);
+    });
+
+    it('reports no overlap for another category, or for dates just outside', async () => {
+      await openWindow('2026-10-12', '2026-10-18');
+
+      await expect(
+        windowsService.findOverlaps(LOCAL_SUPPORT, '2026-10-12', '2026-10-18'),
+      ).resolves.toEqual({ open: [], closed: [] });
+      await expect(
+        windowsService.findOverlaps(EMERGENCY, '2026-10-19', '2026-10-25'),
+      ).resolves.toEqual({ open: [], closed: [] });
+    });
+
+    it('names an emergency month window after its month', async () => {
+      await closeOpenWindows();
+      const window = await windowsService.openMonth({ year: 2026, month: 7 }, coordinator.id);
+      createdWindowIds.push(window.id);
+
+      expect(window).toMatchObject({
+        category: EMERGENCY,
+        name: 'Emergency - July',
+        startDate: '2026-07-01',
+        endDate: '2026-07-31',
+      });
+    });
+  });
+
+  // ── several windows open at once ───────────────────────────────────────────
+
+  describe('submitting with more than one window open', () => {
+    /** Emergency and Local Support, both open over the same single day. */
+    async function openTwo() {
+      await closeOpenWindows();
+      const emergency = await windowsService.open(
+        { startDate: '2026-10-12', endDate: '2026-10-12', category: EMERGENCY },
+        coordinator.id,
+      );
+      const local = await windowsService.open(
+        {
+          startDate: '2026-10-12',
+          endDate: '2026-10-12',
+          category: LOCAL_SUPPORT,
+          name: 'Marathon cover',
+        },
+        coordinator.id,
+      );
+      createdWindowIds.push(emergency.id, local.id);
+      return { emergency, local };
+    }
+
+    it('offers both windows on the submission screen', async () => {
+      const { emergency, local } = await openTwo();
+
+      const mine = await availability.getMine(ana.id);
+
+      expect(mine.windows.map((window) => window.id).sort()).toEqual(
+        [emergency.id, local.id].sort(),
+      );
+    });
+
+    it('refuses to guess which window a submission is for', async () => {
+      await openTwo();
+
+      await expect(
+        availability.submitMine(volunteer, {
+          entries: [{ date: '2026-10-12', slots: [1] }],
+        }),
+      ).rejects.toThrow(/More than one availability window is open/);
+    });
+
+    it('keeps the same day’s answers apart per window', async () => {
+      const { emergency, local } = await openTwo();
+
+      await availability.submitMine(volunteer, {
+        windowId: emergency.id,
+        entries: [{ date: '2026-10-12', slots: [1] }],
+      });
+      await availability.submitMine(volunteer, {
+        windowId: local.id,
+        entries: [],
+      });
+
+      await expect(availability.getMine(ana.id, emergency.id)).resolves.toMatchObject({
+        entries: [{ date: '2026-10-12', slots: [1] }],
+      });
+      await expect(availability.getMine(ana.id, local.id)).resolves.toMatchObject({
+        entries: [],
+      });
+    });
+
+    it('counts coverage per window, not across them', async () => {
+      const { emergency, local } = await openTwo();
+      await availability.submitMine(volunteer, {
+        windowId: emergency.id,
+        entries: [{ date: '2026-10-12', slots: [1] }],
+      });
+
+      const emergencyMatrix = await availability.getMatrix(emergency.id);
+      const localMatrix = await availability.getMatrix(local.id);
+
+      expect(emergencyMatrix.days[0].shifts[0].availableCount).toBe(1);
+      expect(localMatrix.days[0].shifts[0].availableCount).toBe(0);
+      expect(localMatrix.window.name).toBe('Marathon cover');
+    });
+  });
+
   // ── the window's shift grid ────────────────────────────────────────────────
 
   describe('shift grid', () => {
@@ -222,23 +496,20 @@ describeIntegration('Availability module (integration)', () => {
       // 5 workdays × 1 shift + Sat, Sun and the holiday Monday × 2.
       expect(rows).toHaveLength(11);
       expect(rows.filter((row) => row.date.toISOString().startsWith('2026-09-28'))).toEqual([
-        expect.objectContaining({ slot: 1, startHour: 20, endHour: 24 }),
+        expect.objectContaining({ slot: 1, startMinute: at(20), endMinute: at(24) }),
       ]);
       expect(
         rows
           .filter((row) => row.date.toISOString().startsWith('2026-10-05'))
-          .map((row) => [row.slot, row.startHour, row.endHour]),
+          .map((row) => [row.slot, row.startMinute, row.endMinute]),
       ).toEqual([
-        [1, 8, 16],
-        [2, 16, 24],
+        [1, at(8), at(16)],
+        [2, at(16), at(24)],
       ]);
     });
 
     it('stores per-day shifts a coordinator defined, and reads them back', async () => {
-      const stale = await windowsService.findActive();
-      if (stale) await windowsService.close(stale.id, coordinator.id);
-
-      const window = await windowsService.open(
+      const window = await openCustomWindow(
         {
           startDate: '2026-09-28',
           endDate: '2026-09-30',
@@ -247,17 +518,15 @@ describeIntegration('Availability module (integration)', () => {
             {
               date: '2026-09-28',
               shifts: [
-                { startHour: 18, endHour: 22 },
-                { startHour: 6, endHour: 10 },
+                { startMinute: at(18), endMinute: at(22) },
+                { startMinute: at(6), endMinute: at(10) },
               ],
             },
-            { date: '2026-09-29', shifts: [{ startHour: 10, endHour: 14 }] },
+            { date: '2026-09-29', shifts: [{ startMinute: at(10), endMinute: at(14) }] },
             { date: '2026-09-30', shifts: [] },
           ],
         },
-        coordinator.id,
       );
-      createdWindowIds.push(window.id);
 
       const calendar = await windowsService.getCalendar(window.id);
 
@@ -269,10 +538,7 @@ describeIntegration('Availability module (integration)', () => {
     });
 
     it('accepts availability against a custom shift and shows it in the matrix', async () => {
-      const stale = await windowsService.findActive();
-      if (stale) await windowsService.close(stale.id, coordinator.id);
-
-      const window = await windowsService.open(
+      const window = await openCustomWindow(
         {
           startDate: '2026-09-28',
           endDate: '2026-09-28',
@@ -280,15 +546,13 @@ describeIntegration('Availability module (integration)', () => {
             {
               date: '2026-09-28',
               shifts: [
-                { startHour: 6, endHour: 12 },
-                { startHour: 12, endHour: 18 },
+                { startMinute: at(6), endMinute: at(12) },
+                { startMinute: at(12), endMinute: at(18) },
               ],
             },
           ],
         },
-        coordinator.id,
       );
-      createdWindowIds.push(window.id);
 
       await availability.submitMine(volunteer, {
         entries: [{ date: '2026-09-28', slots: [2] }],
@@ -307,24 +571,55 @@ describeIntegration('Availability module (integration)', () => {
     });
 
     it('refuses a slot that does not exist in this window', async () => {
-      const stale = await windowsService.findActive();
-      if (stale) await windowsService.close(stale.id, coordinator.id);
-
-      const window = await windowsService.open(
+      const window = await openCustomWindow(
         {
           startDate: '2026-10-03', // a Saturday, two shifts by default
           endDate: '2026-10-03',
-          days: [{ date: '2026-10-03', shifts: [{ startHour: 9, endHour: 13 }] }],
+          days: [{ date: '2026-10-03', shifts: [{ startMinute: at(9), endMinute: at(13) }] }],
         },
-        coordinator.id,
       );
-      createdWindowIds.push(window.id);
 
       await expect(
         availability.submitMine(volunteer, {
           entries: [{ date: '2026-10-03', slots: [2] }],
         }),
       ).rejects.toThrow(/Shift 2 does not exist on 2026-10-03/);
+    });
+
+    it('stores the vehicles each shift needs, and defaults them to one', async () => {
+      const window = await openCustomWindow({
+        startDate: '2026-09-28',
+        endDate: '2026-09-29',
+        days: [
+          {
+            date: '2026-09-28',
+            shifts: [
+              { startMinute: at(8), endMinute: at(16), vehiclesNeeded: 3 },
+              { startMinute: at(16), endMinute: at(24), vehiclesNeeded: 0 },
+            ],
+          },
+          // No count given: the ordinary case of one vehicle.
+          { date: '2026-09-29', shifts: [{ startMinute: at(20), endMinute: at(24) }] },
+        ],
+      });
+
+      const rows = await prisma.availabilityWindowShift.findMany({
+        where: { windowId: window.id },
+        orderBy: [{ date: 'asc' }, { slot: 'asc' }],
+      });
+
+      expect(rows.map((row) => row.vehiclesNeeded)).toEqual([3, 0, 1]);
+    });
+
+    it('gives every shift of a default-grid window one vehicle', async () => {
+      const window = await openWindow();
+
+      const rows = await prisma.availabilityWindowShift.findMany({
+        where: { windowId: window.id },
+      });
+
+      expect(rows).toHaveLength(11);
+      expect(rows.every((row) => row.vehiclesNeeded === 1)).toBe(true);
     });
 
     it('drops a window’s shift rows with the window', async () => {
@@ -338,12 +633,136 @@ describeIntegration('Availability module (integration)', () => {
     });
   });
 
+  // ── roles ──────────────────────────────────────────────────────────────────
+
+  describe('window roles', () => {
+    /** A window opened with the roles given, over dates nothing else uses. */
+    async function openWithRoles(
+      category: AvailabilityWindowCategory,
+      roles?: Array<{ name: string; maxPeople: number }>,
+    ) {
+      await closeOpenWindows();
+      const window = await windowsService.open(
+        {
+          startDate: '2026-12-01',
+          endDate: '2026-12-02',
+          category,
+          roles,
+          acknowledgeOverlap: true,
+        },
+        coordinator.id,
+      );
+      createdWindowIds.push(window.id);
+      return window;
+    }
+
+    const storedRoles = (windowId: string) =>
+      prisma.availabilityWindowRole.findMany({
+        where: { windowId },
+        orderBy: { order: 'asc' },
+      });
+
+    it('gives an Emergency window the default crew, with the driver flagged', async () => {
+      const window = await openWithRoles(EMERGENCY);
+
+      expect(
+        (await storedRoles(window.id)).map((role) => [
+          role.name,
+          role.maxPeople,
+          role.requiresDriverCertification,
+        ]),
+      ).toEqual([
+        ['Driver', 1, true],
+        ['Team Leader', 1, false],
+        ['Team Member', 1, false],
+      ]);
+      expect(window.roles?.map((role) => role.name)).toEqual([
+        'Driver',
+        'Team Leader',
+        'Team Member',
+      ]);
+    });
+
+    it('opens another category with no roles until it asks for some', async () => {
+      const window = await openWithRoles(LOCAL_SUPPORT);
+      expect(await storedRoles(window.id)).toEqual([]);
+      expect(window.roles).toEqual([]);
+    });
+
+    it('stores roles a coordinator defined, unlimited ones included', async () => {
+      const window = await openWithRoles(SALOP_SUPPORT, [
+        { name: 'Driver', maxPeople: 2 },
+        { name: 'Stretcher bearer', maxPeople: 0 },
+      ]);
+
+      const reloaded = await windowsService.findOne(window.id);
+      expect(reloaded.roles).toEqual([
+        expect.objectContaining({
+          name: 'Driver',
+          maxPeople: 2,
+          requiresDriverCertification: true,
+          order: 0,
+        }),
+        expect.objectContaining({
+          name: 'Stretcher bearer',
+          maxPeople: 0,
+          requiresDriverCertification: false,
+          order: 1,
+        }),
+      ]);
+    });
+
+    it('refuses two roles a schedule could not tell apart, writing no window', async () => {
+      await closeOpenWindows();
+      const before = await prisma.availabilityWindow.count();
+
+      await expect(
+        openWithRoles(LOCAL_SUPPORT, [
+          { name: 'Driver', maxPeople: 1 },
+          { name: 'driver', maxPeople: 1 },
+        ]),
+      ).rejects.toThrow(BadRequestException);
+
+      expect(await prisma.availabilityWindow.count()).toBe(before);
+    });
+
+    it('refuses a duplicate name at the database level too', async () => {
+      const window = await openWithRoles(LOCAL_SUPPORT, [{ name: 'Radio', maxPeople: 1 }]);
+
+      await expect(
+        prisma.availabilityWindowRole.create({
+          data: { windowId: window.id, name: 'Radio', maxPeople: 2, order: 1 },
+        }),
+      ).rejects.toThrow();
+    });
+
+    it('drops a window’s roles with the window', async () => {
+      const window = await openWithRoles(EMERGENCY);
+      await prisma.availabilityWindow.delete({ where: { id: window.id } });
+
+      await expect(
+        prisma.availabilityWindowRole.count({ where: { windowId: window.id } }),
+      ).resolves.toBe(0);
+      createdWindowIds.length = 0;
+    });
+
+    it('leaves roles out of what a volunteer is asked for', async () => {
+      // Availability is collected without them: the coordinator assigns roles
+      // when the schedule is built, so nothing here should depend on them.
+      const window = await openWithRoles(EMERGENCY);
+
+      const mine = await availability.getMine(ana.id, window.id);
+
+      expect(mine.calendar.every((day) => !('roles' in day))).toBe(true);
+      expect(mine.canSubmit).toBe(true);
+    });
+  });
+
   // ── whole-month windows ────────────────────────────────────────────────────
 
   describe('month windows', () => {
     it('spans the 1st to the last day of the month on the default grid', async () => {
-      const stale = await windowsService.findActive();
-      if (stale) await windowsService.close(stale.id, coordinator.id);
+      await closeOpenWindows();
 
       const window = await windowsService.openMonth({ year: 2026, month: 11 }, coordinator.id);
       createdWindowIds.push(window.id);
@@ -361,12 +780,21 @@ describeIntegration('Availability module (integration)', () => {
       expect(calendar[1].shifts.map((shift) => shift.label)).toEqual(['20:00–24:00']);
     });
 
-    it('is blocked while another window is open', async () => {
-      await openWindow();
+    it('is blocked by an open Emergency window inside that month', async () => {
+      await openWindow('2026-12-14', '2026-12-20');
 
       await expect(
         windowsService.openMonth({ year: 2026, month: 12 }, coordinator.id),
       ).rejects.toThrow(ConflictException);
+    });
+
+    it('is not blocked by an open window of another category', async () => {
+      await openWindow('2026-12-14', '2026-12-20', { category: LOCAL_SUPPORT });
+
+      const window = await windowsService.openMonth({ year: 2026, month: 12 }, coordinator.id);
+      createdWindowIds.push(window.id);
+
+      expect(window).toMatchObject({ category: EMERGENCY, name: 'Emergency - December' });
     });
   });
 
@@ -710,6 +1138,45 @@ describeIntegration('Availability module (integration)', () => {
       ).toBe('submitted');
     });
 
+    it('needs a driver per vehicle before a shift counts as covered', async () => {
+      // Same three people on both shifts of one day; the shifts differ only in
+      // how many vehicles they need.
+      const window = await openCustomWindow({
+        startDate: '2026-10-12',
+        endDate: '2026-10-12',
+        days: [
+          {
+            date: '2026-10-12',
+            shifts: [
+              { startMinute: at(8), endMinute: at(16), vehiclesNeeded: 2 },
+              { startMinute: at(16), endMinute: at(24), vehiclesNeeded: 3 },
+            ],
+          },
+        ],
+      });
+      for (const person of [ana, bruno, carla]) {
+        await availability.submitMine(
+          { id: person.id, role: UserRole.EMERGENCY_OPERATIONAL },
+          { windowId: window.id, entries: [{ date: '2026-10-12', slots: [1, 2] }] },
+        );
+      }
+
+      const [day] = (await availability.getMatrix(window.id)).days;
+
+      // Ana and Bruno drive, Carla does not: two vehicles are covered, three are not.
+      expect(day.shifts[0]).toMatchObject({
+        vehiclesNeeded: 2,
+        availableCount: 3,
+        driverCount: 2,
+        coverageLevel: 'green',
+      });
+      expect(day.shifts[1]).toMatchObject({
+        vehiclesNeeded: 3,
+        driverCount: 2,
+        coverageLevel: 'yellow',
+      });
+    });
+
     it('exports the same numbers as CSV', async () => {
       await seedSubmissions();
 
@@ -717,11 +1184,13 @@ describeIntegration('Availability module (integration)', () => {
       const lines = csv.split('\n');
 
       expect(lines[0]).toBe(
-        'date,dayType,holiday,shift,availableCount,driverCount,coverage,available',
+        'date,dayType,holiday,shift,vehiclesNeeded,availableCount,driverCount,coverage,available',
       );
-      expect(lines.some((line) => line.startsWith('2026-09-28,workday,,20:00–24:00,4,2,green,'))).toBe(
-        true,
-      );
+      expect(
+        lines.some((line) =>
+          line.startsWith('2026-09-28,workday,,20:00–24:00,1,4,2,green,'),
+        ),
+      ).toBe(true);
       expect(
         lines.some((line) =>
           line.startsWith(`${HOLIDAY_DATE},holiday,Implantação da República,`),
@@ -787,10 +1256,10 @@ describeIntegration('Availability module (integration)', () => {
   describe('holidays', () => {
     it('turns a plain weekday into a two-shift day by default, and back when removed', async () => {
       const target = '2026-11-11'; // a Wednesday
-      const EVENING = [{ startHour: 20, endHour: 24 }];
+      const EVENING = [{ startMinute: at(20), endMinute: at(24), vehiclesNeeded: 1 }];
       const SPECIAL = [
-        { startHour: 8, endHour: 16 },
-        { startHour: 16, endHour: 24 },
+        { startMinute: at(8), endMinute: at(16), vehiclesNeeded: 1 },
+        { startMinute: at(16), endMinute: at(24), vehiclesNeeded: 1 },
       ];
 
       await expect(shiftSchedule.getDefaultShiftsForDate(target)).resolves.toEqual(EVENING);

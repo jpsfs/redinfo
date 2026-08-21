@@ -5,6 +5,9 @@
  * `@db.Date` columns behind it) and every `Date` we build sits at UTC midnight,
  * so a browser in any timezone puts a shift on the same day the server does.
  */
+// Month names come from @redinfo/shared, which the backend also names an
+// emergency window from — so the label and the name cannot disagree.
+import { MONTH_NAMES } from '@redinfo/shared';
 
 export function parseIsoDate(value: string): Date {
   return new Date(`${value}T00:00:00.000Z`);
@@ -74,21 +77,6 @@ export function monthGrid(month: string): string[] {
  * which makes the calendar header shift between environments.
  */
 const WEEKDAY_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
-const MONTH_NAMES = [
-  'January',
-  'February',
-  'March',
-  'April',
-  'May',
-  'June',
-  'July',
-  'August',
-  'September',
-  'October',
-  'November',
-  'December',
-];
 
 const MONTH_ABBREVIATIONS = [
   'Jan',
