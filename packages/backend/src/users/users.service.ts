@@ -7,7 +7,26 @@ import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateUserDto } from './dto/create-user.dto';
 import { UpdateUserDto } from './dto/update-user.dto';
-import { AuthProvider, UserRole } from '@prisma/client';
+import { AuthProvider, Prisma, UserRole } from '@prisma/client';
+
+/**
+ * Whether a delete failed because another row still points at this one.
+ *
+ * Two shapes, both seen in practice: Prisma maps some foreign-key failures to
+ * a known code, but a Postgres `RESTRICT` violation (SQLSTATE 23001) is not one
+ * of them — that arrives as an *unknown* request error carrying the raw
+ * connector message, so the code alone is not enough to recognise it.
+ */
+function isStillReferenced(error: unknown): boolean {
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    // P2003: foreign key constraint failed. P2014: required relation violated.
+    return error.code === 'P2003' || error.code === 'P2014';
+  }
+  if (error instanceof Prisma.PrismaClientUnknownRequestError) {
+    return /\b23001\b|violates RESTRICT|foreign key constraint/i.test(error.message);
+  }
+  return false;
+}
 
 @Injectable()
 export class UsersService {
@@ -113,9 +132,25 @@ export class UsersService {
     });
   }
 
+  /**
+   * Records that must outlive the person — an emergency report names its crew,
+   * and that history is not rewritten because someone left — hold their row
+   * with a `Restrict` foreign key. Reported as a conflict pointing at
+   * deactivation rather than surfacing a raw constraint violation as a 500.
+   */
   async remove(id: string) {
     await this.findOne(id);
-    return this.prisma.user.delete({ where: { id }, select: this.safeSelect() });
+    try {
+      return await this.prisma.user.delete({ where: { id }, select: this.safeSelect() });
+    } catch (error) {
+      if (isStillReferenced(error)) {
+        throw new ConflictException(
+          'This person is named on records that must keep their history, such as ' +
+            'emergency reports. Deactivate them instead of deleting them.',
+        );
+      }
+      throw error;
+    }
   }
 
   private safeSelect() {

@@ -32,6 +32,15 @@ const { EMERGENCY, LOCAL_SUPPORT, SALOP_SUPPORT } = AvailabilityWindowCategory;
  * Every test name contains "integration" via the outer describe, which is what
  * `pnpm --filter backend test -- -t "integration"` selects on.
  */
+/**
+ * Runs against a real Postgres, and so does every other `*.integration.spec.ts`
+ * — the same one. Some of what they exercise is global to that database: there
+ * is only ever one open availability window per category, and `getMine`
+ * resolves it without being told which suite asked. Two suites cannot both own
+ * it, which is why `jest.maxWorkers` is 1 in this package's config. Each suite
+ * still cleans up after itself in `afterAll`, so serial runs are independent.
+ * Do not raise the worker count without giving each suite its own schema.
+ */
 const describeIntegration = process.env.DATABASE_URL ? describe : describe.skip;
 
 /** Unique per run so parallel runs against a shared database cannot collide. */

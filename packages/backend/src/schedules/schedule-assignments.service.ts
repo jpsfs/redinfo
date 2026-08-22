@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -13,6 +14,7 @@ import {
   ScheduleAssignment,
   ScheduleCandidate,
   ScheduleCandidatesResponse,
+  ScheduleStatus,
   ShiftDefinition,
   roleCanTakeMore,
   shiftsOverlap,
@@ -20,7 +22,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { ShiftScheduleService } from '../availability/shift-schedule.service';
 import { toIsoDate } from '../utils/date.util';
-import { CreateScheduleAssignmentDto } from './dto/create-assignment.dto';
+import { CreateScheduleAssignmentDto, SelfAssignDto } from './dto/create-assignment.dto';
 import {
   ScheduleContext,
   SchedulesService,
@@ -149,6 +151,58 @@ export class ScheduleAssignmentsService {
       submitted: submission !== null,
       declined: declined.has(dto.userId),
     });
+  }
+
+  /**
+   * Someone adding *themselves* to a published schedule.
+   *
+   * A published rota is posted to the whole platform, and anyone who sees an
+   * open place they can cover may take it. Three things make this safe to hand
+   * to every member rather than only to coordinators:
+   *
+   *  - the caller is always the subject, so nobody can be volunteered by
+   *    someone else;
+   *  - the schedule has to be published, so nobody walks into a draft;
+   *  - every rule a coordinator is held to still applies, the driver
+   *    certification above all.
+   *
+   * It is deliberately one-way: filling an open place is the member's to do,
+   * vacating it is not. Coming off a rota other people are relying on goes
+   * through a coordinator, who can find the replacement at the same time.
+   */
+  async selfAssign(
+    scheduleId: string,
+    dto: SelfAssignDto,
+    user: { id: string },
+  ): Promise<ScheduleAssignment> {
+    const context = await this.schedules.loadContext(scheduleId);
+    if (context.status !== ScheduleStatus.PUBLISHED) {
+      throw new ForbiddenException(
+        'This schedule has not been published yet, so it is not open to sign up to.',
+      );
+    }
+
+    const shift = this.assertShift(context, dto.date, dto.slot);
+
+    // Their own duties elsewhere on this schedule: a coordinator may knowingly
+    // create a clash mid-swap, but nobody should be able to double-book
+    // themselves by accident.
+    const own = await this.prisma.scheduleAssignment.findMany({
+      where: { scheduleId, userId: user.id },
+      select: { date: true, slot: true },
+    });
+    for (const other of own) {
+      const otherDate = toIsoDate(other.date);
+      if (otherDate !== dto.date || other.slot === dto.slot) continue;
+      const otherShift = context.shifts.get(shiftKey(otherDate, other.slot));
+      if (otherShift && shiftsOverlap(shift, otherShift)) {
+        throw new ConflictException(
+          `You are already on ${otherShift.label} that day, which overlaps this shift.`,
+        );
+      }
+    }
+
+    return this.assign(scheduleId, { ...dto, userId: user.id }, user.id);
   }
 
   async unassign(scheduleId: string, assignmentId: string): Promise<{ id: string }> {

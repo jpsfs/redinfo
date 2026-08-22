@@ -1,5 +1,5 @@
-import { ConflictException, NotFoundException } from '@nestjs/common';
-import { ScheduleStatus } from '@redinfo/shared';
+import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import { ScheduleStatus, UserRole } from '@redinfo/shared';
 import { SchedulesService } from './schedules.service';
 
 // ── The schedule itself (ADO #161) ─────────────────────────────────────────────
@@ -26,6 +26,10 @@ const MEMBER_ROLE = {
 };
 
 const ACTOR = { id: 'u-coord', firstName: 'Ana', lastName: 'Ferreira' };
+
+/** A coordinator sees drafts; a volunteer sees only what is published. */
+const COORDINATOR = { id: ACTOR.id, role: UserRole.EMERGENCY_COORDINATOR };
+const VOLUNTEER = { id: 'u-ana', role: UserRole.EMERGENCY_OPERATIONAL };
 const ANA = { id: 'u-ana', firstName: 'Ana', lastName: 'Silva', isDriver: true };
 const JOANA = { id: 'u-joana', firstName: 'Joana', lastName: 'Pinto', isDriver: false };
 
@@ -205,6 +209,67 @@ describe('SchedulesService lifecycle', () => {
   });
 });
 
+// ── Who may see a schedule ─────────────────────────────────────────────────────
+//
+// A published schedule is the rota the whole delegation works from, so everyone
+// can read it. A draft is a coordinator's working copy.
+
+describe('SchedulesService visibility', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('lets any member read a published schedule', async () => {
+    const { service, prisma } = makeService();
+    prisma.schedule.findUnique.mockResolvedValue(
+      scheduleRow({ status: ScheduleStatus.PUBLISHED }),
+    );
+
+    await expect(service.findOne('s1', VOLUNTEER)).resolves.toMatchObject({ id: 's1' });
+    await expect(service.getBoard('s1', VOLUNTEER)).resolves.toBeDefined();
+  });
+
+  it('keeps a draft from anyone without the schedules permission', async () => {
+    const { service } = makeService();
+
+    await expect(service.findOne('s1', VOLUNTEER)).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(service.getBoard('s1', VOLUNTEER)).rejects.toThrow(/not been published/i);
+  });
+
+  it('lets a coordinator read a draft', async () => {
+    const { service } = makeService();
+    await expect(service.findOne('s1', COORDINATOR)).resolves.toMatchObject({ id: 's1' });
+  });
+
+  it('lists only published schedules to a member', async () => {
+    const { service, prisma } = makeService();
+
+    await service.findAll(VOLUNTEER);
+
+    expect(prisma.schedule.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { status: ScheduleStatus.PUBLISHED } }),
+    );
+  });
+
+  it('will not let a member widen the list back to drafts with a filter', async () => {
+    const { service, prisma } = makeService();
+
+    await service.findAll(VOLUNTEER, 1, 25, { status: ScheduleStatus.DRAFT });
+
+    expect(prisma.schedule.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { status: ScheduleStatus.PUBLISHED } }),
+    );
+  });
+
+  it('lists drafts and published alike to a coordinator', async () => {
+    const { service, prisma } = makeService();
+
+    await service.findAll(COORDINATOR);
+
+    expect(prisma.schedule.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: {} }),
+    );
+  });
+});
+
 describe('SchedulesService.getBoard', () => {
   beforeEach(() => jest.clearAllMocks());
 
@@ -212,7 +277,7 @@ describe('SchedulesService.getBoard', () => {
     const { service, prisma, shiftSchedule } = makeService();
     prisma.scheduleAssignment.findMany.mockResolvedValue([assignmentRow()]);
 
-    const board = await service.getBoard('s1');
+    const board = await service.getBoard('s1', COORDINATOR);
 
     expect(shiftSchedule.getPatternForWindow).toHaveBeenCalledWith(
       expect.objectContaining({ id: 'w1' }),
@@ -227,7 +292,7 @@ describe('SchedulesService.getBoard', () => {
     const { service, prisma } = makeService();
     prisma.scheduleAssignment.findMany.mockResolvedValue([assignmentRow()]);
 
-    const board = await service.getBoard('s1');
+    const board = await service.getBoard('s1', COORDINATOR);
 
     // Day one has its driver but no Team Member.
     expect(board.days[0].shifts[0].gaps).toEqual([
@@ -243,13 +308,28 @@ describe('SchedulesService.getBoard', () => {
 
   // AC: "Any assignment that contradicts submitted availability is flagged as
   // an override … recording who made it and when."
+  // Someone who put themselves forward is not someone a coordinator overrode.
+  it('tells a self-signup apart from a coordinator placing someone', async () => {
+    const { service, prisma } = makeService();
+    prisma.scheduleAssignment.findMany.mockResolvedValue([
+      assignmentRow(),
+      assignmentRow({ id: 'a2', userId: JOANA.id, user: JOANA, assignedById: JOANA.id }),
+    ]);
+
+    const board = await service.getBoard('s1', COORDINATOR);
+    const [placed, signedUp] = board.days[0].shifts[0].assignments;
+
+    expect(placed.selfAssigned).toBe(false);
+    expect(signedUp.selfAssigned).toBe(true);
+  });
+
   it('carries the override stamp and who made it', async () => {
     const { service, prisma } = makeService();
     prisma.scheduleAssignment.findMany.mockResolvedValue([
       assignmentRow({ isOverride: true }),
     ]);
 
-    const board = await service.getBoard('s1');
+    const board = await service.getBoard('s1', COORDINATOR);
     const assignment = board.days[0].shifts[0].assignments[0];
 
     expect(assignment.isOverride).toBe(true);
@@ -264,7 +344,7 @@ describe('SchedulesService.getBoard', () => {
     prisma.scheduleAssignment.findMany.mockResolvedValue([assignmentRow()]);
     prisma.availabilityResponse.findMany.mockResolvedValue([{ userId: ANA.id }]);
 
-    const board = await service.getBoard('s1');
+    const board = await service.getBoard('s1', COORDINATOR);
     const assignment = board.days[0].shifts[0].assignments[0];
 
     expect(assignment.isOverride).toBe(false);
@@ -278,7 +358,7 @@ describe('SchedulesService.getBoard', () => {
       { userId: ANA.id, date: new Date('2026-10-03T00:00:00.000Z'), slot: 1 },
     ]);
 
-    const board = await service.getBoard('s1');
+    const board = await service.getBoard('s1', COORDINATOR);
 
     expect(board.days[0].shifts[0].assignments[0].availability).toBe('submitted');
   });
@@ -290,7 +370,7 @@ describe('SchedulesService.getBoard', () => {
       assignmentRow({ id: 'a2', userId: JOANA.id, user: JOANA, roleId: MEMBER_ROLE.id, role: MEMBER_ROLE, isOverride: true }),
     ]);
 
-    const board = await service.getBoard('s1');
+    const board = await service.getBoard('s1', COORDINATOR);
 
     expect(board.stats).toEqual({
       requiredSlots: 4,
@@ -327,7 +407,7 @@ describe('SchedulesService double-booking detection', () => {
 
     shiftSchedule.getPatternForWindow.mockResolvedValue(PATTERN);
 
-    const board = await service.getBoard('s1');
+    const board = await service.getBoard('s1', COORDINATOR);
 
     expect(board.conflicts).toHaveLength(1);
     expect(board.conflicts[0]).toMatchObject({
@@ -348,7 +428,7 @@ describe('SchedulesService double-booking detection', () => {
         { ...assignmentRow(), schedule: { windowId: 'w1', window: windowRow() } },
       ]);
 
-    const board = await service.getBoard('s1');
+    const board = await service.getBoard('s1', COORDINATOR);
 
     expect(board.conflicts).toEqual([]);
   });
@@ -363,7 +443,7 @@ describe('SchedulesService.getCsv', () => {
       assignmentRow({ isOverride: true }),
     ]);
 
-    const csv = await service.getCsv('s1');
+    const csv = await service.getCsv('s1', COORDINATOR);
     const lines = csv.trim().split('\n');
 
     expect(lines[0]).toBe(

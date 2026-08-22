@@ -6,3 +6,4 @@ export type { AssignTarget } from './AssignPersonDialog';
 export { AutofillDialog } from './AutofillDialog';
 export { PublishDialog } from './PublishDialog';
 export { CreateScheduleDialog } from './CreateScheduleDialog';
+export { SignUpDialog } from './SignUpDialog';

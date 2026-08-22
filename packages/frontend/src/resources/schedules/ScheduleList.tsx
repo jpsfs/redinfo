@@ -6,16 +6,20 @@ import {
   List,
   SelectInput,
   TopToolbar,
+  usePermissions,
 } from 'react-admin';
 import { Alert, Box, Button, Chip, LinearProgress, Stack, Tooltip, Typography } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import {
+  Action,
   AVAILABILITY_WINDOW_CATEGORIES,
   availabilityWindowCategoryLabel,
+  hasPermission,
   Schedule,
   ScheduleStatus,
+  UserRole,
 } from '@redinfo/shared';
 import { formatDateRange } from '../../utils/dates';
 import { WindowCategoryChip } from '../availability/WindowIdentity';
@@ -28,8 +32,17 @@ export const ScheduleStatusChip = ({ status }: { status?: string }) =>
     <Chip size="small" label="Draft" variant="outlined" />
   );
 
+/**
+ * Only a coordinator starts a schedule. Everyone else reaches this list to read
+ * a published rota, so the toolbar is not offered to them at all rather than
+ * offered and refused.
+ */
 const ScheduleListActions = () => {
+  const { permissions } = usePermissions<UserRole>();
   const [open, setOpen] = useState(false);
+
+  if (!permissions || !hasPermission(permissions, Action.MANAGE_SCHEDULES)) return null;
+
   return (
     <TopToolbar>
       <Button size="small" startIcon={<AddIcon />} onClick={() => setOpen(true)}>

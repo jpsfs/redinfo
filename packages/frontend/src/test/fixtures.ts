@@ -249,6 +249,7 @@ export function scheduleAssignment(
     roleId: DRIVER_ROLE.id,
     roleName: DRIVER_ROLE.name,
     isOverride: false,
+    selfAssigned: false,
     availability: 'submitted',
     assignedById: 'coord-1',
     assignedBy: { id: 'coord-1', firstName: 'Maria', lastName: 'Santos' },

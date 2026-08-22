@@ -20,11 +20,11 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Actions } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuditInterceptor } from '../auth/interceptors/audit.interceptor';
-import { SchedulesService } from './schedules.service';
+import { RequestUser, SchedulesService } from './schedules.service';
 import { ScheduleAssignmentsService } from './schedule-assignments.service';
 import { ScheduleAutofillService } from './schedule-autofill.service';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
-import { CreateScheduleAssignmentDto } from './dto/create-assignment.dto';
+import { CreateScheduleAssignmentDto, SelfAssignDto } from './dto/create-assignment.dto';
 import { AutofillScheduleDto } from './dto/autofill-schedule.dto';
 
 @ApiTags('Schedules')
@@ -53,40 +53,47 @@ export class SchedulesController {
     return this.schedules.getMyDuties(user.id);
   }
 
+  /**
+   * Published schedules are readable by everyone on the platform: the rota is
+   * posted, not confidential, and a member can only take an open place on one
+   * they can see. Drafts are filtered out for anyone without
+   * `VIEW_SCHEDULES` — the service decides, since the rule depends on the row.
+   */
   @Get()
-  @Actions(Action.VIEW_SCHEDULES)
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'perPage', required: false, type: Number })
   @ApiQuery({ name: 'windowId', required: false, type: String })
   @ApiQuery({ name: 'category', required: false, type: String })
   @ApiQuery({ name: 'status', required: false, type: String })
   findAll(
+    @CurrentUser() user: RequestUser,
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('perPage', new DefaultValuePipe(25), ParseIntPipe) perPage: number,
     @Query('windowId') windowId?: string,
     @Query('category') category?: string,
     @Query('status') status?: string,
   ) {
-    return this.schedules.findAll(page, perPage, { windowId, category, status });
+    return this.schedules.findAll(user, page, perPage, { windowId, category, status });
   }
 
   @Get(':id')
-  @Actions(Action.VIEW_SCHEDULES)
-  findOne(@Param('id') id: string) {
-    return this.schedules.findOne(id);
+  findOne(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.schedules.findOne(id, user);
   }
 
   /** The whole board: days, shifts, assignments, gaps and conflicts. */
   @Get(':id/board')
-  @Actions(Action.VIEW_SCHEDULES)
-  getBoard(@Param('id') id: string) {
-    return this.schedules.getBoard(id);
+  getBoard(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.schedules.getBoard(id, user);
   }
 
   @Get(':id/csv')
-  @Actions(Action.VIEW_SCHEDULES)
-  async exportCsv(@Param('id') id: string, @Res() res: Response) {
-    const csv = await this.schedules.getCsv(id);
+  async exportCsv(
+    @Param('id') id: string,
+    @CurrentUser() user: RequestUser,
+    @Res() res: Response,
+  ) {
+    const csv = await this.schedules.getCsv(id, user);
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="schedule-${id}.csv"`);
     res.send(csv);
@@ -126,6 +133,24 @@ export class SchedulesController {
     @CurrentUser() user: { id: string },
   ) {
     return this.autofill.autofill(id, dto, user.id);
+  }
+
+  /**
+   * Adding yourself to a published schedule.
+   *
+   * Ungated on purpose: the caller is always the subject, so this gives nobody
+   * power over anyone else. The service still applies every rule a coordinator
+   * is held to — the driver certification above all — and refuses drafts.
+   *
+   * Declared before `:id/assignments` so "me" is never read as an assignment.
+   */
+  @Post(':id/assignments/me')
+  selfAssign(
+    @Param('id') id: string,
+    @Body() dto: SelfAssignDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.assignments.selfAssign(id, dto, user);
   }
 
   @Post(':id/assignments')

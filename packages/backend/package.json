@@ -29,7 +29,6 @@
     "@nestjs/swagger": "^7.3.1",
     "@nestjs/terminus": "^10.2.3",
     "@prisma/client": "^5.15.0",
-    "prisma": "^5.15.0",
     "@redinfo/shared": "workspace:*",
     "bcryptjs": "^2.4.3",
     "class-transformer": "^0.5.1",
@@ -41,8 +40,10 @@
     "passport-jwt": "^4.0.1",
     "passport-local": "^1.0.0",
     "passport-microsoft": "^1.0.0",
+    "prisma": "^5.15.0",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "sanitize-html": "2.13.1"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.3.2",
@@ -56,6 +57,7 @@
     "@types/passport-google-oauth20": "^2.0.16",
     "@types/passport-jwt": "^4.0.1",
     "@types/passport-local": "^1.0.38",
+    "@types/sanitize-html": "^2.16.1",
     "jest": "^30.3.0",
     "ts-jest": "^29.4.6",
     "ts-node": "^10.9.2",
@@ -69,6 +71,7 @@
       "ts"
     ],
     "rootDir": "src",
+    "maxWorkers": 1,
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
       "^.+\\.(t|j)s$": [

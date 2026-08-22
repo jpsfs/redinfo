@@ -9,6 +9,7 @@ import {
 import { Box, Divider } from '@mui/material';
 import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
 import EventAvailableIcon from '@mui/icons-material/EventAvailable';
+import DescriptionIcon from '@mui/icons-material/Description';
 import { logoRedCrossEmblemPath } from './design-tokens';
 
 const RedInfoAppBar = () => (
@@ -64,6 +65,11 @@ export const RedInfoMenu = () => {
         to="/my-duties"
         primaryText="My Duties"
         leftIcon={<AssignmentIndIcon />}
+      />
+      <Menu.Item
+        to="/my-reports"
+        primaryText="My Reports"
+        leftIcon={<DescriptionIcon />}
       />
     </Menu>
   );

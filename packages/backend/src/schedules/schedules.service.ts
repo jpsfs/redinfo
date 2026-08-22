@@ -1,10 +1,12 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import {
+  Action,
   AvailabilityWindow,
   AvailabilityWindowCategory,
   AvailabilityWindowRole,
@@ -22,7 +24,9 @@ import {
   ScheduleShiftBoard,
   ScheduleStatus,
   ShiftDefinition,
+  UserRole,
   assignedDriverCount,
+  hasPermission,
   requiredSlotsForShift,
   scheduleFillStats,
   shiftGaps,
@@ -78,6 +82,16 @@ export interface ScheduleContext {
   shifts: Map<string, ShiftDefinition & { date: string }>;
 }
 
+/** Just enough of the caller to answer "may they see this, and as whom". */
+export interface RequestUser {
+  id: string;
+  role: UserRole;
+}
+
+/** A coordinator sees drafts too; everyone else only sees what is published. */
+const canSeeDrafts = (user: RequestUser) =>
+  hasPermission(user.role, Action.VIEW_SCHEDULES);
+
 @Injectable()
 export class SchedulesService {
   constructor(
@@ -87,7 +101,12 @@ export class SchedulesService {
 
   // ── Lifecycle ───────────────────────────────────────────────────────────────
 
+  /**
+   * Published schedules are readable by everyone on the platform — the rota is
+   * posted, not confidential. Drafts stay with the coordinators building them.
+   */
   async findAll(
+    user: RequestUser,
     page = 1,
     perPage = 25,
     filters: { windowId?: string; category?: string; status?: string } = {},
@@ -99,6 +118,7 @@ export class SchedulesService {
       ...(filters.category
         ? { window: { category: this.assertCategory(filters.category) } }
         : {}),
+      ...(canSeeDrafts(user) ? {} : { status: ScheduleStatus.PUBLISHED }),
     };
 
     const [rows, total] = await this.prisma.$transaction([
@@ -124,8 +144,22 @@ export class SchedulesService {
     };
   }
 
-  async findOne(id: string): Promise<Schedule> {
-    return serializeSchedule(await this.loadRow(id));
+  async findOne(id: string, user: RequestUser): Promise<Schedule> {
+    const row = await this.loadRow(id);
+    this.assertVisible(row.status as ScheduleStatus, user);
+    return serializeSchedule(row);
+  }
+
+  /**
+   * A draft is a coordinator's working copy; a published schedule is the rota
+   * everyone works from. 403 rather than 404 on a draft: the schedule exists,
+   * and saying so tells a volunteer their coordinator is on it.
+   */
+  private assertVisible(status: ScheduleStatus, user: RequestUser): void {
+    if (status === ScheduleStatus.PUBLISHED || canSeeDrafts(user)) return;
+    throw new ForbiddenException(
+      'This schedule has not been published yet — only coordinators can see a draft.',
+    );
   }
 
   async create(dto: CreateScheduleDto, createdById: string): Promise<Schedule> {
@@ -239,8 +273,9 @@ export class SchedulesService {
 
   // ── Board ───────────────────────────────────────────────────────────────────
 
-  async getBoard(id: string): Promise<ScheduleBoardResponse> {
+  async getBoard(id: string, user: RequestUser): Promise<ScheduleBoardResponse> {
     const context = await this.loadContext(id);
+    this.assertVisible(context.status, user);
     const [row, assignments, submissions, declined] = await Promise.all([
       this.loadRow(id),
       this.prisma.scheduleAssignment.findMany({
@@ -407,8 +442,8 @@ export class SchedulesService {
    * One row per assigned person, plus a row for each empty slot — a roster that
    * hid its holes would be worse than no export.
    */
-  async getCsv(id: string): Promise<string> {
-    const board = await this.getBoard(id);
+  async getCsv(id: string, user: RequestUser): Promise<string> {
+    const board = await this.getBoard(id, user);
     const lines = [
       'date,dayType,holiday,shift,vehiclesNeeded,role,person,driver,source',
     ];
@@ -564,6 +599,9 @@ export class SchedulesService {
           slot: true,
           roleId: true,
           isOverride: true,
+          // Both needed to tell a coordinator's override from a self-signup.
+          userId: true,
+          assignedById: true,
           user: { select: { isDriver: true } },
         },
       }),
@@ -631,7 +669,10 @@ export class SchedulesService {
         requiredSlots: shifts.length * perShift,
         filledSlots: assignments.length,
         shiftsWithGaps,
-        overrideCount: assignments.filter((assignment) => assignment.isOverride).length,
+        overrideCount: assignments.filter(
+          (assignment) =>
+            assignment.isOverride && assignment.assignedById !== assignment.userId,
+        ).length,
       });
     }
 
@@ -716,6 +757,9 @@ export function serializeAssignment(
     roleId: row.roleId,
     roleName: row.role?.name ?? null,
     isOverride: row.isOverride,
+    // Derived, not stored: an override is something done *to* someone, so
+    // a volunteer who put themselves forward must not read as one.
+    selfAssigned: row.assignedById === row.userId,
     // Read live rather than from `isOverride`: someone may withdraw after being
     // scheduled, and the board should show that rather than the state at the
     // moment the coordinator clicked.

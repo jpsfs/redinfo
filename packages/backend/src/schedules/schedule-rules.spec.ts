@@ -233,6 +233,28 @@ describe('scheduleFillStats', () => {
       overrideCount: 1,
     });
   });
+
+  // "Overrides" means cover a coordinator arranged off-platform. Someone who
+  // put themselves on a published rota did not need overriding, even though no
+  // submission backs them either.
+  it('does not count a self-signup as an override', () => {
+    const withSignUp: ScheduleDayBoard[] = [
+      {
+        ...days[0],
+        shifts: [
+          {
+            ...days[0].shifts[0],
+            assignments: [
+              { isOverride: true, selfAssigned: true } as never,
+              { isOverride: true, selfAssigned: false } as never,
+            ],
+          },
+        ],
+      },
+    ];
+
+    expect(scheduleFillStats(withSignUp, EMERGENCY_ROLES).overrideCount).toBe(1);
+  });
 });
 
 describe('schedule permissions', () => {

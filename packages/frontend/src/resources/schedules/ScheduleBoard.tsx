@@ -19,19 +19,23 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
+import { useGetIdentity, usePermissions } from 'react-admin';
 import AddIcon from '@mui/icons-material/Add';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import DownloadIcon from '@mui/icons-material/Download';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import HowToRegIcon from '@mui/icons-material/HowToReg';
 import PublishIcon from '@mui/icons-material/Publish';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import {
+  Action,
   AvailabilityWindowRole,
   AvailabilityWindowStatus,
   formatGap,
   formatRoleCapacity,
+  hasPermission,
   ScheduleAssignment,
   ScheduleBoardResponse,
   ScheduleConflict,
@@ -39,6 +43,10 @@ import {
   ScheduleGap,
   ScheduleShiftBoard,
   ScheduleStatus,
+  selfAssignBlockedReason,
+  shiftsOverlap,
+  UNLIMITED_ROLE_PEOPLE,
+  UserRole,
 } from '@redinfo/shared';
 import { apiDownload, apiFetch } from '../../api';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -47,6 +55,7 @@ import { WindowIdentity } from '../availability/WindowIdentity';
 import { AssignPersonDialog, AssignTarget } from './AssignPersonDialog';
 import { AutofillDialog } from './AutofillDialog';
 import { PublishDialog } from './PublishDialog';
+import { SignUpDialog } from './SignUpDialog';
 
 /**
  * A window with no roles still schedules people — it just has one unnamed
@@ -59,49 +68,24 @@ const shiftId = (date: string, slot: number) => `${date}#${slot}`;
 const personName = (assignment: ScheduleAssignment) =>
   `${assignment.user.firstName} ${assignment.user.lastName}`;
 
-// ─── Small pieces ──────────────────────────────────────────────────────────────
-
-const describeVehicles = (vehiclesNeeded: number) =>
-  vehiclesNeeded === 0
-    ? 'no vehicle needed'
-    : `${vehiclesNeeded} vehicle${vehiclesNeeded === 1 ? '' : 's'} needed`;
-
 /**
- * Certified drivers on a shift against the vehicles it crews.
+ * Who is looking at the board, and what that lets them do.
  *
- * Counted across every role, not just the driver post: a shift needing two
- * vehicles needs two certified people however the window's roles are sized.
+ * A coordinator builds: fill any place with anyone, take anyone off. Everyone
+ * else reads the published rota and may add *themselves* to an open place —
+ * never remove themselves, and never anyone else.
  */
-const DriverBadge = ({
-  count,
-  vehiclesNeeded,
-}: {
-  count: number;
-  vehiclesNeeded: number;
-}) => (
-  <Tooltip
-    title={`${count} certified driver${count === 1 ? '' : 's'} assigned, ${describeVehicles(
-      vehiclesNeeded,
-    )}`}
-  >
-    <Chip
-      size="small"
-      icon={<DirectionsCarIcon fontSize="small" />}
-      label={vehiclesNeeded > 0 ? `${count}/${vehiclesNeeded}` : count}
-      variant="outlined"
-      color={
-        vehiclesNeeded === 0
-          ? 'default'
-          : count === 0
-            ? 'error'
-            : count < vehiclesNeeded
-              ? 'warning'
-              : 'success'
-      }
-      sx={{ height: 22, '& .MuiChip-label': { px: 0.75, fontWeight: 700 } }}
-    />
-  </Tooltip>
-);
+interface Viewer {
+  id: string;
+  isDriver: boolean;
+  isCoordinator: boolean;
+  /** The schedule is published, so open places are there to be taken. */
+  canSignUp: boolean;
+  /** Whether the viewer already holds a duty overlapping this shift. */
+  overlaps: (date: string, shift: ScheduleShiftBoard) => boolean;
+}
+
+// ─── Small pieces ──────────────────────────────────────────────────────────────
 
 /**
  * One assigned person.
@@ -113,49 +97,65 @@ const DriverBadge = ({
 const AssignmentChip = ({
   assignment,
   conflict,
+  isSelf,
   onRemove,
 }: {
   assignment: ScheduleAssignment;
   conflict?: ScheduleConflict;
+  isSelf?: boolean;
   onRemove?: () => void;
 }) => {
   const name = personName(assignment);
+  // Someone who put themselves forward is not someone a coordinator overrode,
+  // so it is never read as one however the availability lines up.
+  const signedUp = assignment.selfAssigned;
   const title = conflict
     ? `Double-booked: also on ${conflict.otherWindowLabel}, ${conflict.otherLabel}`
-    : assignment.isOverride
-      ? `Override — did not submit for this shift. Assigned by ${
-          assignment.assignedBy
-            ? `${assignment.assignedBy.firstName} ${assignment.assignedBy.lastName}`
-            : 'a coordinator'
-        } on ${new Date(assignment.assignedAt).toLocaleString()}`
-      : assignment.availability === 'submitted'
-        ? 'Submitted availability for this shift'
-        : 'No longer available for this shift';
+    : signedUp
+      ? `Signed up on ${new Date(assignment.assignedAt).toLocaleString()}`
+      : assignment.isOverride
+        ? `Override — did not submit for this shift. Assigned by ${
+            assignment.assignedBy
+              ? `${assignment.assignedBy.firstName} ${assignment.assignedBy.lastName}`
+              : 'a coordinator'
+          } on ${new Date(assignment.assignedAt).toLocaleString()}`
+        : assignment.availability === 'submitted'
+          ? 'Submitted availability for this shift'
+          : 'No longer available for this shift';
+
+  const color = conflict
+    ? 'error'
+    : signedUp
+      ? 'info'
+      : assignment.isOverride
+        ? 'warning'
+        : 'default';
 
   return (
     <Tooltip title={title}>
       <Chip
         size="small"
-        variant="outlined"
-        color={conflict ? 'error' : assignment.isOverride ? 'warning' : 'default'}
+        variant={isSelf ? 'filled' : 'outlined'}
+        color={color}
         icon={
           conflict ? (
             <ErrorOutlineIcon fontSize="small" />
+          ) : signedUp ? (
+            <HowToRegIcon fontSize="small" />
           ) : assignment.isOverride ? (
             <SwapHorizIcon fontSize="small" />
           ) : assignment.user.isDriver ? (
             <DirectionsCarIcon fontSize="small" />
           ) : undefined
         }
-        label={
-          assignment.user.isDriver && (conflict || assignment.isOverride)
-            ? `${name} · driver`
-            : name
-        }
+        // The name alone. Whether someone drives is read from the column they
+        // are in and from the shift's own driver warning — spelling it out on
+        // every chip says nothing the board is not already saying.
+        label={name}
         {...(onRemove ? { onDelete: onRemove } : {})}
-        aria-label={`${name}${assignment.isOverride ? ', override' : ''}${
-          conflict ? ', double-booked' : ''
-        }`}
+        aria-label={`${name}${signedUp ? ', signed up' : ''}${
+          !signedUp && assignment.isOverride ? ', override' : ''
+        }${conflict ? ', double-booked' : ''}${isSelf ? ', you' : ''}`}
       />
     </Tooltip>
   );
@@ -168,7 +168,7 @@ const GapNote = ({ gap }: { gap: ScheduleGap }) => (
       alignItems: 'center',
       gap: 0.5,
       mt: 0.5,
-      color: gap.kind === 'ROLE_SHORT' ? 'warning.dark' : 'error.dark',
+      color: 'error.dark',
     }}
   >
     <WarningAmberIcon sx={{ fontSize: 14 }} />
@@ -176,23 +176,51 @@ const GapNote = ({ gap }: { gap: ScheduleGap }) => (
   </Box>
 );
 
-const AssignSlotButton = ({ onClick, label }: { onClick: () => void; label: string }) => (
-  <Button
-    size="small"
-    startIcon={<AddIcon />}
-    onClick={onClick}
-    aria-label={label}
-    sx={{
-      justifyContent: 'flex-start',
-      width: '100%',
-      color: 'text.secondary',
-      border: '1px dashed',
-      borderColor: 'grey.400',
-    }}
-  >
-    Assign
-  </Button>
-);
+/**
+ * An open place.
+ *
+ * A coordinator fills it with anyone; a member may only put themselves in it,
+ * and only where the rules allow — so the button says which of the two it is,
+ * and explains itself rather than failing when it cannot be used.
+ */
+const OpenSlotButton = ({
+  onClick,
+  label,
+  mode,
+  blockedReason,
+}: {
+  onClick: () => void;
+  label: string;
+  mode: 'assign' | 'signUp';
+  blockedReason?: string | null;
+}) => {
+  const button = (
+    <Button
+      size="small"
+      startIcon={mode === 'signUp' ? <HowToRegIcon /> : <AddIcon />}
+      onClick={onClick}
+      disabled={Boolean(blockedReason)}
+      aria-label={label}
+      sx={{
+        justifyContent: 'flex-start',
+        width: '100%',
+        color: 'text.secondary',
+        border: '1px dashed',
+        borderColor: 'grey.400',
+      }}
+    >
+      {mode === 'signUp' ? 'Add me' : 'Assign'}
+    </Button>
+  );
+
+  return blockedReason ? (
+    <Tooltip title={blockedReason}>
+      <span>{button}</span>
+    </Tooltip>
+  ) : (
+    button
+  );
+};
 
 const StatTile = ({
   value,
@@ -218,13 +246,27 @@ const BoardLegend = () => (
     {(
       [
         [undefined, 'Assigned from submitted availability'],
+        ['signUp', 'Signed up by the person themselves'],
         ['override', 'Override — did not submit for this shift'],
-        ['gap', 'Coverage gap'],
+        ['open', 'An open place, one per person the role still wants'],
+        ['gap', 'No driver for the vehicles this shift crews'],
         ['conflict', 'Double-booked'],
       ] as const
     ).map(([kind, label]) => (
       <Box key={label} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+        {kind === 'signUp' && <HowToRegIcon sx={{ fontSize: 16, color: 'info.dark' }} />}
         {kind === 'override' && <SwapHorizIcon sx={{ fontSize: 16, color: 'warning.dark' }} />}
+        {kind === 'open' && (
+          <Box
+            sx={{
+              width: 16,
+              height: 16,
+              border: '1px dashed',
+              borderColor: 'grey.400',
+              borderRadius: 1,
+            }}
+          />
+        )}
         {kind === 'gap' && <WarningAmberIcon sx={{ fontSize: 16, color: 'error.dark' }} />}
         {kind === 'conflict' && (
           <ErrorOutlineIcon sx={{ fontSize: 16, color: 'error.dark' }} />
@@ -256,7 +298,8 @@ const RoleCell = ({
   conflictFor,
   onAssign,
   onRemove,
-  readOnly,
+  viewer,
+  date,
   dayLabel,
 }: {
   role: AvailabilityWindowRole | null;
@@ -265,13 +308,55 @@ const RoleCell = ({
   conflictFor: (assignment: ScheduleAssignment) => ScheduleConflict | undefined;
   onAssign: () => void;
   onRemove: (assignment: ScheduleAssignment) => void;
-  readOnly: boolean;
+  viewer: Viewer;
+  /** The day this cell sits on — needed to spot an overlapping duty. */
+  date: string;
   dayLabel: string;
 }) => {
   const people = shift.assignments.filter(
     (assignment) => (assignment.roleId ?? null) === (role?.id ?? null),
   );
   const canTakeMore = !role || role.maxPeople === 0 || people.length < role.maxPeople;
+
+  const mode = viewer.isCoordinator ? 'assign' : 'signUp';
+  const blockedReason =
+    mode === 'signUp'
+      ? selfAssignBlockedReason({
+          role,
+          isDriver: viewer.isDriver,
+          filledInRole: people.length,
+          alreadyOnShift: shift.assignments.some(
+            (assignment) => assignment.userId === viewer.id,
+          ),
+          overlaps: viewer.overlaps(date, shift),
+        })
+      : null;
+
+  // Only a published rota is open to members; a coordinator works on drafts too.
+  const canFill = canTakeMore && (viewer.isCoordinator || viewer.canSignUp);
+
+  /**
+   * One open place per person the role still wants.
+   *
+   * The empty places *are* how a short role reads — three of them says "three
+   * people needed" more directly than a sentence saying so, and a role filled
+   * to its headcount simply shows none. An unlimited role has no number to
+   * count down to, so it keeps one open place for as long as it exists.
+   */
+  const openPlaces = !canFill
+    ? 0
+    : role && role.maxPeople !== UNLIMITED_ROLE_PEOPLE
+      ? Math.max(0, role.maxPeople - people.length)
+      : 1;
+
+  const placeLabel = (index: number) => {
+    const verb = mode === 'signUp' ? 'Add me to' : 'Assign to';
+    const where = `${role?.name ?? CREW_COLUMN} on ${dayLabel}, ${shift.label}`;
+    // Several identical buttons in one cell need telling apart by name.
+    return openPlaces > 1
+      ? `${verb} ${where} — place ${index + 1} of ${openPlaces}`
+      : `${verb} ${where}`;
+  };
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, minWidth: 150 }}>
@@ -280,15 +365,19 @@ const RoleCell = ({
           key={assignment.id}
           assignment={assignment}
           conflict={conflictFor(assignment)}
-          onRemove={readOnly ? undefined : () => onRemove(assignment)}
+          isSelf={assignment.userId === viewer.id}
+          onRemove={viewer.isCoordinator ? () => onRemove(assignment) : undefined}
         />
       ))}
-      {!readOnly && canTakeMore && (
-        <AssignSlotButton
+      {Array.from({ length: openPlaces }, (_, index) => (
+        <OpenSlotButton
+          key={index}
           onClick={onAssign}
-          label={`Assign to ${role?.name ?? CREW_COLUMN} on ${dayLabel}, ${shift.label}`}
+          mode={mode}
+          blockedReason={blockedReason}
+          label={placeLabel(index)}
         />
-      )}
+      ))}
       {gaps.map((gap) => (
         <GapNote key={`${gap.kind}-${gap.roleId ?? 'shift'}`} gap={gap} />
       ))}
@@ -304,14 +393,14 @@ const DesktopBoard = ({
   conflictFor,
   onAssign,
   onRemove,
-  readOnly,
+  viewer,
 }: {
   board: ScheduleBoardResponse;
   columns: Array<AvailabilityWindowRole | null>;
   conflictFor: (assignment: ScheduleAssignment) => ScheduleConflict | undefined;
   onAssign: (target: AssignTarget) => void;
   onRemove: (assignment: ScheduleAssignment) => void;
-  readOnly: boolean;
+  viewer: Viewer;
 }) => (
   <TableContainer component={Paper} variant="outlined">
     <Table size="small">
@@ -373,9 +462,6 @@ const DesktopBoard = ({
                 <Typography variant="body2" sx={{ fontWeight: 600 }}>
                   {shift.label}
                 </Typography>
-                <Box sx={{ mt: 0.5 }}>
-                  <DriverBadge count={shift.driverCount} vehiclesNeeded={shift.vehiclesNeeded} />
-                </Box>
               </TableCell>
               {columns.map((role) => (
                 <TableCell key={role?.id ?? CREW_COLUMN} sx={{ verticalAlign: 'top' }}>
@@ -388,7 +474,8 @@ const DesktopBoard = ({
                       onAssign({ date: day.date, slot: shift.slot, shiftLabel: shift.label, role })
                     }
                     onRemove={onRemove}
-                    readOnly={readOnly}
+                    viewer={viewer}
+                    date={day.date}
                     dayLabel={formatDayLabel(day.date)}
                   />
                 </TableCell>
@@ -402,11 +489,17 @@ const DesktopBoard = ({
 );
 
 /**
- * Which gaps belong under which column.
+ * Which gaps are worth writing out under a column.
  *
- * A role gap goes under its own role. The missing-driver gap is a property of
- * the whole shift, so it goes under the driver post when the window has one and
- * under the first column otherwise — never nowhere.
+ * Only the missing-driver one. A role short of people already says so by
+ * showing that many empty places, and repeating it in words under every column
+ * of every shift buries the one gap those places cannot express: certified
+ * drivers are counted across the whole shift against the vehicles it crews, so
+ * a shift can be full to every role and still have nobody able to drive.
+ *
+ * It belongs to the shift rather than to a role, so it is written under the
+ * driver post where the window has one, and under the first column otherwise —
+ * never nowhere.
  */
 function gapsForColumn(
   gaps: ScheduleGap[],
@@ -415,10 +508,11 @@ function gapsForColumn(
 ): ScheduleGap[] {
   const driverColumn =
     columns.find((column) => column?.requiresDriverCertification) ?? columns[0] ?? null;
-  return gaps.filter((gap) => {
-    if (gap.kind === 'ROLE_SHORT') return gap.roleId === role?.id;
-    return (driverColumn?.id ?? null) === (role?.id ?? null);
-  });
+  return gaps.filter(
+    (gap) =>
+      gap.kind === 'MISSING_DRIVER' &&
+      (driverColumn?.id ?? null) === (role?.id ?? null),
+  );
 }
 
 // ─── Mobile day cards ──────────────────────────────────────────────────────────
@@ -429,14 +523,14 @@ const MobileBoard = ({
   conflictFor,
   onAssign,
   onRemove,
-  readOnly,
+  viewer,
 }: {
   board: ScheduleBoardResponse;
   columns: Array<AvailabilityWindowRole | null>;
   conflictFor: (assignment: ScheduleAssignment) => ScheduleConflict | undefined;
   onAssign: (target: AssignTarget) => void;
   onRemove: (assignment: ScheduleAssignment) => void;
-  readOnly: boolean;
+  viewer: Viewer;
 }) => (
   <Stack spacing={1}>
     {board.days.map((day: ScheduleDayBoard) => (
@@ -446,19 +540,9 @@ const MobileBoard = ({
           <Stack spacing={2} sx={{ mt: 1.5 }}>
             {day.shifts.map((shift) => (
               <Box key={shift.slot}>
-                <Box
-                  sx={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'space-between',
-                    gap: 1,
-                  }}
-                >
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    {shift.label}
-                  </Typography>
-                  <DriverBadge count={shift.driverCount} vehiclesNeeded={shift.vehiclesNeeded} />
-                </Box>
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  {shift.label}
+                </Typography>
                 <Stack spacing={1} sx={{ mt: 1 }}>
                   {columns.map((role) => (
                     <Box key={role?.id ?? CREW_COLUMN}>
@@ -479,7 +563,8 @@ const MobileBoard = ({
                           })
                         }
                         onRemove={onRemove}
-                        readOnly={readOnly}
+                        viewer={viewer}
+                        date={day.date}
                         dayLabel={formatDayLabel(day.date)}
                       />
                     </Box>
@@ -506,10 +591,13 @@ const MobileBoard = ({
  */
 export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
   const isMobile = useIsMobile();
+  const { permissions } = usePermissions<UserRole>();
+  const { identity } = useGetIdentity();
   const [board, setBoard] = useState<ScheduleBoardResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [target, setTarget] = useState<AssignTarget | null>(null);
+  const [signUpTarget, setSignUpTarget] = useState<AssignTarget | null>(null);
   const [autofillOpen, setAutofillOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -574,6 +662,30 @@ export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
     [conflictsByUserShift],
   );
 
+  const viewer = useMemo<Viewer>(() => {
+    const id = String(identity?.id ?? '');
+    const mine = (board?.days ?? []).flatMap((day) =>
+      day.shifts
+        .filter((shift) => shift.assignments.some((a) => a.userId === id))
+        .map((shift) => ({ date: day.date, shift })),
+    );
+    return {
+      id,
+      isDriver: Boolean((identity as { isDriver?: boolean } | undefined)?.isDriver),
+      isCoordinator: permissions
+        ? hasPermission(permissions, Action.MANAGE_SCHEDULES)
+        : false,
+      canSignUp: board?.schedule.status === ScheduleStatus.PUBLISHED,
+      overlaps: (date, shift) =>
+        mine.some(
+          (held) =>
+            held.date === date &&
+            held.shift.slot !== shift.slot &&
+            shiftsOverlap(held.shift, shift),
+        ),
+    };
+  }, [board, identity, permissions]);
+
   if (loading && !board) return <CircularProgress size={24} sx={{ my: 2 }} />;
   if (error && !board) {
     return (
@@ -618,14 +730,16 @@ export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
           </Box>
         </Box>
         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-          <Button
-            size="small"
-            variant="outlined"
-            startIcon={<AutoFixHighIcon />}
-            onClick={() => setAutofillOpen(true)}
-          >
-            Auto-fill draft
-          </Button>
+          {viewer.isCoordinator && (
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<AutoFixHighIcon />}
+              onClick={() => setAutofillOpen(true)}
+            >
+              Auto-fill draft
+            </Button>
+          )}
           <Button
             size="small"
             variant="outlined"
@@ -636,7 +750,7 @@ export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
           >
             Export CSV
           </Button>
-          {!isPublished && (
+          {viewer.isCoordinator && !isPublished && (
             <Button
               size="small"
               variant="contained"
@@ -662,10 +776,18 @@ export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
         </Alert>
       )}
 
-      {isPublished && (
+      {isPublished && viewer.isCoordinator && (
         <Alert severity="success" sx={{ mb: 2 }}>
-          Published — assigned personnel can see their duties. Changes you make now
-          are live straight away.
+          Published — everyone can see this rota, and members can add themselves to
+          an open place. Changes you make now are live straight away.
+        </Alert>
+      )}
+
+      {isPublished && !viewer.isCoordinator && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          You can add yourself to any open place you are able to cover. Once you are
+          on a shift you cannot take yourself off — ask a coordinator, who can arrange
+          cover at the same time.
         </Alert>
       )}
 
@@ -704,18 +826,18 @@ export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
           board={board}
           columns={columns}
           conflictFor={conflictFor}
-          onAssign={setTarget}
+          onAssign={viewer.isCoordinator ? setTarget : setSignUpTarget}
           onRemove={(assignment) => void handleRemove(assignment)}
-          readOnly={false}
+          viewer={viewer}
         />
       ) : (
         <DesktopBoard
           board={board}
           columns={columns}
           conflictFor={conflictFor}
-          onAssign={setTarget}
+          onAssign={viewer.isCoordinator ? setTarget : setSignUpTarget}
           onRemove={(assignment) => void handleRemove(assignment)}
-          readOnly={false}
+          viewer={viewer}
         />
       )}
 
@@ -729,10 +851,25 @@ export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
 
       <Divider sx={{ my: 2 }} />
       <Typography variant="caption" color="text.secondary">
-        People who submitted availability for a shift are offered first. Anyone else
-        can still be assigned — cover is often agreed by phone — and is recorded as an
-        override.
+        {viewer.isCoordinator
+          ? 'People who submitted availability for a shift are offered first. Anyone else can still be assigned — cover is often agreed by phone — and is recorded as an override.'
+          : 'Only places you are able to cover are offered: the driver posts need the driver certification, and a role that is already full cannot take another person.'}
       </Typography>
+
+      <SignUpDialog
+        scheduleId={scheduleId}
+        target={signUpTarget}
+        vehiclesNeeded={
+          board.days
+            .find((day) => day.date === signUpTarget?.date)
+            ?.shifts.find((shift) => shift.slot === signUpTarget?.slot)?.vehiclesNeeded ?? 0
+        }
+        onClose={() => setSignUpTarget(null)}
+        onSignedUp={() => {
+          setSignUpTarget(null);
+          void load();
+        }}
+      />
 
       <AssignPersonDialog
         scheduleId={scheduleId}

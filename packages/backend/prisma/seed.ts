@@ -1,5 +1,6 @@
 import { PrismaClient, UserRole, AuthProvider, VehicleType, InventoryItemType } from '@prisma/client';
 import * as bcrypt from 'bcryptjs';
+import { seedGeography } from './seed-geography';
 
 const prisma = new PrismaClient();
 
@@ -137,6 +138,12 @@ async function main() {
   } else {
     console.log('Holidays already seeded — skipping.');
   }
+
+  // ── Geography and hospitals ──────────────────────────────────────────────────
+  // Every municipality and freguesia in Portugal, plus the hospital list a
+  // report's transport destination is chosen from. Idempotent, so this runs on
+  // every deployment and a refreshed dataset lands by re-seeding.
+  await seedGeography(prisma);
 }
 
 main()

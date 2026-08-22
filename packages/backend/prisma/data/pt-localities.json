@@ -1,0 +1,6041 @@
+{
+  "sources": [
+    "https://json.geoapi.pt/municipios/freguesias",
+    "https://query.wikidata.org/sparql"
+  ],
+  "municipalityCount": 308,
+  "localityCount": 3259,
+  "municipalities": [
+    {
+      "ineCode": "0101",
+      "name": "Águeda",
+      "district": "Aveiro",
+      "latitude": 40.580519444444,
+      "longitude": -8.4416666666667,
+      "localities": [
+        "Agadão",
+        "Aguada de Baixo",
+        "Aguada de Cima",
+        "Águeda",
+        "Barrô",
+        "Belazaima do Chão",
+        "Borralha",
+        "Castanheira do Vouga",
+        "Fermentelos",
+        "Macinhata do Vouga",
+        "União das Freguesias de Recardães e Espinhel",
+        "União das Freguesias de Travassô e Óis da Ribeira",
+        "União das Freguesias de Trofa, Segadães e Lamas do Vouga",
+        "União das Freguesias do Préstimo e Macieira de Alcoba",
+        "Valongo do Vouga"
+      ]
+    },
+    {
+      "ineCode": "0102",
+      "name": "Albergaria-a-Velha",
+      "district": "Aveiro",
+      "latitude": 40.693611111111,
+      "longitude": -8.4805555555556,
+      "localities": [
+        "Albergaria-a-Velha e Valmaior",
+        "Alquerubim",
+        "Angeja",
+        "Branca",
+        "Ribeira de Fráguas",
+        "São João de Loure e Frossos"
+      ]
+    },
+    {
+      "ineCode": "0103",
+      "name": "Anadia",
+      "district": "Aveiro",
+      "latitude": 40.433333333333,
+      "longitude": -8.4333333333333,
+      "localities": [
+        "Avelãs de Caminho",
+        "Avelãs de Cima",
+        "Moita",
+        "Sangalhos",
+        "São Lourenço do Bairro",
+        "União das Freguesias de Amoreira da Gândara, Paredes do Bairro e Ancas",
+        "União das Freguesias de Arcos e Mogofores",
+        "União das Freguesias de Tamengos, Aguim e Óis do Bairro",
+        "Vila Nova de Monsarros",
+        "Vilarinho do Bairro"
+      ]
+    },
+    {
+      "ineCode": "0104",
+      "name": "Arouca",
+      "district": "Aveiro",
+      "latitude": 40.933333333333,
+      "longitude": -8.25,
+      "localities": [
+        "Alvarenga",
+        "Chave",
+        "Escariz",
+        "Fermedo",
+        "Mansores",
+        "Moldes",
+        "Rossas",
+        "Santa Eulália",
+        "São Miguel do Mato",
+        "Tropeço",
+        "União das Freguesias de Arouca e Burgo",
+        "União das Freguesias de Cabreiros e Albergaria da Serra",
+        "União das Freguesias de Canelas e Espiunca",
+        "União das Freguesias de Covelo de Paivó e Janarde",
+        "Urrô",
+        "Várzea"
+      ]
+    },
+    {
+      "ineCode": "0105",
+      "name": "Aveiro",
+      "district": "Aveiro",
+      "latitude": 40.638888888889,
+      "longitude": -8.6552777777778,
+      "localities": [
+        "Aradas",
+        "Cacia",
+        "Eixo e Eirol",
+        "Esgueira",
+        "Oliveirinha",
+        "Requeixo, Nossa Senhora de Fátima e Nariz",
+        "Santa Joana",
+        "São Bernardo",
+        "São Jacinto",
+        "União das Freguesias de Glória e Vera Cruz"
+      ]
+    },
+    {
+      "ineCode": "0106",
+      "name": "Castelo de Paiva",
+      "district": "Aveiro",
+      "latitude": 41.033333333333,
+      "longitude": -8.2666666666667,
+      "localities": [
+        "Bairros",
+        "Fornos",
+        "Paraíso",
+        "Pedorido",
+        "Raiva",
+        "Real",
+        "Santa Maria de Sardoura",
+        "São Martinho de Sardoura",
+        "Sobrado"
+      ]
+    },
+    {
+      "ineCode": "0107",
+      "name": "Espinho",
+      "district": "Aveiro",
+      "latitude": 41.01,
+      "longitude": -8.64,
+      "localities": [
+        "Anta",
+        "Espinho",
+        "Guetim",
+        "Paramos",
+        "Silvalde"
+      ]
+    },
+    {
+      "ineCode": "0108",
+      "name": "Estarreja",
+      "district": "Aveiro",
+      "latitude": 40.75,
+      "longitude": -8.5666666666667,
+      "localities": [
+        "Avanca",
+        "Beduído",
+        "Pardilhó",
+        "Salreu",
+        "União das Freguesias de Canelas e Fermelã",
+        "Veiros"
+      ]
+    },
+    {
+      "ineCode": "0109",
+      "name": "Santa Maria da Feira",
+      "district": "Aveiro",
+      "latitude": 40.933333333333,
+      "longitude": -8.5333333333333,
+      "localities": [
+        "Argoncilhe",
+        "Arrifana",
+        "Caldas de São Jorge",
+        "Canedo",
+        "Escapães",
+        "Fiães",
+        "Fornos",
+        "Gião",
+        "Guisande",
+        "Lobão",
+        "Louredo",
+        "Lourosa",
+        "Milheirós de Poiares",
+        "Mosteirô",
+        "Mozelos",
+        "Nogueira da Regedoura",
+        "Paços de Brandão",
+        "Pigeiros",
+        "Rio Meão",
+        "Romariz",
+        "Sanguedo",
+        "Santa Maria de Lamas",
+        "São João de Ver",
+        "São Miguel de Souto",
+        "São Paio de Oleiros",
+        "União das Freguesias de Santa Maria da Feira, Travanca, Sanfins e Espargo",
+        "Vale",
+        "Vila Maior"
+      ]
+    },
+    {
+      "ineCode": "0110",
+      "name": "Ílhavo",
+      "district": "Aveiro",
+      "latitude": 40.6,
+      "longitude": -8.6666666666667,
+      "localities": [
+        "Gafanha da Encarnação",
+        "Gafanha da Nazaré",
+        "Gafanha do Carmo",
+        "Ílhavo (são Salvador)"
+      ]
+    },
+    {
+      "ineCode": "0111",
+      "name": "Mealhada",
+      "district": "Aveiro",
+      "latitude": 40.383333333333,
+      "longitude": -8.45,
+      "localities": [
+        "Antes",
+        "Barcouço",
+        "Casal Comba",
+        "Luso",
+        "Mealhada",
+        "Pampilhosa",
+        "Vacariça",
+        "Ventosa do Bairro"
+      ]
+    },
+    {
+      "ineCode": "0112",
+      "name": "Murtosa",
+      "district": "Aveiro",
+      "latitude": 40.736944444444,
+      "longitude": -8.6386111111111,
+      "localities": [
+        "Bunheiro",
+        "Monte",
+        "Murtosa",
+        "Torreira"
+      ]
+    },
+    {
+      "ineCode": "0113",
+      "name": "Oliveira de Azeméis",
+      "district": "Aveiro",
+      "latitude": 40.833333333333,
+      "longitude": -8.4833333333333,
+      "localities": [
+        "Carregosa",
+        "Cesar",
+        "Fajões",
+        "Loureiro",
+        "Macieira de Sarnes",
+        "Nogueira do Cravo",
+        "Ossela",
+        "Pindelo",
+        "São Martinho da Gândara",
+        "São Roque",
+        "União das Freguesias de Oliveira de Azeméis, Santiago de Riba-Ul, Ul, Macinhata da Seixa e Madail",
+        "União das Freguesias de Pinheiro da Bemposta, Travanca e Palmaz",
+        "Vila de Cucujães"
+      ]
+    },
+    {
+      "ineCode": "0114",
+      "name": "Oliveira do Bairro",
+      "district": "Aveiro",
+      "latitude": 40.516666666667,
+      "longitude": -8.5,
+      "localities": [
+        "Oiã",
+        "Oliveira do Bairro",
+        "Palhaça",
+        "União das Freguesias de Bustos, Troviscal e Mamarrosa"
+      ]
+    },
+    {
+      "ineCode": "0115",
+      "name": "Ovar",
+      "district": "Aveiro",
+      "latitude": 40.866666666667,
+      "longitude": -8.6333333333333,
+      "localities": [
+        "Arada",
+        "Cortegaça",
+        "Esmoriz",
+        "Maceda",
+        "Ovar",
+        "São João",
+        "São Vicente de Pereira Jusã",
+        "Válega"
+      ]
+    },
+    {
+      "ineCode": "0116",
+      "name": "São João da Madeira",
+      "district": "Aveiro",
+      "latitude": 40.9,
+      "longitude": -8.5,
+      "localities": [
+        "São João da Madeira"
+      ]
+    },
+    {
+      "ineCode": "0117",
+      "name": "Sever do Vouga",
+      "district": "Aveiro",
+      "latitude": 40.716666666667,
+      "longitude": -8.3666666666667,
+      "localities": [
+        "Cedrim",
+        "Couto de Esteves",
+        "Dornelas",
+        "Paradela",
+        "Pessegueiro do Vouga",
+        "Rocas do Vouga",
+        "Sever do Vouga",
+        "Silva Escura",
+        "Talhadas"
+      ]
+    },
+    {
+      "ineCode": "0118",
+      "name": "Vagos",
+      "district": "Aveiro",
+      "latitude": 40.55,
+      "longitude": -8.6666666666667,
+      "localities": [
+        "Calvão",
+        "Covão do Lobo",
+        "Fonte de Angeão",
+        "Gafanha da Boa Hora",
+        "Ouca",
+        "Ponte de Vagos",
+        "Santa Catarina",
+        "Santo André de Vagos",
+        "Santo António",
+        "Sosa",
+        "Vagos"
+      ]
+    },
+    {
+      "ineCode": "0119",
+      "name": "Vale de Cambra",
+      "district": "Aveiro",
+      "latitude": 40.85,
+      "longitude": -8.4,
+      "localities": [
+        "Arões",
+        "Cepelos",
+        "Junqueira",
+        "Macieira de Cambra",
+        "Roge",
+        "São Pedro de Castelões",
+        "União das Freguesias de Vila Chã, Codal e Vila Cova de Perrinho"
+      ]
+    },
+    {
+      "ineCode": "0201",
+      "name": "Aljustrel",
+      "district": "Beja",
+      "latitude": 37.878467,
+      "longitude": -8.161398,
+      "localities": [
+        "Aljustrel",
+        "Ervidel",
+        "Messejana",
+        "Rio de Moinhos",
+        "São João de Negrilhos"
+      ]
+    },
+    {
+      "ineCode": "0202",
+      "name": "Almodôvar",
+      "district": "Beja",
+      "latitude": 37.511388888889,
+      "longitude": -8.0602777777778,
+      "localities": [
+        "Aldeia dos Fernandes",
+        "Almodôvar",
+        "Gomes Aires",
+        "Rosário",
+        "Santa Clara-a-Nova",
+        "Santa Cruz",
+        "São Barnabé",
+        "Senhora da Graça dos Padrões"
+      ]
+    },
+    {
+      "ineCode": "0203",
+      "name": "Alvito",
+      "district": "Beja",
+      "latitude": 38.25,
+      "longitude": -7.9833333333333,
+      "localities": [
+        "Alvito",
+        "Vila Nova da Baronia"
+      ]
+    },
+    {
+      "ineCode": "0204",
+      "name": "Barrancos",
+      "district": "Beja",
+      "latitude": 38.130733333333,
+      "longitude": -6.9761027777778,
+      "localities": [
+        "Barrancos"
+      ]
+    },
+    {
+      "ineCode": "0205",
+      "name": "Beja",
+      "district": "Beja",
+      "latitude": 38.015555555556,
+      "longitude": -7.8652777777778,
+      "localities": [
+        "Baleizão",
+        "Beringel",
+        "Cabeça Gorda",
+        "Nossa Senhora das Neves",
+        "Santa Clara de Louredo",
+        "São Matias",
+        "União das Freguesias de Albernoa e Trindade",
+        "União das Freguesias de Beja (salvador e Santa Maria da Feira)",
+        "União das Freguesias de Beja (santiago Maior e São João Baptista)",
+        "União das Freguesias de Salvada e Quintos",
+        "União das Freguesias de Santa Vitória e Mombeja",
+        "União das Freguesias de Trigaches e São Brissos"
+      ]
+    },
+    {
+      "ineCode": "0206",
+      "name": "Castro Verde",
+      "district": "Beja",
+      "latitude": 37.697625,
+      "longitude": -8.0818611111111,
+      "localities": [
+        "Entradas",
+        "Santa Bárbara de Padrões",
+        "São Marcos da Ataboeira",
+        "União das Freguesias de Castro Verde e Casével"
+      ]
+    },
+    {
+      "ineCode": "0207",
+      "name": "Cuba",
+      "district": "Beja",
+      "latitude": 38.15,
+      "longitude": -7.8833333333333,
+      "localities": [
+        "Cuba",
+        "Faro do Alentejo",
+        "Vila Alva",
+        "Vila Ruiva"
+      ]
+    },
+    {
+      "ineCode": "0208",
+      "name": "Ferreira do Alentejo",
+      "district": "Beja",
+      "latitude": 38.058888888889,
+      "longitude": -8.1155555555556,
+      "localities": [
+        "Alfundão",
+        "Canhestros",
+        "Ferreira do Alentejo",
+        "Figueira dos Cavaleiros",
+        "Odivelas",
+        "Peroguarda"
+      ]
+    },
+    {
+      "ineCode": "0209",
+      "name": "Mértola",
+      "district": "Beja",
+      "latitude": 37.633333333333,
+      "longitude": -7.65,
+      "localities": [
+        "Alcaria Ruiva",
+        "Corte do Pinto",
+        "Espírito Santo",
+        "Mértola",
+        "Santana de Cambas",
+        "São João dos Caldeireiros",
+        "União das Freguesias de São Miguel do Pinheiro, São Pedro de Solis e São Sebastião dos Carros"
+      ]
+    },
+    {
+      "ineCode": "0210",
+      "name": "Moura",
+      "district": "Beja",
+      "latitude": 38.139694444444,
+      "longitude": -7.4504722222222,
+      "localities": [
+        "Amareleja",
+        "Póvoa de São Miguel",
+        "Safara",
+        "Santo Aleixo da Restauração",
+        "Sobral da Adiça",
+        "União das Freguesias de Moura (santo Agostinho e São João Baptista) e Santo Amador"
+      ]
+    },
+    {
+      "ineCode": "0211",
+      "name": "Odemira",
+      "district": "Beja",
+      "latitude": 37.583333333333,
+      "longitude": -8.6333333333333,
+      "localities": [
+        "Bicos",
+        "Boavista dos Pinheiros",
+        "Colos",
+        "Longueira/almograve",
+        "Luzianes-Gare",
+        "Relíquias",
+        "Sabóia",
+        "Santa Clara-a-Velha",
+        "São Luís",
+        "São Martinho das Amoreiras",
+        "São Salvador e Santa Maria",
+        "São Teotónio",
+        "Vale de Santiago",
+        "Vila Nova de Milfontes"
+      ]
+    },
+    {
+      "ineCode": "0212",
+      "name": "Ourique",
+      "district": "Beja",
+      "latitude": 37.65,
+      "longitude": -8.225,
+      "localities": [
+        "Garvão",
+        "Ourique",
+        "Santa Luzia",
+        "Santana da Serra",
+        "União das Freguesias de Panoias e Conceição"
+      ]
+    },
+    {
+      "ineCode": "0213",
+      "name": "Serpa",
+      "district": "Beja",
+      "latitude": 37.933333333333,
+      "longitude": -7.5833333333333,
+      "localities": [
+        "Brinches",
+        "Pias",
+        "União das Freguesias de Serpa (salvador e Santa Maria)",
+        "Vale de Vargo",
+        "Vila Nova de São Bento",
+        "Vila Verde de Ficalho"
+      ]
+    },
+    {
+      "ineCode": "0214",
+      "name": "Vidigueira",
+      "district": "Beja",
+      "latitude": 38.2,
+      "longitude": -7.8,
+      "localities": [
+        "Pedrógão",
+        "Selmes",
+        "Vidigueira",
+        "Vila de Frades"
+      ]
+    },
+    {
+      "ineCode": "0301",
+      "name": "Amares",
+      "district": "Braga",
+      "latitude": 41.633333333333,
+      "longitude": -8.35,
+      "localities": [
+        "Barreiros",
+        "Bico",
+        "Bouro (santa Maria)",
+        "Bouro (santa Marta)",
+        "Caires",
+        "Carrazedo",
+        "Dornelas",
+        "Fiscal",
+        "Goães",
+        "Lago",
+        "Rendufe",
+        "União das Freguesias de Amares e Figueiredo",
+        "União das Freguesias de Caldelas, Sequeiros e Paranhos",
+        "União das Freguesias de Ferreiros, Prozelo e Besteiros",
+        "União das Freguesias de Torre e Portela",
+        "União das Freguesias de Vilela, Seramil e Paredes Secas"
+      ]
+    },
+    {
+      "ineCode": "0302",
+      "name": "Barcelos",
+      "district": "Braga",
+      "latitude": 41.533333333333,
+      "longitude": -8.6166666666667,
+      "localities": [
+        "Abade de Neiva",
+        "Aborim",
+        "Adães",
+        "Airó",
+        "Aldreu",
+        "Alvelos",
+        "Arcozelo",
+        "Areias",
+        "Balugães",
+        "Barcelinhos",
+        "Barcelos",
+        "Barqueiros",
+        "Cambeses",
+        "Carapeços",
+        "Carvalhal",
+        "Carvalhas",
+        "Cossourado",
+        "Cristelo",
+        "Fornelos",
+        "Fragoso",
+        "Galegos (santa Maria)",
+        "Galegos (são Martinho)",
+        "Gilmonde",
+        "Lama",
+        "Lijó",
+        "Macieira de Rates",
+        "Manhente",
+        "Martim",
+        "Moure",
+        "Oliveira",
+        "Palme",
+        "Panque",
+        "Paradela",
+        "Pereira",
+        "Perelhal",
+        "Pousa",
+        "Remelhe",
+        "Rio Covo (santa Eugénia)",
+        "Rio Covo (santa Eulália)",
+        "Roriz",
+        "Silva",
+        "Silveiros",
+        "Tamel (são Veríssimo)",
+        "Ucha",
+        "União das Freguesias de Alheira e Igreja Nova",
+        "União das Freguesias de Alvito (são Pedro e São Martinho) e Couto",
+        "União das Freguesias de Areias de Vilar e Encourados",
+        "União das Freguesias de Campo e Tamel (são Pedro Fins)",
+        "União das Freguesias de Carreira e Fonte Coberta",
+        "União das Freguesias de Chorente, Góios, Courel, Pedra Furada e Gueral",
+        "União das Freguesias de Creixomil e Mariz",
+        "União das Freguesias de Durrães e Tregosa",
+        "União das Freguesias de Gamil e Midões",
+        "União das Freguesias de Milhazes, Vilar de Figos e Faria",
+        "União das Freguesias de Negreiros e Chavão",
+        "União das Freguesias de Quintiães e Aguiar",
+        "União das Freguesias de Sequeade e Bastuço (são João e Santo Estevão)",
+        "União das Freguesias de Tamel (santa Leocádia) e Vilar do Monte",
+        "União das Freguesias de Viatodos, Grimancelos, Minhotães e Monte de Fralães",
+        "União das Freguesias de Vila Cova e Feitos",
+        "Várzea",
+        "Vila Boa",
+        "Vila Frescainha (são Martinho)",
+        "Vila Frescainha (são Pedro)",
+        "Vila Seca"
+      ]
+    },
+    {
+      "ineCode": "0303",
+      "name": "Braga",
+      "district": "Braga",
+      "latitude": 41.533333333333,
+      "longitude": -8.4166666666667,
+      "localities": [
+        "Adaúfe",
+        "Braga (são Vicente)",
+        "Braga (são Vítor)",
+        "Espinho",
+        "Esporões",
+        "Figueiredo",
+        "Gualtar",
+        "Lamas",
+        "Mire de Tibães",
+        "Padim da Graça",
+        "Palmeira",
+        "Pedralva",
+        "Priscos",
+        "Ruilhe",
+        "Sequeira",
+        "Sobreposta",
+        "Tadim",
+        "Tebosa",
+        "União das Freguesias de Arentim e Cunha",
+        "União das Freguesias de Braga (maximinos, Sé e Cividade)",
+        "União das Freguesias de Braga (são José de São Lázaro e São João do Souto)",
+        "União das Freguesias de Cabreiros e Passos (são Julião)",
+        "União das Freguesias de Celeirós, Aveleda e Vimieiro",
+        "União das Freguesias de Crespos e Pousada",
+        "União das Freguesias de Escudeiros e Penso (santo Estêvão e São Vicente)",
+        "União das Freguesias de Este (são Pedro e São Mamede)",
+        "União das Freguesias de Ferreiros e Gondizalves",
+        "União das Freguesias de Guisande e Oliveira (são Pedro)",
+        "União das Freguesias de Lomar e Arcos",
+        "União das Freguesias de Merelim (são Paio), Panoias e Parada de Tibães",
+        "União das Freguesias de Merelim (são Pedro) e Frossos",
+        "União das Freguesias de Morreira e Trandeiras",
+        "União das Freguesias de Nogueira, Fraião e Lamaçães",
+        "União das Freguesias de Nogueiró e Tenões",
+        "União das Freguesias de Real, Dume e Semelhe",
+        "União das Freguesias de Santa Lucrécia de Algeriz e Navarra",
+        "União das Freguesias de Vilaça e Fradelos"
+      ]
+    },
+    {
+      "ineCode": "0304",
+      "name": "Cabeceiras de Basto",
+      "district": "Braga",
+      "latitude": 41.516666666667,
+      "longitude": -8,
+      "localities": [
+        "Abadim",
+        "Basto",
+        "Bucos",
+        "Cabeceiras de Basto",
+        "Cavez",
+        "Faia",
+        "Outeiro",
+        "Painzela",
+        "Pedraça",
+        "Refojos de Basto",
+        "Rio Douro",
+        "União das Freguesias de Alvite e Passos",
+        "União das Freguesias de Arco de Baúlhe e Vila Nune",
+        "União das Freguesias de Gondiães e Vilar de Cunhas"
+      ]
+    },
+    {
+      "ineCode": "0305",
+      "name": "Celorico de Basto",
+      "district": "Braga",
+      "latitude": 41.386888888889,
+      "longitude": -8.0021666666667,
+      "localities": [
+        "Agilde",
+        "Arnóia",
+        "Basto (são Clemente)",
+        "Borba de Montanha",
+        "Codeçoso",
+        "Fervença",
+        "Moreira do Castelo",
+        "Rego",
+        "Ribas",
+        "União das Freguesias de Britelo, Gémeos e Ourilhe",
+        "União das Freguesias de Caçarilhe e Infesta",
+        "União das Freguesias de Canedo de Basto e Corgo",
+        "União das Freguesias de Carvalho e Basto (santa Tecla)",
+        "União das Freguesias de Veade, Gagos e Molares",
+        "Vale de Bouro"
+      ]
+    },
+    {
+      "ineCode": "0306",
+      "name": "Esposende",
+      "district": "Braga",
+      "latitude": 41.533333333333,
+      "longitude": -8.7833333333333,
+      "localities": [
+        "Antas",
+        "Apúlia",
+        "Belinho",
+        "Curvos",
+        "Esposende",
+        "Fão",
+        "Forjães",
+        "Gandra",
+        "Gemeses",
+        "Mar",
+        "Marinhas",
+        "Palmeira de Faro",
+        "União das Freguesias de Fonte Boa e Rio Tinto",
+        "Vila Chã"
+      ]
+    },
+    {
+      "ineCode": "0307",
+      "name": "Fafe",
+      "district": "Braga",
+      "latitude": 41.45,
+      "longitude": -8.1666666666667,
+      "localities": [
+        "Armil",
+        "Arões (santa Cristina)",
+        "Arões (são Romão)",
+        "Estorãos",
+        "Fafe",
+        "Fornelos",
+        "Golães",
+        "Medelo",
+        "Paços",
+        "Quinchães",
+        "Regadas",
+        "Revelhe",
+        "Ribeiros",
+        "São Gens",
+        "Silvares (são Martinho)",
+        "Travassós",
+        "União de Freguesias de Aboim, Felgueiras, Gontim e Pedraído",
+        "União de Freguesias de Agrela e Serafão",
+        "União de Freguesias de Antime e Silvares (são Clemente)",
+        "União de Freguesias de Ardegão, Arnozela e Seidões",
+        "União de Freguesias de Cepães e Fareja",
+        "União de Freguesias de Freitas e Vila Cova",
+        "União de Freguesias de Monte e Queimadela",
+        "União de Freguesias de Moreira do Rei e Várzea Cova",
+        "Vinhós"
+      ]
+    },
+    {
+      "ineCode": "0308",
+      "name": "Guimarães",
+      "district": "Braga",
+      "latitude": 41.445,
+      "longitude": -8.2908333333333,
+      "localities": [
+        "Airão (santa Maria)",
+        "Airão São João ",
+        "Aldão",
+        "Azurém",
+        "Barco",
+        "Brito",
+        "Caldelas",
+        "Calvos",
+        "Candoso (são Martinho)",
+        "Conde",
+        "Corvite",
+        "Costa",
+        "Creixomil",
+        "Fermentões",
+        "Gandarela",
+        "Gonça",
+        "Gondar",
+        "Guardizela",
+        "Infantas",
+        "Longos",
+        "Lordelo",
+        "Mesão Frio",
+        "Moreira de Cónegos",
+        "Nespereira",
+        "Pencelo",
+        "Pinheiro",
+        "Polvoreira",
+        "Ponte",
+        "Prazins (santa Eufémia)",
+        "Prazins Santo Tirso",
+        "Ronfe",
+        "Sande (são Clemente)",
+        "Sande (são Martinho)",
+        "Sande (vila Nova)",
+        "São Faustino",
+        "São Torcato",
+        "Selho (são Cristóvão)",
+        "Selho (são Jorge)",
+        "Serzedelo",
+        "Serzedo",
+        "Silvares",
+        "Tabuadelo",
+        "União das Freguesias de Abação e Gémeos",
+        "União das Freguesias de Arosa e Castelões",
+        "União das Freguesias de Atães e Rendufe",
+        "União das Freguesias de Briteiros Santo Estêvão e Donim",
+        "União das Freguesias de Briteiros São Salvador e Briteiros Santa Leocádia",
+        "União das Freguesias de Candoso São Tiago e Mascotelos",
+        "União das Freguesias de Leitões, Oleiros e Figueiredo",
+        "União das Freguesias de Oliveira, São Paio e São Sebastião",
+        "União das Freguesias de Sande São Lourenço e Balazar",
+        "União das Freguesias de Selho São Lourenço e Gominhães",
+        "União das Freguesias de Souto Santa Maria, Souto São Salvador e Gondomar",
+        "Urgezes",
+        "Vermil"
+      ]
+    },
+    {
+      "ineCode": "0309",
+      "name": "Póvoa de Lanhoso",
+      "district": "Braga",
+      "latitude": 41.566666666667,
+      "longitude": -8.2666666666667,
+      "localities": [
+        "Covelas",
+        "Ferreiros",
+        "Galegos",
+        "Garfe",
+        "Geraz do Minho",
+        "Lanhoso",
+        "Monsul",
+        "Póvoa de Lanhoso (nossa Senhora do Amparo)",
+        "Rendufinho",
+        "Santo Emilião",
+        "São João de Rei",
+        "Serzedelo",
+        "Sobradelo da Goma",
+        "Taíde",
+        "Travassos",
+        "União das Freguesias de Águas Santas e Moure",
+        "União das Freguesias de Calvos e Frades",
+        "União das Freguesias de Campos e Louredo",
+        "União das Freguesias de Esperança e Brunhais",
+        "União das Freguesias de Fonte Arcada e Oliveira",
+        "União das Freguesias de Verim, Friande e Ajude",
+        "Vilela"
+      ]
+    },
+    {
+      "ineCode": "0310",
+      "name": "Terras de Bouro",
+      "district": "Braga",
+      "latitude": 41.716666666667,
+      "longitude": -8.3,
+      "localities": [
+        "Balança",
+        "Campo do Gerês",
+        "Carvalheira",
+        "Covide",
+        "Gondoriz",
+        "Moimenta",
+        "Ribeira",
+        "Rio Caldo",
+        "Souto",
+        "União das Freguesias de Chamoim e Vilar",
+        "União das Freguesias de Chorense e Monte",
+        "União das Freguesias de Cibões e Brufe",
+        "Valdosende",
+        "Vilar da Veiga"
+      ]
+    },
+    {
+      "ineCode": "0311",
+      "name": "Vieira do Minho",
+      "district": "Braga",
+      "latitude": 41.633333333333,
+      "longitude": -8.1333333333333,
+      "localities": [
+        "Cantelães",
+        "Eira Vedra",
+        "Guilhofrei",
+        "Louredo",
+        "Mosteiro",
+        "Parada de Bouro",
+        "Pinheiro",
+        "Rossas",
+        "Salamonde",
+        "Tabuaças",
+        "União das Freguesias de Anissó e Soutelo",
+        "União das Freguesias de Anjos e Vilar do Chão",
+        "União das Freguesias de Caniçada e Soengas",
+        "União das Freguesias de Ruivães e Campos",
+        "União das Freguesias de Ventosa e Cova",
+        "Vieira do Minho"
+      ]
+    },
+    {
+      "ineCode": "0312",
+      "name": "Vila Nova de Famalicão",
+      "district": "Braga",
+      "latitude": 41.416666666667,
+      "longitude": -8.5166666666667,
+      "localities": [
+        "Avidos",
+        "Bairro",
+        "Brufe",
+        "Cabeçudos",
+        "Castelões",
+        "Cavalões",
+        "Cruz",
+        "Delães",
+        "Esmeriz",
+        "Fradelos",
+        "Gavião",
+        "Gondifelos",
+        "Joane",
+        "Lagoa",
+        "Landim",
+        "Louro",
+        "Lousado",
+        "Mogege",
+        "Nine",
+        "Novais",
+        "Oliveira (santa Maria)",
+        "Oliveira (são Mateus)",
+        "Outiz",
+        "Pedome",
+        "Pousada de Saramagos",
+        "Requião",
+        "Riba de Ave",
+        "Ribeirão",
+        "Ruivães",
+        "União das Freguesias de Antas e Abade de Vermoim",
+        "União das Freguesias de Arnoso (santa Maria e Santa Eulália) e Sezures",
+        "União das Freguesias de Carreira e Bente",
+        "União das Freguesias de Lemenhe, Mouquim e Jesufrei",
+        "União das Freguesias de Seide",
+        "União das Freguesias de Vale (são Cosme), Telhado e Portela",
+        "União das Freguesias de Vila Nova de Famalicão e Calendário",
+        "Vale (são Martinho)",
+        "Vermoim",
+        "Vilarinho das Cambas"
+      ]
+    },
+    {
+      "ineCode": "0313",
+      "name": "Vila Verde",
+      "district": "Braga",
+      "latitude": 41.6483699857,
+      "longitude": -8.4366849437868,
+      "localities": [
+        "Aboim da Nóbrega e Gondomar",
+        "Atiães",
+        "Cabanelas",
+        "Cervães",
+        "Coucieiro",
+        "Dossãos",
+        "Freiriz",
+        "Gême",
+        "Lage",
+        "Lanhas",
+        "Loureira",
+        "Moure",
+        "Oleiros",
+        "Parada de Gatim",
+        "Pico",
+        "Ponte",
+        "Prado (são Miguel)",
+        "Sabariz",
+        "Soutelo",
+        "Turiz",
+        "União das Freguesias da Ribeira do Neiva",
+        "União das Freguesias de Carreiras (são Miguel) e Carreiras (santiago)",
+        "União das Freguesias de Escariz (são Mamede) e Escariz (são Martinho)",
+        "União das Freguesias de Esqueiros, Nevogilde e Travassós",
+        "União das Freguesias de Marrancos e Arcozelo",
+        "União das Freguesias de Oriz (santa Marinha) e Oriz (são Miguel)",
+        "União das Freguesias de Pico de Regalados, Gondiães e Mós",
+        "União das Freguesias de Sande, Vilarinho, Barros e Gomide",
+        "União das Freguesias de Valbom (são Pedro), Passô e Valbom (são Martinho)",
+        "União das Freguesias do Vade",
+        "Valdreu",
+        "Vila de Prado",
+        "Vila Verde e Barbudo"
+      ]
+    },
+    {
+      "ineCode": "0314",
+      "name": "Vizela",
+      "district": "Braga",
+      "latitude": 41.383333333333,
+      "longitude": -8.3,
+      "localities": [
+        "Infias",
+        "Santa Eulália",
+        "Tagilde",
+        "União das Freguesias de Caldas de Vizela (são Miguel e São João)",
+        "Vizela (santo Adrião)",
+        "Vizela (são Paio)"
+      ]
+    },
+    {
+      "ineCode": "0401",
+      "name": "Alfândega da Fé",
+      "district": "Bragança",
+      "latitude": 41.35,
+      "longitude": -6.9666666666667,
+      "localities": [
+        "Alfândega da Fé",
+        "Cerejais",
+        "Sambade",
+        "União das Freguesias de Agrobom, Saldonha e Vale Pereiro",
+        "União das Freguesias de Eucisia, Gouveia e Valverde",
+        "União das Freguesias de Ferradosa e Sendim da Serra",
+        "União das Freguesias de Gebelim e Soeima",
+        "União das Freguesias de Parada e Sendim da Ribeira",
+        "União das Freguesias de Pombal e Vales",
+        "Vilar Chão",
+        "Vilarelhos",
+        "Vilares de Vilariça"
+      ]
+    },
+    {
+      "ineCode": "0402",
+      "name": "Bragança",
+      "district": "Bragança",
+      "latitude": 41.8,
+      "longitude": -6.75,
+      "localities": [
+        "Alfaião",
+        "Babe",
+        "Baçal",
+        "Carragosa",
+        "Castro de Avelãs",
+        "Coelhoso",
+        "Donai",
+        "Espinhosela",
+        "França",
+        "Gimonde",
+        "Gondesende",
+        "Gostei",
+        "Grijó de Parada",
+        "Macedo do Mato",
+        "Mós",
+        "Nogueira",
+        "Outeiro",
+        "Parâmio",
+        "Pinela",
+        "Quintanilha",
+        "Quintela de Lampaças",
+        "Rabal",
+        "Rebordãos",
+        "Salsas",
+        "Samil",
+        "Santa Comba de Rossas",
+        "São Pedro de Sarracenos",
+        "Sendas",
+        "Serapicos",
+        "Sortes",
+        "União das Freguesias de Aveleda e Rio de Onor",
+        "União das Freguesias de Castrelos e Carrazedo",
+        "União das Freguesias de Izeda, Calvelhe e Paradinha Nova",
+        "União das Freguesias de Parada e Faílde",
+        "União das Freguesias de Rebordainhos e Pombares",
+        "União das Freguesias de Rio Frio e Milhão",
+        "União das Freguesias de São Julião de Palácios e Deilão",
+        "União das Freguesias de Sé, Santa Maria e Meixedo",
+        "Zoio"
+      ]
+    },
+    {
+      "ineCode": "0403",
+      "name": "Carrazeda de Ansiães",
+      "district": "Bragança",
+      "latitude": 41.25,
+      "longitude": -7.3,
+      "localities": [
+        "Carrazeda de Ansiães",
+        "Fonte Longa",
+        "Linhares",
+        "Marzagão",
+        "Parambos",
+        "Pereiros",
+        "Pinhal do Norte",
+        "Pombal",
+        "Seixo de Ansiães",
+        "União das Freguesias de Amedo e Zedes",
+        "União das Freguesias de Belver e Mogo de Malta",
+        "União das Freguesias de Castanheiro do Norte e Ribalonga",
+        "União das Freguesias de Lavandeira, Beira Grande e Selores",
+        "Vilarinho da Castanheira"
+      ]
+    },
+    {
+      "ineCode": "0404",
+      "name": "Freixo de Espada À Cinta",
+      "district": "Bragança",
+      "latitude": 41.083333333333,
+      "longitude": -6.8,
+      "localities": [
+        "Ligares",
+        "Poiares",
+        "União das Freguesias de Freixo de Espada À Cinta e Mazouco",
+        "União das Freguesias de Lagoaça e Fornos"
+      ]
+    },
+    {
+      "ineCode": "0405",
+      "name": "Macedo de Cavaleiros",
+      "district": "Bragança",
+      "latitude": 41.533333333333,
+      "longitude": -6.95,
+      "localities": [
+        "Amendoeira",
+        "Arcas",
+        "Carrapatas",
+        "Chacim",
+        "Cortiços",
+        "Corujas",
+        "Ferreira",
+        "Grijó",
+        "Lagoa",
+        "Lamalonga",
+        "Lamas",
+        "Lombo",
+        "Macedo de Cavaleiros",
+        "Morais",
+        "Olmos",
+        "Peredo",
+        "Salselas",
+        "Sezulfe",
+        "Talhas",
+        "União das Freguesias de Ala e Vilarinho do Monte",
+        "União das Freguesias de Bornes e Burga",
+        "União das Freguesias de Castelãos e Vilar do Monte",
+        "União das Freguesias de Espadanedo, Edroso, Murçós e Soutelo Mourisco",
+        "União das Freguesias de Podence e Santa Combinha",
+        "União das Freguesias de Talhinhas e Bagueixe",
+        "Vale Benfeito",
+        "Vale da Porca",
+        "Vale de Prados",
+        "Vilarinho de Agrochão",
+        "Vinhas"
+      ]
+    },
+    {
+      "ineCode": "0406",
+      "name": "Miranda do Douro",
+      "district": "Bragança",
+      "latitude": 41.5,
+      "longitude": -6.2666666666667,
+      "localities": [
+        "Duas Igrejas",
+        "Genísio",
+        "Malhadas",
+        "Miranda do Douro",
+        "Palaçoulo",
+        "Picote",
+        "Póvoa",
+        "São Martinho de Angueira",
+        "União das Freguesias de Constantim e Cicouro",
+        "União das Freguesias de Ifanes e Paradela",
+        "União das Freguesias de Sendim e Atenor",
+        "União das Freguesias de Silva e Águas Vivas",
+        "Vila Chã de Braciosa"
+      ]
+    },
+    {
+      "ineCode": "0407",
+      "name": "Mirandela",
+      "district": "Bragança",
+      "latitude": 41.483333333333,
+      "longitude": -7.1833333333333,
+      "localities": [
+        "Abambres",
+        "Abreiro",
+        "Aguieiras",
+        "Alvites",
+        "Bouça",
+        "Cabanelas",
+        "Caravelas",
+        "Carvalhais",
+        "Cedães",
+        "Cobro",
+        "Fradizela",
+        "Frechas",
+        "Lamas de Orelhão",
+        "Mascarenhas",
+        "Mirandela",
+        "Múrias",
+        "Passos",
+        "São Pedro Velho",
+        "São Salvador",
+        "Suçães",
+        "Torre de Dona Chama",
+        "União das Freguesias de Avantos e Romeu",
+        "União das Freguesias de Avidagos, Navalho e Pereira",
+        "União das Freguesias de Barcel, Marmelos e Valverde da Gestosa",
+        "União das Freguesias de Franco e Vila Boa",
+        "União das Freguesias de Freixeda e Vila Verde",
+        "Vale de Asnes",
+        "Vale de Gouvinhas",
+        "Vale de Salgueiro",
+        "Vale de Telhas"
+      ]
+    },
+    {
+      "ineCode": "0408",
+      "name": "Mogadouro",
+      "district": "Bragança",
+      "latitude": 41.34193,
+      "longitude": -6.71934,
+      "localities": [
+        "Azinhoso",
+        "Bemposta",
+        "Bruçó",
+        "Brunhoso",
+        "Castelo Branco",
+        "Castro Vicente",
+        "Meirinhos",
+        "Paradela",
+        "Penas Roias",
+        "Peredo da Bemposta",
+        "Saldanha",
+        "São Martinho do Peso",
+        "Tó",
+        "Travanca",
+        "União das Freguesias de Brunhozinho, Castanheira e Sanhoane",
+        "União das Freguesias de Mogadouro, Valverde, Vale de Porco e Vilar de Rei",
+        "União das Freguesias de Remondes e Soutelo",
+        "União das Freguesias de Vilarinho dos Galegos e Ventozelo",
+        "Urrós",
+        "Vale da Madre",
+        "Vila de Ala"
+      ]
+    },
+    {
+      "ineCode": "0409",
+      "name": "Torre de Moncorvo",
+      "district": "Bragança",
+      "latitude": 41.17922,
+      "longitude": -7.0358,
+      "localities": [
+        "Açoreira",
+        "Cabeça Boa",
+        "Carviçais",
+        "Castedo",
+        "Horta da Vilariça",
+        "Larinho",
+        "Lousa",
+        "Mós",
+        "Torre de Moncorvo",
+        "União das Freguesias de Adeganha e Cardanha",
+        "União das Freguesias de Felgar e Souto da Velha",
+        "União das Freguesias de Felgueiras e Maçores",
+        "União das Freguesias de Urros e Peredo dos Castelhanos"
+      ]
+    },
+    {
+      "ineCode": "0410",
+      "name": "Vila Flor",
+      "district": "Bragança",
+      "latitude": 41.3,
+      "longitude": -7.15,
+      "localities": [
+        "Benlhevai",
+        "Freixiel",
+        "Roios",
+        "Samões",
+        "Sampaio",
+        "Santa Comba de Vilariça",
+        "Seixo de Manhoses",
+        "Trindade",
+        "União das Freguesias de Assares e Lodões",
+        "União das Freguesias de Candoso e Carvalho de Egas",
+        "União das Freguesias de Valtorno e Mourão",
+        "União das Freguesias de Vila Flor e Nabo",
+        "União das Freguesias de Vilas Boas e Vilarinho das Azenhas",
+        "Vale Frechoso"
+      ]
+    },
+    {
+      "ineCode": "0411",
+      "name": "Vimioso",
+      "district": "Bragança",
+      "latitude": 41.566666666667,
+      "longitude": -6.5166666666667,
+      "localities": [
+        "Argozelo",
+        "Carção",
+        "Matela",
+        "Pinelo",
+        "Santulhão",
+        "União das Freguesias de Algoso, Campo de Víboras e Uva",
+        "União das Freguesias de Caçarelhos e Angueira",
+        "União das Freguesias de Vale de Frades e Avelanoso",
+        "Vilar Seco",
+        "Vimioso"
+      ]
+    },
+    {
+      "ineCode": "0412",
+      "name": "Vinhais",
+      "district": "Bragança",
+      "latitude": 41.816666666667,
+      "longitude": -7,
+      "localities": [
+        "Agrochão",
+        "Candedo",
+        "Celas",
+        "Edral",
+        "Edrosa",
+        "Ervedosa",
+        "Paçó",
+        "Penhas Juntas",
+        "Rebordelo",
+        "Santalha",
+        "Tuizelo",
+        "União das Freguesias de Curopos e Vale de Janeiro",
+        "União das Freguesias de Moimenta e Montouto",
+        "União das Freguesias de Nunes e Ousilhão",
+        "União das Freguesias de Quirás e Pinheiro Novo",
+        "União das Freguesias de Sobreiro de Baixo e Alvaredos",
+        "União das Freguesias de Soeira, Fresulfe e Mofreita",
+        "União das Freguesias de Travanca e Santa Cruz",
+        "União das Freguesias de Vilar de Lomba e São Jomil",
+        "Vale das Fontes",
+        "Vila Boa de Ousilhão",
+        "Vila Verde",
+        "Vilar de Ossos",
+        "Vilar de Peregrinos",
+        "Vilar Seco de Lomba",
+        "Vinhais"
+      ]
+    },
+    {
+      "ineCode": "0501",
+      "name": "Belmonte",
+      "district": "Castelo Branco",
+      "latitude": 40.366666666667,
+      "longitude": -7.35,
+      "localities": [
+        "Belmonte",
+        "Caria",
+        "Colmeal da Torre",
+        "Inguias",
+        "Maçainhas"
+      ]
+    },
+    {
+      "ineCode": "0502",
+      "name": "Castelo Branco",
+      "district": "Castelo Branco",
+      "latitude": 39.822777777778,
+      "longitude": -7.4930555555556,
+      "localities": [
+        "Alcains",
+        "Almaceda",
+        "Benquerenças",
+        "Castelo Branco",
+        "Escalos de Baixo",
+        "Escalos de Cima",
+        "Lardosa",
+        "Louriçal do Campo",
+        "Lousa",
+        "Malpica do Tejo",
+        "Mata",
+        "Monforte da Beira",
+        "Ninho do Açor",
+        "Salgueiro do Campo",
+        "Santo André das Tojeiras",
+        "São Vicente da Beira",
+        "Sarzedas",
+        "Sobral do Campo",
+        "Tinalhas",
+        "União das Freguesias de Cebolais de Cima e Retaxo",
+        "União das Freguesias de Freixial e Juncal do Campo",
+        "União das Freguesias de Póvoa de Rio de Moinhos e Cafede"
+      ]
+    },
+    {
+      "ineCode": "0503",
+      "name": "Covilhã",
+      "district": "Castelo Branco",
+      "latitude": 40.28333333,
+      "longitude": -7.5,
+      "localities": [
+        "Aldeia de São Francisco de Assis",
+        "Barco",
+        "Boidobra",
+        "Cantar-Galo",
+        "Casegas",
+        "Cortes do Meio",
+        "Coutada",
+        "Dominguizo",
+        "Erada",
+        "Ferro",
+        "Orjais",
+        "Ourondo",
+        "Paul",
+        "Peraboa",
+        "Peso",
+        "São Jorge da Beira",
+        "Sobral de São Miguel",
+        "Tortosendo",
+        "Unhais da Serra",
+        "União das Freguesias de Covilhã e Canhoso",
+        "União das Freguesias de Teixoso e Sarzedo",
+        "União das Freguesias de Vale Formoso e Aldeia do Souto",
+        "Vales do Rio",
+        "Verdelhos",
+        "Vila do Carvalho"
+      ]
+    },
+    {
+      "ineCode": "0504",
+      "name": "Fundão",
+      "district": "Castelo Branco",
+      "latitude": 40.133333333333,
+      "longitude": -7.5,
+      "localities": [
+        "Alcaide",
+        "Alcaria",
+        "Alcongosta",
+        "Alpedrinha",
+        "Barroca",
+        "Bogas de Cima",
+        "Capinha",
+        "Castelejo",
+        "Castelo Novo",
+        "Enxames",
+        "Fatela",
+        "Lavacolhos",
+        "Orca",
+        "Pêro Viseu",
+        "Silvares",
+        "Soalheira",
+        "Souto da Casa",
+        "Telhado",
+        "Três Povos",
+        "União das Freguesias de Fundão, Valverde, Donas, Aldeia de Joanes e Aldeia Nova do Cabo",
+        "União das Freguesias de Janeiro de Cima e Bogas de Baixo",
+        "União das Freguesias de Póvoa de Atalaia e Atalaia do Campo",
+        "União das Freguesias de Vale de Prazeres e Mata da Rainha"
+      ]
+    },
+    {
+      "ineCode": "0505",
+      "name": "Idanha-a-Nova",
+      "district": "Castelo Branco",
+      "latitude": 39.916666666667,
+      "longitude": -7.2333333333333,
+      "localities": [
+        "Aldeia de Santa Margarida",
+        "Ladoeiro",
+        "Medelim",
+        "Oledo",
+        "Penha Garcia",
+        "Proença-a-Velha",
+        "Rosmaninhal",
+        "São Miguel de Acha",
+        "Toulões",
+        "União das Freguesias de Idanha-a-Nova e Alcafozes",
+        "União das Freguesias de Monfortinho e Salvaterra do Extremo",
+        "União das Freguesias de Monsanto e Idanha-a-Velha",
+        "União das Freguesias de Zebreira e Segura"
+      ]
+    },
+    {
+      "ineCode": "0506",
+      "name": "Oleiros",
+      "district": "Castelo Branco",
+      "latitude": 39.916666666667,
+      "longitude": -7.9166666666667,
+      "localities": [
+        "Álvaro",
+        "Cambas",
+        "Estreito-Vilar Barroco",
+        "Isna",
+        "Madeirã",
+        "Mosteiro",
+        "Oleiros-Amieira",
+        "Orvalho",
+        "Sarnadas de São Simão",
+        "Sobral"
+      ]
+    },
+    {
+      "ineCode": "0507",
+      "name": "Penamacor",
+      "district": "Castelo Branco",
+      "latitude": 40.166666666667,
+      "longitude": -7.1666666666667,
+      "localities": [
+        "Aranhas",
+        "Benquerença",
+        "Meimão",
+        "Meimoa",
+        "Penamacor",
+        "Salvador",
+        "União das Freguesias de Aldeia do Bispo, Águas e Aldeia de João Pires",
+        "União das Freguesias de Pedrógão de São Pedro e Bemposta",
+        "Vale da Senhora da Póvoa"
+      ]
+    },
+    {
+      "ineCode": "0508",
+      "name": "Proença-a-Nova",
+      "district": "Castelo Branco",
+      "latitude": 39.75,
+      "longitude": -7.9166666666667,
+      "localities": [
+        "Montes da Senhora",
+        "São Pedro do Esteval",
+        "União das Freguesias de Proença-a-Nova e Peral",
+        "União das Freguesias de Sobreira Formosa e Alvito da Beira"
+      ]
+    },
+    {
+      "ineCode": "0509",
+      "name": "Sertã",
+      "district": "Castelo Branco",
+      "latitude": 39.8008,
+      "longitude": -8.1002805555556,
+      "localities": [
+        "Cabeçudo",
+        "Carvalhal",
+        "Castelo",
+        "Pedrógão Pequeno",
+        "Sertã",
+        "Troviscal",
+        "União das Freguesias de Cernache do Bonjardim, Nesperal e Palhais",
+        "União das Freguesias de Cumeada e Marmeleiro",
+        "União das Freguesias de Ermida e Figueiredo",
+        "Várzea dos Cavaleiros"
+      ]
+    },
+    {
+      "ineCode": "0510",
+      "name": "Vila de Rei",
+      "district": "Castelo Branco",
+      "latitude": 39.683333333333,
+      "longitude": -8.15,
+      "localities": [
+        "Fundada",
+        "São João do Peso",
+        "Vila de Rei"
+      ]
+    },
+    {
+      "ineCode": "0511",
+      "name": "Vila Velha de Ródão",
+      "district": "Castelo Branco",
+      "latitude": 39.65,
+      "longitude": -7.6666666666667,
+      "localities": [
+        "Fratel",
+        "Perais",
+        "Sarnadas de Ródão",
+        "Vila Velha de Ródão"
+      ]
+    },
+    {
+      "ineCode": "0601",
+      "name": "Arganil",
+      "district": "Coimbra",
+      "latitude": 40.216666666667,
+      "longitude": -8.05,
+      "localities": [
+        "Arganil",
+        "Benfeita",
+        "Celavisa",
+        "Folques",
+        "Piódão",
+        "Pomares",
+        "Pombeiro da Beira",
+        "São Martinho da Cortiça",
+        "Sarzedo",
+        "Secarias",
+        "União das Freguesias de Cepos e Teixeira",
+        "União das Freguesias de Cerdeira e Moura da Serra",
+        "União das Freguesias de Côja e Barril de Alva",
+        "União das Freguesias de Vila Cova de Alva e Anseriz"
+      ]
+    },
+    {
+      "ineCode": "0602",
+      "name": "Cantanhede",
+      "district": "Coimbra",
+      "latitude": 40.34624,
+      "longitude": -8.59407,
+      "localities": [
+        "Ançã",
+        "Cadima",
+        "Cantanhede",
+        "Cordinhã",
+        "Febres",
+        "Murtede",
+        "Ourentã",
+        "Pocariça",
+        "Sanguinheira",
+        "São Caetano",
+        "Tocha",
+        "União das Freguesias de Covões e Camarneira",
+        "União das Freguesias de Portunhos e Outil",
+        "União das Freguesias de Sepins e Bolho",
+        "União das Freguesias de Vilamar e Corticeiro de Cima"
+      ]
+    },
+    {
+      "ineCode": "0603",
+      "name": "Coimbra",
+      "district": "Coimbra",
+      "latitude": 40.211111111111,
+      "longitude": -8.4288888888889,
+      "localities": [
+        "Almalaguês",
+        "Brasfemes",
+        "Ceira",
+        "Cernache",
+        "Santo António dos Olivais",
+        "São João do Campo",
+        "São Silvestre",
+        "Torres do Mondego",
+        "União das Freguesias de Antuzede e Vil de Matos",
+        "União das Freguesias de Assafarge e Antanhol",
+        "União das Freguesias de Coimbra (sé Nova, Santa Cruz, Almedina e São Bartolomeu)",
+        "União das Freguesias de Eiras e São Paulo de Frades",
+        "União das Freguesias de Santa Clara e Castelo Viegas",
+        "União das Freguesias de São Martinho de Árvore e Lamarosa",
+        "União das Freguesias de São Martinho do Bispo e Ribeira de Frades",
+        "União das Freguesias de Souselas e Botão",
+        "União das Freguesias de Taveiro, Ameal e Arzila",
+        "União das Freguesias de Trouxemil e Torre de Vilela"
+      ]
+    },
+    {
+      "ineCode": "0604",
+      "name": "Condeixa-a-Nova",
+      "district": "Coimbra",
+      "latitude": 40.116666666667,
+      "longitude": -8.5,
+      "localities": [
+        "Anobra",
+        "Ega",
+        "Furadouro",
+        "União das Freguesias de Condeixa-a-Velha e Condeixa-a-Nova",
+        "União das Freguesias de Sebal e Belide",
+        "União das Freguesias de Vila Seca e Bem da Fé",
+        "Zambujal"
+      ]
+    },
+    {
+      "ineCode": "0605",
+      "name": "Figueira da Foz",
+      "district": "Coimbra",
+      "latitude": 40.15085,
+      "longitude": -8.86179,
+      "localities": [
+        "Alhadas",
+        "Alqueidão",
+        "Bom Sucesso",
+        "Brenha",
+        "Buarcos",
+        "Ferreira-a-Nova",
+        "Lavos",
+        "Maiorca",
+        "Marinha das Ondas",
+        "Moinhos da Gândara",
+        "Paião",
+        "Quiaios",
+        "Santana",
+        "São Julião da Figueira da Foz",
+        "São Pedro",
+        "Tavarede",
+        "Vila Verde"
+      ]
+    },
+    {
+      "ineCode": "0606",
+      "name": "Góis",
+      "district": "Coimbra",
+      "latitude": 40.15,
+      "longitude": -8.1166666666667,
+      "localities": [
+        "Alvares",
+        "Góis",
+        "União das Freguesias de Cadafaz e Colmeal",
+        "Vila Nova do Ceira"
+      ]
+    },
+    {
+      "ineCode": "0607",
+      "name": "Lousã",
+      "district": "Coimbra",
+      "latitude": 40.112527777778,
+      "longitude": -8.2468888888889,
+      "localities": [
+        "Gândaras",
+        "Lousã",
+        "Serpins",
+        "União das Freguesias de Foz de Arouce e Casal de Ermio",
+        "Vilarinho"
+      ]
+    },
+    {
+      "ineCode": "0608",
+      "name": "Mira",
+      "district": "Coimbra",
+      "latitude": 40.428472222222,
+      "longitude": -8.73625,
+      "localities": [
+        "Carapelhos",
+        "Mira",
+        "Praia de Mira",
+        "Seixo"
+      ]
+    },
+    {
+      "ineCode": "0609",
+      "name": "Miranda do Corvo",
+      "district": "Coimbra",
+      "latitude": 40.1,
+      "longitude": -8.3333333333333,
+      "localities": [
+        "Lamas",
+        "Miranda do Corvo",
+        "União das Freguesias de Semide e Rio Vide",
+        "Vila Nova"
+      ]
+    },
+    {
+      "ineCode": "0610",
+      "name": "Montemor-o-Velho",
+      "district": "Coimbra",
+      "latitude": 40.166666666667,
+      "longitude": -8.6833333333333,
+      "localities": [
+        "Arazede",
+        "Carapinheira",
+        "Ereira",
+        "Liceia",
+        "Meãs do Campo",
+        "Pereira",
+        "Santo Varão",
+        "Seixo de Gatões",
+        "Tentúgal",
+        "União das Freguesias de Abrunheira, Verride e Vila Nova da Barca",
+        "União das Freguesias de Montemor-o-Velho e Gatões"
+      ]
+    },
+    {
+      "ineCode": "0611",
+      "name": "Oliveira do Hospital",
+      "district": "Coimbra",
+      "latitude": 40.366666666667,
+      "longitude": -7.8666666666667,
+      "localities": [
+        "Aldeia das Dez",
+        "Alvoco das Várzeas",
+        "Avô",
+        "Bobadela",
+        "Ervedal",
+        "Lagares",
+        "Lourosa",
+        "Meruge",
+        "Nogueira do Cravo",
+        "São Gião",
+        "Seixo da Beira",
+        "Travanca de Lagos",
+        "União das Freguesias de Lagos da Beira e Lajeosa",
+        "União das Freguesias de Oliveira do Hospital e São Paio de Gramaços",
+        "União das Freguesias de Penalva de Alva e São Sebastião da Feira",
+        "União das Freguesias de Santa Ovaia e Vila Pouca da Beira",
+        "Vila Franca da Beira"
+      ]
+    },
+    {
+      "ineCode": "0612",
+      "name": "Pampilhosa da Serra",
+      "district": "Coimbra",
+      "latitude": 40.05,
+      "longitude": -7.95,
+      "localities": [
+        "Cabril",
+        "Dornelas do Zêzere",
+        "Fajão-Vidual",
+        "Janeiro de Baixo",
+        "Pampilhosa da Serra",
+        "Pessegueiro",
+        "Portela do Fojo-Machio",
+        "Unhais-o-Velho"
+      ]
+    },
+    {
+      "ineCode": "0613",
+      "name": "Penacova",
+      "district": "Coimbra",
+      "latitude": 40.27055556,
+      "longitude": -8.28333333,
+      "localities": [
+        "Carvalho",
+        "Figueira de Lorvão",
+        "Lorvão",
+        "Penacova",
+        "Sazes do Lorvão",
+        "União das Freguesias de Friúmes e Paradela",
+        "União das Freguesias de Oliveira do Mondego e Travanca do Mondego",
+        "União das Freguesias de São Pedro de Alva e São Paio de Mondego"
+      ]
+    },
+    {
+      "ineCode": "0614",
+      "name": "Penela",
+      "district": "Coimbra",
+      "latitude": 40.033333333333,
+      "longitude": -8.3833333333333,
+      "localities": [
+        "Cumeeira",
+        "Espinhal",
+        "Podentes",
+        "União das Freguesias de São Miguel, Santa Eufémia e Rabaçal"
+      ]
+    },
+    {
+      "ineCode": "0615",
+      "name": "Soure",
+      "district": "Coimbra",
+      "latitude": 40.05,
+      "longitude": -8.6333333333333,
+      "localities": [
+        "Alfarelos",
+        "Figueiró do Campo",
+        "Granja do Ulmeiro",
+        "Samuel",
+        "Soure",
+        "Tapéus",
+        "União das Freguesias de Degracias e Pombalinho",
+        "União das Freguesias de Gesteira e Brunhós",
+        "Vila Nova de Anços",
+        "Vinha da Rainha"
+      ]
+    },
+    {
+      "ineCode": "0616",
+      "name": "Tábua",
+      "district": "Coimbra",
+      "latitude": 40.366666666667,
+      "longitude": -8.0333333333333,
+      "localities": [
+        "Candosa",
+        "Carapinha",
+        "Midões",
+        "Mouronho",
+        "Póvoa de Midões",
+        "São João da Boa Vista",
+        "Tábua",
+        "União das Freguesias de Ázere e Covelo",
+        "União das Freguesias de Covas e Vila Nova de Oliveirinha",
+        "União das Freguesias de Espariz e Sinde",
+        "União das Freguesias de Pinheiro de Coja e Meda de Mouros"
+      ]
+    },
+    {
+      "ineCode": "0617",
+      "name": "Vila Nova de Poiares",
+      "district": "Coimbra",
+      "latitude": 40.216666666667,
+      "longitude": -8.25,
+      "localities": [
+        "Arrifana",
+        "Lavegadas",
+        "Poiares (santo André)",
+        "São Miguel de Poiares"
+      ]
+    },
+    {
+      "ineCode": "0701",
+      "name": "Alandroal",
+      "district": "Évora",
+      "latitude": 38.7,
+      "longitude": -7.4,
+      "localities": [
+        "Capelins (santo António)",
+        "Santiago Maior",
+        "Terena (são Pedro)",
+        "União das Freguesias de Alandroal (nossa Senhora da Conceição), São Brás dos Matos (mina do Bugalho) e Juromenha (nossa Senhora do Loreto)"
+      ]
+    },
+    {
+      "ineCode": "0702",
+      "name": "Arraiolos",
+      "district": "Évora",
+      "latitude": 38.722916666667,
+      "longitude": -7.9843333333333,
+      "localities": [
+        "Arraiolos",
+        "Gafanhoeira (são Pedro)",
+        "Igrejinha",
+        "Sabugueiro",
+        "União das Freguesias de São Gregório e Santa Justa",
+        "Vimieiro"
+      ]
+    },
+    {
+      "ineCode": "0703",
+      "name": "Borba",
+      "district": "Évora",
+      "latitude": 38.8,
+      "longitude": -7.45,
+      "localities": [
+        "Borba (matriz)",
+        "Borba (são Bartolomeu)",
+        "Orada",
+        "Rio de Moinhos"
+      ]
+    },
+    {
+      "ineCode": "0704",
+      "name": "Estremoz",
+      "district": "Évora",
+      "latitude": 38.8422,
+      "longitude": -7.5880833333333,
+      "localities": [
+        "Arcos",
+        "Évora Monte (santa Maria)",
+        "Glória",
+        "São Domingos de Ana Loura",
+        "União das Freguesias de Estremoz (santa Maria e Santo André)",
+        "União das Freguesias de São Bento do Cortiço e Santo Estêvão",
+        "União das Freguesias de São Lourenço de Mamporcão e São Bento de Ana Loura",
+        "União das Freguesias do Ameixial (santa Vitória e São Bento)",
+        "Veiros"
+      ]
+    },
+    {
+      "ineCode": "0705",
+      "name": "Évora",
+      "district": "Évora",
+      "latitude": 38.5725,
+      "longitude": -7.9072222222222,
+      "localities": [
+        "Canaviais",
+        "Nossa Senhora da Graça do Divor",
+        "Nossa Senhora de Machede",
+        "São Bento do Mato",
+        "São Miguel de Machede",
+        "Torre de Coelheiros",
+        "União das Freguesias de Bacelo e Senhora da Saúde",
+        "União das Freguesias de Évora (são Mamede, Sé, São Pedro e Santo Antão)",
+        "União das Freguesias de Malagueira e Horta das Figueiras",
+        "União das Freguesias de Nossa Senhora da Tourega e Nossa Senhora de Guadalupe",
+        "União das Freguesias de São Manços e São Vicente do Pigeiro",
+        "União das Freguesias de São Sebastião da Giesteira e Nossa Senhora da Boa Fé"
+      ]
+    },
+    {
+      "ineCode": "0706",
+      "name": "Montemor-o-Novo",
+      "district": "Évora",
+      "latitude": 38.65,
+      "longitude": -8.2166666666667,
+      "localities": [
+        "Cabrela",
+        "Ciborro",
+        "Cortiçadas de Lavre",
+        "Foros de Vale de Figueira",
+        "Lavre",
+        "Nossa Senhora da Vila",
+        "Nossa Senhora do Bispo",
+        "Santiago do Escoural",
+        "São Cristóvão",
+        "Silveiras"
+      ]
+    },
+    {
+      "ineCode": "0707",
+      "name": "Mora",
+      "district": "Évora",
+      "latitude": 38.933333333333,
+      "longitude": -8.15,
+      "localities": [
+        "Brotas",
+        "Cabeção",
+        "Mora",
+        "Pavia"
+      ]
+    },
+    {
+      "ineCode": "0708",
+      "name": "Mourão",
+      "district": "Évora",
+      "latitude": 38.333333333333,
+      "longitude": -7.3666666666667,
+      "localities": [
+        "Granja",
+        "Luz",
+        "Mourão"
+      ]
+    },
+    {
+      "ineCode": "0709",
+      "name": "Portel",
+      "district": "Évora",
+      "latitude": 38.3,
+      "longitude": -7.7,
+      "localities": [
+        "Alqueva",
+        "Amieira",
+        "Monte do Trigo",
+        "Oriola",
+        "Portel",
+        "Santana",
+        "São Bartolomeu do Outeiro",
+        "Vera Cruz"
+      ]
+    },
+    {
+      "ineCode": "0710",
+      "name": "Redondo",
+      "district": "Évora",
+      "latitude": 38.646388888889,
+      "longitude": -7.5463888888889,
+      "localities": [
+        "Montoito",
+        "Redondo"
+      ]
+    },
+    {
+      "ineCode": "0711",
+      "name": "Reguengos de Monsaraz",
+      "district": "Évora",
+      "latitude": 38.416666666667,
+      "longitude": -7.5333333333333,
+      "localities": [
+        "Corval",
+        "Monsaraz",
+        "Reguengos de Monsaraz",
+        "União das Freguesias de Campo e Campinho"
+      ]
+    },
+    {
+      "ineCode": "0712",
+      "name": "Vendas Novas",
+      "district": "Évora",
+      "latitude": 38.678026,
+      "longitude": -8.455475,
+      "localities": [
+        "Landeira",
+        "Vendas Novas"
+      ]
+    },
+    {
+      "ineCode": "0713",
+      "name": "Viana do Alentejo",
+      "district": "Évora",
+      "latitude": 38.334166666667,
+      "longitude": -8.0013611111111,
+      "localities": [
+        "Aguiar",
+        "Alcáçovas",
+        "Viana do Alentejo"
+      ]
+    },
+    {
+      "ineCode": "0714",
+      "name": "Vila Viçosa",
+      "district": "Évora",
+      "latitude": 38.75,
+      "longitude": -7.4333333333333,
+      "localities": [
+        "Bencatel",
+        "Ciladas",
+        "Nossa Senhora da Conceição e São Bartolomeu",
+        "Pardais"
+      ]
+    },
+    {
+      "ineCode": "0801",
+      "name": "Albufeira",
+      "district": "Faro",
+      "latitude": 37.0897,
+      "longitude": -8.24583,
+      "localities": [
+        "Albufeira e Olhos de Água",
+        "Ferreiras",
+        "Guia",
+        "Paderne"
+      ]
+    },
+    {
+      "ineCode": "0802",
+      "name": "Alcoutim",
+      "district": "Faro",
+      "latitude": 37.469972222222,
+      "longitude": -7.4731111111111,
+      "localities": [
+        "Giões",
+        "Martim Longo",
+        "União das Freguesias de Alcoutim e Pereiro",
+        "Vaqueiros"
+      ]
+    },
+    {
+      "ineCode": "0803",
+      "name": "Aljezur",
+      "district": "Faro",
+      "latitude": 37.317777777778,
+      "longitude": -8.8,
+      "localities": [
+        "Aljezur",
+        "Bordeira",
+        "Odeceixe",
+        "Rogil"
+      ]
+    },
+    {
+      "ineCode": "0804",
+      "name": "Castro Marim",
+      "district": "Faro",
+      "latitude": 37.216666666667,
+      "longitude": -7.45,
+      "localities": [
+        "Altura",
+        "Azinhal",
+        "Castro Marim",
+        "Odeleite"
+      ]
+    },
+    {
+      "ineCode": "0805",
+      "name": "Faro",
+      "district": "Faro",
+      "latitude": 37.016111111111,
+      "longitude": -7.935,
+      "localities": [
+        "Conceição",
+        "Estoi",
+        "Montenegro",
+        "Santa Bárbara de Nexe",
+        "União das Freguesias de Faro (sé e São Pedro)"
+      ]
+    },
+    {
+      "ineCode": "0806",
+      "name": "Lagoa",
+      "district": "Faro",
+      "latitude": 37.133333333333,
+      "longitude": -8.45,
+      "localities": [
+        "Ferragudo",
+        "Porches",
+        "União das Freguesias de Estômbar e Parchal",
+        "União das Freguesias de Lagoa e Carvoeiro"
+      ]
+    },
+    {
+      "ineCode": "0807",
+      "name": "Lagos",
+      "district": "Faro",
+      "latitude": 37.102777777778,
+      "longitude": -8.6727777777778,
+      "localities": [
+        "Barão de São João",
+        "Bensafrim",
+        "Luz",
+        "Odiáxere",
+        "São Gonçalo de Lagos"
+      ]
+    },
+    {
+      "ineCode": "0808",
+      "name": "Loulé",
+      "district": "Faro",
+      "latitude": 37.14399,
+      "longitude": -8.02345,
+      "localities": [
+        "Almancil",
+        "Alte",
+        "Ameixial",
+        "Benafim",
+        "Boliqueime",
+        "Loulé (são Clemente)",
+        "Loulé (são Sebastião)",
+        "Quarteira",
+        "Querença",
+        "Salir",
+        "Tôr"
+      ]
+    },
+    {
+      "ineCode": "0809",
+      "name": "Monchique",
+      "district": "Faro",
+      "latitude": 37.316666666667,
+      "longitude": -8.6,
+      "localities": [
+        "Alferce",
+        "Marmelete",
+        "Monchique"
+      ]
+    },
+    {
+      "ineCode": "0810",
+      "name": "Olhão",
+      "district": "Faro",
+      "latitude": 37.027777777778,
+      "longitude": -7.8388888888889,
+      "localities": [
+        "Fuseta",
+        "Moncarapacho",
+        "Olhão",
+        "Pechão",
+        "Quelfes"
+      ]
+    },
+    {
+      "ineCode": "0811",
+      "name": "Portimão",
+      "district": "Faro",
+      "latitude": 37.133333333333,
+      "longitude": -8.5333333333333,
+      "localities": [
+        "Alvor",
+        "Mexilhoeira Grande",
+        "Portimão"
+      ]
+    },
+    {
+      "ineCode": "0812",
+      "name": "São Brás de Alportel",
+      "district": "Faro",
+      "latitude": 37.15,
+      "longitude": -7.8833333333333,
+      "localities": [
+        "São Brás de Alportel"
+      ]
+    },
+    {
+      "ineCode": "0813",
+      "name": "Silves",
+      "district": "Faro",
+      "latitude": 37.183333333333,
+      "longitude": -8.4333333333333,
+      "localities": [
+        "Alcantarilha",
+        "Algoz",
+        "Armação de Pêra",
+        "Pêra",
+        "São Bartolomeu de Messines",
+        "São Marcos da Serra",
+        "Silves",
+        "Tunes"
+      ]
+    },
+    {
+      "ineCode": "0814",
+      "name": "Tavira",
+      "district": "Faro",
+      "latitude": 37.13085,
+      "longitude": -7.6506,
+      "localities": [
+        "Cabanas de Tavira",
+        "Cachopo",
+        "Conceição",
+        "Luz de Tavira",
+        "Santa Catarina da Fonte do Bispo",
+        "Santa Luzia",
+        "Santo Estêvão",
+        "União das Freguesias de Tavira (santa Maria e Santiago)"
+      ]
+    },
+    {
+      "ineCode": "0815",
+      "name": "Vila do Bispo",
+      "district": "Faro",
+      "latitude": 37.0825,
+      "longitude": -8.9119444444444,
+      "localities": [
+        "Barão de São Miguel",
+        "Budens",
+        "Sagres",
+        "Vila do Bispo e Raposeira"
+      ]
+    },
+    {
+      "ineCode": "0816",
+      "name": "Vila Real de Santo António",
+      "district": "Faro",
+      "latitude": 37.2,
+      "longitude": -7.4166666666667,
+      "localities": [
+        "Monte Gordo",
+        "Vila Nova de Cacela",
+        "Vila Real de Santo António"
+      ]
+    },
+    {
+      "ineCode": "0901",
+      "name": "Aguiar da Beira",
+      "district": "Guarda",
+      "latitude": 40.818008,
+      "longitude": -7.541404,
+      "localities": [
+        "Carapito",
+        "Cortiçada",
+        "Dornelas",
+        "Eirado",
+        "Forninhos",
+        "Pena Verde",
+        "Pinheiro",
+        "União das Freguesias de Aguiar da Beira e Coruche",
+        "União das Freguesias de Sequeiros e Gradiz",
+        "União das Freguesias de Souto de Aguiar da Beira e Valverde"
+      ]
+    },
+    {
+      "ineCode": "0902",
+      "name": "Almeida",
+      "district": "Guarda",
+      "latitude": 40.725916666667,
+      "longitude": -6.9055833333333,
+      "localities": [
+        "Almeida",
+        "Castelo Bom",
+        "Freineda",
+        "Freixo",
+        "Malhada Sorda",
+        "Nave de Haver",
+        "São Pedro de Rio Seco",
+        "União das Freguesias de Amoreira, Parada e Cabreira",
+        "União das Freguesias de Azinhal, Peva e Valverde",
+        "União das Freguesias de Castelo Mendo, Ade, Monteperobolso e Mesquitela",
+        "União das Freguesias de Junça e Naves",
+        "União das Freguesias de Leomil, Mido, Senouras e Aldeia Nova",
+        "União das Freguesias de Malpartida e Vale de Coelha",
+        "União das Freguesias de Miuzela e Porto de Ovelha",
+        "Vale da Mula",
+        "Vilar Formoso"
+      ]
+    },
+    {
+      "ineCode": "0903",
+      "name": "Celorico da Beira",
+      "district": "Guarda",
+      "latitude": 40.633333333333,
+      "longitude": -7.4,
+      "localities": [
+        "Baraçal",
+        "Carrapichana",
+        "Casas do Soeiro",
+        "Forno Telheiro",
+        "Lajeosa do Mondego",
+        "Linhares",
+        "Maçal do Chão",
+        "Mesquitela",
+        "Minhocal",
+        "Prados",
+        "Ratoeira",
+        "União das Freguesias de Açores e Velosa",
+        "União das Freguesias de Celorico (são Pedro e Santa Maria) e Vila Boa do Mondego",
+        "União das Freguesias de Cortiçô da Serra, Vide Entre Vinhas e Salgueirais",
+        "União das Freguesias de Rapa e Cadafaz",
+        "Vale de Azares"
+      ]
+    },
+    {
+      "ineCode": "0904",
+      "name": "Figueira de Castelo Rodrigo",
+      "district": "Guarda",
+      "latitude": 40.9,
+      "longitude": -6.9666666666667,
+      "localities": [
+        "Castelo Rodrigo",
+        "Escalhão",
+        "Figueira de Castelo Rodrigo",
+        "Mata de Lobos",
+        "União das Freguesias de Algodres, Vale de Afonsinho e Vilar de Amargo",
+        "União das Freguesias de Almofala e Escarigo",
+        "União das Freguesias de Cinco Vilas e Reigada",
+        "União das Freguesias de Freixeda do Torrão, Quintã de Pêro Martins e Penha de Águia",
+        "União das Freguesias do Colmeal e Vilar Torpim",
+        "Vermiosa"
+      ]
+    },
+    {
+      "ineCode": "0905",
+      "name": "Fornos de Algodres",
+      "district": "Guarda",
+      "latitude": 40.616666666667,
+      "longitude": -7.5333333333333,
+      "localities": [
+        "Algodres",
+        "Casal Vasco",
+        "Figueiró da Granja",
+        "Fornos de Algodres",
+        "Infias",
+        "Maceira",
+        "Matança",
+        "Muxagata",
+        "Queiriz",
+        "União das Freguesias de Cortiçô e Vila Chã",
+        "União das Freguesias de Juncais, Vila Ruiva e Vila Soeiro do Chão",
+        "União das Freguesias de Sobral Pichorro e Fuinhas"
+      ]
+    },
+    {
+      "ineCode": "0906",
+      "name": "Gouveia",
+      "district": "Guarda",
+      "latitude": 40.5,
+      "longitude": -7.6,
+      "localities": [
+        "Arcozelo",
+        "Cativelos",
+        "Folgosinho",
+        "Gouveia",
+        "Nespereira",
+        "Paços da Serra",
+        "Ribamondego",
+        "São Paio",
+        "União das Freguesias de Aldeias e Mangualde da Serra",
+        "União das Freguesias de Figueiró da Serra e Freixo da Serra",
+        "União das Freguesias de Melo e Nabais",
+        "União das Freguesias de Moimenta da Serra e Vinhó",
+        "União das Freguesias de Rio Torto e Lagarinhos",
+        "Vila Cortês da Serra",
+        "Vila Franca da Serra",
+        "Vila Nova de Tazem"
+      ]
+    },
+    {
+      "ineCode": "0907",
+      "name": "Guarda",
+      "district": "Guarda",
+      "latitude": 40.536388888889,
+      "longitude": -7.2683333333333,
+      "localities": [
+        "Adão",
+        "Aldeia do Bispo",
+        "Aldeia Viçosa",
+        "Alvendre",
+        "Arrifana",
+        "Avelãs da Ribeira",
+        "Benespera",
+        "Casal de Cinza",
+        "Castanheira",
+        "Cavadoude",
+        "Codesseiro",
+        "Faia",
+        "Famalicão",
+        "Fernão Joanes",
+        "Gonçalo",
+        "Gonçalo Bocas",
+        "Guarda",
+        "Jarmelo São Miguel",
+        "Jarmelo São Pedro",
+        "João Antão",
+        "Maçainhas",
+        "Marmeleiro",
+        "Meios",
+        "Panoias de Cima",
+        "Pega",
+        "Pêra do Moço",
+        "Porto da Carne",
+        "Ramela",
+        "Santana da Azinha",
+        "Sobral da Serra",
+        "União de Freguesias de Avelãs de Ambom e Rocamondo",
+        "União de Freguesias de Corujeira e Trinta",
+        "União de Freguesias de Mizarela, Pêro Soares e Vila Soeiro",
+        "União de Freguesias de Pousade e Albardo",
+        "União de Freguesias de Rochoso e Monte Margarida",
+        "Vale de Estrela",
+        "Valhelhas",
+        "Vela",
+        "Videmonte",
+        "Vila Cortês do Mondego",
+        "Vila Fernando",
+        "Vila Franca do Deão",
+        "Vila Garcia"
+      ]
+    },
+    {
+      "ineCode": "0908",
+      "name": "Manteigas",
+      "district": "Guarda",
+      "latitude": 40.4,
+      "longitude": -7.5333333333333,
+      "localities": [
+        "Manteigas (santa Maria)",
+        "Manteigas (são Pedro)",
+        "Sameiro",
+        "Vale de Amoreira"
+      ]
+    },
+    {
+      "ineCode": "0909",
+      "name": "Mêda",
+      "district": "Guarda",
+      "latitude": 40.966666666667,
+      "longitude": -7.2666666666667,
+      "localities": [
+        "Aveloso",
+        "Barreira",
+        "Coriscada",
+        "Longroiva",
+        "Marialva",
+        "Mêda, Outeiro de Gatos e Fonte Longa",
+        "Poço do Canto",
+        "Prova e Casteição",
+        "Rabaçal",
+        "Ranhados",
+        "União das Freguesias de Vale Flor, Carvalhal e Pai Penela"
+      ]
+    },
+    {
+      "ineCode": "0910",
+      "name": "Pinhel",
+      "district": "Guarda",
+      "latitude": 40.783333333333,
+      "longitude": -7.0666666666667,
+      "localities": [
+        "Agregação das Freguesias Sul de Pinhel",
+        "Alto do Palurdo",
+        "Alverca da Beira/bouça Cova",
+        "Ervedosa",
+        "Freixedas",
+        "Lamegal",
+        "Lameiras",
+        "Manigoto",
+        "Pala",
+        "Pinhel",
+        "Pínzio",
+        "Souro Pires",
+        "Terras de Massueime",
+        "União das Freguesias de Atalaia e Safurdão",
+        "Valbom/bogalhal",
+        "Vale do Côa",
+        "Vale do Massueime",
+        "Vascoveiro"
+      ]
+    },
+    {
+      "ineCode": "0911",
+      "name": "Sabugal",
+      "district": "Guarda",
+      "latitude": 40.35,
+      "longitude": -7.0833333333333,
+      "localities": [
+        "Águas Belas",
+        "Aldeia da Ponte",
+        "Aldeia do Bispo",
+        "Aldeia Velha",
+        "Alfaiates",
+        "Baraçal",
+        "Bendada",
+        "Bismula",
+        "Casteleiro",
+        "Cerdeira",
+        "Fóios",
+        "Malcata",
+        "Nave",
+        "Quadrazais",
+        "Quintas de São Bartolomeu",
+        "Rapoula do Côa",
+        "Rebolosa",
+        "Rendo",
+        "Sortelha",
+        "Souto",
+        "União das Freguesias de Aldeia da Ribeira, Vilar Maior e Badamalos",
+        "União das Freguesias de Lajeosa e Forcalhos",
+        "União das Freguesias de Pousafoles do Bispo, Pena Lobo e Lomba",
+        "União das Freguesias de Ruvina, Ruivós e Vale das Éguas",
+        "União das Freguesias de Santo Estêvão e Moita",
+        "União das Freguesias de Seixo do Côa e Vale Longo",
+        "União das Freguesias do Sabugal e Aldeia de Santo António",
+        "Vale de Espinho",
+        "Vila Boa",
+        "Vila do Touro"
+      ]
+    },
+    {
+      "ineCode": "0912",
+      "name": "Seia",
+      "district": "Guarda",
+      "latitude": 40.42203,
+      "longitude": -7.70245,
+      "localities": [
+        "Alvoco da Serra",
+        "Girabolhos",
+        "Lapa dos Dinheiros",
+        "Loriga",
+        "Paranhos",
+        "Pinhanços",
+        "Sabugueiro",
+        "Sandomil",
+        "Santa Comba",
+        "Santa Marinha",
+        "Santiago",
+        "São Martinho",
+        "São Romão",
+        "Sazes da Beira",
+        "Seia",
+        "Teixeira",
+        "Travancinha",
+        "União das Freguesias de Carragozela e Várzea de Meruge",
+        "União das Freguesias de Sameice e Santa Eulália",
+        "União das Freguesias de Torrozelo e Folhadosa",
+        "União das Freguesias de Tourais e Lajes",
+        "União das Freguesias de Vide e Cabeça",
+        "Valezim",
+        "Vila Cova À Coelheira"
+      ]
+    },
+    {
+      "ineCode": "0913",
+      "name": "Trancoso",
+      "district": "Guarda",
+      "latitude": 40.7833,
+      "longitude": -7.35,
+      "localities": [
+        "Aldeia Nova",
+        "Castanheira",
+        "Cogula",
+        "Cótimos",
+        "Fiães",
+        "Granja",
+        "Guilheiro",
+        "Moimentinha",
+        "Moreira de Rei",
+        "Palhais",
+        "Póvoa do Concelho",
+        "Reboleiro",
+        "Rio de Mel",
+        "Tamanhos",
+        "União das Freguesias de Freches e Torres",
+        "União das Freguesias de Torre do Terrenho, Sebadelhe da Serra e Terrenho",
+        "União das Freguesias de Trancoso (são Pedro e Santa Maria) e Souto Maior",
+        "União das Freguesias de Vale do Seixo e Vila Garcia",
+        "União das Freguesias de Vila Franca das Naves e Feital",
+        "União das Freguesias de Vilares e Carnicães",
+        "Valdujo"
+      ]
+    },
+    {
+      "ineCode": "0914",
+      "name": "Vila Nova de Foz Côa",
+      "district": "Guarda",
+      "latitude": 41.083333333333,
+      "longitude": -7.1333333333333,
+      "localities": [
+        "Almendra",
+        "Castelo Melhor",
+        "Cedovim",
+        "Chãs",
+        "Custóias",
+        "Freixo de Numão",
+        "Horta",
+        "Muxagata",
+        "Numão",
+        "Santa Comba",
+        "Sebadelhe",
+        "Seixas",
+        "Touça",
+        "Vila Nova de Foz Côa"
+      ]
+    },
+    {
+      "ineCode": "1001",
+      "name": "Alcobaça",
+      "district": "Leiria",
+      "latitude": 39.55,
+      "longitude": -8.975,
+      "localities": [
+        "Alfeizerão",
+        "Aljubarrota",
+        "Bárrio",
+        "Benedita",
+        "Cela",
+        "Évora de Alcobaça",
+        "Maiorga",
+        "São Martinho do Porto",
+        "Turquel",
+        "União das Freguesias de Alcobaça e Vestiaria",
+        "União das Freguesias de Coz, Alpedriz e Montes",
+        "União das Freguesias de Pataias e Martingança",
+        "Vimeiro"
+      ]
+    },
+    {
+      "ineCode": "1002",
+      "name": "Alvaiázere",
+      "district": "Leiria",
+      "latitude": 39.833333333333,
+      "longitude": -8.3833333333333,
+      "localities": [
+        "Almoster",
+        "Alvaiázere",
+        "Maçãs de Dona Maria",
+        "Pelmá",
+        "Pussos São Pedro"
+      ]
+    },
+    {
+      "ineCode": "1003",
+      "name": "Ansião",
+      "district": "Leiria",
+      "latitude": 39.916666666667,
+      "longitude": -8.4333333333333,
+      "localities": [
+        "Alvorge",
+        "Ansião",
+        "Avelar",
+        "Chão de Couce",
+        "Pousaflores",
+        "Santiago da Guarda"
+      ]
+    },
+    {
+      "ineCode": "1004",
+      "name": "Batalha",
+      "district": "Leiria",
+      "latitude": 39.65,
+      "longitude": -8.8166666666667,
+      "localities": [
+        "Batalha",
+        "Golpilheira",
+        "Reguengo do Fetal",
+        "São Mamede"
+      ]
+    },
+    {
+      "ineCode": "1005",
+      "name": "Bombarral",
+      "district": "Leiria",
+      "latitude": 39.266666666667,
+      "longitude": -9.15,
+      "localities": [
+        "Carvalhal",
+        "Pó",
+        "Roliça",
+        "União das Freguesias do Bombarral e Vale Covo"
+      ]
+    },
+    {
+      "ineCode": "1006",
+      "name": "Caldas da Rainha",
+      "district": "Leiria",
+      "latitude": 39.406916666667,
+      "longitude": -9.13625,
+      "localities": [
+        "A dos Francos",
+        "Alvorninha",
+        "Carvalhal Benfeito",
+        "Foz do Arelho",
+        "Landal",
+        "Nadadouro",
+        "Salir de Matos",
+        "Santa Catarina",
+        "União das Freguesias de Caldas da Rainha - Nossa Senhora do Pópulo, Coto e São Gregório",
+        "União das Freguesias de Caldas da Rainha - Santo Onofre e Serra do Bouro",
+        "União das Freguesias de Tornada e Salir do Porto",
+        "Vidais"
+      ]
+    },
+    {
+      "ineCode": "1007",
+      "name": "Castanheira de Pêra",
+      "district": "Leiria",
+      "latitude": 40,
+      "longitude": -8.2166666666667,
+      "localities": [
+        "União das Freguesias de Castanheira de Pêra e Coentral"
+      ]
+    },
+    {
+      "ineCode": "1008",
+      "name": "Figueiró dos Vinhos",
+      "district": "Leiria",
+      "latitude": 39.9,
+      "longitude": -8.2666666666667,
+      "localities": [
+        "Aguda",
+        "Arega",
+        "Campelo",
+        "União das Freguesias de Figueiró dos Vinhos e Bairradas"
+      ]
+    },
+    {
+      "ineCode": "1009",
+      "name": "Leiria",
+      "district": "Leiria",
+      "latitude": 39.743055555556,
+      "longitude": -8.8069444444444,
+      "localities": [
+        "Amor",
+        "Arrabal",
+        "Bajouca",
+        "Bidoeira de Cima",
+        "Caranguejeira",
+        "Carreira",
+        "Coimbrão",
+        "Maceira",
+        "Milagres",
+        "Monte Redondo",
+        "Ortigosa",
+        "Regueira de Pontes",
+        "Souto da Carpalhosa",
+        "União das Freguesias de Colmeias e Memória",
+        "União das Freguesias de Leiria, Pousos, Barreira e Cortes",
+        "União das Freguesias de Marrazes e Barosa",
+        "União das Freguesias de Monte Real e Carvide",
+        "União das Freguesias de Parceiros e Azoia",
+        "União das Freguesias de Santa Catarina da Serra e Chainça",
+        "União das Freguesias de Santa Eufémia e Boa Vista"
+      ]
+    },
+    {
+      "ineCode": "1010",
+      "name": "Marinha Grande",
+      "district": "Leiria",
+      "latitude": 39.75,
+      "longitude": -8.9333333333333,
+      "localities": [
+        "Marinha Grande",
+        "Moita",
+        "Vieira de Leiria"
+      ]
+    },
+    {
+      "ineCode": "1011",
+      "name": "Nazaré",
+      "district": "Leiria",
+      "latitude": 39.6,
+      "longitude": -9.0666666666667,
+      "localities": [
+        "Famalicão",
+        "Nazaré",
+        "Valado dos Frades"
+      ]
+    },
+    {
+      "ineCode": "1012",
+      "name": "Óbidos",
+      "district": "Leiria",
+      "latitude": 39.361952,
+      "longitude": -9.157131,
+      "localities": [
+        "A dos Negros",
+        "Amoreira",
+        "Gaeiras",
+        "Olho Marinho",
+        "Santa Maria, São Pedro e Sobral da Lagoa",
+        "Usseira",
+        "Vau"
+      ]
+    },
+    {
+      "ineCode": "1013",
+      "name": "Pedrógão Grande",
+      "district": "Leiria",
+      "latitude": 39.916666666667,
+      "longitude": -8.15,
+      "localities": [
+        "Graça",
+        "Pedrógão Grande",
+        "Vila Facaia"
+      ]
+    },
+    {
+      "ineCode": "1014",
+      "name": "Peniche",
+      "district": "Leiria",
+      "latitude": 39.362833333333,
+      "longitude": -9.3887222222222,
+      "localities": [
+        "Atouguia da Baleia",
+        "Ferrel",
+        "Peniche",
+        "Serra D'el-Rei"
+      ]
+    },
+    {
+      "ineCode": "1015",
+      "name": "Pombal",
+      "district": "Leiria",
+      "latitude": 39.916111111111,
+      "longitude": -8.6280555555556,
+      "localities": [
+        "Abiul",
+        "Albergaria dos Doze",
+        "Almagreira",
+        "Carnide",
+        "Carriço",
+        "Guia",
+        "Ilha",
+        "Louriçal",
+        "Mata Mourisca",
+        "Meirinhas",
+        "Pelariga",
+        "Pombal",
+        "Redinha",
+        "Santiago de Litém",
+        "São Simão de Litém",
+        "Vermoil",
+        "Vila Cã"
+      ]
+    },
+    {
+      "ineCode": "1016",
+      "name": "Porto de Mós",
+      "district": "Leiria",
+      "latitude": 39.60166667,
+      "longitude": -8.8175,
+      "localities": [
+        "Alqueidão da Serra",
+        "Calvaria de Cima",
+        "Juncal",
+        "Mira de Aire",
+        "Pedreiras",
+        "Porto de Mós - São João Baptista e São Pedro",
+        "São Bento",
+        "Serro Ventoso",
+        "União das Freguesias de Alvados e Alcaria",
+        "União das Freguesias de Arrimal e Mendiga"
+      ]
+    },
+    {
+      "ineCode": "1101",
+      "name": "Alenquer",
+      "district": "Lisboa",
+      "latitude": 39.05,
+      "longitude": -9.0166666666667,
+      "localities": [
+        "Carnota",
+        "Meca",
+        "Olhalvo",
+        "Ota",
+        "União das Freguesias de Abrigada e Cabanas de Torres",
+        "União das Freguesias de Aldeia Galega da Merceana e Aldeia Gavinha",
+        "União das Freguesias de Alenquer (santo Estêvão e Triana)",
+        "União das Freguesias de Carregado e Cadafais",
+        "União das Freguesias de Ribafria e Pereiro de Palhacana",
+        "Ventosa",
+        "Vila Verde dos Francos"
+      ]
+    },
+    {
+      "ineCode": "1102",
+      "name": "Arruda dos Vinhos",
+      "district": "Lisboa",
+      "latitude": 38.983333333333,
+      "longitude": -9.0666666666667,
+      "localities": [
+        "Arranhó",
+        "Arruda dos Vinhos",
+        "Cardosas",
+        "S. Tiago dos Velhos"
+      ]
+    },
+    {
+      "ineCode": "1103",
+      "name": "Azambuja",
+      "district": "Lisboa",
+      "latitude": 39.066666666667,
+      "longitude": -8.8666666666667,
+      "localities": [
+        "Alcoentre",
+        "Aveiras de Baixo",
+        "Aveiras de Cima",
+        "Azambuja",
+        "União das Freguesias de Manique do Intendente, Vila Nova de São Pedro e Maçussa",
+        "Vale do Paraíso",
+        "Vila Nova da Rainha"
+      ]
+    },
+    {
+      "ineCode": "1104",
+      "name": "Cadaval",
+      "district": "Lisboa",
+      "latitude": 39.24621,
+      "longitude": -9.06738,
+      "localities": [
+        "Alguber",
+        "Peral",
+        "União das Freguesias de Lamas e Cercal",
+        "União das Freguesias de Painho e Figueiros",
+        "União das Freguesias do Cadaval e Pêro Moniz",
+        "Vermelha",
+        "Vilar"
+      ]
+    },
+    {
+      "ineCode": "1105",
+      "name": "Cascais",
+      "district": "Lisboa",
+      "latitude": 38.696944444444,
+      "longitude": -9.4205555555556,
+      "localities": [
+        "Alcabideche",
+        "São Domingos de Rana",
+        "União das Freguesias de Carcavelos e Parede",
+        "União das Freguesias de Cascais e Estoril"
+      ]
+    },
+    {
+      "ineCode": "1106",
+      "name": "Lisboa",
+      "district": "Lisboa",
+      "latitude": 38.72635,
+      "longitude": -9.14843,
+      "localities": [
+        "Ajuda",
+        "Alcântara",
+        "Alvalade",
+        "Areeiro",
+        "Arroios",
+        "Avenidas Novas",
+        "Beato",
+        "Belém",
+        "Benfica",
+        "Campo de Ourique",
+        "Campolide",
+        "Carnide",
+        "Estrela",
+        "Lumiar",
+        "Marvila",
+        "Misericórdia",
+        "Olivais",
+        "Parque das Nações",
+        "Penha de França",
+        "Santa Clara",
+        "Santa Maria Maior",
+        "Santo António",
+        "São Domingos de Benfica",
+        "São Vicente"
+      ]
+    },
+    {
+      "ineCode": "1107",
+      "name": "Loures",
+      "district": "Lisboa",
+      "latitude": 38.833333333333,
+      "longitude": -9.1666666666667,
+      "localities": [
+        "Bucelas",
+        "Fanhões",
+        "Loures",
+        "Lousa",
+        "União das Freguesias de Camarate, Unhos e Apelação",
+        "União das Freguesias de Moscavide e Portela",
+        "União das Freguesias de Sacavém e Prior Velho",
+        "União das Freguesias de Santa Iria de Azoia, São João da Talha e Bobadela",
+        "União das Freguesias de Santo Antão e São Julião do Tojal",
+        "União das Freguesias de Santo António dos Cavaleiros e Frielas"
+      ]
+    },
+    {
+      "ineCode": "1108",
+      "name": "Lourinhã",
+      "district": "Lisboa",
+      "latitude": 39.25,
+      "longitude": -9.3166666666667,
+      "localities": [
+        "Atalaia",
+        "Lourinhã",
+        "Moita dos Ferreiros",
+        "Reguengo Grande",
+        "Ribamar",
+        "Santa Bárbara",
+        "União das Freguesias de Miragaia e Marteleira",
+        "União das Freguesias de São Bartolomeu dos Galegos e Moledo",
+        "Vimeiro"
+      ]
+    },
+    {
+      "ineCode": "1109",
+      "name": "Mafra",
+      "district": "Lisboa",
+      "latitude": 38.933333333333,
+      "longitude": -9.3333333333333,
+      "localities": [
+        "Carvoeira",
+        "Encarnação",
+        "Ericeira",
+        "Mafra",
+        "Milharado",
+        "Santo Isidoro",
+        "União das Freguesias de Azueira e Sobral da Abelheira",
+        "União das Freguesias de Enxara do Bispo, Gradil e Vila Franca do Rosário",
+        "União das Freguesias de Igreja Nova e Cheleiros",
+        "União das Freguesias de Malveira e São Miguel de Alcainça",
+        "União das Freguesias de Venda do Pinheiro e Santo Estêvão das Galés"
+      ]
+    },
+    {
+      "ineCode": "1110",
+      "name": "Oeiras",
+      "district": "Lisboa",
+      "latitude": 38.697044444444,
+      "longitude": -9.3016527777778,
+      "localities": [
+        "Barcarena",
+        "Porto Salvo",
+        "União das Freguesias de Algés, Linda-a-Velha e Cruz Quebrada-Dafundo",
+        "União das Freguesias de Carnaxide e Queijas",
+        "União das Freguesias de Oeiras e São Julião da Barra, Paço de Arcos e Caxias"
+      ]
+    },
+    {
+      "ineCode": "1111",
+      "name": "Sintra",
+      "district": "Lisboa",
+      "latitude": 38.797361111111,
+      "longitude": -9.3904166666667,
+      "localities": [
+        "Algueirão-Mem Martins",
+        "Almargem do Bispo",
+        "Belas",
+        "Casal de Cambra",
+        "Colares",
+        "Montelavar",
+        "Pêro Pinheiro",
+        "Queluz",
+        "Rio de Mouro",
+        "São João das Lampas",
+        "Terrugem",
+        "União das Freguesias de Agualva e Mira-Sintra",
+        "União das Freguesias de Massamá e Monte Abraão",
+        "União das Freguesias de Sintra (santa Maria e São Miguel, São Martinho e São Pedro de Penaferrim)",
+        "União das Freguesias do Cacém e São Marcos"
+      ]
+    },
+    {
+      "ineCode": "1112",
+      "name": "Sobral de Monte Agraço",
+      "district": "Lisboa",
+      "latitude": 39.01666667,
+      "longitude": -9.15,
+      "localities": [
+        "Santo Quintino",
+        "Sapataria",
+        "Sobral de Monte Agraço"
+      ]
+    },
+    {
+      "ineCode": "1113",
+      "name": "Torres Vedras",
+      "district": "Lisboa",
+      "latitude": 39.083333333333,
+      "longitude": -9.2666666666667,
+      "localities": [
+        "A dos Cunhados",
+        "Dois Portos",
+        "Freiria",
+        "Maceira",
+        "Ponte do Rol",
+        "Ramalhal",
+        "Runa",
+        "Santa Maria, São Pedro e Matacães",
+        "São Pedro da Cadeira",
+        "Silveira",
+        "Turcifal",
+        "União das Freguesias de Campelos e Outeiro da Cabeça",
+        "União das Freguesias de Carvoeira e Carmões",
+        "União das Freguesias de Maxial e Monte Redondo",
+        "Ventosa"
+      ]
+    },
+    {
+      "ineCode": "1114",
+      "name": "Vila Franca de Xira",
+      "district": "Lisboa",
+      "latitude": 38.95,
+      "longitude": -8.9833333333333,
+      "localities": [
+        "União das Freguesias de Alhandra, São João dos Montes e Calhandriz",
+        "União das Freguesias de Alverca do Ribatejo e Sobralinho",
+        "União das Freguesias de Castanheira do Ribatejo e Cachoeiras",
+        "União das Freguesias de Póvoa de Santa Iria e Forte da Casa",
+        "Vialonga",
+        "Vila Franca de Xira"
+      ]
+    },
+    {
+      "ineCode": "1115",
+      "name": "Amadora",
+      "district": "Lisboa",
+      "latitude": 38.75,
+      "longitude": -9.2333333333333,
+      "localities": [
+        "Águas Livres",
+        "Alfragide",
+        "Encosta do Sol",
+        "Falagueira-Venda Nova",
+        "Mina de Água",
+        "Venteira"
+      ]
+    },
+    {
+      "ineCode": "1116",
+      "name": "Odivelas",
+      "district": "Lisboa",
+      "latitude": 38.8,
+      "longitude": -9.1833333333333,
+      "localities": [
+        "Odivelas",
+        "União das Freguesias de Pontinha e Famões",
+        "União das Freguesias de Póvoa de Santo Adrião e Olival Basto",
+        "União das Freguesias de Ramada e Caneças"
+      ]
+    },
+    {
+      "ineCode": "1201",
+      "name": "Alter do Chão",
+      "district": "Portalegre",
+      "latitude": 39.2,
+      "longitude": -7.6666666666667,
+      "localities": [
+        "Alter do Chão",
+        "Chancelaria",
+        "Cunheira",
+        "Seda"
+      ]
+    },
+    {
+      "ineCode": "1202",
+      "name": "Arronches",
+      "district": "Portalegre",
+      "latitude": 39.116666666667,
+      "longitude": -7.2833333333333,
+      "localities": [
+        "Assunção",
+        "Esperança",
+        "Mosteiros"
+      ]
+    },
+    {
+      "ineCode": "1203",
+      "name": "Avis",
+      "district": "Portalegre",
+      "latitude": 39.05,
+      "longitude": -7.8833333333333,
+      "localities": [
+        "Aldeia Velha",
+        "Avis",
+        "Ervedal",
+        "Figueira e Barros",
+        "União das Freguesias de Alcórrego e Maranhão",
+        "União das Freguesias de Benavila e Valongo"
+      ]
+    },
+    {
+      "ineCode": "1204",
+      "name": "Campo Maior",
+      "district": "Portalegre",
+      "latitude": 39.015,
+      "longitude": -7.0683333333333,
+      "localities": [
+        "Nossa Senhora da Expectação",
+        "Nossa Senhora da Graça dos Degolados",
+        "São João Baptista"
+      ]
+    },
+    {
+      "ineCode": "1205",
+      "name": "Castelo de Vide",
+      "district": "Portalegre",
+      "latitude": 39.416666666667,
+      "longitude": -7.45,
+      "localities": [
+        "Nossa Senhora da Graça de Póvoa e Meadas",
+        "Santa Maria da Devesa",
+        "Santiago Maior",
+        "São João Baptista"
+      ]
+    },
+    {
+      "ineCode": "1206",
+      "name": "Crato",
+      "district": "Portalegre",
+      "latitude": 39.283333333333,
+      "longitude": -7.65,
+      "localities": [
+        "Aldeia da Mata",
+        "Gáfete",
+        "Monte da Pedra",
+        "União das Freguesias de Crato e Mártires, Flor da Rosa e Vale do Peso"
+      ]
+    },
+    {
+      "ineCode": "1207",
+      "name": "Elvas",
+      "district": "Portalegre",
+      "latitude": 38.88,
+      "longitude": -7.1627777777778,
+      "localities": [
+        "Assunção, Ajuda, Salvador e Santo Ildefonso",
+        "Caia, São Pedro e Alcáçova",
+        "Santa Eulália",
+        "São Brás e São Lourenço",
+        "São Vicente e Ventosa",
+        "Terrugem",
+        "União das Freguesias de Barbacena e Vila Fernando",
+        "Vila Boim"
+      ]
+    },
+    {
+      "ineCode": "1208",
+      "name": "Fronteira",
+      "district": "Portalegre",
+      "latitude": 39.05,
+      "longitude": -7.65,
+      "localities": [
+        "Cabeço de Vide",
+        "Fronteira",
+        "São Saturnino"
+      ]
+    },
+    {
+      "ineCode": "1209",
+      "name": "Gavião",
+      "district": "Portalegre",
+      "latitude": 39.466666666667,
+      "longitude": -7.9333333333333,
+      "localities": [
+        "Belver",
+        "Comenda",
+        "Margem",
+        "União das Freguesias de Gavião e Atalaia"
+      ]
+    },
+    {
+      "ineCode": "1210",
+      "name": "Marvão",
+      "district": "Portalegre",
+      "latitude": 39.394166666667,
+      "longitude": -7.3772222222222,
+      "localities": [
+        "Beirã",
+        "Santa Maria de Marvão",
+        "Santo António das Areias",
+        "São Salvador da Aramenha"
+      ]
+    },
+    {
+      "ineCode": "1211",
+      "name": "Monforte",
+      "district": "Portalegre",
+      "latitude": 39.05,
+      "longitude": -7.4333333333333,
+      "localities": [
+        "Assumar",
+        "Monforte",
+        "Santo Aleixo",
+        "Vaiamonte"
+      ]
+    },
+    {
+      "ineCode": "1212",
+      "name": "Nisa",
+      "district": "Portalegre",
+      "latitude": 39.516666666667,
+      "longitude": -7.65,
+      "localities": [
+        "Alpalhão",
+        "Montalvão",
+        "Santana",
+        "São Matias",
+        "Tolosa",
+        "União das Freguesias de Arez e Amieira do Tejo",
+        "União das Freguesias de Espírito Santo, Nossa Senhora da Graça e São Simão"
+      ]
+    },
+    {
+      "ineCode": "1213",
+      "name": "Ponte de Sor",
+      "district": "Portalegre",
+      "latitude": 39.25,
+      "longitude": -8.0166666666667,
+      "localities": [
+        "Foros de Arrão",
+        "Galveias",
+        "Longomel",
+        "Montargil",
+        "Ponte de Sor",
+        "Tramaga",
+        "Vale de Açor"
+      ]
+    },
+    {
+      "ineCode": "1214",
+      "name": "Portalegre",
+      "district": "Portalegre",
+      "latitude": 39.316666666667,
+      "longitude": -7.4166666666667,
+      "localities": [
+        "Alagoa",
+        "Alegrete",
+        "Fortios",
+        "União das Freguesias da Sé e São Lourenço",
+        "União das Freguesias de Reguengo e São Julião",
+        "União das Freguesias de Ribeira de Nisa e Carreiras",
+        "Urra"
+      ]
+    },
+    {
+      "ineCode": "1215",
+      "name": "Sousel",
+      "district": "Portalegre",
+      "latitude": 38.953222222222,
+      "longitude": -7.6757222222222,
+      "localities": [
+        "Cano",
+        "Casa Branca",
+        "Santo Amaro",
+        "Sousel"
+      ]
+    },
+    {
+      "ineCode": "1301",
+      "name": "Amarante",
+      "district": "Porto",
+      "latitude": 41.269027777778,
+      "longitude": -8.0783611111111,
+      "localities": [
+        "Ansiães",
+        "Candemil",
+        "Fregim",
+        "Fridão",
+        "Gondar",
+        "Gouveia (são Simão)",
+        "Jazente",
+        "Lomba",
+        "Louredo",
+        "Lufrei",
+        "Mancelos",
+        "Padronelo",
+        "Rebordelo",
+        "Salvador do Monte",
+        "Telões",
+        "Travanca",
+        "União das Freguesias de Aboadela, Sanche e Várzea",
+        "União das Freguesias de Amarante (são Gonçalo), Madalena, Cepelos e Gatão",
+        "União das Freguesias de Bustelo, Carneiro e Carvalho de Rei",
+        "União das Freguesias de Figueiró (santiago e Santa Cristina)",
+        "União das Freguesias de Freixo de Cima e de Baixo",
+        "União das Freguesias de Olo e Canadelo",
+        "União das Freguesias de Vila Garcia, Aboim e Chapa",
+        "Vila Caiz",
+        "Vila Chã do Marão",
+        "Vila Meã"
+      ]
+    },
+    {
+      "ineCode": "1302",
+      "name": "Baião",
+      "district": "Porto",
+      "latitude": 41.166666666667,
+      "longitude": -8.0333333333333,
+      "localities": [
+        "Frende",
+        "Gestaçô",
+        "Gove",
+        "Grilo",
+        "Loivos do Monte",
+        "Santa Marinha do Zêzere",
+        "União das Freguesias de Ancede e Ribadouro",
+        "União das Freguesias de Baião (santa Leocádia) e Mesquinhata",
+        "União das Freguesias de Campelo e Ovil",
+        "União das Freguesias de Loivos da Ribeira e Tresouras",
+        "União das Freguesias de Santa Cruz do Douro e São Tomé de Covelas",
+        "União das Freguesias de Teixeira e Teixeiró",
+        "Valadares",
+        "Viariz"
+      ]
+    },
+    {
+      "ineCode": "1303",
+      "name": "Felgueiras",
+      "district": "Porto",
+      "latitude": 41.366667,
+      "longitude": -8.2,
+      "localities": [
+        "Aião",
+        "Airães",
+        "Friande",
+        "Idães",
+        "Jugueiros",
+        "Penacova",
+        "Pinheiro",
+        "Pombeiro de Ribavizela",
+        "Refontoura",
+        "Regilde",
+        "Revinhade",
+        "Sendim",
+        "União das Freguesias de Macieira da Lixa e Caramos",
+        "União das Freguesias de Margaride (santa Eulália), Várzea, Lagares, Varziela e Moure",
+        "União das Freguesias de Pedreira, Rande e Sernande",
+        "União das Freguesias de Torrados e Sousa",
+        "União das Freguesias de Unhão e Lordelo",
+        "União das Freguesias de Vila Cova da Lixa e Borba de Godim",
+        "União das Freguesias de Vila Fria e Vizela (são Jorge)",
+        "União das Freguesias de Vila Verde e Santão"
+      ]
+    },
+    {
+      "ineCode": "1304",
+      "name": "Gondomar",
+      "district": "Porto",
+      "latitude": 41.15,
+      "longitude": -8.5333333333333,
+      "localities": [
+        "Baguim do Monte (rio Tinto)",
+        "Lomba",
+        "Rio Tinto",
+        "União das Freguesias de Fânzeres e São Pedro da Cova",
+        "União das Freguesias de Foz do Sousa e Covelo",
+        "União das Freguesias de Gondomar (são Cosme), Valbom e Jovim",
+        "União das Freguesias de Melres e Medas"
+      ]
+    },
+    {
+      "ineCode": "1305",
+      "name": "Lousada",
+      "district": "Porto",
+      "latitude": 41.283333333333,
+      "longitude": -8.2833333333333,
+      "localities": [
+        "Aveleda",
+        "Barrosas (santo Estêvão)",
+        "Caíde de Rei",
+        "Lodares",
+        "Lustosa",
+        "Macieira",
+        "Meinedo",
+        "Nevogilde",
+        "Sousela",
+        "Torno",
+        "União das Freguesias de Cernadelo e Lousada (são Miguel e Santa Margarida)",
+        "União das Freguesias de Cristelos, Boim e Ordem",
+        "União das Freguesias de Figueiras e Covas",
+        "União das Freguesias de Nespereira e Casais",
+        "União das Freguesias de Silvares, Pias, Nogueira e Alvarenga",
+        "Vilar do Torno e Alentém"
+      ]
+    },
+    {
+      "ineCode": "1306",
+      "name": "Maia",
+      "district": "Porto",
+      "latitude": 41.233333333333,
+      "longitude": -8.6166666666667,
+      "localities": [
+        "Águas Santas",
+        "Castêlo da Maia",
+        "Cidade da Maia",
+        "Folgosa",
+        "Milheirós",
+        "Moreira",
+        "Nogueira e Silva Escura",
+        "Pedrouços",
+        "São Pedro Fins",
+        "Vila Nova da Telha"
+      ]
+    },
+    {
+      "ineCode": "1307",
+      "name": "Marco de Canaveses",
+      "district": "Porto",
+      "latitude": 41.183333333333,
+      "longitude": -8.15,
+      "localities": [
+        "Alpendorada, Várzea e Torrão",
+        "Avessadas e Rosém",
+        "Banho e Carvalhosa",
+        "Bem Viver",
+        "Constance",
+        "Marco",
+        "Paços de Gaiolo",
+        "Paredes de Viadores e Manhuncelos",
+        "Penha Longa",
+        "Sande e São Lourenço do Douro",
+        "Santo Isidoro e Livração",
+        "Soalhães",
+        "Sobretâmega",
+        "Tabuado",
+        "Várzea, Aliviada e Folhada",
+        "Vila Boa de Quires e Maureles",
+        "Vila Boa do Bispo"
+      ]
+    },
+    {
+      "ineCode": "1308",
+      "name": "Matosinhos",
+      "district": "Porto",
+      "latitude": 41.186666666667,
+      "longitude": -8.6844444444444,
+      "localities": [
+        "Custóias",
+        "Guifões",
+        "Lavra",
+        "Leça da Palmeira",
+        "Leça do Balio",
+        "Matosinhos",
+        "Perafita",
+        "Santa Cruz do Bispo",
+        "São Mamede de Infesta",
+        "Senhora da Hora"
+      ]
+    },
+    {
+      "ineCode": "1309",
+      "name": "Paços de Ferreira",
+      "district": "Porto",
+      "latitude": 41.283333333333,
+      "longitude": -8.3833333333333,
+      "localities": [
+        "Arreigada",
+        "Carvalhosa",
+        "Codessos",
+        "Eiriz",
+        "Ferreira",
+        "Figueiró",
+        "Frazão",
+        "Freamunde",
+        "Lamoso",
+        "Meixomil",
+        "Modelos",
+        "Paços de Ferreira",
+        "Penamaior",
+        "Raimonda",
+        "Sanfins de Ferreira",
+        "Seroa"
+      ]
+    },
+    {
+      "ineCode": "1310",
+      "name": "Paredes",
+      "district": "Porto",
+      "latitude": 41.2,
+      "longitude": -8.3333333333333,
+      "localities": [
+        "Aguiar de Sousa",
+        "Astromil",
+        "Baltar",
+        "Beire",
+        "Cete",
+        "Cristelo",
+        "Duas Igrejas",
+        "Gandra",
+        "Lordelo",
+        "Louredo",
+        "Parada de Todeia",
+        "Paredes",
+        "Rebordosa",
+        "Recarei",
+        "Sobreira",
+        "Sobrosa",
+        "Vandoma",
+        "Vilela"
+      ]
+    },
+    {
+      "ineCode": "1311",
+      "name": "Penafiel",
+      "district": "Porto",
+      "latitude": 41.2,
+      "longitude": -8.2833333333333,
+      "localities": [
+        "Abragão",
+        "Boelhe",
+        "Bustelo",
+        "Cabeça Santa",
+        "Canelas",
+        "Capela",
+        "Castelões",
+        "Croca",
+        "Duas Igrejas",
+        "Eja",
+        "Fonte Arcada",
+        "Galegos",
+        "Guilhufe e Urrô",
+        "Irivo",
+        "Lagares e Figueira",
+        "Luzim e Vila Cova",
+        "Oldrões",
+        "Paço de Sousa",
+        "Penafiel",
+        "Perozelo",
+        "Rans",
+        "Recezinhos (são Mamede)",
+        "Recezinhos (são Martinho)",
+        "Rio de Moinhos",
+        "Rio Mau",
+        "Sebolido",
+        "Termas de São Vicente",
+        "Valpedre"
+      ]
+    },
+    {
+      "ineCode": "1312",
+      "name": "Porto",
+      "district": "Porto",
+      "latitude": 41.15,
+      "longitude": -8.6108333333333,
+      "localities": [
+        "Bonfim",
+        "Campanhã",
+        "Paranhos",
+        "Ramalde",
+        "União das Freguesias de Aldoar, Foz do Douro e Nevogilde",
+        "União das Freguesias de Cedofeita, Santo Ildefonso, Sé, Miragaia, São Nicolau e Vitória",
+        "União das Freguesias de Lordelo do Ouro e Massarelos"
+      ]
+    },
+    {
+      "ineCode": "1313",
+      "name": "Póvoa de Varzim",
+      "district": "Porto",
+      "latitude": 41.39158,
+      "longitude": -8.75713,
+      "localities": [
+        "Aguçadoura",
+        "Amorim",
+        "Argivai",
+        "Aver-o-Mar",
+        "Balazar",
+        "Beiriz",
+        "Estela",
+        "Laundos",
+        "Navais",
+        "Póvoa de Varzim",
+        "Rates",
+        "Terroso"
+      ]
+    },
+    {
+      "ineCode": "1314",
+      "name": "Santo Tirso",
+      "district": "Porto",
+      "latitude": 41.3425,
+      "longitude": -8.4775,
+      "localities": [
+        "Agrela",
+        "Água Longa",
+        "Aves",
+        "Monte Córdova",
+        "Negrelos (são Tomé)",
+        "Rebordões",
+        "Reguenga",
+        "Roriz",
+        "União das Freguesias de Areias, Sequeiró, Lama e Palmeira",
+        "União das Freguesias de Carreira e Refojos de Riba de Ave",
+        "União das Freguesias de Lamelas e Guimarei",
+        "União das Freguesias de Santo Tirso, Couto (santa Cristina e São Miguel) e Burgães",
+        "Vila Nova do Campo",
+        "Vilarinho"
+      ]
+    },
+    {
+      "ineCode": "1315",
+      "name": "Valongo",
+      "district": "Porto",
+      "latitude": 41.183333333333,
+      "longitude": -8.5,
+      "localities": [
+        "Alfena",
+        "Campo",
+        "Ermesinde",
+        "Sobrado",
+        "Valongo"
+      ]
+    },
+    {
+      "ineCode": "1316",
+      "name": "Vila do Conde",
+      "district": "Porto",
+      "latitude": 41.35,
+      "longitude": -8.75,
+      "localities": [
+        "Arcos",
+        "Árvore",
+        "Aveleda",
+        "Azurara",
+        "Canidelo",
+        "Fajozes",
+        "Fornelo",
+        "Gião",
+        "Guilhabreu",
+        "Junqueira",
+        "Labruge",
+        "Macieira da Maia",
+        "Malta",
+        "Mindelo",
+        "Modivas",
+        "Retorta",
+        "Rio Mau",
+        "Tougues",
+        "União das Freguesias de Bagunte, Ferreiró, Outeiro Maior e Parada",
+        "União das Freguesias de Touguinha e Touguinhó",
+        "União das Freguesias de Vilar e Mosteiró",
+        "Vairão",
+        "Vila Chã",
+        "Vila do Conde",
+        "Vilar de Pinheiro"
+      ]
+    },
+    {
+      "ineCode": "1317",
+      "name": "Vila Nova de Gaia",
+      "district": "Porto",
+      "latitude": 41.133333333333,
+      "longitude": -8.6166666666667,
+      "localities": [
+        "Arcozelo",
+        "Avintes",
+        "Canelas",
+        "Canidelo",
+        "Crestuma",
+        "Grijó",
+        "Gulpilhares",
+        "Lever",
+        "Madalena",
+        "Mafamude",
+        "Olival",
+        "Oliveira do Douro",
+        "Pedroso",
+        "Perosinho",
+        "Sandim",
+        "Santa Marinha",
+        "São Félix da Marinha",
+        "São Pedro da Afurada",
+        "Seixezelo",
+        "Sermonde",
+        "Serzedo",
+        "Valadares",
+        "Vilar de Andorinho",
+        "Vilar do Paraíso"
+      ]
+    },
+    {
+      "ineCode": "1318",
+      "name": "Trofa",
+      "district": "Porto",
+      "latitude": 41.337388888889,
+      "longitude": -8.5596111111111,
+      "localities": [
+        "Alvarelhos",
+        "Covelas",
+        "Guidões",
+        "Muro",
+        "União das Freguesias de Bougado (são Martinho e Santiago)",
+        "União das Freguesias de Coronado (são Romão e São Mamede)"
+      ]
+    },
+    {
+      "ineCode": "1401",
+      "name": "Abrantes",
+      "district": "Santarém",
+      "latitude": 39.464444444444,
+      "longitude": -8.1978194444444,
+      "localities": [
+        "Bemposta",
+        "Carvalhal",
+        "Fontes",
+        "Martinchel",
+        "Mouriscas",
+        "Pego",
+        "Rio de Moinhos",
+        "Tramagal",
+        "União das Freguesias de Abrantes (são Vicente e São João) e Alferrarede",
+        "União das Freguesias de Aldeia do Mato e Souto",
+        "União das Freguesias de Alvega e Concavada",
+        "União das Freguesias de São Facundo e Vale das Mós",
+        "União das Freguesias de São Miguel do Rio Torto e Rossio Ao Sul do Tejo"
+      ]
+    },
+    {
+      "ineCode": "1402",
+      "name": "Alcanena",
+      "district": "Santarém",
+      "latitude": 39.466666666667,
+      "longitude": -8.6666666666667,
+      "localities": [
+        "Bugalhos",
+        "Minde",
+        "Moitas Venda",
+        "Monsanto",
+        "Serra de Santo António",
+        "União das Freguesias de Alcanena e Vila Moreira",
+        "União das Freguesias de Malhou, Louriceira e Espinheiro"
+      ]
+    },
+    {
+      "ineCode": "1403",
+      "name": "Almeirim",
+      "district": "Santarém",
+      "latitude": 39.216666666667,
+      "longitude": -8.6333333333333,
+      "localities": [
+        "Almeirim",
+        "Benfica do Ribatejo",
+        "Fazendas de Almeirim",
+        "Raposa"
+      ]
+    },
+    {
+      "ineCode": "1404",
+      "name": "Alpiarça",
+      "district": "Santarém",
+      "latitude": 39.259305555556,
+      "longitude": -8.5849722222222,
+      "localities": [
+        "Alpiarça"
+      ]
+    },
+    {
+      "ineCode": "1405",
+      "name": "Benavente",
+      "district": "Santarém",
+      "latitude": 38.983333333333,
+      "longitude": -8.8166666666667,
+      "localities": [
+        "Barrosa",
+        "Benavente",
+        "Samora Correia",
+        "Santo Estêvão"
+      ]
+    },
+    {
+      "ineCode": "1406",
+      "name": "Cartaxo",
+      "district": "Santarém",
+      "latitude": 39.15,
+      "longitude": -8.7833333333333,
+      "localities": [
+        "Pontével",
+        "União das Freguesias de Ereira e Lapa",
+        "União das Freguesias do Cartaxo e Vale da Pinta",
+        "Valada",
+        "Vale da Pedra",
+        "Vila Chã de Ourique"
+      ]
+    },
+    {
+      "ineCode": "1407",
+      "name": "Chamusca",
+      "district": "Santarém",
+      "latitude": 39.35,
+      "longitude": -8.4833333333333,
+      "localities": [
+        "Carregueira",
+        "Ulme",
+        "União das Freguesias da Chamusca e Pinheiro Grande",
+        "União das Freguesias de Parreira e Chouto",
+        "Vale de Cavalos"
+      ]
+    },
+    {
+      "ineCode": "1408",
+      "name": "Constância",
+      "district": "Santarém",
+      "latitude": 39.483333333333,
+      "longitude": -8.3333333333333,
+      "localities": [
+        "Constância",
+        "Montalvo",
+        "Santa Margarida da Coutada"
+      ]
+    },
+    {
+      "ineCode": "1409",
+      "name": "Coruche",
+      "district": "Santarém",
+      "latitude": 38.95,
+      "longitude": -8.5333333333333,
+      "localities": [
+        "Biscainho",
+        "Branca",
+        "Coruche",
+        "Couço",
+        "Erra",
+        "Fajarda",
+        "Santana do Mato",
+        "São José da Lamarosa"
+      ]
+    },
+    {
+      "ineCode": "1410",
+      "name": "Entroncamento",
+      "district": "Santarém",
+      "latitude": 39.466666666667,
+      "longitude": -8.4666666666667,
+      "localities": [
+        "Nossa Senhora de Fátima",
+        "São João Baptista"
+      ]
+    },
+    {
+      "ineCode": "1411",
+      "name": "Ferreira do Zêzere",
+      "district": "Santarém",
+      "latitude": 39.7,
+      "longitude": -8.2833333333333,
+      "localities": [
+        "Águas Belas",
+        "Beco",
+        "Chãos",
+        "Ferreira do Zêzere",
+        "Igreja Nova do Sobral",
+        "Nossa Senhora do Pranto",
+        "União das Freguesias de Areias e Pias"
+      ]
+    },
+    {
+      "ineCode": "1412",
+      "name": "Golegã",
+      "district": "Santarém",
+      "latitude": 39.4,
+      "longitude": -8.4833333333333,
+      "localities": [
+        "Azinhaga",
+        "Golegã",
+        "Pombalinho"
+      ]
+    },
+    {
+      "ineCode": "1413",
+      "name": "Mação",
+      "district": "Santarém",
+      "latitude": 39.55,
+      "longitude": -8,
+      "localities": [
+        "Amêndoa",
+        "Cardigos",
+        "Carvoeiro",
+        "Envendos",
+        "Ortiga",
+        "União das Freguesias de Mação, Penhascoso e Aboboreira"
+      ]
+    },
+    {
+      "ineCode": "1414",
+      "name": "Rio Maior",
+      "district": "Santarém",
+      "latitude": 39.333333333333,
+      "longitude": -8.9333333333333,
+      "localities": [
+        "Alcobertas",
+        "Arrouquelas",
+        "Asseiceira",
+        "Fráguas",
+        "Rio Maior",
+        "São Sebastião",
+        "União das Freguesias de Azambujeira e Malaqueijo",
+        "União das Freguesias de Marmeleira e Assentiz",
+        "União das Freguesias de Outeiro da Cortiçada e Arruda dos Pisões",
+        "União das Freguesias de São João da Ribeira e Ribeira de São João"
+      ]
+    },
+    {
+      "ineCode": "1415",
+      "name": "Salvaterra de Magos",
+      "district": "Santarém",
+      "latitude": 39.016666666667,
+      "longitude": -8.7833333333333,
+      "localities": [
+        "Foros de Salvaterra",
+        "Glória do Ribatejo",
+        "Granho",
+        "Marinhais",
+        "Muge",
+        "Salvaterra de Magos"
+      ]
+    },
+    {
+      "ineCode": "1416",
+      "name": "Santarém",
+      "district": "Santarém",
+      "latitude": 39.239166666667,
+      "longitude": -8.6869444444444,
+      "localities": [
+        "Abitureiras",
+        "Abrã",
+        "Alcanede",
+        "Alcanhões",
+        "Almoster",
+        "Amiais de Baixo",
+        "Arneiro das Milhariças",
+        "Gançaria",
+        "Moçarria",
+        "Pernes",
+        "Póvoa da Isenta",
+        "São Vicente do Paul",
+        "União das Freguesias de Achete, Azoia de Baixo e Póvoa de Santarém",
+        "União das Freguesias de Azoia de Cima e Tremês",
+        "União das Freguesias de Casével e Vaqueiros",
+        "União das Freguesias de Romeira e Várzea",
+        "União de Freguesias da Cidade de Santarém",
+        "Vale de Figueira",
+        "Vale de Santarém"
+      ]
+    },
+    {
+      "ineCode": "1417",
+      "name": "Sardoal",
+      "district": "Santarém",
+      "latitude": 39.533333333333,
+      "longitude": -8.1666666666667,
+      "localities": [
+        "Alcaravela",
+        "Santiago de Montalegre",
+        "Sardoal",
+        "Valhascos"
+      ]
+    },
+    {
+      "ineCode": "1418",
+      "name": "Tomar",
+      "district": "Santarém",
+      "latitude": 39.6,
+      "longitude": -8.4166666666667,
+      "localities": [
+        "Asseiceira",
+        "Carregueiros",
+        "Junceira",
+        "Olalhas",
+        "Paialvo",
+        "Sabacheira",
+        "São Pedro de Tomar",
+        "Serra",
+        "União das Freguesias de Além da Ribeira e Pedreira",
+        "União das Freguesias de Casais e Alviobeira",
+        "União das Freguesias de Madalena e Beselga",
+        "União das Freguesias de Tomar (são João Baptista) e Santa Maria dos Olivais"
+      ]
+    },
+    {
+      "ineCode": "1419",
+      "name": "Torres Novas",
+      "district": "Santarém",
+      "latitude": 39.483333333333,
+      "longitude": -8.5333333333333,
+      "localities": [
+        "Assentiz",
+        "Chancelaria",
+        "Meia Via",
+        "Pedrógão",
+        "Riachos",
+        "União das Freguesias de Brogueira, Parceiros de Igreja e Alcorochel",
+        "União das Freguesias de Olaia e Paço",
+        "União das Freguesias de Torres Novas (santa Maria, Salvador e Santiago)",
+        "União das Freguesias de Torres Novas (são Pedro), Lapas e Ribeira Branca",
+        "Zibreira"
+      ]
+    },
+    {
+      "ineCode": "1420",
+      "name": "Vila Nova da Barquinha",
+      "district": "Santarém",
+      "latitude": 39.458132834674,
+      "longitude": -8.4310946098444,
+      "localities": [
+        "Atalaia",
+        "Praia do Ribatejo",
+        "Tancos",
+        "Vila Nova da Barquinha"
+      ]
+    },
+    {
+      "ineCode": "1421",
+      "name": "Ourém",
+      "district": "Santarém",
+      "latitude": 39.65,
+      "longitude": -8.5833333333333,
+      "localities": [
+        "Alburitel",
+        "Atouguia",
+        "Casal dos Bernardos",
+        "Caxarias",
+        "Cercal",
+        "Espite",
+        "Fátima",
+        "Gondemaria",
+        "Matas",
+        "Nossa Senhora da Piedade",
+        "Nossa Senhora das Misericórdias",
+        "Olival",
+        "Rio de Couros",
+        "Seiça",
+        "União das Freguesias de Freixianda, Ribeira do Fárrio e Formigais",
+        "Urqueira"
+      ]
+    },
+    {
+      "ineCode": "1501",
+      "name": "Alcácer do Sal",
+      "district": "Setúbal",
+      "latitude": 38.3725,
+      "longitude": -8.5133333333333,
+      "localities": [
+        "Alcácer do Sal (santa Maria do Castelo)",
+        "Alcácer do Sal (santiago)",
+        "Comporta",
+        "Santa Susana",
+        "São Martinho",
+        "Torrão"
+      ]
+    },
+    {
+      "ineCode": "1502",
+      "name": "Alcochete",
+      "district": "Setúbal",
+      "latitude": 38.755277777778,
+      "longitude": -8.9608333333333,
+      "localities": [
+        "Alcochete",
+        "Samouco",
+        "São Francisco"
+      ]
+    },
+    {
+      "ineCode": "1503",
+      "name": "Almada",
+      "district": "Setúbal",
+      "latitude": 38.68027778,
+      "longitude": -9.15833333,
+      "localities": [
+        "Costa da Caparica",
+        "União das Freguesias de Almada, Cova da Piedade, Pragal e Cacilhas",
+        "União das Freguesias de Caparica e Trafaria",
+        "União das Freguesias de Charneca de Caparica e Sobreda",
+        "União das Freguesias de Laranjeiro e Feijó"
+      ]
+    },
+    {
+      "ineCode": "1504",
+      "name": "Barreiro",
+      "district": "Setúbal",
+      "latitude": 38.660888888889,
+      "longitude": -9.0732777777778,
+      "localities": [
+        "Santo António da Charneca",
+        "União das Freguesias de Alto do Seixalinho, Santo André e Verderena",
+        "União das Freguesias de Barreiro e Lavradio",
+        "União das Freguesias de Palhais e Coina"
+      ]
+    },
+    {
+      "ineCode": "1505",
+      "name": "Grândola",
+      "district": "Setúbal",
+      "latitude": 38.176809,
+      "longitude": -8.568896,
+      "localities": [
+        "Azinheira dos Barros e São Mamede do Sádão",
+        "Carvalhal",
+        "Melides",
+        "União das Freguesias de Grândola e Santa Margarida da Serra"
+      ]
+    },
+    {
+      "ineCode": "1506",
+      "name": "Moita",
+      "district": "Setúbal",
+      "latitude": 38.65,
+      "longitude": -8.9833333333333,
+      "localities": [
+        "Alhos Vedros",
+        "Moita",
+        "União das Freguesias de Baixa da Banheira e Vale da Amoreira",
+        "União das Freguesias de Gaio-Rosário e Sarilhos Pequenos"
+      ]
+    },
+    {
+      "ineCode": "1507",
+      "name": "Montijo",
+      "district": "Setúbal",
+      "latitude": 38.704888888889,
+      "longitude": -8.9756666666667,
+      "localities": [
+        "Canha",
+        "Sarilhos Grandes",
+        "União das Freguesias de Atalaia e Alto Estanqueiro-Jardia",
+        "União das Freguesias de Montijo e Afonsoeiro",
+        "União das Freguesias de Pegões"
+      ]
+    },
+    {
+      "ineCode": "1508",
+      "name": "Palmela",
+      "district": "Setúbal",
+      "latitude": 38.567489,
+      "longitude": -8.89908,
+      "localities": [
+        "Palmela",
+        "Pinhal Novo",
+        "Quinta do Anjo",
+        "União das Freguesias de Poceirão e Marateca"
+      ]
+    },
+    {
+      "ineCode": "1509",
+      "name": "Santiago do Cacém",
+      "district": "Setúbal",
+      "latitude": 38,
+      "longitude": -8.6833333333333,
+      "localities": [
+        "Abela",
+        "Alvalade",
+        "Cercal",
+        "Ermidas-Sado",
+        "Santo André",
+        "São Domingos",
+        "São Francisco da Serra",
+        "União das Freguesias de Santiago do Cacém, Santa Cruz e São Bartolomeu da Serra",
+        "Vale de Água"
+      ]
+    },
+    {
+      "ineCode": "1510",
+      "name": "Seixal",
+      "district": "Setúbal",
+      "latitude": 38.6422246,
+      "longitude": -9.1072662,
+      "localities": [
+        "Amora",
+        "Arrentela",
+        "Corroios",
+        "Fernão Ferro",
+        "Paio Pires",
+        "Seixal"
+      ]
+    },
+    {
+      "ineCode": "1511",
+      "name": "Sesimbra",
+      "district": "Setúbal",
+      "latitude": 38.443722222222,
+      "longitude": -9.0996388888889,
+      "localities": [
+        "Quinta do Conde",
+        "Sesimbra (castelo)",
+        "Sesimbra (santiago)"
+      ]
+    },
+    {
+      "ineCode": "1512",
+      "name": "Setúbal",
+      "district": "Setúbal",
+      "latitude": 38.524305555556,
+      "longitude": -8.8926111111111,
+      "localities": [
+        "Gâmbia-Pontes-Alto da Guerra",
+        "Sado",
+        "Setúbal (são Sebastião)",
+        "União das Freguesias de Azeitão (são Lourenço e São Simão)",
+        "União das Freguesias de Setúbal (são Julião, Nossa Senhora da Anunciada e Santa Maria da Graça)"
+      ]
+    },
+    {
+      "ineCode": "1513",
+      "name": "Sines",
+      "district": "Setúbal",
+      "latitude": 37.954722222222,
+      "longitude": -8.8641666666667,
+      "localities": [
+        "Porto Covo",
+        "Sines"
+      ]
+    },
+    {
+      "ineCode": "1601",
+      "name": "Arcos de Valdevez",
+      "district": "Viana do Castelo",
+      "latitude": 41.85,
+      "longitude": -8.4166666666667,
+      "localities": [
+        "Aboim das Choças",
+        "Aguiã",
+        "Ázere",
+        "Cabana Maior",
+        "Cabreiro",
+        "Cendufe",
+        "Couto",
+        "Gavieira",
+        "Gondoriz",
+        "Jolda (são Paio)",
+        "Miranda",
+        "Monte Redondo",
+        "Oliveira",
+        "Paçô",
+        "Padroso",
+        "Prozelo",
+        "Rio de Moinhos",
+        "Rio Frio",
+        "Sabadim",
+        "Senharei",
+        "Sistelo",
+        "Soajo",
+        "União das Freguesias de Alvora e Loureda",
+        "União das Freguesias de Arcos de Valdevez (salvador), Vila Fonche e Parada",
+        "União das Freguesias de Arcos de Valdevez (são Paio) e Giela",
+        "União das Freguesias de Eiras e Mei",
+        "União das Freguesias de Grade e Carralcova",
+        "União das Freguesias de Guilhadeses e Santar",
+        "União das Freguesias de Jolda (madalena) e Rio Cabrão",
+        "União das Freguesias de Padreiro (salvador e Santa Cristina)",
+        "União das Freguesias de Portela e Extremo",
+        "União das Freguesias de São Jorge e Ermelo",
+        "União das Freguesias de Souto e Tabaçô",
+        "União das Freguesias de Távora (santa Maria e São Vicente)",
+        "União das Freguesias de Vilela, São Cosme e São Damião e Sá",
+        "Vale"
+      ]
+    },
+    {
+      "ineCode": "1602",
+      "name": "Caminha",
+      "district": "Viana do Castelo",
+      "latitude": 41.833333333333,
+      "longitude": -8.8333333333333,
+      "localities": [
+        "Âncora",
+        "Argela",
+        "Dem",
+        "Lanhelas",
+        "Riba de Âncora",
+        "Seixas",
+        "União das Freguesias de Arga (baixo, Cima e São João)",
+        "União das Freguesias de Caminha (matriz) e Vilarelho",
+        "União das Freguesias de Gondar e Orbacém",
+        "União das Freguesias de Moledo e Cristelo",
+        "União das Freguesias de Venade e Azevedo",
+        "Vila Praia de Âncora",
+        "Vilar de Mouros",
+        "Vile"
+      ]
+    },
+    {
+      "ineCode": "1603",
+      "name": "Melgaço",
+      "district": "Viana do Castelo",
+      "latitude": 42.116666666667,
+      "longitude": -8.2666666666667,
+      "localities": [
+        "Alvaredo",
+        "Cousso",
+        "Cristoval",
+        "Fiães",
+        "Gave",
+        "Paderne",
+        "Penso",
+        "São Paio",
+        "União das Freguesias de Castro Laboreiro e Lamas de Mouro",
+        "União das Freguesias de Chaviães e Paços",
+        "União das Freguesias de Parada do Monte e Cubalhão",
+        "União das Freguesias de Prado e Remoães",
+        "União das Freguesias de Vila e Roussas"
+      ]
+    },
+    {
+      "ineCode": "1604",
+      "name": "Monção",
+      "district": "Viana do Castelo",
+      "latitude": 42.073333333333,
+      "longitude": -8.48,
+      "localities": [
+        "Abedim",
+        "Barbeita",
+        "Barroças e Taias",
+        "Bela",
+        "Cambeses",
+        "Lara",
+        "Longos Vales",
+        "Merufe",
+        "Moreira",
+        "Pias",
+        "Pinheiros",
+        "Podame",
+        "Portela",
+        "Riba de Mouro",
+        "Segude",
+        "Tangil",
+        "Trute",
+        "União das Freguesias de Anhões e Luzio",
+        "União das Freguesias de Ceivães e Badim",
+        "União das Freguesias de Mazedo e Cortes",
+        "União das Freguesias de Messegães, Valadares e Sá",
+        "União das Freguesias de Monção e Troviscoso",
+        "União das Freguesias de Sago, Lordelo e Parada",
+        "União das Freguesias de Troporiz e Lapela"
+      ]
+    },
+    {
+      "ineCode": "1605",
+      "name": "Paredes de Coura",
+      "district": "Viana do Castelo",
+      "latitude": 41.912683333333,
+      "longitude": -8.5621805555556,
+      "localities": [
+        "Agualonga",
+        "Castanheira",
+        "Coura",
+        "Cunha",
+        "Infesta",
+        "Mozelos",
+        "Padornelo",
+        "Parada",
+        "Romarigães",
+        "Rubiães",
+        "União das Freguesias de Bico e Cristelo",
+        "União das Freguesias de Cossourado e Linhares",
+        "União das Freguesias de Formariz e Ferreira",
+        "União das Freguesias de Insalde e Porreiras",
+        "União das Freguesias de Paredes de Coura e Resende",
+        "Vascões"
+      ]
+    },
+    {
+      "ineCode": "1606",
+      "name": "Ponte da Barca",
+      "district": "Viana do Castelo",
+      "latitude": 41.8,
+      "longitude": -8.4166666666667,
+      "localities": [
+        "Azias",
+        "Boivães",
+        "Bravães",
+        "Britelo",
+        "Cuide de Vila Verde",
+        "Lavradas",
+        "Lindoso",
+        "Nogueira",
+        "Oleiros",
+        "Sampriz",
+        "União das Freguesias de Crasto, Ruivos e Grovelas",
+        "União das Freguesias de Entre Ambos-os-Rios, Ermida e Germil",
+        "União das Freguesias de Ponte da Barca, Vila Nova de Muía e Paço Vedro de Magalhães",
+        "União das Freguesias de Touvedo (são Lourenço e Salvador)",
+        "União das Freguesias de Vila Chã (são João Baptista e Santiago)",
+        "Vade (são Pedro)",
+        "Vade (são Tomé)"
+      ]
+    },
+    {
+      "ineCode": "1607",
+      "name": "Ponte de Lima",
+      "district": "Viana do Castelo",
+      "latitude": 41.766666666667,
+      "longitude": -8.5833333333333,
+      "localities": [
+        "Anais",
+        "Arca e Ponte de Lima",
+        "Arcozelo",
+        "Ardegão, Freixo e Mato",
+        "Bárrio e Cepões",
+        "Beiral do Lima",
+        "Bertiandos",
+        "Boalhosa",
+        "Brandara",
+        "Cabaços e Fojo Lobal",
+        "Cabração e Moreira do Lima",
+        "Calheiros",
+        "Calvelo",
+        "Correlhã",
+        "Estorãos",
+        "Facha",
+        "Feitosa",
+        "Fontão",
+        "Fornelos e Queijada",
+        "Friastelas",
+        "Gaifar",
+        "Gandra",
+        "Gemieira",
+        "Gondufe",
+        "Labruja",
+        "Labrujó, Rendufe e Vilar do Monte",
+        "Navió e Vitorino dos Piães",
+        "Poiares",
+        "Rebordões (santa Maria)",
+        "Rebordões (souto)",
+        "Refóios do Lima",
+        "Ribeira",
+        "Sá",
+        "Sandiães",
+        "Santa Comba",
+        "Santa Cruz do Lima",
+        "São Pedro D'arcos",
+        "Seara",
+        "Serdedelo",
+        "Vilar das Almas",
+        "Vitorino das Donas"
+      ]
+    },
+    {
+      "ineCode": "1608",
+      "name": "Valença",
+      "district": "Viana do Castelo",
+      "latitude": 42.02821,
+      "longitude": -8.63388,
+      "localities": [
+        "Boivão",
+        "Cerdal",
+        "Fontoura",
+        "Friestas",
+        "Ganfei",
+        "São Pedro da Torre",
+        "União das Freguesias de Gandra e Taião",
+        "União das Freguesias de Gondomil e Sanfins",
+        "União das Freguesias de São Julião e Silva",
+        "União das Freguesias de Valença, Cristelo Covo e Arão",
+        "Verdoejo"
+      ]
+    },
+    {
+      "ineCode": "1609",
+      "name": "Viana do Castelo",
+      "district": "Viana do Castelo",
+      "latitude": 41.7,
+      "longitude": -8.8333333333333,
+      "localities": [
+        "Afife",
+        "Alvarães",
+        "Amonde",
+        "Anha",
+        "Areosa",
+        "Barroselas",
+        "Cardielos",
+        "Carreço",
+        "Carvoeiro",
+        "Castelo do Neiva",
+        "Chafé",
+        "Darque",
+        "Freixieiro de Soutelo",
+        "Lanheses",
+        "Mazarefes",
+        "Montaria",
+        "Mujães",
+        "Outeiro",
+        "Perre",
+        "Santa Marta de Portuzelo",
+        "São Romão de Neiva",
+        "Serreleis",
+        "União das Freguesias de Geraz do Lima (santa Maria, Santa Leocádia e Moreira) e Deão",
+        "União das Freguesias de Nogueira, Meixedo e Vilar de Murteda",
+        "União das Freguesias de Subportela, Deocriste e Portela Susã",
+        "União das Freguesias de Torre e Vila Mou",
+        "União das Freguesias de Viana do Castelo (santa Maria Maior e Monserrate) e Meadela",
+        "Vila de Punhe",
+        "Vila Franca",
+        "Vila Fria"
+      ]
+    },
+    {
+      "ineCode": "1610",
+      "name": "Vila Nova de Cerveira",
+      "district": "Viana do Castelo",
+      "latitude": 41.933333333333,
+      "longitude": -8.7333333333333,
+      "localities": [
+        "Cornes",
+        "Covas",
+        "Gondarém",
+        "Loivo",
+        "Mentrestido",
+        "Sapardos",
+        "Sopo",
+        "União das Freguesias de Campos e Vila Meã",
+        "União das Freguesias de Candemil e Gondar",
+        "União das Freguesias de Reboreda e Nogueira",
+        "União das Freguesias de Vila Nova de Cerveira e Lovelhe"
+      ]
+    },
+    {
+      "ineCode": "1701",
+      "name": "Alijó",
+      "district": "Vila Real",
+      "latitude": 41.276444,
+      "longitude": -7.474889,
+      "localities": [
+        "Alijó",
+        "Favaios",
+        "Pegarinhos",
+        "Pinhão",
+        "Sanfins do Douro",
+        "Santa Eugénia",
+        "São Mamede de Ribatua",
+        "União das Freguesias de Carlão e Amieiro",
+        "União das Freguesias de Castedo e Cotas",
+        "União das Freguesias de Pópulo e Ribalonga",
+        "União das Freguesias de Vale de Mendiz, Casal de Loivos e Vilarinho de Cotas",
+        "Vila Chã",
+        "Vila Verde",
+        "Vilar de Maçada"
+      ]
+    },
+    {
+      "ineCode": "1702",
+      "name": "Boticas",
+      "district": "Vila Real",
+      "latitude": 41.683333333333,
+      "longitude": -7.6666666666667,
+      "localities": [
+        "Alturas do Barroso e Cerdedo",
+        "Ardãos e Bobadela",
+        "Beça",
+        "Boticas e Granja",
+        "Codessoso, Curros e Fiães do Tâmega",
+        "Covas do Barroso",
+        "Dornelas",
+        "Pinho",
+        "Sapiãos",
+        "Vilar e Viveiro"
+      ]
+    },
+    {
+      "ineCode": "1703",
+      "name": "Chaves",
+      "district": "Vila Real",
+      "latitude": 41.739869444444,
+      "longitude": -7.4706805555556,
+      "localities": [
+        "Águas Frias",
+        "Anelhe",
+        "Bustelo",
+        "Cimo de Vila da Castanheira",
+        "Curalha",
+        "Ervededo",
+        "Faiões",
+        "Lama de Arcos",
+        "Mairos",
+        "Moreiras",
+        "Nogueira da Montanha",
+        "Oura",
+        "Outeiro Seco",
+        "Paradela",
+        "Planalto de Monforte (união das Freguesias de Oucidres e Bobadela)",
+        "Redondelo",
+        "Sanfins",
+        "Santa Leocádia",
+        "Santa Maria Maior",
+        "Santo António de Monforte",
+        "Santo Estêvão",
+        "São Pedro de Agostém",
+        "São Vicente",
+        "Tronco",
+        "União das Freguesias da Madalena e Samaiões",
+        "União das Freguesias das Eiras, São Julião de Montenegro e Cela",
+        "União das Freguesias de Calvão e Soutelinho da Raia",
+        "União das Freguesias de Loivos e Póvoa de Agrações",
+        "União das Freguesias de Santa Cruz/trindade e Sanjurge",
+        "União das Freguesias de Soutelo e Seara Velha",
+        "União das Freguesias de Travancas e Roriz",
+        "Vale de Anta",
+        "Vidago (união das Freguesias de Vidago, Arcossó, Selhariz e Vilarinho das Paranheiras)",
+        "Vila Verde da Raia",
+        "Vilar de Nantes",
+        "Vilarelho da Raia",
+        "Vilas Boas",
+        "Vilela do Tâmega",
+        "Vilela Seca"
+      ]
+    },
+    {
+      "ineCode": "1704",
+      "name": "Mesão Frio",
+      "district": "Vila Real",
+      "latitude": 41.166666666667,
+      "longitude": -7.8833333333333,
+      "localities": [
+        "Barqueiros",
+        "Cidadelhe",
+        "Mesão Frio (santo André)",
+        "Oliveira",
+        "Vila Marim"
+      ]
+    },
+    {
+      "ineCode": "1705",
+      "name": "Mondim de Basto",
+      "district": "Vila Real",
+      "latitude": 41.4,
+      "longitude": -7.95,
+      "localities": [
+        "Atei",
+        "Bilhó",
+        "São Cristóvão de Mondim de Basto",
+        "União das Freguesias de Campanhó e Paradança",
+        "União das Freguesias de Ermelo e Pardelhas",
+        "Vilar de Ferreiros"
+      ]
+    },
+    {
+      "ineCode": "1706",
+      "name": "Montalegre",
+      "district": "Vila Real",
+      "latitude": 41.816666666667,
+      "longitude": -7.7833333333333,
+      "localities": [
+        "Cabril",
+        "Cervos",
+        "Chã",
+        "Covelo do Gerês",
+        "Ferral",
+        "Gralhas",
+        "Morgade",
+        "Negrões",
+        "Outeiro",
+        "Pitões das Junias",
+        "Reigoso",
+        "Salto",
+        "Santo André",
+        "Sarraquinhos",
+        "Solveira",
+        "Tourém",
+        "União das Freguesias de Cambeses do Rio, Donões e Mourilhe",
+        "União das Freguesias de Meixedo e Padornelos",
+        "União das Freguesias de Montalegre e Padroso",
+        "União das Freguesias de Paradela, Contim e Fiães",
+        "União das Freguesias de Sezelhe e Covelães",
+        "União das Freguesias de Venda Nova e Pondras",
+        "União das Freguesias de Viade de Baixo e Fervidelas",
+        "União das Freguesias de Vilar de Perdizes e Meixide",
+        "Vila da Ponte"
+      ]
+    },
+    {
+      "ineCode": "1707",
+      "name": "Murça",
+      "district": "Vila Real",
+      "latitude": 41.4,
+      "longitude": -7.45,
+      "localities": [
+        "Candedo",
+        "Fiolhoso",
+        "Jou",
+        "Murça",
+        "União das Freguesias de Carva e Vilares",
+        "União das Freguesias de Noura e Palheiros",
+        "Valongo de Milhais"
+      ]
+    },
+    {
+      "ineCode": "1708",
+      "name": "Peso da Régua",
+      "district": "Vila Real",
+      "latitude": 41.163176,
+      "longitude": -7.789014,
+      "localities": [
+        "Canelas",
+        "Fontelas",
+        "Loureiro",
+        "Poiares",
+        "Sedielos",
+        "União das Freguesias de Galafura e Covelinhas",
+        "União das Freguesias de Moura Morta e Vinhós",
+        "União das Freguesias de Peso da Régua e Godim",
+        "Vilarinho dos Freires"
+      ]
+    },
+    {
+      "ineCode": "1709",
+      "name": "Ribeira de Pena",
+      "district": "Vila Real",
+      "latitude": 41.516666666667,
+      "longitude": -7.8,
+      "localities": [
+        "Alvadia",
+        "Canedo",
+        "Santa Marinha",
+        "União das Freguesias de Cerva e Limões",
+        "União das Freguesias de Ribeira de Pena (salvador) e Santo Aleixo de Além-Tâmega"
+      ]
+    },
+    {
+      "ineCode": "1710",
+      "name": "Sabrosa",
+      "district": "Vila Real",
+      "latitude": 41.265101944444,
+      "longitude": -7.5750516666667,
+      "localities": [
+        "Celeirós",
+        "Covas do Douro",
+        "Gouvinhas",
+        "Paços",
+        "Parada de Pinhão",
+        "Sabrosa",
+        "São Lourenço de Ribapinhão",
+        "Souto Maior",
+        "Torre do Pinhão",
+        "União das Freguesias de Provesende, Gouvães do Douro e São Cristóvão do Douro",
+        "União das Freguesias de São Martinho de Antas e Paradela de Guiães",
+        "Vilarinho de São Romão"
+      ]
+    },
+    {
+      "ineCode": "1711",
+      "name": "Santa Marta de Penaguião",
+      "district": "Vila Real",
+      "latitude": 41.2,
+      "longitude": -7.7833333333333,
+      "localities": [
+        "Alvações do Corgo",
+        "Cumieira",
+        "Fontes",
+        "Lobrigos (são João Baptista)",
+        "Lobrigos (são Miguel)",
+        "Medrões",
+        "Sanhoane",
+        "Sever",
+        "União das Freguesias de Louredo e Fornelos"
+      ]
+    },
+    {
+      "ineCode": "1712",
+      "name": "Valpaços",
+      "district": "Vila Real",
+      "latitude": 41.6,
+      "longitude": -7.3166666666667,
+      "localities": [
+        "Água Revés e Crasto",
+        "Algeriz",
+        "Bouçoães",
+        "Canaveses",
+        "Carrazedo de Montenegro e Curros",
+        "Ervões",
+        "Fornos do Pinhal",
+        "Friões",
+        "Lebução, Fiães e Nozelos",
+        "Padrela e Tazem",
+        "Possacos",
+        "Rio Torto",
+        "Santa Maria de Emeres",
+        "Santa Valha",
+        "Santiago da Ribeira de Alhariz",
+        "São João da Corveira",
+        "São Pedro de Veiga de Lila",
+        "Serapicos",
+        "Sonim e Barreiros",
+        "Tinhela e Alvarelhos",
+        "Vales",
+        "Valpaços e Sanfins",
+        "Vassal",
+        "Veiga de Lila",
+        "Vilarandelo"
+      ]
+    },
+    {
+      "ineCode": "1713",
+      "name": "Vila Pouca de Aguiar",
+      "district": "Vila Real",
+      "latitude": 41.483333333333,
+      "longitude": -7.6333333333333,
+      "localities": [
+        "Alfarela de Jales",
+        "Alvão",
+        "Bornes de Aguiar",
+        "Bragado",
+        "Capeludos",
+        "Sabroso de Aguiar",
+        "Soutelo de Aguiar",
+        "Telões",
+        "Tresminas",
+        "União das Freguesias de Pensalvos e Parada de Monteiros",
+        "Valoura",
+        "Vila Pouca de Aguiar",
+        "Vreia de Bornes",
+        "Vreia de Jales"
+      ]
+    },
+    {
+      "ineCode": "1714",
+      "name": "Vila Real",
+      "district": "Vila Real",
+      "latitude": 41.295277777778,
+      "longitude": -7.7461111111111,
+      "localities": [
+        "Abaças",
+        "Andrães",
+        "Arroios",
+        "Campeã",
+        "Folhadela",
+        "Guiães",
+        "Lordelo",
+        "Mateus",
+        "Mondrões",
+        "Parada de Cunhos",
+        "Torgueda",
+        "União das Freguesias de Adoufe e Vilarinho de Samardã",
+        "União das Freguesias de Borbela e Lamas de Olo",
+        "União das Freguesias de Constantim e Vale de Nogueiras",
+        "União das Freguesias de Mouçós e Lamares",
+        "União das Freguesias de Nogueira e Ermida",
+        "União das Freguesias de Pena, Quintã e Vila Cova",
+        "União das Freguesias de São Tomé do Castelo e Justes",
+        "Vila Marim",
+        "Vila Real"
+      ]
+    },
+    {
+      "ineCode": "1801",
+      "name": "Armamar",
+      "district": "Viseu",
+      "latitude": 41.116666666667,
+      "longitude": -7.6833333333333,
+      "localities": [
+        "Aldeias",
+        "Armamar",
+        "Cimbres",
+        "Folgosa",
+        "Fontelo",
+        "Queimada",
+        "Queimadela",
+        "Santa Cruz",
+        "São Cosmado",
+        "São Martinho das Chãs",
+        "União das Freguesias de Aricera e Goujoim",
+        "União das Freguesias de São Romão e Santiago",
+        "União das Freguesias de Vila Seca e Santo Adrião",
+        "Vacalar"
+      ]
+    },
+    {
+      "ineCode": "1802",
+      "name": "Carregal do Sal",
+      "district": "Viseu",
+      "latitude": 40.433333333333,
+      "longitude": -8,
+      "localities": [
+        "Beijós",
+        "Cabanas de Viriato",
+        "Carregal do Sal",
+        "Oliveira do Conde",
+        "Parada"
+      ]
+    },
+    {
+      "ineCode": "1803",
+      "name": "Castro Daire",
+      "district": "Viseu",
+      "latitude": 40.9,
+      "longitude": -7.9333333333333,
+      "localities": [
+        "Almofala",
+        "Cabril",
+        "Castro Daire",
+        "Cujó",
+        "Gosende",
+        "Mões",
+        "Moledo",
+        "Monteiras",
+        "Pepim",
+        "Pinheiro",
+        "São Joaninho",
+        "União das Freguesias de Mamouros, Alva e Ribolhos",
+        "União das Freguesias de Mezio e Moura Morta",
+        "União das Freguesias de Parada de Ester e Ester",
+        "União das Freguesias de Picão e Ermida",
+        "União das Freguesias de Reriz e Gafanhão"
+      ]
+    },
+    {
+      "ineCode": "1804",
+      "name": "Cinfães",
+      "district": "Viseu",
+      "latitude": 41.066666666667,
+      "longitude": -8.0833333333333,
+      "localities": [
+        "Cinfães",
+        "Espadanedo",
+        "Ferreiros de Tendais",
+        "Fornelos",
+        "Moimenta",
+        "Nespereira",
+        "Oliveira do Douro",
+        "Santiago de Piães",
+        "São Cristóvão de Nogueira",
+        "Souselo",
+        "Tarouquela",
+        "Tendais",
+        "Travanca",
+        "União das Freguesias de Alhões, Bustelo, Gralheira e Ramires"
+      ]
+    },
+    {
+      "ineCode": "1805",
+      "name": "Lamego",
+      "district": "Viseu",
+      "latitude": 41.098330555556,
+      "longitude": -7.81,
+      "localities": [
+        "Avões",
+        "Britiande",
+        "Cambres",
+        "Ferreirim",
+        "Ferreiros de Avões",
+        "Figueira",
+        "Lalim",
+        "Lamego (almacave e Sé)",
+        "Lazarim",
+        "Penajóia",
+        "Penude",
+        "Samodães",
+        "Sande",
+        "União das Freguesias de Bigorne, Magueija e Pretarouca",
+        "União das Freguesias de Cepões, Meijinhos e Melcões",
+        "União das Freguesias de Parada do Bispo e Valdigem",
+        "Várzea de Abrunhais",
+        "Vila Nova de Souto D'el-Rei"
+      ]
+    },
+    {
+      "ineCode": "1806",
+      "name": "Mangualde",
+      "district": "Viseu",
+      "latitude": 40.6,
+      "longitude": -7.7666666666667,
+      "localities": [
+        "Abrunhosa-a-Velha",
+        "Alcafache",
+        "Cunha Baixa",
+        "Espinho",
+        "Fornos de Maceira Dão",
+        "Freixiosa",
+        "Quintela de Azurara",
+        "São João da Fresta",
+        "União das Freguesias de Mangualde, Mesquitela e Cunha Alta",
+        "União das Freguesias de Moimenta de Maceira Dão e Lobelhe do Mato",
+        "União das Freguesias de Santiago de Cassurrães e Póvoa de Cervães",
+        "União das Freguesias de Tavares (chãs, Várzea e Travanca)"
+      ]
+    },
+    {
+      "ineCode": "1807",
+      "name": "Moimenta da Beira",
+      "district": "Viseu",
+      "latitude": 40.981944444444,
+      "longitude": -7.6158333333333,
+      "localities": [
+        "Alvite",
+        "Arcozelos",
+        "Baldos",
+        "Cabaços",
+        "Caria",
+        "Castelo",
+        "Leomil",
+        "Moimenta da Beira",
+        "Passô",
+        "Sarzedo",
+        "Sever",
+        "União das Freguesias de Paradinha e Nagosa",
+        "União das Freguesias de Pêra Velha, Aldeia de Nacomba e Ariz",
+        "União das Freguesias de Peva e Segões",
+        "Vila da Rua",
+        "Vilar"
+      ]
+    },
+    {
+      "ineCode": "1808",
+      "name": "Mortágua",
+      "district": "Viseu",
+      "latitude": 40.383333333333,
+      "longitude": -8.2166666666667,
+      "localities": [
+        "Cercosa",
+        "Espinho",
+        "Marmeleira",
+        "Pala",
+        "Sobral",
+        "Trezói",
+        "União das Freguesias de Mortágua, Vale de Remígio, Cortegaça e Almaça"
+      ]
+    },
+    {
+      "ineCode": "1809",
+      "name": "Nelas",
+      "district": "Viseu",
+      "latitude": 40.516666666667,
+      "longitude": -7.85,
+      "localities": [
+        "Canas de Senhorim",
+        "Lapa do Lobo",
+        "Nelas",
+        "Senhorim",
+        "União das Freguesias de Carvalhal Redondo e Aguieira",
+        "União das Freguesias de Santar e Moreira",
+        "Vilar Seco"
+      ]
+    },
+    {
+      "ineCode": "1810",
+      "name": "Oliveira de Frades",
+      "district": "Viseu",
+      "latitude": 40.733333333333,
+      "longitude": -8.1666666666667,
+      "localities": [
+        "Arcozelo das Maias",
+        "Pinheiro",
+        "Ribeiradio",
+        "São João da Serra",
+        "São Vicente de Lafões",
+        "União das Freguesias de Arca e Varzielas",
+        "União das Freguesias de Destriz e Reigoso",
+        "União das Freguesias de Oliveira de Frades, Souto de Lafões e Sejães"
+      ]
+    },
+    {
+      "ineCode": "1811",
+      "name": "Penalva do Castelo",
+      "district": "Viseu",
+      "latitude": 40.666666666667,
+      "longitude": -7.6833333333333,
+      "localities": [
+        "Castelo de Penalva",
+        "Esmolfe",
+        "Germil",
+        "Ínsua",
+        "Lusinde",
+        "Pindo",
+        "Real",
+        "Sezures",
+        "Trancozelos",
+        "União das Freguesias de Antas e Matela",
+        "União das Freguesias de Vila Cova do Covelo/mareco"
+      ]
+    },
+    {
+      "ineCode": "1812",
+      "name": "Penedono",
+      "district": "Viseu",
+      "latitude": 40.983333333333,
+      "longitude": -7.3833333333333,
+      "localities": [
+        "Beselga",
+        "Castainço",
+        "Penela da Beira",
+        "Póvoa de Penela",
+        "Souto",
+        "União das Freguesias de Antas e Ourozinho",
+        "União das Freguesias de Penedono e Granja"
+      ]
+    },
+    {
+      "ineCode": "1813",
+      "name": "Resende",
+      "district": "Viseu",
+      "latitude": 41.1,
+      "longitude": -7.95,
+      "localities": [
+        "Barrô",
+        "Cárquere",
+        "Paus",
+        "Resende",
+        "São Cipriano",
+        "São João de Fontoura",
+        "São Martinho de Mouros",
+        "União das Freguesias de Anreade e São Romão de Aregos",
+        "União das Freguesias de Felgueiras e Feirão",
+        "União das Freguesias de Freigil e Miomães",
+        "União das Freguesias de Ovadas e Panchorra"
+      ]
+    },
+    {
+      "ineCode": "1814",
+      "name": "Santa Comba Dão",
+      "district": "Viseu",
+      "latitude": 40.4,
+      "longitude": -8.1333333333333,
+      "localities": [
+        "Pinheiro de Ázere",
+        "São Joaninho",
+        "São João de Areias",
+        "União das Freguesias de Ovoa e Vimieiro",
+        "União das Freguesias de Santa Comba Dão e Couto do Mosteiro",
+        "União das Freguesias de Treixedo e Nagozela"
+      ]
+    },
+    {
+      "ineCode": "1815",
+      "name": "São João da Pesqueira",
+      "district": "Viseu",
+      "latitude": 41.133333333333,
+      "longitude": -7.4,
+      "localities": [
+        "Castanheiro do Sul",
+        "Ervedosa do Douro",
+        "Nagozelo do Douro",
+        "Paredes da Beira",
+        "Riodades",
+        "Soutelo do Douro",
+        "União das Freguesias de São João da Pesqueira e Várzea de Trevões",
+        "União das Freguesias de Trevões e Espinhosa",
+        "União das Freguesias de Vilarouco e Pereiros",
+        "Vale de Figueira",
+        "Valongo dos Azeites"
+      ]
+    },
+    {
+      "ineCode": "1816",
+      "name": "São Pedro do Sul",
+      "district": "Viseu",
+      "latitude": 40.75,
+      "longitude": -8.0666666666667,
+      "localities": [
+        "Bordonhos",
+        "Figueiredo de Alva",
+        "Manhouce",
+        "Pindelo dos Milagres",
+        "Pinho",
+        "São Félix",
+        "Serrazes",
+        "Sul",
+        "União das Freguesias de Carvalhais e Candal",
+        "União das Freguesias de Santa Cruz da Trapa e São Cristóvão de Lafões",
+        "União das Freguesias de São Martinho das Moitas e Covas do Rio",
+        "União das Freguesias de São Pedro do Sul, Várzea e Baiões",
+        "Valadares",
+        "Vila Maior"
+      ]
+    },
+    {
+      "ineCode": "1817",
+      "name": "Sátão",
+      "district": "Viseu",
+      "latitude": 40.733333333333,
+      "longitude": -7.7166666666667,
+      "localities": [
+        "Avelal",
+        "Ferreira de Aves",
+        "Mioma",
+        "Rio de Moinhos",
+        "São Miguel de Vila Boa",
+        "Sátão",
+        "Silvã de Cima",
+        "União das Freguesias de Águas Boas e Forles",
+        "União das Freguesias de Romãs, Decermilo e Vila Longa"
+      ]
+    },
+    {
+      "ineCode": "1818",
+      "name": "Sernancelhe",
+      "district": "Viseu",
+      "latitude": 40.9,
+      "longitude": -7.4833333333333,
+      "localities": [
+        "Arnas",
+        "Carregal",
+        "Chosendo",
+        "Cunha",
+        "Faia",
+        "Granjal",
+        "Lamosa",
+        "Quintela",
+        "União das Freguesias de Ferreirim e Macieira",
+        "União das Freguesias de Fonte Arcada e Escurquela",
+        "União das Freguesias de Penso e Freixinho",
+        "União das Freguesias de Sernancelhe e Sarzeda",
+        "Vila da Ponte"
+      ]
+    },
+    {
+      "ineCode": "1819",
+      "name": "Tabuaço",
+      "district": "Viseu",
+      "latitude": 41.116666666667,
+      "longitude": -7.5666666666667,
+      "localities": [
+        "Adorigo",
+        "Arcos",
+        "Chavães",
+        "Desejosa",
+        "Granja do Tedo",
+        "Longa",
+        "Sendim",
+        "Tabuaço",
+        "União das Freguesias de Barcos e Santa Leocádia",
+        "União das Freguesias de Paradela e Granjinha",
+        "União das Freguesias de Pinheiros e Vale de Figueira",
+        "União das Freguesias de Távora e Pereiro",
+        "Valença do Douro"
+      ]
+    },
+    {
+      "ineCode": "1820",
+      "name": "Tarouca",
+      "district": "Viseu",
+      "latitude": 41.016666666667,
+      "longitude": -7.7833333333333,
+      "localities": [
+        "Dálvares",
+        "Gouviães",
+        "Mondim da Beira",
+        "Salzedas",
+        "São João de Tarouca",
+        "Tarouca",
+        "Ucanha",
+        "União das Freguesias de Granja Nova e Vila Chã da Beira",
+        "Várzea da Serra"
+      ]
+    },
+    {
+      "ineCode": "1821",
+      "name": "Tondela",
+      "district": "Viseu",
+      "latitude": 40.516666666667,
+      "longitude": -8.0833333333333,
+      "localities": [
+        "Barreiro de Besteiros",
+        "Campo de Besteiros",
+        "Canas de Santa Maria",
+        "Castelões",
+        "Dardavaz",
+        "Ferreirós do Dão",
+        "Guardão",
+        "Lajeosa do Dão",
+        "Lobão da Beira",
+        "Molelos",
+        "Mosteiro de Fráguas",
+        "Parada de Gonta",
+        "Sabugosa",
+        "Santiago de Besteiros",
+        "São Miguel do Outeiro",
+        "Tonda",
+        "Tourigo",
+        "União das Freguesias de Caparrosa e Silvares",
+        "União das Freguesias de Mouraz e Vila Nova da Rainha",
+        "União das Freguesias de São João do Monte e Mosteirinho",
+        "União das Freguesias de Tondela e Nandufe",
+        "Vilar de Besteiros"
+      ]
+    },
+    {
+      "ineCode": "1822",
+      "name": "Vila Nova de Paiva",
+      "district": "Viseu",
+      "latitude": 40.85,
+      "longitude": -7.7333333333333,
+      "localities": [
+        "Pendilhe",
+        "Queiriga",
+        "Touro",
+        "União das Freguesias de Vila Nova de Paiva, Alhais e Fráguas",
+        "Vila Cova À Coelheira"
+      ]
+    },
+    {
+      "ineCode": "1823",
+      "name": "Viseu",
+      "district": "Viseu",
+      "latitude": 40.6575,
+      "longitude": -7.9138888888889,
+      "localities": [
+        "Abraveses",
+        "Bodiosa",
+        "Calde",
+        "Campo",
+        "Cavernães",
+        "Cota",
+        "Coutos de Viseu",
+        "Fragosela",
+        "Freguesia de Fail e Vila Chã de Sá",
+        "Lordosa",
+        "Mundão",
+        "Orgens",
+        "Povolide",
+        "Ranhados",
+        "Repeses e São Salvador",
+        "Ribafeita",
+        "Rio de Loba",
+        "Santos Evos",
+        "São Cipriano e Vil de Souto",
+        "São João de Lourosa",
+        "São Pedro de France",
+        "Silgueiros",
+        "União das Freguesias de Barreiros e Cepões",
+        "União das Freguesias de Boa Aldeia, Farminhão e Torredeita",
+        "Viseu"
+      ]
+    },
+    {
+      "ineCode": "1824",
+      "name": "Vouzela",
+      "district": "Viseu",
+      "latitude": 40.7,
+      "longitude": -8.1166666666667,
+      "localities": [
+        "Alcofra",
+        "Campia",
+        "Fornelo do Monte",
+        "Queirã",
+        "São Miguel do Mato",
+        "União das Freguesias de Cambra e Carvalhal de Vermilhas",
+        "União das Freguesias de Fataunços e Figueiredo das Donas",
+        "União das Freguesias de Vouzela e Paços de Vilharigues",
+        "Ventosa"
+      ]
+    },
+    {
+      "ineCode": "3101",
+      "name": "Calheta",
+      "district": "Ilha da Madeira",
+      "latitude": 38.6,
+      "longitude": -28.016666666667,
+      "localities": [
+        "Arco da Calheta",
+        "Calheta",
+        "Estreito da Calheta",
+        "Fajã da Ovelha",
+        "Jardim do Mar",
+        "Paul do Mar",
+        "Ponta do Pargo",
+        "Prazeres"
+      ]
+    },
+    {
+      "ineCode": "3102",
+      "name": "Câmara de Lobos",
+      "district": "Ilha da Madeira",
+      "latitude": 32.65,
+      "longitude": -16.966666666667,
+      "localities": [
+        "Câmara de Lobos",
+        "Curral das Freiras",
+        "Estreito de Câmara de Lobos",
+        "Jardim da Serra",
+        "Quinta Grande"
+      ]
+    },
+    {
+      "ineCode": "3103",
+      "name": "Funchal",
+      "district": "Ilha da Madeira",
+      "latitude": 32.65,
+      "longitude": -16.916666666667,
+      "localities": [
+        "Funchal (santa Luzia)",
+        "Funchal (santa Maria Maior)",
+        "Funchal (são Pedro)",
+        "Funchal (sé)",
+        "Imaculado Coração de Maria",
+        "Monte",
+        "Santo António",
+        "São Gonçalo",
+        "São Martinho",
+        "São Roque"
+      ]
+    },
+    {
+      "ineCode": "3104",
+      "name": "Machico",
+      "district": "Ilha da Madeira",
+      "latitude": 32.716666666667,
+      "longitude": -16.766666666667,
+      "localities": [
+        "Água de Pena",
+        "Caniçal",
+        "Machico",
+        "Porto da Cruz",
+        "Santo António da Serra"
+      ]
+    },
+    {
+      "ineCode": "3105",
+      "name": "Ponta do Sol",
+      "district": "Ilha da Madeira",
+      "latitude": 32.681111111111,
+      "longitude": -17.104166666667,
+      "localities": [
+        "Canhas",
+        "Madalena do Mar",
+        "Ponta do Sol"
+      ]
+    },
+    {
+      "ineCode": "3106",
+      "name": "Porto Moniz",
+      "district": "Ilha da Madeira",
+      "latitude": 32.866666666667,
+      "longitude": -17.166666666667,
+      "localities": [
+        "Achadas da Cruz",
+        "Porto Moniz",
+        "Ribeira da Janela",
+        "Seixal"
+      ]
+    },
+    {
+      "ineCode": "3107",
+      "name": "Ribeira Brava",
+      "district": "Ilha da Madeira",
+      "latitude": 32.672222222222,
+      "longitude": -17.063888888889,
+      "localities": [
+        "Campanário",
+        "Ribeira Brava",
+        "Serra de Água",
+        "Tabua"
+      ]
+    },
+    {
+      "ineCode": "3108",
+      "name": "Santa Cruz",
+      "district": "Ilha da Madeira",
+      "latitude": 32.67495,
+      "longitude": -16.83088,
+      "localities": [
+        "Camacha",
+        "Caniço",
+        "Gaula",
+        "Santa Cruz",
+        "Santo António da Serra"
+      ]
+    },
+    {
+      "ineCode": "3109",
+      "name": "Santana",
+      "district": "Ilha da Madeira",
+      "latitude": 32.8,
+      "longitude": -16.866666666667,
+      "localities": [
+        "Arco de São Jorge",
+        "Faial",
+        "Ilha",
+        "Santana",
+        "São Jorge",
+        "São Roque do Faial"
+      ]
+    },
+    {
+      "ineCode": "3110",
+      "name": "São Vicente",
+      "district": "Ilha da Madeira",
+      "latitude": 32.796666666667,
+      "longitude": -17.043333333333,
+      "localities": [
+        "Boa Ventura",
+        "Ponta Delgada",
+        "São Vicente"
+      ]
+    },
+    {
+      "ineCode": "3201",
+      "name": "Porto Santo",
+      "district": "Ilha de Porto Santo",
+      "latitude": 33.061944444444,
+      "longitude": -16.356388888889,
+      "localities": [
+        "Porto Santo"
+      ]
+    },
+    {
+      "ineCode": "4101",
+      "name": "Vila do Porto",
+      "district": "Ilha de Santa Maria",
+      "latitude": 36.945,
+      "longitude": -25.145,
+      "localities": [
+        "Almagreira",
+        "Santa Bárbara",
+        "Santo Espírito",
+        "São Pedro",
+        "Vila do Porto"
+      ]
+    },
+    {
+      "ineCode": "4201",
+      "name": "Lagoa (açores)",
+      "district": "Ilha de São Miguel",
+      "latitude": 37.7456,
+      "longitude": -25.5822,
+      "localities": [
+        "Água de Pau",
+        "Cabouco",
+        "Lagoa (nossa Senhora do Rosário)",
+        "Lagoa (santa Cruz)",
+        "Ribeira Chã"
+      ]
+    },
+    {
+      "ineCode": "4202",
+      "name": "Nordeste",
+      "district": "Ilha de São Miguel",
+      "latitude": 37.833333333333,
+      "longitude": -25.15,
+      "localities": [
+        "Achada",
+        "Achadinha",
+        "Algarvia",
+        "Lomba da Fazenda",
+        "Nordeste",
+        "Salga",
+        "Santana",
+        "Santo António de Nordestinho",
+        "São Pedro de Nordestinho"
+      ]
+    },
+    {
+      "ineCode": "4203",
+      "name": "Ponta Delgada",
+      "district": "Ilha de São Miguel",
+      "latitude": 37.74,
+      "longitude": -25.67,
+      "localities": [
+        "Ajuda da Bretanha",
+        "Arrifes",
+        "Candelária",
+        "Capelas",
+        "Covoada",
+        "Fajã de Baixo",
+        "Fajã de Cima",
+        "Fenais da Luz",
+        "Feteiras",
+        "Ginetes",
+        "Mosteiros",
+        "Pilar da Bretanha",
+        "Ponta Delgada (são José)",
+        "Ponta Delgada (são Pedro)",
+        "Ponta Delgada (são Sebastião)",
+        "Relva",
+        "Remédios",
+        "Rosto do Cão (livramento)",
+        "Rosto do Cão (são Roque)",
+        "Santa Bárbara",
+        "Santa Clara",
+        "Santo António",
+        "São Vicente Ferreira",
+        "Sete Cidades"
+      ]
+    },
+    {
+      "ineCode": "4204",
+      "name": "Povoação",
+      "district": "Ilha de São Miguel",
+      "latitude": 37.746,
+      "longitude": -25.245,
+      "localities": [
+        "Água Retorta",
+        "Faial da Terra",
+        "Furnas",
+        "Nossa Senhora dos Remédios",
+        "Povoação",
+        "Ribeira Quente"
+      ]
+    },
+    {
+      "ineCode": "4205",
+      "name": "Ribeira Grande",
+      "district": "Ilha de São Miguel",
+      "latitude": 37.816666666667,
+      "longitude": -25.516666666667,
+      "localities": [
+        "Calhetas",
+        "Fenais da Ajuda",
+        "Lomba da Maia",
+        "Lomba de São Pedro",
+        "Maia",
+        "Pico da Pedra",
+        "Porto Formoso",
+        "Rabo de Peixe",
+        "Ribeira Grande (conceição)",
+        "Ribeira Grande (matriz)",
+        "Ribeira Seca",
+        "Ribeirinha",
+        "Santa Bárbara",
+        "São Brás"
+      ]
+    },
+    {
+      "ineCode": "4206",
+      "name": "Vila Franca do Campo",
+      "district": "Ilha de São Miguel",
+      "latitude": 37.716666666667,
+      "longitude": -25.433333333333,
+      "localities": [
+        "Água de Alto",
+        "Ponta Garça",
+        "Ribeira das Tainhas",
+        "Ribeira Seca",
+        "Vila Franca do Campo (são Miguel)",
+        "Vila Franca do Campo (são Pedro)"
+      ]
+    },
+    {
+      "ineCode": "4301",
+      "name": "Angra do Heroísmo",
+      "district": "Ilha Terceira",
+      "latitude": 38.655833333333,
+      "longitude": -27.215277777778,
+      "localities": [
+        "Altares",
+        "Angra (nossa Senhora da Conceição)",
+        "Angra (santa Luzia)",
+        "Angra (são Pedro)",
+        "Angra (sé)",
+        "Cinco Ribeiras",
+        "Doze Ribeiras",
+        "Feteira",
+        "Porto Judeu",
+        "Posto Santo",
+        "Raminho",
+        "Ribeirinha",
+        "Santa Bárbara",
+        "São Bartolomeu de Regatos",
+        "São Bento",
+        "São Mateus da Calheta",
+        "Serreta",
+        "Terra Chã",
+        "Vila de São Sebastião"
+      ]
+    },
+    {
+      "ineCode": "4302",
+      "name": "Praia da Vitória",
+      "district": "Ilha Terceira",
+      "latitude": 38.733333333333,
+      "longitude": -27.066666666667,
+      "localities": [
+        "Agualva",
+        "Biscoitos",
+        "Cabo da Praia",
+        "Fonte do Bastardo",
+        "Fontinhas",
+        "Lajes",
+        "Porto Martins",
+        "Praia da Vitória (santa Cruz)",
+        "Quatro Ribeiras",
+        "São Brás",
+        "Vila Nova"
+      ]
+    },
+    {
+      "ineCode": "4401",
+      "name": "Santa Cruz da Graciosa",
+      "district": "Ilha Graciosa",
+      "latitude": 39.083333333333,
+      "longitude": -28.016666666667,
+      "localities": [
+        "Guadalupe",
+        "Luz",
+        "Santa Cruz da Graciosa",
+        "São Mateus"
+      ]
+    },
+    {
+      "ineCode": "4501",
+      "name": "Calheta de São Jorge",
+      "district": "Ilha de São Jorge",
+      "latitude": 38.5975,
+      "longitude": -28.0075,
+      "localities": [
+        "Calheta",
+        "Norte Pequeno",
+        "Ribeira Seca",
+        "Santo Antão",
+        "Topo (nossa Senhora do Rosário)"
+      ]
+    },
+    {
+      "ineCode": "4502",
+      "name": "Velas",
+      "district": "Ilha de São Jorge",
+      "latitude": 38.681722222222,
+      "longitude": -28.207944444444,
+      "localities": [
+        "Manadas (santa Bárbara)",
+        "Norte Grande (neves)",
+        "Rosais",
+        "Santo Amaro",
+        "Urzelina (são Mateus)",
+        "Velas (são Jorge)"
+      ]
+    },
+    {
+      "ineCode": "4601",
+      "name": "Lajes do Pico",
+      "district": "Ilha do Pico",
+      "latitude": 38.4,
+      "longitude": -28.25,
+      "localities": [
+        "Calheta de Nesquim",
+        "Lajes do Pico",
+        "Piedade",
+        "Ribeiras",
+        "Ribeirinha",
+        "São João"
+      ]
+    },
+    {
+      "ineCode": "4602",
+      "name": "Madalena",
+      "district": "Ilha do Pico",
+      "latitude": 38.53559,
+      "longitude": -28.52343,
+      "localities": [
+        "Bandeiras",
+        "Candelária",
+        "Criação Velha",
+        "Madalena",
+        "São Caetano",
+        "São Mateus"
+      ]
+    },
+    {
+      "ineCode": "4603",
+      "name": "São Roque do Pico",
+      "district": "Ilha do Pico",
+      "latitude": 38.516666666667,
+      "longitude": -28.316666666667,
+      "localities": [
+        "Prainha",
+        "Santa Luzia",
+        "Santo Amaro",
+        "Santo António",
+        "São Roque do Pico"
+      ]
+    },
+    {
+      "ineCode": "4701",
+      "name": "Horta",
+      "district": "Ilha do Faial",
+      "latitude": 38.533333333333,
+      "longitude": -28.633333333333,
+      "localities": [
+        "Capelo",
+        "Castelo Branco",
+        "Cedros",
+        "Feteira",
+        "Flamengos",
+        "Horta (angústias)",
+        "Horta (conceição)",
+        "Horta (matriz)",
+        "Pedro Miguel",
+        "Praia do Almoxarife",
+        "Praia do Norte",
+        "Ribeirinha",
+        "Salão"
+      ]
+    },
+    {
+      "ineCode": "4801",
+      "name": "Lajes das Flores",
+      "district": "Ilha das Flores",
+      "latitude": 39.383333333333,
+      "longitude": -31.166666666667,
+      "localities": [
+        "Fajã Grande",
+        "Fajãzinha",
+        "Fazenda",
+        "Lajedo",
+        "Lajes das Flores",
+        "Lomba",
+        "Mosteiro"
+      ]
+    },
+    {
+      "ineCode": "4802",
+      "name": "Santa Cruz das Flores",
+      "district": "Ilha das Flores",
+      "latitude": 39.45,
+      "longitude": -31.116666666667,
+      "localities": [
+        "Caveira",
+        "Cedros",
+        "Ponta Delgada",
+        "Santa Cruz das Flores"
+      ]
+    },
+    {
+      "ineCode": "4901",
+      "name": "Corvo",
+      "district": "Ilha do Corvo",
+      "latitude": 39.6994,
+      "longitude": -31.1122,
+      "localities": [
+        "Corvo"
+      ]
+    }
+  ]
+}

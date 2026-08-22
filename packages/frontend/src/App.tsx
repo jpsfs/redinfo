@@ -33,8 +33,16 @@ import {
   HolidayEdit,
 } from './resources/availability';
 import { ScheduleList, ScheduleShow } from './resources/schedules';
+import {
+  EventReportList,
+  EventReportCreate,
+  EventReportShow,
+  EventReportEdit,
+} from './resources/eventReports';
+import { HospitalList, HospitalCreate, HospitalEdit } from './resources/hospitals';
 import { MyAvailabilityPage } from './pages/MyAvailabilityPage';
 import { MyDutiesPage } from './pages/MyDutiesPage';
+import { MyReportsPage } from './pages/MyReportsPage';
 import PeopleIcon from '@mui/icons-material/People';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import BuildIcon from '@mui/icons-material/Build';
@@ -43,6 +51,8 @@ import EventAvailableIcon from '@mui/icons-material/EventAvailable';
 import DateRangeIcon from '@mui/icons-material/DateRange';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
 import EventNoteIcon from '@mui/icons-material/EventNote';
+import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
+import DescriptionIcon from '@mui/icons-material/Description';
 
 export default function App() {
   return (
@@ -67,6 +77,10 @@ export default function App() {
         {/* Duties span every rota someone is on, so this is not scoped to a
             single window the way My Availability is. */}
         <Route path="/my-duties" element={<MyDutiesPage />} />
+        {/* Reading the whole archive needs VIEW_EVENT_REPORTS, so an
+            operational reaches their own reports — and the form to file a new
+            one — through here rather than the resource list. */}
+        <Route path="/my-reports" element={<MyReportsPage />} />
       </CustomRoutes>
 
       <Resource
@@ -135,6 +149,30 @@ export default function App() {
         show={ScheduleShow}
         options={{ label: 'Schedules' }}
       />
+
+      <Resource
+        name="event-reports"
+        icon={DescriptionIcon}
+        list={EventReportList}
+        create={EventReportCreate}
+        show={EventReportShow}
+        edit={EventReportEdit}
+        options={{ label: 'Reports' }}
+      />
+
+      <Resource
+        name="hospitals"
+        icon={LocalHospitalIcon}
+        list={HospitalList}
+        create={HospitalCreate}
+        edit={HospitalEdit}
+        options={{ label: 'Hospitals' }}
+      />
+
+      {/* Read-only reference data, reached only by the pickers that need it —
+          no list, so it stays out of the menu. */}
+      <Resource name="municipalities" options={{ label: 'Municipalities' }} />
+      <Resource name="localities" options={{ label: 'Localities' }} />
 
       <Resource
         name="holidays"

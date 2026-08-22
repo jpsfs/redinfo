@@ -21,8 +21,17 @@ services:
       - backend_node_modules:/app/node_modules
       - backend_pkg_node_modules:/app/packages/backend/node_modules
     # Build shared first, so a fresh clone (empty dist/) still starts.
+    #
+    # `prisma generate` has to be repeated here: this `command` replaces the
+    # Dockerfile's CMD, which is where it otherwise runs. Without it the
+    # container keeps the client generated at image-build time, so the first
+    # schema change after a build fails to compile against a stale client
+    # (`Property 'x' does not exist on type 'PrismaService'`) and the API never
+    # starts. The schema is bind-mounted above, so generating on every boot is
+    # what keeps the client and the schema in step.
     command: >
       sh -c "[ -f /app/packages/shared/dist/index.js ] || pnpm --filter @redinfo/shared build;
+             pnpm --filter backend prisma:generate;
              pnpm --filter backend dev"
 
   frontend:

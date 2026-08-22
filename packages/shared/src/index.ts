@@ -53,6 +53,14 @@ export enum Action {
   VIEW_AVAILABILITY_MATRIX = 'VIEW_AVAILABILITY_MATRIX',
   MANAGE_SCHEDULES = 'MANAGE_SCHEDULES',
   VIEW_SCHEDULES = 'VIEW_SCHEDULES',
+  /** File a report for an activity you were on, and edit your own. */
+  CREATE_EVENT_REPORT = 'CREATE_EVENT_REPORT',
+  /** Read every report, not only the ones you attended. */
+  VIEW_EVENT_REPORTS = 'VIEW_EVENT_REPORTS',
+  /** Edit anyone's filed report. */
+  MANAGE_EVENT_REPORTS = 'MANAGE_EVENT_REPORTS',
+  /** Maintain the hospital list a report's transport destination comes from. */
+  MANAGE_HOSPITALS = 'MANAGE_HOSPITALS',
 }
 
 export const ROLE_PERMISSIONS: Record<UserRole, Action[]> = {
@@ -62,6 +70,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Action[]> = {
     Action.VIEW_VEHICLES,
     Action.MANAGE_VEHICLE_INVENTORY,
     Action.SUBMIT_AVAILABILITY,
+    Action.CREATE_EVENT_REPORT,
   ],
   [UserRole.EMERGENCY_COORDINATOR]: [
     Action.EMERGENCY_OPERATION,
@@ -77,6 +86,12 @@ export const ROLE_PERMISSIONS: Record<UserRole, Action[]> = {
     // Building the rota is the same job as opening the window it comes from.
     Action.MANAGE_SCHEDULES,
     Action.VIEW_SCHEDULES,
+    Action.CREATE_EVENT_REPORT,
+    Action.VIEW_EVENT_REPORTS,
+    Action.MANAGE_EVENT_REPORTS,
+    // The hospital list is report configuration, kept by whoever reads the
+    // reports — the same hand that keeps the holiday table.
+    Action.MANAGE_HOSPITALS,
   ],
   [UserRole.LOGISTICS_COORDINATOR]: [
     Action.MANAGE_LOGISTICS,
@@ -1063,6 +1078,14 @@ export interface ScheduleAssignment {
    * record of a decision, not a live view of the submission table.
    */
   isOverride: boolean;
+  /**
+   * The person put themselves here, on a published schedule.
+   *
+   * Derived from `assignedById === userId` rather than stored. It matters for
+   * how the board reads: an override is something done *to* someone, and
+   * calling a volunteer's own offer of cover by that name would be wrong.
+   */
+  selfAssigned: boolean;
   /** Live state of the same person's submission, for display. */
   availability: AssignmentAvailability;
   assignedById: string;
@@ -1179,6 +1202,51 @@ export interface CreateScheduleAssignmentRequest {
   userId: string;
   /** Required when the window defines roles; rejected when it defines none. */
   roleId?: string | null;
+}
+
+/**
+ * Someone putting *themselves* on a shift of a published schedule.
+ *
+ * No `userId`: the caller is the subject, which is what makes this safe to
+ * offer to everyone rather than only to coordinators.
+ */
+export interface SelfAssignRequest {
+  /** ISO date, `YYYY-MM-DD`. */
+  date: string;
+  slot: number;
+  /** Required when the window defines roles; rejected when it defines none. */
+  roleId?: string | null;
+}
+
+/**
+ * Whether a published schedule is open for someone to add themselves to a role.
+ *
+ * Signing up is a one-way door — a volunteer may fill an open place but not
+ * vacate it — so the screens offering it check the same things the API will,
+ * and say which one is in the way rather than presenting a button that fails.
+ */
+export function selfAssignBlockedReason({
+  role,
+  isDriver,
+  filledInRole,
+  alreadyOnShift,
+  overlaps,
+}: {
+  role: AvailabilityWindowRole | null;
+  isDriver: boolean;
+  filledInRole: number;
+  alreadyOnShift: boolean;
+  overlaps: boolean;
+}): string | null {
+  if (alreadyOnShift) return 'You are already on this shift.';
+  if (overlaps) return 'You are already on another shift at the same time.';
+  if (role?.requiresDriverCertification && !isDriver) {
+    return `${role.name} requires the driver certification.`;
+  }
+  if (role && !roleCanTakeMore(role, filledInRole)) {
+    return `${role.name} is already full on this shift.`;
+  }
+  return null;
 }
 
 /** Keep hand-placed people, or start again from availability. */
@@ -1320,7 +1388,12 @@ export function scheduleFillStats(
       requiredSlots += perShift;
       filledSlots += shift.assignments.length;
       if (shift.gaps.length > 0) shiftsWithGaps += 1;
-      overrideCount += shift.assignments.filter((a) => a.isOverride).length;
+      // Someone who signed themselves up is not cover a coordinator arranged
+      // off-platform, so they do not swell the override count even though no
+      // submission backs them.
+      overrideCount += shift.assignments.filter(
+        (a) => a.isOverride && !a.selfAssigned,
+      ).length;
     }
   }
 
@@ -1344,3 +1417,1064 @@ export function formatGap(gap: ScheduleGap): string {
       return 'Not fully crewed';
   }
 }
+
+// ─── Geography ────────────────────────────────────────────────────────────────
+
+/**
+ * Lowercase ASCII with punctuation collapsed — the form both the locality
+ * search index and the query are folded into, so "sao martinho" matches
+ * "São Martinho do Bispo" and "condeixa a nova" matches "Condeixa-a-Nova".
+ *
+ * Shared so the seed writes exactly what the query looks for; two different
+ * foldings would silently return nothing.
+ */
+export function foldForSearch(value: string): string {
+  return value
+    .normalize('NFD')
+    .replace(/[̀-ͯ]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+}
+
+export interface Municipality {
+  id: string;
+  /** INE `dtmn` code, e.g. "0603". */
+  ineCode: string;
+  name: string;
+  /** District on the mainland, island in the Azores and Madeira. */
+  district: string;
+  latitude: number;
+  longitude: number;
+}
+
+/** A freguesia — what the UI calls a "localidade". */
+export interface Locality {
+  id: string;
+  name: string;
+  municipalityId: string;
+  municipality?: Municipality;
+}
+
+/** Longest a locality search term may be; a guard, not a domain rule. */
+export const MAX_LOCALITY_QUERY_LENGTH = 80;
+
+/** How many localities a search returns — a phone list, not a data dump. */
+export const LOCALITY_SEARCH_LIMIT = 25;
+
+/**
+ * Great-circle distance in kilometres.
+ *
+ * Used only to order hospitals by how far they are from where an event
+ * happened, so the spherical-earth approximation (good to ~0.5%) is far better
+ * than the ordering needs.
+ */
+export function distanceInKm(
+  from: { latitude: number; longitude: number },
+  to: { latitude: number; longitude: number },
+): number {
+  const EARTH_RADIUS_KM = 6371;
+  const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
+
+  const deltaLat = toRadians(to.latitude - from.latitude);
+  const deltaLon = toRadians(to.longitude - from.longitude);
+  const fromLat = toRadians(from.latitude);
+  const toLat = toRadians(to.latitude);
+
+  const a =
+    Math.sin(deltaLat / 2) ** 2 +
+    Math.cos(fromLat) * Math.cos(toLat) * Math.sin(deltaLon / 2) ** 2;
+
+  return 2 * EARTH_RADIUS_KM * Math.asin(Math.min(1, Math.sqrt(a)));
+}
+
+// ─── Hospitals ────────────────────────────────────────────────────────────────
+
+export interface Hospital {
+  id: string;
+  name: string;
+  municipalityId: string;
+  municipality?: Municipality;
+  /**
+   * The hospital's own position when someone filled it in. Null falls back to
+   * the municipality centroid, so distance ordering always works.
+   */
+  latitude?: number | null;
+  longitude?: number | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** A hospital in the picker, with how far it is from the report's locality. */
+export interface HospitalWithDistance extends Hospital {
+  /**
+   * Kilometres from the report's locality, or null when no locality was given
+   * — the picker then falls back to alphabetical order.
+   */
+  distanceKm: number | null;
+  /**
+   * True when `distanceKm` was measured from the municipality centroid rather
+   * than the hospital's own coordinates, so the UI can say so instead of
+   * implying a precision it does not have.
+   */
+  approximate: boolean;
+}
+
+export const MAX_HOSPITAL_NAME_LENGTH = 160;
+
+export interface HospitalInput {
+  name: string;
+  municipalityId: string;
+  latitude?: number | null;
+  longitude?: number | null;
+  isActive?: boolean;
+}
+
+/**
+ * Whether a hospital record is coherent — same "message or null" shape as
+ * every other validator here, so the form blocks Save with the wording the API
+ * would reject the payload with.
+ */
+export function validateHospital(input: HospitalInput): string | null {
+  const name = input.name?.trim() ?? '';
+  if (!name) return 'A hospital needs a name.';
+  if (name.length > MAX_HOSPITAL_NAME_LENGTH) {
+    return `A hospital name may be at most ${MAX_HOSPITAL_NAME_LENGTH} characters (got ${name.length}).`;
+  }
+  if (!input.municipalityId) return 'Choose the municipality the hospital is in.';
+
+  // Both or neither: half a coordinate locates nothing.
+  const hasLatitude = input.latitude !== null && input.latitude !== undefined;
+  const hasLongitude = input.longitude !== null && input.longitude !== undefined;
+  if (hasLatitude !== hasLongitude) {
+    return 'Give both latitude and longitude, or neither.';
+  }
+  if (hasLatitude) {
+    if (!Number.isFinite(input.latitude!) || input.latitude! < -90 || input.latitude! > 90) {
+      return 'Latitude must be between -90 and 90.';
+    }
+    if (!Number.isFinite(input.longitude!) || input.longitude! < -180 || input.longitude! > 180) {
+      return 'Longitude must be between -180 and 180.';
+    }
+  }
+  return null;
+}
+
+/**
+ * Hospitals in the order the picker offers them: nearest first when the report
+ * has a locality, alphabetical otherwise, with un-locatable entries last.
+ *
+ * Shared because both the API (which sorts) and the tests (which assert the
+ * order) must agree on what "nearest first" means, including the ties.
+ */
+export function sortHospitalsForPicker(
+  hospitals: HospitalWithDistance[],
+): HospitalWithDistance[] {
+  return [...hospitals].sort((a, b) => {
+    if (a.distanceKm === null && b.distanceKm === null) {
+      return a.name.localeCompare(b.name, 'pt-PT');
+    }
+    // A hospital nobody can measure sorts after every one that can be.
+    if (a.distanceKm === null) return 1;
+    if (b.distanceKm === null) return -1;
+    if (a.distanceKm !== b.distanceKm) return a.distanceKm - b.distanceKm;
+    return a.name.localeCompare(b.name, 'pt-PT');
+  });
+}
+
+// ─── Event Reports ────────────────────────────────────────────────────────────
+
+/**
+ * What kind of activity a report accounts for.
+ *
+ * The same three kinds as `AvailabilityWindowCategory`, and deliberately so:
+ * the type is what tells a report which rota its crew came from. A type is a
+ * fixed kind with pre-defined behaviour — never configured per report.
+ */
+export enum EventReportType {
+  EMERGENCY = 'EMERGENCY',
+  LOCAL_SUPPORT = 'LOCAL_SUPPORT',
+  SALOP_SUPPORT = 'SALOP_SUPPORT',
+}
+
+/**
+ * Everything that differs between the three kinds of report, in one place.
+ *
+ * Every screen and every service reads its behaviour from here rather than
+ * branching on the enum: adding a fourth kind of activity should mean adding a
+ * row to this table, not hunting for `=== EMERGENCY` across the codebase.
+ */
+export interface EventReportTypeRules {
+  /** Prefix of the rendered report number, e.g. "EMG 128/2026". */
+  codePrefix: string;
+  /** The availability-window category whose schedule staffs this type. */
+  category: AvailabilityWindowCategory;
+  /** Emergency chronology (activation, arrivals, available) applies. */
+  hasOccurrenceTimes: boolean;
+  /** Most vehicles one report may list. */
+  maxVehicles: number;
+  /** Most victims one report may list. */
+  maxVictims: number;
+  /**
+   * An external reference is required rather than merely offered. True only
+   * for emergencies: a CODU number is what ties the report to the national
+   * record, and a report without one cannot be reconciled.
+   */
+  requiresExternalReference: boolean;
+  /** Label for the external reference field. */
+  externalReferenceLabel: string;
+}
+
+/** How many victims a support report may carry — a guard, not a domain rule. */
+export const MAX_VICTIMS_PER_REPORT = 50;
+
+/** How many vehicles a support report may carry — a guard, not a domain rule. */
+export const MAX_VEHICLES_PER_REPORT = 20;
+
+export const EVENT_REPORT_TYPE_RULES: Record<EventReportType, EventReportTypeRules> = {
+  [EventReportType.EMERGENCY]: {
+    codePrefix: 'EMG',
+    category: AvailabilityWindowCategory.EMERGENCY,
+    hasOccurrenceTimes: true,
+    // One ambulance, one victim, one set of times: an emergency is one run.
+    maxVehicles: 1,
+    maxVictims: 1,
+    requiresExternalReference: true,
+    externalReferenceLabel: 'CODU',
+  },
+  [EventReportType.LOCAL_SUPPORT]: {
+    codePrefix: 'APL',
+    category: AvailabilityWindowCategory.LOCAL_SUPPORT,
+    hasOccurrenceTimes: false,
+    maxVehicles: MAX_VEHICLES_PER_REPORT,
+    maxVictims: MAX_VICTIMS_PER_REPORT,
+    requiresExternalReference: false,
+    externalReferenceLabel: 'Reference',
+  },
+  [EventReportType.SALOP_SUPPORT]: {
+    codePrefix: 'SAL',
+    category: AvailabilityWindowCategory.SALOP_SUPPORT,
+    hasOccurrenceTimes: false,
+    maxVehicles: MAX_VEHICLES_PER_REPORT,
+    maxVictims: MAX_VICTIMS_PER_REPORT,
+    requiresExternalReference: false,
+    externalReferenceLabel: 'Reference',
+  },
+};
+
+/** Declaration order, which is the order every picker offers them in. */
+export const EVENT_REPORT_TYPES = Object.keys(EVENT_REPORT_TYPE_RULES) as EventReportType[];
+
+/**
+ * Rules for a type, falling back to the support-report shape for a value this
+ * map has not caught up with — the permissive shape, so an unknown type can
+ * still be read rather than crashing a list.
+ */
+export function eventReportRules(type: EventReportType | string): EventReportTypeRules {
+  return (
+    EVENT_REPORT_TYPE_RULES[type as EventReportType] ??
+    EVENT_REPORT_TYPE_RULES[EventReportType.LOCAL_SUPPORT]
+  );
+}
+
+/** The availability-window category whose schedule staffs a report type. */
+export function categoryForEventReportType(
+  type: EventReportType | string,
+): AvailabilityWindowCategory {
+  return eventReportRules(type).category;
+}
+
+/** The report type staffed by a window category, or null if none is. */
+export function eventReportTypeForCategory(
+  category: AvailabilityWindowCategory | string,
+): EventReportType | null {
+  return (
+    EVENT_REPORT_TYPES.find(
+      (type) => EVENT_REPORT_TYPE_RULES[type].category === category,
+    ) ?? null
+  );
+}
+
+/**
+ * The identity of a report as people say it: "EMG 128/2026".
+ *
+ * Derived rather than stored, so `(type, year, number)` stays the single truth
+ * and there is one spelling of the rule. Three digits because a delegation
+ * files hundreds a year, not tens of thousands — and a wider number simply
+ * takes more digits rather than wrapping.
+ */
+export function formatEventReportCode(report: {
+  type: EventReportType | string;
+  number: number;
+  year: number;
+}): string {
+  const prefix = eventReportRules(report.type).codePrefix;
+  return `${prefix} ${String(report.number).padStart(3, '0')}/${report.year}`;
+}
+
+/**
+ * The inverse, for a search box: "EMG 128/2026", "emg 128/2026", "128/2026"
+ * and "EMG128" all mean something, and anything else means "no code here, this
+ * is a free-text search".
+ */
+export function parseEventReportCode(
+  input: string,
+): { type?: EventReportType; number?: number; year?: number } | null {
+  const cleaned = input.trim().toUpperCase();
+  if (!cleaned) return null;
+
+  const match = /^([A-Z]{3})?\s*0*(\d{1,6})?(?:\s*\/\s*(\d{4}))?$/.exec(cleaned);
+  if (!match) return null;
+
+  const [, prefix, digits, year] = match;
+  if (!prefix && !digits) return null;
+
+  const type = prefix
+    ? EVENT_REPORT_TYPES.find((value) => EVENT_REPORT_TYPE_RULES[value].codePrefix === prefix)
+    : undefined;
+  // A three-letter prefix that names no type is not a code at all.
+  if (prefix && !type) return null;
+
+  return {
+    ...(type ? { type } : {}),
+    ...(digits ? { number: Number(digits) } : {}),
+    ...(year ? { year: Number(year) } : {}),
+  };
+}
+
+/** Where an event happened, as the operational sees it — not an address. */
+export enum EventLocationType {
+  HOME = 'HOME',
+  ROAD = 'ROAD',
+  PUBLIC_SPACE = 'PUBLIC_SPACE',
+}
+
+/** Declaration order, which is the order the picker offers them in. */
+export const EVENT_LOCATION_TYPES = Object.values(EventLocationType);
+
+export enum Gender {
+  FEMALE = 'FEMALE',
+  MALE = 'MALE',
+  UNKNOWN = 'UNKNOWN',
+}
+
+export const GENDERS = Object.values(Gender);
+
+/**
+ * What became of one victim.
+ *
+ * `HOSPITAL` is the only value that pairs with a hospital; the other four are
+ * the ways a call ends with nobody transported. The database holds the pairing
+ * with a CHECK constraint, and `validateEventReport` refuses it earlier with a
+ * message worth showing someone.
+ */
+export enum VictimDestinationKind {
+  HOSPITAL = 'HOSPITAL',
+  TREATED_ON_SCENE = 'TREATED_ON_SCENE',
+  REFUSED_TRANSPORT = 'REFUSED_TRANSPORT',
+  DECEASED_ON_SCENE = 'DECEASED_ON_SCENE',
+  CANCELLED = 'CANCELLED',
+}
+
+/** The destinations that are not a hospital, in the order the sheet lists them. */
+export const NO_TRANSPORT_DESTINATIONS = Object.values(VictimDestinationKind).filter(
+  (kind) => kind !== VictimDestinationKind.HOSPITAL,
+);
+
+export const MIN_VICTIM_AGE = 0;
+export const MAX_VICTIM_AGE = 130;
+export const MAX_OPERATIONAL_REPORT_LENGTH = 20000;
+export const MAX_EXTERNAL_REFERENCE_LENGTH = 80;
+/** Whole kilometres; a guard against a fat-fingered odometer reading. */
+export const MAX_VEHICLE_KILOMETRES = 5000;
+export const MAX_CREW_PER_REPORT = 20;
+export const MAX_ROLE_NAME_ON_REPORT = MAX_ROLE_NAME_LENGTH;
+
+// ─── Event report shapes ──────────────────────────────────────────────────────
+
+/**
+ * Who may appear on a report's crew — exactly the roster availability is
+ * collected from.
+ *
+ * Derived from the permission map rather than hardcoded, so a role that gains
+ * `SUBMIT_AVAILABILITY` becomes crew-eligible here too instead of being
+ * silently absent from the picker.
+ */
+export function eventReportCrewEligibleRoles(): UserRole[] {
+  return availabilityEligibleRoles();
+}
+
+export interface EventReportPerson {
+  id: string;
+  firstName: string;
+  lastName: string;
+}
+
+export interface EventReportCrewMember {
+  id: string;
+  userId: string;
+  user?: EventReportPerson;
+  /** The post as the schedule named it. Null when nobody held a post. */
+  roleName?: string | null;
+  position: number;
+}
+
+export interface EventReportVehicle {
+  id: string;
+  vehicleId: string;
+  vehicle?: Pick<Vehicle, 'id' | 'licensePlate' | 'numeroCauda'>;
+  kilometres: number;
+  position: number;
+}
+
+export interface EventReportVictim {
+  id: string;
+  position: number;
+  gender: Gender;
+  age: number;
+  destinationKind: VictimDestinationKind;
+  destinationHospitalId?: string | null;
+  destinationHospital?: Pick<Hospital, 'id' | 'name'> | null;
+}
+
+/**
+ * What a report may carry: photographs taken on scene, and the paper the crew
+ * was handed.
+ *
+ * HEIC is here because it is what an iPhone camera produces by default, and a
+ * crew that has just photographed a hand-written INEM slip should not have to
+ * discover a format policy. Nothing executable, nothing with a script surface.
+ */
+export const ALLOWED_ATTACHMENT_MIME_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'image/heic',
+  'image/heif',
+  'application/pdf',
+] as const;
+
+export type AttachmentMimeType = (typeof ALLOWED_ATTACHMENT_MIME_TYPES)[number];
+
+/** 20 MB — a phone photo with room to spare, and a scanned PDF. */
+export const MAX_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+
+/** Per report. A guard against a runaway camera roll, not a domain rule. */
+export const MAX_ATTACHMENTS_PER_REPORT = 30;
+
+export const MAX_ATTACHMENT_FILENAME_LENGTH = 255;
+
+/** Whether a file may be attached, as a message or null. */
+export function validateAttachment(file: {
+  mimeType: string;
+  byteSize: number;
+  filename: string;
+}): string | null {
+  if (!ALLOWED_ATTACHMENT_MIME_TYPES.includes(file.mimeType as AttachmentMimeType)) {
+    return 'Only photographs and PDF files can be attached.';
+  }
+  if (!Number.isFinite(file.byteSize) || file.byteSize <= 0) {
+    return 'That file is empty.';
+  }
+  if (file.byteSize > MAX_ATTACHMENT_BYTES) {
+    const megabytes = Math.floor(MAX_ATTACHMENT_BYTES / (1024 * 1024));
+    return `Each file may be at most ${megabytes} MB.`;
+  }
+  if (!file.filename?.trim()) return 'That file has no name.';
+  if (file.filename.length > MAX_ATTACHMENT_FILENAME_LENGTH) {
+    return `A file name may be at most ${MAX_ATTACHMENT_FILENAME_LENGTH} characters.`;
+  }
+  return null;
+}
+
+export interface EventReportAttachment {
+  id: string;
+  filename: string;
+  mimeType: string;
+  byteSize: number;
+  uploadedById: string;
+  uploadedBy?: EventReportPerson;
+  createdAt: string;
+}
+
+/** The shift a report's crew was taken from, for display. */
+export interface EventReportShift {
+  scheduleId: string;
+  /** ISO date, `YYYY-MM-DD`. */
+  date: string;
+  slot: number;
+  /** e.g. "20:00–24:00". Resolved from the window's shifts. */
+  label?: string;
+  /** The window the schedule belongs to, e.g. "Emergency - August". */
+  windowLabel?: string;
+}
+
+export interface EventReport {
+  id: string;
+  type: EventReportType;
+  number: number;
+  year: number;
+  /** ISO date, `YYYY-MM-DD`. */
+  occurredOn: string;
+  startedAt: string;
+  endedAt?: string | null;
+  externalReference?: string | null;
+  locationType: EventLocationType;
+  localityId: string;
+  locality?: Locality;
+
+  activationAt?: string | null;
+  sceneArrivalAt?: string | null;
+  sceneDepartureAt?: string | null;
+  hospitalArrivalAt?: string | null;
+  availableAt?: string | null;
+
+  shift?: EventReportShift | null;
+
+  operationalReport: string;
+
+  crew: EventReportCrewMember[];
+  vehicles: EventReportVehicle[];
+  victims: EventReportVictim[];
+  attachments: EventReportAttachment[];
+
+  createdById: string;
+  createdBy?: EventReportPerson;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// ─── Event report input ───────────────────────────────────────────────────────
+
+export interface EventReportCrewInput {
+  userId: string;
+  roleName?: string | null;
+}
+
+export interface EventReportVehicleInput {
+  vehicleId: string;
+  kilometres: number;
+}
+
+export interface EventReportVictimInput {
+  gender: Gender;
+  age: number;
+  destinationKind: VictimDestinationKind;
+  /** Required when `destinationKind` is HOSPITAL, refused otherwise. */
+  destinationHospitalId?: string | null;
+}
+
+export interface EventReportShiftInput {
+  scheduleId: string;
+  /** ISO date, `YYYY-MM-DD`. */
+  date: string;
+  slot: number;
+}
+
+/**
+ * The payload that files or updates a report.
+ *
+ * One shape for create and update: a report is a form, and the same rules
+ * decide whether it is coherent whichever verb is carrying it. Identity
+ * (`type`, `number`, `year`) is not in here — the type is fixed on create and
+ * the number is the server's to assign.
+ */
+export interface EventReportInput {
+  /** Only read on create; ignored on update, where the type is already fixed. */
+  type: EventReportType;
+  /** ISO date, `YYYY-MM-DD`. */
+  occurredOn: string;
+  startedAt: string;
+  endedAt?: string | null;
+  externalReference?: string | null;
+  locationType: EventLocationType;
+  localityId: string;
+
+  activationAt?: string | null;
+  sceneArrivalAt?: string | null;
+  sceneDepartureAt?: string | null;
+  hospitalArrivalAt?: string | null;
+  availableAt?: string | null;
+
+  shift?: EventReportShiftInput | null;
+
+  operationalReport: string;
+
+  crew: EventReportCrewInput[];
+  vehicles: EventReportVehicleInput[];
+  victims: EventReportVictimInput[];
+}
+
+/** `GET /event-reports/crew-suggestion` — the shift and crew to pre-fill with. */
+export interface CrewSuggestionShift {
+  scheduleId: string;
+  /** ISO date, `YYYY-MM-DD`. */
+  date: string;
+  slot: number;
+  label: string;
+  windowLabel: string;
+  startMinute: number;
+  endMinute: number;
+  crew: Array<{
+    userId: string;
+    firstName: string;
+    lastName: string;
+    roleName?: string | null;
+    isDriver: boolean;
+  }>;
+  /** Vehicles the schedule expected on this shift, to pre-select from. */
+  vehiclesNeeded: number;
+}
+
+export interface CrewSuggestionResponse {
+  /** The shift covering the given moment, if the rota has one. */
+  suggested: CrewSuggestionShift | null;
+  /**
+   * Other recent shifts of the same rota, newest first — what the "change
+   * shift" sheet offers when the report is filed after the fact.
+   */
+  recent: CrewSuggestionShift[];
+}
+
+// ─── Event report rules ───────────────────────────────────────────────────────
+
+/**
+ * Why a report cannot be filed.
+ *
+ * A code as well as a message, because the two audiences need different things:
+ * the API returns the message (English, like every other API error), and the
+ * wizard shows the crew a translated one keyed by the code. Returning only
+ * prose would have put English on a Portuguese screen; returning only a code
+ * would have made the API's 400s unreadable.
+ */
+export type EventReportProblemCode =
+  | 'UNKNOWN_TYPE'
+  | 'MISSING_DATE'
+  | 'MISSING_START'
+  | 'INVALID_END'
+  | 'END_BEFORE_START'
+  | 'MISSING_LOCATION_TYPE'
+  | 'MISSING_LOCALITY'
+  | 'MISSING_REFERENCE'
+  | 'REFERENCE_TOO_LONG'
+  | 'TIMES_NOT_FOR_TYPE'
+  | 'INVALID_TIME'
+  | 'TIMES_OUT_OF_ORDER'
+  | 'CREW_NOT_A_LIST'
+  | 'TOO_MANY_CREW'
+  | 'CREW_MISSING_PERSON'
+  | 'CREW_DUPLICATE'
+  | 'ROLE_NAME_TOO_LONG'
+  | 'VEHICLES_NOT_A_LIST'
+  | 'TOO_MANY_VEHICLES'
+  | 'VEHICLE_MISSING_ID'
+  | 'VEHICLE_DUPLICATE'
+  | 'KILOMETRES_INVALID'
+  | 'VICTIMS_NOT_A_LIST'
+  | 'TOO_MANY_VICTIMS'
+  | 'VICTIM_GENDER_MISSING'
+  | 'VICTIM_AGE_INVALID'
+  | 'DESTINATION_INVALID'
+  | 'DESTINATION_HOSPITAL_REQUIRED'
+  | 'DESTINATION_HOSPITAL_NOT_ALLOWED'
+  | 'NARRATIVE_TOO_LONG'
+  | 'SHIFT_MISSING_SCHEDULE'
+  | 'SHIFT_MISSING_DATE'
+  | 'SHIFT_MISSING_SLOT';
+
+export interface EventReportProblem {
+  code: EventReportProblemCode;
+  /** English, for the API's response and for a developer reading a log. */
+  message: string;
+}
+
+const problem = (
+  code: EventReportProblemCode,
+  message: string,
+): EventReportProblem => ({ code, message });
+
+/**
+ * What is unfinished about an otherwise-valid report.
+ *
+ * Codes only. These are shown exclusively to the crew, on the review step, so
+ * there is no English rendering to keep — and no way for one to reach a screen
+ * untranslated.
+ */
+export type EventReportWarningCode =
+  | 'MISSING_END_TIME'
+  | 'MISSING_NARRATIVE'
+  | 'NO_CREW'
+  | 'NO_VEHICLE'
+  | 'NO_VICTIM'
+  | 'NO_TIMES_MARKED';
+
+/** Plain-text length of an HTML string, for "is this rich text actually empty". */
+function richTextLength(html: string): number {
+  return html
+    .replace(/<[^>]*>/g, ' ')
+    .replace(/&nbsp;/g, ' ')
+    .trim().length;
+}
+
+/** Every optional emergency timestamp, in the order they happen. */
+export const OCCURRENCE_TIME_FIELDS = [
+  'activationAt',
+  'sceneArrivalAt',
+  'sceneDepartureAt',
+  'hospitalArrivalAt',
+  'availableAt',
+] as const;
+
+export type OccurrenceTimeField = (typeof OCCURRENCE_TIME_FIELDS)[number];
+
+const OCCURRENCE_TIME_LABELS: Record<OccurrenceTimeField, string> = {
+  activationAt: 'Activation',
+  sceneArrivalAt: 'Arrival on scene',
+  sceneDepartureAt: 'Departure from scene',
+  hospitalArrivalAt: 'Arrival at hospital',
+  availableAt: 'Available',
+};
+
+const isBlank = (value: string | null | undefined): boolean =>
+  value === null || value === undefined || value === '';
+
+const parseInstant = (value: string): number => new Date(value).getTime();
+
+const isInstant = (value: string): boolean => Number.isFinite(parseInstant(value));
+
+/**
+ * Whether a report payload is coherent, as a problem to show or null when it is
+ * fine.
+ *
+ * The same "problem or null" shape as `validateDayShifts` and
+ * `validateWindowRoles`, and for the same reason: the wizard blocks its last
+ * step on exactly what the API would reject the payload for, so nobody ever
+ * sees a form that submits and fails.
+ *
+ * What this deliberately does *not* enforce: a complete report. A crew filing
+ * from a layby must be able to save what they know — no end time, no victim, no
+ * narrative yet — and finish later. Only contradictions are refused; everything
+ * merely unfinished comes back from `eventReportWarnings`.
+ */
+export function validateEventReport(input: EventReportInput): EventReportProblem | null {
+  const rules = eventReportRules(input.type);
+
+  if (!EVENT_REPORT_TYPES.includes(input.type)) {
+    return problem('UNKNOWN_TYPE', `Unknown report type "${input.type}".`);
+  }
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.occurredOn ?? '')) {
+    return problem('MISSING_DATE', 'The report needs the date the activity happened.');
+  }
+  if (isBlank(input.startedAt) || !isInstant(input.startedAt)) {
+    return problem('MISSING_START', 'The report needs a start time.');
+  }
+  if (!isBlank(input.endedAt)) {
+    if (!isInstant(input.endedAt!)) {
+      return problem('INVALID_END', 'The end time is not a valid time.');
+    }
+    if (parseInstant(input.endedAt!) < parseInstant(input.startedAt)) {
+      return problem('END_BEFORE_START', 'The activity cannot end before it starts.');
+    }
+  }
+
+  if (!EVENT_LOCATION_TYPES.includes(input.locationType)) {
+    return problem(
+      'MISSING_LOCATION_TYPE',
+      'Choose where this happened: at home, on the road, or in a public space.',
+    );
+  }
+  if (!input.localityId) {
+    return problem('MISSING_LOCALITY', 'Choose the locality this happened in.');
+  }
+
+  const reference = input.externalReference?.trim() ?? '';
+  if (rules.requiresExternalReference && !reference) {
+    return problem(
+      'MISSING_REFERENCE',
+      `The ${rules.externalReferenceLabel} number is required on an emergency report.`,
+    );
+  }
+  if (reference.length > MAX_EXTERNAL_REFERENCE_LENGTH) {
+    return problem(
+      'REFERENCE_TOO_LONG',
+      `The reference may be at most ${MAX_EXTERNAL_REFERENCE_LENGTH} characters (got ${reference.length}).`,
+    );
+  }
+
+  const timesProblem = validateOccurrenceTimes(input);
+  if (timesProblem) return timesProblem;
+
+  const crewProblem = validateCrew(input.crew);
+  if (crewProblem) return crewProblem;
+
+  const vehiclesProblem = validateVehicles(input.vehicles, rules);
+  if (vehiclesProblem) return vehiclesProblem;
+
+  const victimsProblem = validateVictims(input.victims, rules);
+  if (victimsProblem) return victimsProblem;
+
+  // An empty narrative is *not* an error. A crew filing from a layby saves what
+  // it has and writes the account later; refusing the save would mean the report
+  // never gets filed at all. It comes back from `eventReportWarnings` instead.
+  if ((input.operationalReport ?? '').length > MAX_OPERATIONAL_REPORT_LENGTH) {
+    return problem(
+      'NARRATIVE_TOO_LONG',
+      `The operational report is too long (max ${MAX_OPERATIONAL_REPORT_LENGTH} characters).`,
+    );
+  }
+
+  if (input.shift) {
+    if (!input.shift.scheduleId) {
+      return problem('SHIFT_MISSING_SCHEDULE', 'The shift reference needs a schedule.');
+    }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(input.shift.date)) {
+      return problem('SHIFT_MISSING_DATE', 'The shift reference needs a date.');
+    }
+    if (!Number.isInteger(input.shift.slot) || input.shift.slot < 1) {
+      return problem('SHIFT_MISSING_SLOT', 'The shift reference needs a slot.');
+    }
+  }
+
+  return null;
+}
+
+/**
+ * The optional emergency chronology: present only on emergencies, and in order
+ * when more than one is filled in.
+ *
+ * Each timestamp is independently optional — a crew stamps what it has time to
+ * stamp — so the ordering rule only ever compares the ones that are there.
+ */
+export function validateOccurrenceTimes(
+  input: Pick<EventReportInput, 'type'> & Partial<Record<OccurrenceTimeField, string | null>>,
+): EventReportProblem | null {
+  const rules = eventReportRules(input.type);
+
+  const filled: Array<{ field: OccurrenceTimeField; at: number }> = [];
+  for (const field of OCCURRENCE_TIME_FIELDS) {
+    const value = input[field];
+    if (isBlank(value)) continue;
+    if (!rules.hasOccurrenceTimes) {
+      return problem(
+        'TIMES_NOT_FOR_TYPE',
+        `${OCCURRENCE_TIME_LABELS[field]} is only recorded on an emergency report.`,
+      );
+    }
+    if (!isInstant(value!)) {
+      return problem(
+        'INVALID_TIME',
+        `${OCCURRENCE_TIME_LABELS[field]} is not a valid time.`,
+      );
+    }
+    filled.push({ field, at: parseInstant(value!) });
+  }
+
+  for (let index = 1; index < filled.length; index += 1) {
+    const previous = filled[index - 1];
+    const current = filled[index];
+    if (current.at < previous.at) {
+      return problem(
+        'TIMES_OUT_OF_ORDER',
+        `${OCCURRENCE_TIME_LABELS[current.field]} cannot be before ${OCCURRENCE_TIME_LABELS[
+          previous.field
+        ].toLowerCase()}.`,
+      );
+    }
+  }
+
+  return null;
+}
+
+function validateCrew(crew: EventReportCrewInput[]): EventReportProblem | null {
+  if (!Array.isArray(crew)) return problem('CREW_NOT_A_LIST', 'The crew is missing.');
+  if (crew.length > MAX_CREW_PER_REPORT) {
+    return problem(
+      'TOO_MANY_CREW',
+      `A report may list at most ${MAX_CREW_PER_REPORT} people (got ${crew.length}).`,
+    );
+  }
+  const seen = new Set<string>();
+  for (const member of crew) {
+    if (!member.userId) {
+      return problem('CREW_MISSING_PERSON', 'Every crew member needs to be a real person.');
+    }
+    if (seen.has(member.userId)) {
+      return problem('CREW_DUPLICATE', 'The same person is listed twice on the crew.');
+    }
+    seen.add(member.userId);
+    const roleName = member.roleName?.trim() ?? '';
+    if (roleName.length > MAX_ROLE_NAME_ON_REPORT) {
+      return problem(
+        'ROLE_NAME_TOO_LONG',
+        `A role name may be at most ${MAX_ROLE_NAME_ON_REPORT} characters.`,
+      );
+    }
+  }
+  return null;
+}
+
+function validateVehicles(
+  vehicles: EventReportVehicleInput[],
+  rules: EventReportTypeRules,
+): EventReportProblem | null {
+  if (!Array.isArray(vehicles)) {
+    return problem('VEHICLES_NOT_A_LIST', 'The vehicles are missing.');
+  }
+  if (vehicles.length > rules.maxVehicles) {
+    return problem(
+      'TOO_MANY_VEHICLES',
+      rules.maxVehicles === 1
+        ? 'An emergency report records a single vehicle.'
+        : `A report may list at most ${rules.maxVehicles} vehicles (got ${vehicles.length}).`,
+    );
+  }
+  const seen = new Set<string>();
+  for (const vehicle of vehicles) {
+    if (!vehicle.vehicleId) {
+      return problem('VEHICLE_MISSING_ID', 'Every vehicle line needs a vehicle.');
+    }
+    if (seen.has(vehicle.vehicleId)) {
+      return problem('VEHICLE_DUPLICATE', 'The same vehicle is listed twice.');
+    }
+    seen.add(vehicle.vehicleId);
+    if (
+      !Number.isInteger(vehicle.kilometres) ||
+      vehicle.kilometres < 0 ||
+      vehicle.kilometres > MAX_VEHICLE_KILOMETRES
+    ) {
+      return problem(
+        'KILOMETRES_INVALID',
+        `Kilometres must be a whole number between 0 and ${MAX_VEHICLE_KILOMETRES}.`,
+      );
+    }
+  }
+  return null;
+}
+
+function validateVictims(
+  victims: EventReportVictimInput[],
+  rules: EventReportTypeRules,
+): EventReportProblem | null {
+  if (!Array.isArray(victims)) {
+    return problem('VICTIMS_NOT_A_LIST', 'The victims are missing.');
+  }
+  if (victims.length > rules.maxVictims) {
+    return problem(
+      'TOO_MANY_VICTIMS',
+      rules.maxVictims === 1
+        ? 'An emergency report records a single victim.'
+        : `A report may list at most ${rules.maxVictims} victims (got ${victims.length}).`,
+    );
+  }
+  for (const victim of victims) {
+    if (!GENDERS.includes(victim.gender)) {
+      return problem('VICTIM_GENDER_MISSING', 'Every victim needs a gender.');
+    }
+    if (
+      !Number.isInteger(victim.age) ||
+      victim.age < MIN_VICTIM_AGE ||
+      victim.age > MAX_VICTIM_AGE
+    ) {
+      return problem(
+        'VICTIM_AGE_INVALID',
+        `A victim's age must be between ${MIN_VICTIM_AGE} and ${MAX_VICTIM_AGE}.`,
+      );
+    }
+    const destinationProblem = validateVictimDestination(victim);
+    if (destinationProblem) return destinationProblem;
+  }
+  return null;
+}
+
+/**
+ * A victim is either transported to a hospital or not transported at all. The
+ * database holds the same rule as a CHECK constraint; this one exists to say so
+ * in words before the request is sent.
+ */
+export function validateVictimDestination(
+  victim: Pick<EventReportVictimInput, 'destinationKind' | 'destinationHospitalId'>,
+): EventReportProblem | null {
+  if (!Object.values(VictimDestinationKind).includes(victim.destinationKind)) {
+    return problem(
+      'DESTINATION_INVALID',
+      'Choose where the victim was taken, or why they were not transported.',
+    );
+  }
+  const hospitalId = victim.destinationHospitalId ?? null;
+  if (victim.destinationKind === VictimDestinationKind.HOSPITAL && !hospitalId) {
+    return problem(
+      'DESTINATION_HOSPITAL_REQUIRED',
+      'Choose which hospital the victim was taken to.',
+    );
+  }
+  if (victim.destinationKind !== VictimDestinationKind.HOSPITAL && hospitalId) {
+    return problem(
+      'DESTINATION_HOSPITAL_NOT_ALLOWED',
+      'A victim who was not transported cannot have a hospital.',
+    );
+  }
+  return null;
+}
+
+/**
+ * What is missing from an otherwise-valid report, as warnings rather than
+ * errors: the review step shows these and still lets the crew save.
+ *
+ * Separate from `validateEventReport` on purpose. That function answers "is
+ * this coherent"; this one answers "is this finished" — and the answer to the
+ * second must never block a save.
+ */
+export function eventReportWarnings(input: EventReportInput): EventReportWarningCode[] {
+  const rules = eventReportRules(input.type);
+  const warnings: EventReportWarningCode[] = [];
+
+  if (isBlank(input.endedAt)) warnings.push('MISSING_END_TIME');
+  if (richTextLength(input.operationalReport ?? '') === 0) {
+    warnings.push('MISSING_NARRATIVE');
+  }
+  if (input.crew.length === 0) warnings.push('NO_CREW');
+  if (input.vehicles.length === 0) warnings.push('NO_VEHICLE');
+  if (input.victims.length === 0) warnings.push('NO_VICTIM');
+
+  if (rules.hasOccurrenceTimes) {
+    const marked = OCCURRENCE_TIME_FIELDS.filter((field) => !isBlank(input[field]));
+    if (marked.length === 0) warnings.push('NO_TIMES_MARKED');
+  }
+
+  return warnings;
+}
+
+/** Total kilometres across a report's vehicles — the figure the UI totals. */
+export function totalKilometres(
+  vehicles: Array<Pick<EventReportVehicle, 'kilometres'>>,
+): number {
+  return vehicles.reduce((total, vehicle) => total + vehicle.kilometres, 0);
+}
+
+/** How many of a report's victims were taken to a hospital. */
+export function transportedVictimCount(
+  victims: Array<Pick<EventReportVictim, 'destinationKind'>>,
+): number {
+  return victims.filter(
+    (victim) => victim.destinationKind === VictimDestinationKind.HOSPITAL,
+  ).length;
+}
+// ─── Event report queries ─────────────────────────────────────────────────────
+
+/** `GET /event-reports` filters — everything a coordinator narrows a list by. */
+export interface EventReportListFilters {
+  type?: EventReportType;
+  /** ISO date, `YYYY-MM-DD`. Inclusive. */
+  from?: string;
+  /** ISO date, `YYYY-MM-DD`. Inclusive. */
+  to?: string;
+  /** Free text, matched against the report code, locality and crew names. */
+  q?: string;
+}
+
+/**
+ * Per-type counts for the list's filter tabs. Always carries every type, so a
+ * tab showing zero is a tab that says "none yet" rather than one that vanishes.
+ */
+export type EventReportCounts = Record<EventReportType | 'ALL', number>;

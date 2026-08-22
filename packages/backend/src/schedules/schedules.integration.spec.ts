@@ -54,6 +54,12 @@ describeIntegration('Schedules module (integration)', () => {
   const START = '2026-11-02'; // Monday
   const END = '2026-11-03';
 
+  // Who is asking: a coordinator sees drafts, a member only sees what has been
+  // published — and can add themselves to it.
+  let coordinatorUser: { id: string; role: UserRole };
+  let anaUser: { id: string; role: UserRole };
+  let carlaUser: { id: string; role: UserRole };
+
   const createdWindowIds: string[] = [];
 
   async function createUser(
@@ -135,6 +141,10 @@ describeIntegration('Schedules module (integration)', () => {
       createUser('Luis', 'Logistica', UserRole.LOGISTICS_COORDINATOR),
       createUser('Maria', 'Santos', UserRole.EMERGENCY_COORDINATOR),
     ]);
+
+    coordinatorUser = { id: coordinator.id, role: UserRole.EMERGENCY_COORDINATOR };
+    anaUser = { id: ana.id, role: UserRole.EMERGENCY_OPERATIONAL };
+    carlaUser = { id: carla.id, role: UserRole.EMERGENCY_OPERATIONAL };
   });
 
   afterAll(async () => {
@@ -175,7 +185,7 @@ describeIntegration('Schedules module (integration)', () => {
     const report = await autofill.autofill(schedule.id, {}, coordinator.id);
     expect(report.placed).toBeGreaterThan(0);
 
-    const board = await schedules.getBoard(schedule.id);
+    const board = await schedules.getBoard(schedule.id, coordinatorUser);
     expect(board.days).toHaveLength(2);
 
     // Day one: Ana drives, Carla takes a crew role, nobody is left for the third.
@@ -411,7 +421,7 @@ describeIntegration('Schedules module (integration)', () => {
       coordinator.id,
     );
 
-    const board = await schedules.getBoard(first.id);
+    const board = await schedules.getBoard(first.id, coordinatorUser);
 
     expect(board.conflicts).toHaveLength(1);
     expect(board.conflicts[0]).toMatchObject({
@@ -437,7 +447,7 @@ describeIntegration('Schedules module (integration)', () => {
     );
 
     expect(assignment.roleId).toBeNull();
-    const board = await schedules.getBoard(schedule.id);
+    const board = await schedules.getBoard(schedule.id, coordinatorUser);
     expect(board.days[0].shifts[0].gaps).toEqual([]);
   });
 
@@ -450,7 +460,7 @@ describeIntegration('Schedules module (integration)', () => {
       coordinator.id,
     );
 
-    const board = await schedules.getBoard(schedule.id);
+    const board = await schedules.getBoard(schedule.id, coordinatorUser);
     expect(board.days[0].shifts[0].gaps).toEqual([{ kind: 'MISSING_DRIVER', missing: 1 }]);
   });
 
@@ -465,7 +475,7 @@ describeIntegration('Schedules module (integration)', () => {
       coordinator.id,
     );
 
-    const listed = await schedules.findAll(1, 25, { windowId: window.id });
+    const listed = await schedules.findAll(coordinatorUser, 1, 25, { windowId: window.id });
 
     expect(listed.total).toBe(1);
     expect(listed.data[0].stats).toMatchObject({
@@ -486,7 +496,7 @@ describeIntegration('Schedules module (integration)', () => {
       coordinator.id,
     );
 
-    const csv = await schedules.getCsv(schedule.id);
+    const csv = await schedules.getCsv(schedule.id, coordinatorUser);
 
     expect(csv).toContain('Ana Silva');
     expect(csv).toContain('unfilled');
@@ -510,6 +520,115 @@ describeIntegration('Schedules module (integration)', () => {
 
     const duties = await schedules.getMyDuties(ana.id, START);
     expect(duties.upcoming).toHaveLength(1);
+  });
+
+  // ── A published rota belongs to everyone ─────────────────────────────────────
+
+  it('integration: a member can read a published schedule but not a draft', async () => {
+    const window = await openWindow();
+    const schedule = await schedules.create({ windowId: window.id }, coordinator.id);
+
+    await expect(schedules.getBoard(schedule.id, anaUser)).rejects.toThrow(
+      /not been published/i,
+    );
+    expect(await schedules.findAll(anaUser, 1, 25, { windowId: window.id })).toMatchObject({
+      total: 0,
+    });
+
+    await schedules.publish(schedule.id, coordinator.id);
+
+    const board = await schedules.getBoard(schedule.id, anaUser);
+    expect(board.days).toHaveLength(2);
+    expect(await schedules.findAll(anaUser, 1, 25, { windowId: window.id })).toMatchObject({
+      total: 1,
+    });
+  });
+
+  it('integration: a member adds themselves to an open place on a published rota', async () => {
+    const window = await openWindow();
+    const schedule = await schedules.create({ windowId: window.id }, coordinator.id);
+    await schedules.publish(schedule.id, coordinator.id);
+
+    const assignment = await assignments.selfAssign(
+      schedule.id,
+      { date: START, slot: 1, roleId: roleId(window, 'Team Member') },
+      carlaUser,
+    );
+
+    expect(assignment.userId).toBe(carla.id);
+    expect(assignment.assignedById).toBe(carla.id);
+    expect(assignment.selfAssigned).toBe(true);
+
+    // And it shows on the board as their own doing, not as a coordinator's
+    // override of them.
+    const board = await schedules.getBoard(schedule.id, carlaUser);
+    const placed = board.days[0].shifts[0].assignments[0];
+    expect(placed.selfAssigned).toBe(true);
+  });
+
+  it('integration: a member cannot add themselves to a role they are not certified for', async () => {
+    const window = await openWindow();
+    const schedule = await schedules.create({ windowId: window.id }, coordinator.id);
+    await schedules.publish(schedule.id, coordinator.id);
+
+    await expect(
+      assignments.selfAssign(
+        schedule.id,
+        { date: START, slot: 1, roleId: roleId(window, 'Driver') },
+        carlaUser,
+      ),
+    ).rejects.toThrow(/driver certification/i);
+
+    // The certified one may.
+    await expect(
+      assignments.selfAssign(
+        schedule.id,
+        { date: START, slot: 1, roleId: roleId(window, 'Driver') },
+        anaUser,
+      ),
+    ).resolves.toBeDefined();
+  });
+
+  it('integration: a member cannot take a place that is already filled', async () => {
+    const window = await openWindow();
+    const schedule = await schedules.create({ windowId: window.id }, coordinator.id);
+    await schedules.publish(schedule.id, coordinator.id);
+    const member = roleId(window, 'Team Member');
+    await assignments.selfAssign(schedule.id, { date: START, slot: 1, roleId: member }, carlaUser);
+
+    await expect(
+      assignments.selfAssign(schedule.id, { date: START, slot: 1, roleId: member }, anaUser),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('integration: a member cannot sign up to a draft', async () => {
+    const window = await openWindow();
+    const schedule = await schedules.create({ windowId: window.id }, coordinator.id);
+
+    await expect(
+      assignments.selfAssign(
+        schedule.id,
+        { date: START, slot: 1, roleId: roleId(window, 'Team Member') },
+        carlaUser,
+      ),
+    ).rejects.toThrow(/not been published/i);
+  });
+
+  it('integration: signing up is one way — only a coordinator takes someone off', async () => {
+    const window = await openWindow();
+    const schedule = await schedules.create({ windowId: window.id }, coordinator.id);
+    await schedules.publish(schedule.id, coordinator.id);
+    const added = await assignments.selfAssign(
+      schedule.id,
+      { date: START, slot: 1, roleId: roleId(window, 'Team Member') },
+      carlaUser,
+    );
+
+    // There is no member-facing removal at all: `unassign` is reachable only
+    // from the coordinator-gated route.
+    await expect(assignments.unassign(schedule.id, added.id)).resolves.toEqual({
+      id: added.id,
+    });
   });
 
   it('integration: a published schedule stays editable — cover changes daily', async () => {

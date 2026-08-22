@@ -1,5 +1,5 @@
 import { Show, useRecordContext } from 'react-admin';
-import { Card, CardContent } from '@mui/material';
+import { Box } from '@mui/material';
 import { Schedule } from '@redinfo/shared';
 import { ScheduleBoard } from './ScheduleBoard';
 
@@ -18,11 +18,11 @@ const BoardForRecord = () => {
  * rather than reassembled here.
  */
 export const ScheduleShow = () => (
+  // `Show` already wraps its children in the page Card, so this adds padding
+  // rather than a second surface.
   <Show actions={false} title="Schedule">
-    <Card variant="outlined" sx={{ border: 'none' }}>
-      <CardContent>
-        <BoardForRecord />
-      </CardContent>
-    </Card>
+    <Box sx={{ p: 2 }}>
+      <BoardForRecord />
+    </Box>
   </Show>
 );

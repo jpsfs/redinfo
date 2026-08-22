@@ -362,6 +362,177 @@ describe('ScheduleAssignmentsService.assign', () => {
   });
 });
 
+// ── Members adding themselves to a published rota ──────────────────────────────
+//
+// A published schedule is posted to the whole platform and anyone may take an
+// open place on it. They cannot vacate one: coming off a rota other people are
+// relying on goes through a coordinator, who can find the replacement.
+
+describe('ScheduleAssignmentsService.selfAssign', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  const published = (roles = [DRIVER_ROLE, MEMBER_ROLE]) => {
+    const context = makeContext(roles);
+    return { ...context, status: 'PUBLISHED' as never };
+  };
+
+  const selfDto = (overrides: Record<string, unknown> = {}) => ({
+    date: '2026-10-01',
+    slot: 1,
+    roleId: MEMBER_ROLE.id,
+    ...overrides,
+  });
+
+  it('puts the caller on the shift, stamped as their own doing', async () => {
+    const prisma = buildPrismaStub();
+    prisma.user.findUnique.mockResolvedValue(JOANA);
+    const { service } = makeService(prisma, buildSchedulesStub(published()));
+
+    const result = await service.selfAssign('s1', selfDto(), { id: JOANA.id });
+
+    expect(prisma.scheduleAssignment.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ userId: JOANA.id, assignedById: JOANA.id }),
+      }),
+    );
+    expect(result.userId).toBe(JOANA.id);
+  });
+
+  it('cannot be used to volunteer somebody else', async () => {
+    const prisma = buildPrismaStub();
+    prisma.user.findUnique.mockResolvedValue(JOANA);
+    const { service } = makeService(prisma, buildSchedulesStub(published()));
+
+    // A userId in the body is not part of the DTO and is ignored outright.
+    await service.selfAssign('s1', selfDto({ userId: ANA.id }) as never, { id: JOANA.id });
+
+    expect(prisma.scheduleAssignment.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ userId: JOANA.id }) }),
+    );
+  });
+
+  it('refuses a schedule that is still a draft', async () => {
+    const { service } = makeService(buildPrismaStub(), buildSchedulesStub(makeContext()));
+
+    await expect(service.selfAssign('s1', selfDto(), { id: JOANA.id })).rejects.toThrow(
+      /not been published/i,
+    );
+  });
+
+  // The rule that holds however the request arrives.
+  it('refuses an uncertified person on the driver role', async () => {
+    const prisma = buildPrismaStub();
+    prisma.user.findUnique.mockResolvedValue(JOANA);
+    const { service } = makeService(prisma, buildSchedulesStub(published()));
+
+    await expect(
+      service.selfAssign('s1', selfDto({ roleId: DRIVER_ROLE.id }), { id: JOANA.id }),
+    ).rejects.toThrow(/driver certification/i);
+    expect(prisma.scheduleAssignment.create).not.toHaveBeenCalled();
+  });
+
+  it('lets a certified driver take the driver role', async () => {
+    const prisma = buildPrismaStub();
+    prisma.user.findUnique.mockResolvedValue(ANA);
+    const { service } = makeService(prisma, buildSchedulesStub(published()));
+
+    await expect(
+      service.selfAssign('s1', selfDto({ roleId: DRIVER_ROLE.id }), { id: ANA.id }),
+    ).resolves.toBeDefined();
+  });
+
+  it('refuses a role that is already full', async () => {
+    const prisma = buildPrismaStub();
+    prisma.user.findUnique.mockResolvedValue(ANA);
+    prisma.scheduleAssignment.findMany.mockResolvedValue([
+      {
+        userId: 'u-other',
+        date: new Date('2026-10-01T00:00:00.000Z'),
+        slot: 1,
+        roleId: DRIVER_ROLE.id,
+        role: DRIVER_ROLE,
+        user: ANA,
+      },
+    ]);
+    const { service } = makeService(prisma, buildSchedulesStub(published()));
+
+    await expect(
+      service.selfAssign('s1', selfDto({ roleId: DRIVER_ROLE.id }), { id: ANA.id }),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('refuses someone already on the shift in another role', async () => {
+    const prisma = buildPrismaStub();
+    prisma.user.findUnique.mockResolvedValue(ANA);
+    prisma.scheduleAssignment.findMany.mockResolvedValue([
+      {
+        userId: ANA.id,
+        date: new Date('2026-10-01T00:00:00.000Z'),
+        slot: 1,
+        roleId: DRIVER_ROLE.id,
+        role: DRIVER_ROLE,
+        user: ANA,
+      },
+    ]);
+    const { service } = makeService(prisma, buildSchedulesStub(published()));
+
+    await expect(service.selfAssign('s1', selfDto(), { id: ANA.id })).rejects.toThrow(
+      /already on this shift/i,
+    );
+  });
+
+  // A coordinator may knowingly create a clash mid-swap; nobody should be able
+  // to double-book themselves by accident.
+  it('refuses a shift overlapping one the caller already holds', async () => {
+    const prisma = buildPrismaStub();
+    prisma.user.findUnique.mockResolvedValue(ANA);
+    // Slot 2 is 15:00–24:00, which overlaps slot 1's 08:00–16:00.
+    prisma.scheduleAssignment.findMany.mockResolvedValue([
+      { userId: ANA.id, date: new Date('2026-10-01T00:00:00.000Z'), slot: 2 },
+    ]);
+    const { service } = makeService(prisma, buildSchedulesStub(published()));
+
+    await expect(service.selfAssign('s1', selfDto(), { id: ANA.id })).rejects.toThrow(
+      /already on 15:00–24:00/i,
+    );
+  });
+
+  it('refuses someone outside the field roster', async () => {
+    const prisma = buildPrismaStub();
+    prisma.user.findUnique.mockResolvedValue({
+      ...JOANA,
+      role: UserRole.LOGISTICS_COORDINATOR,
+    });
+    const { service } = makeService(prisma, buildSchedulesStub(published()));
+
+    await expect(service.selfAssign('s1', selfDto(), { id: JOANA.id })).rejects.toThrow(
+      /not field personnel/i,
+    );
+  });
+
+  it('refuses a shift the window does not have that day', async () => {
+    const prisma = buildPrismaStub();
+    prisma.user.findUnique.mockResolvedValue(JOANA);
+    const { service } = makeService(prisma, buildSchedulesStub(published()));
+
+    await expect(
+      service.selfAssign('s1', selfDto({ slot: 6 }), { id: JOANA.id }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('signs on to a window with no roles without one', async () => {
+    const prisma = buildPrismaStub();
+    prisma.user.findUnique.mockResolvedValue(JOANA);
+    const { service } = makeService(prisma, buildSchedulesStub(published([] as never)));
+
+    await service.selfAssign('s1', selfDto({ roleId: undefined }), { id: JOANA.id });
+
+    expect(prisma.scheduleAssignment.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ roleId: null }) }),
+    );
+  });
+});
+
 describe('ScheduleAssignmentsService.unassign', () => {
   beforeEach(() => jest.clearAllMocks());
 

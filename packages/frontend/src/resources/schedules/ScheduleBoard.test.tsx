@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { AvailabilityWindowStatus, ScheduleStatus } from '@redinfo/shared';
+import { AdminContext, testDataProvider } from 'react-admin';
+import { MemoryRouter } from 'react-router-dom';
+import { AvailabilityWindowStatus, ScheduleStatus, UserRole } from '@redinfo/shared';
 import { ScheduleBoard } from './ScheduleBoard';
 import { apiDownload, apiFetch } from '../../api';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -9,6 +11,7 @@ import {
   ANA_PERSON,
   CLOSED_WINDOW,
   DRAFT_SCHEDULE,
+  EMERGENCY_ROLES,
   SCHEDULE_ID,
   scheduleBoard,
   scheduleCandidates,
@@ -33,6 +36,41 @@ function respondWith(board = scheduleBoard(), candidates = scheduleCandidates())
 const rowFor = (label: string): HTMLElement =>
   screen.getByText(label).closest('tr') as HTMLElement;
 
+const COORDINATOR = {
+  role: UserRole.EMERGENCY_COORDINATOR,
+  identity: { id: 'u-coord', fullName: 'Maria Santos', isDriver: false },
+};
+const MEMBER = {
+  role: UserRole.EMERGENCY_OPERATIONAL,
+  identity: { id: 'u-rui', fullName: 'Rui Nunes', isDriver: false },
+};
+const DRIVING_MEMBER = {
+  role: UserRole.EMERGENCY_OPERATIONAL,
+  identity: { id: 'u-bruno', fullName: 'Bruno Costa', isDriver: true },
+};
+
+/**
+ * The board reads who is looking at it from react-admin, so every render goes
+ * through an AdminContext carrying that person's role and identity.
+ */
+function renderBoard(as: { role: UserRole; identity: Record<string, unknown> } = COORDINATOR) {
+  const authProvider = {
+    login: () => Promise.resolve(),
+    logout: () => Promise.resolve(),
+    checkAuth: () => Promise.resolve(),
+    checkError: () => Promise.resolve(),
+    getPermissions: () => Promise.resolve(as.role),
+    getIdentity: () => Promise.resolve(as.identity as never),
+  };
+  return render(
+    <MemoryRouter>
+      <AdminContext dataProvider={testDataProvider()} authProvider={authProvider}>
+        <ScheduleBoard scheduleId={SCHEDULE_ID} />
+      </AdminContext>
+    </MemoryRouter>,
+  );
+}
+
 describe('ScheduleBoard', () => {
   beforeEach(() => {
     mockApiFetch.mockReset();
@@ -42,7 +80,7 @@ describe('ScheduleBoard', () => {
   });
 
   it('loads the board for the schedule it is given', async () => {
-    render(<ScheduleBoard scheduleId={SCHEDULE_ID} />);
+    renderBoard();
 
     await waitFor(() =>
       expect(mockApiFetch).toHaveBeenCalledWith(`/schedules/${SCHEDULE_ID}/board`),
@@ -52,7 +90,7 @@ describe('ScheduleBoard', () => {
   // AC: "each schedule is identified by the window it belongs to (category and
   // name)".
   it('names the window it belongs to', async () => {
-    render(<ScheduleBoard scheduleId={SCHEDULE_ID} />);
+    renderBoard();
 
     expect(await screen.findByText('Emergency')).toBeInTheDocument();
     expect(screen.getByText('Emergency - October')).toBeInTheDocument();
@@ -62,7 +100,7 @@ describe('ScheduleBoard', () => {
   // AC: "Slots are allocated per the roles the window being scheduled defines
   // — not a fixed list".
   it('gives each of the window own roles a column, with its headcount', async () => {
-    render(<ScheduleBoard scheduleId={SCHEDULE_ID} />);
+    renderBoard();
 
     const header = (await screen.findAllByRole('columnheader')).map((cell) => cell.textContent);
     expect(header[0]).toContain('Date');
@@ -75,7 +113,7 @@ describe('ScheduleBoard', () => {
 
   it('falls back to one Crew column when the window defines no roles', async () => {
     respondWith(scheduleBoard({ roles: [] }));
-    render(<ScheduleBoard scheduleId={SCHEDULE_ID} />);
+    renderBoard();
 
     const header = (await screen.findAllByRole('columnheader')).map((cell) => cell.textContent);
     expect(header).toHaveLength(3);
@@ -83,7 +121,7 @@ describe('ScheduleBoard', () => {
   });
 
   it('shows who is on each shift', async () => {
-    render(<ScheduleBoard scheduleId={SCHEDULE_ID} />);
+    renderBoard();
     await screen.findByText('Sat, 3 Oct');
 
     const saturday = rowFor('Sat, 3 Oct');
@@ -94,7 +132,7 @@ describe('ScheduleBoard', () => {
   // AC: "Any assignment that contradicts submitted availability is flagged as
   // an override … recording who made it and when".
   it('marks an override, and leaves an ordinary assignment unmarked', async () => {
-    render(<ScheduleBoard scheduleId={SCHEDULE_ID} />);
+    renderBoard();
 
     const override = await screen.findByLabelText('Carla Ferreira, override');
     expect(override).toBeInTheDocument();
@@ -102,24 +140,72 @@ describe('ScheduleBoard', () => {
   });
 
   // AC: "Coverage gaps (unfilled required slots) are visually flagged … a role
-  // left short of its people and a shift left without a driver for every
-  // vehicle it needs."
-  it('flags a role short of its people and a shift short of drivers', async () => {
-    render(<ScheduleBoard scheduleId={SCHEDULE_ID} />);
+  // left short of its people". The empty places are the flag: a role wanting
+  // three people shows three of them, and one filled to its headcount shows
+  // none — said more directly than a sentence saying so.
+  it('shows one open place per person a role still wants', async () => {
+    const pool = { ...EMERGENCY_ROLES[2], maxPeople: 3 };
+    respondWith(scheduleBoard({ roles: [pool] }));
+    renderBoard();
 
-    expect(await screen.findAllByText('Team Member: 1 person short')).not.toHaveLength(0);
-    expect(screen.getAllByText('No driver for the vehicle').length).toBeGreaterThan(0);
+    // Sunday's shift is empty, so all three of its places are open — and only
+    // three: the count comes down as people fill them.
+    await screen.findByText('Sun, 4 Oct');
+    const sunday = rowFor('Sun, 4 Oct');
+    const places = within(sunday).getAllByLabelText(
+      /Assign to Team Member on Sun, 4 Oct, 08:00–16:00 — place \d of 3/,
+    );
+    expect(places).toHaveLength(3);
+    expect(within(sunday).queryByLabelText(/place 4 of/)).not.toBeInTheDocument();
   });
 
-  it('shows drivers assigned against the vehicles a shift crews', async () => {
-    render(<ScheduleBoard scheduleId={SCHEDULE_ID} />);
+  it('offers no open place on a role already filled to its headcount', async () => {
+    renderBoard();
+    await screen.findByText('Sat, 3 Oct');
 
-    // Saturday crews two vehicles and has one certified driver so far.
-    expect(await screen.findByText('1/2')).toBeInTheDocument();
+    // Ana holds the single Driver place on Saturday; Sunday's is still open.
+    expect(
+      screen.queryByLabelText('Assign to Driver on Sat, 3 Oct, 08:00–16:00'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByLabelText('Assign to Driver on Sun, 4 Oct, 08:00–16:00'),
+    ).toBeInTheDocument();
+  });
+
+  it('does not repeat a short role in words under every column', async () => {
+    renderBoard();
+    await screen.findByText('Sat, 3 Oct');
+
+    expect(screen.queryByText(/person short/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/people short/)).not.toBeInTheDocument();
+  });
+
+  // AC: "a shift left without a driver for every vehicle it needs". The empty
+  // places cannot express this one — a shift can be full to every role and
+  // still have nobody able to drive — so it stays written out.
+  it('still writes out a shift with nobody who can drive', async () => {
+    renderBoard();
+
+    expect(
+      (await screen.findAllByText('No driver for the vehicle')).length,
+    ).toBeGreaterThan(0);
+  });
+
+  it('shows the shift as its time range alone, with no driver counter', async () => {
+    renderBoard();
+    await screen.findByText('Sat, 3 Oct');
+
+    const saturday = rowFor('Sat, 3 Oct');
+    const shiftCell = within(saturday).getAllByRole('cell')[1];
+    expect(shiftCell).toHaveTextContent('08:00–16:00');
+    // Saturday crews two vehicles with one driver on it; neither number is
+    // spelled out here — the Driver column is where that is read.
+    expect(shiftCell).not.toHaveTextContent('1/2');
+    expect(shiftCell.textContent?.trim()).toBe('08:00–16:00');
   });
 
   it('totals slots, gaps, overrides and conflicts', async () => {
-    render(<ScheduleBoard scheduleId={SCHEDULE_ID} />);
+    renderBoard();
 
     expect(await screen.findByText('2 / 6')).toBeInTheDocument();
     expect(screen.getByText('Shifts with gaps')).toBeInTheDocument();
@@ -128,14 +214,14 @@ describe('ScheduleBoard', () => {
 
   // AC: "the schedule process can start before" the window closes.
   it('says when the window is still open', async () => {
-    render(<ScheduleBoard scheduleId={SCHEDULE_ID} />);
+    renderBoard();
 
     expect(await screen.findByText(/still open/i)).toBeInTheDocument();
   });
 
   it('does not say so once the window is closed', async () => {
     respondWith(scheduleBoard({ window: CLOSED_WINDOW }));
-    render(<ScheduleBoard scheduleId={SCHEDULE_ID} />);
+    renderBoard();
 
     await screen.findByText('Schedule');
     expect(screen.queryByText(/still open/i)).not.toBeInTheDocument();
@@ -160,7 +246,7 @@ describe('ScheduleBoard', () => {
         ],
       }),
     );
-    render(<ScheduleBoard scheduleId={SCHEDULE_ID} />);
+    renderBoard();
 
     expect(
       await screen.findByText(/Ana Silva, Sat, 3 Oct — also on SALOP Support, 08:00–20:00/),
@@ -170,7 +256,7 @@ describe('ScheduleBoard', () => {
 
   it('opens the assign dialog for the role and shift that was clicked', async () => {
     const user = userEvent.setup();
-    render(<ScheduleBoard scheduleId={SCHEDULE_ID} />);
+    renderBoard();
 
     await user.click(
       await screen.findByLabelText('Assign to Team Member on Sat, 3 Oct, 08:00–16:00'),
@@ -186,7 +272,10 @@ describe('ScheduleBoard', () => {
 
   it('removes an assignment and reloads', async () => {
     const user = userEvent.setup();
-    render(<ScheduleBoard scheduleId={SCHEDULE_ID} />);
+    renderBoard();
+    // The remove control only exists once the viewer is known to be a
+    // coordinator, which resolves a tick after the board does.
+    await screen.findByRole('button', { name: /auto-fill/i });
 
     const chip = await screen.findByLabelText('Ana Silva');
     await user.click(within(chip).getByTestId('CancelIcon'));
@@ -202,7 +291,7 @@ describe('ScheduleBoard', () => {
   it('exports the roster as CSV', async () => {
     const user = userEvent.setup();
     mockApiDownload.mockResolvedValue(undefined);
-    render(<ScheduleBoard scheduleId={SCHEDULE_ID} />);
+    renderBoard();
 
     await user.click(await screen.findByRole('button', { name: /export csv/i }));
 
@@ -213,7 +302,7 @@ describe('ScheduleBoard', () => {
   });
 
   it('offers Publish on a draft and not on a published schedule', async () => {
-    render(<ScheduleBoard scheduleId={SCHEDULE_ID} />);
+    renderBoard();
     expect(await screen.findByRole('button', { name: /publish schedule/i })).toBeInTheDocument();
   });
 
@@ -224,15 +313,15 @@ describe('ScheduleBoard', () => {
         window: { ...CLOSED_WINDOW, status: AvailabilityWindowStatus.CLOSED },
       }),
     );
-    render(<ScheduleBoard scheduleId={SCHEDULE_ID} />);
+    renderBoard();
 
-    expect(await screen.findByText(/assigned personnel can see their duties/i)).toBeInTheDocument();
+    expect(await screen.findByText(/members can add themselves/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /publish schedule/i })).not.toBeInTheDocument();
   });
 
   it('renders day cards instead of a table on mobile', async () => {
     mockUseIsMobile.mockReturnValue(true);
-    render(<ScheduleBoard scheduleId={SCHEDULE_ID} />);
+    renderBoard();
 
     expect(await screen.findByText('Sat, 3 Oct')).toBeInTheDocument();
     expect(screen.queryByRole('table')).not.toBeInTheDocument();
@@ -240,8 +329,166 @@ describe('ScheduleBoard', () => {
 
   it('reports a failure to load rather than rendering an empty board', async () => {
     mockApiFetch.mockRejectedValue(new Error('Schedule sched-1 not found'));
-    render(<ScheduleBoard scheduleId={SCHEDULE_ID} />);
+    renderBoard();
 
     expect(await screen.findByText('Schedule sched-1 not found')).toBeInTheDocument();
+  });
+});
+
+// ── What a member sees on a published rota ─────────────────────────────────────
+//
+// A published schedule is posted to the whole platform. Anyone may add
+// themselves to an open place they can cover; nobody may take themselves — or
+// anyone else — off it.
+
+describe('ScheduleBoard as a member', () => {
+  const publishedBoard = (overrides = {}) =>
+    scheduleBoard({
+      schedule: { ...DRAFT_SCHEDULE, status: ScheduleStatus.PUBLISHED },
+      window: CLOSED_WINDOW,
+      ...overrides,
+    });
+
+  beforeEach(() => {
+    mockApiFetch.mockReset();
+    mockApiDownload.mockReset();
+    mockUseIsMobile.mockReturnValue(false);
+    respondWith(publishedBoard());
+  });
+
+  it('offers no coordinator tools', async () => {
+    renderBoard(MEMBER);
+
+    await screen.findByText('Sat, 3 Oct');
+    expect(screen.queryByRole('button', { name: /auto-fill/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /publish/i })).not.toBeInTheDocument();
+  });
+
+  it('will not let a member take anyone off a shift, themselves included', async () => {
+    renderBoard(MEMBER);
+
+    const chip = await screen.findByLabelText(/Carla Ferreira/);
+    expect(within(chip).queryByTestId('CancelIcon')).not.toBeInTheDocument();
+    expect(screen.getByText(/you cannot take yourself off/i)).toBeInTheDocument();
+  });
+
+  it('offers an open place as "Add me" rather than "Assign"', async () => {
+    renderBoard(MEMBER);
+
+    expect(
+      await screen.findByLabelText('Add me to Team Member on Sat, 3 Oct, 08:00–16:00'),
+    ).toBeEnabled();
+    expect(screen.queryByLabelText(/^Assign to/)).not.toBeInTheDocument();
+  });
+
+  // The rule that cannot be waived, applied before the request is ever made.
+  it('will not offer the driver post to someone without the certification', async () => {
+    renderBoard(MEMBER);
+
+    const driverSlot = await screen.findByLabelText(
+      'Add me to Driver on Sun, 4 Oct, 08:00–16:00',
+    );
+    expect(driverSlot).toBeDisabled();
+  });
+
+  it('offers the driver post to a certified driver', async () => {
+    renderBoard(DRIVING_MEMBER);
+
+    // Re-queried each time: the button is re-rendered once the identity — and
+    // with it the certification — has loaded.
+    await waitFor(() =>
+      expect(
+        screen.getByLabelText('Add me to Driver on Sun, 4 Oct, 08:00–16:00'),
+      ).toBeEnabled(),
+    );
+  });
+
+  it('confirms before adding them, because it cannot be undone', async () => {
+    const user = userEvent.setup();
+    renderBoard(MEMBER);
+
+    await user.click(
+      await screen.findByLabelText('Add me to Team Member on Sat, 3 Oct, 08:00–16:00'),
+    );
+
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Add yourself to this shift?')).toBeInTheDocument();
+    // The same warning the board carries, restated at the point of commitment.
+    expect(within(dialog).getByText(/cannot take yourself off/i)).toBeInTheDocument();
+  });
+
+  it('signs them up through the self-assign endpoint', async () => {
+    const user = userEvent.setup();
+    renderBoard(MEMBER);
+
+    await user.click(
+      await screen.findByLabelText('Add me to Team Member on Sat, 3 Oct, 08:00–16:00'),
+    );
+    await user.click(await screen.findByRole('button', { name: 'Add me' }));
+
+    await waitFor(() =>
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        `/schedules/${SCHEDULE_ID}/assignments/me`,
+        { method: 'POST', body: { date: '2026-10-03', slot: 1, roleId: 'role-3' } },
+      ),
+    );
+  });
+
+  it('reports a refusal from the API', async () => {
+    const user = userEvent.setup();
+    mockApiFetch.mockImplementation((path: string) =>
+      path.includes('/board')
+        ? Promise.resolve(publishedBoard())
+        : Promise.reject(new Error('Team Member is already full on this shift.')),
+    );
+    renderBoard(MEMBER);
+
+    await user.click(
+      await screen.findByLabelText('Add me to Team Member on Sat, 3 Oct, 08:00–16:00'),
+    );
+    await user.click(await screen.findByRole('button', { name: 'Add me' }));
+
+    expect(
+      await screen.findByText('Team Member is already full on this shift.'),
+    ).toBeInTheDocument();
+  });
+
+  it('offers nothing to sign up to while the schedule is still a draft', async () => {
+    respondWith(scheduleBoard());
+    renderBoard(MEMBER);
+
+    await screen.findByText('Sat, 3 Oct');
+    expect(screen.queryByLabelText(/^Add me to/)).not.toBeInTheDocument();
+  });
+
+  it('marks a self-signup as such rather than as an override', async () => {
+    respondWith(
+      publishedBoard({
+        days: [
+          {
+            date: '2026-10-03',
+            isWeekend: true,
+            isHoliday: false,
+            holidayName: null,
+            shifts: [
+              {
+                ...publishedBoard().days[0].shifts[0],
+                assignments: [
+                  {
+                    ...publishedBoard().days[0].shifts[0].assignments[1],
+                    selfAssigned: true,
+                    assignedById: 'u-carla',
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    renderBoard(MEMBER);
+
+    expect(await screen.findByLabelText(/Carla Ferreira, signed up/)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/override/)).not.toBeInTheDocument();
   });
 });
