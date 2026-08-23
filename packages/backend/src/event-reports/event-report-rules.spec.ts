@@ -16,6 +16,8 @@ import {
   MAX_VICTIM_AGE,
   ROLE_PERMISSIONS,
   UserRole,
+  VITALS_RANGES,
+  VITAL_KEYS,
   VictimDestinationKind,
   categoryForEventReportType,
   distanceInKm,
@@ -25,6 +27,7 @@ import {
   foldForSearch,
   formatEventReportCode,
   hasPermission,
+  implausibleVitals,
   parseEventReportCode,
   sortHospitalsForPicker,
   totalKilometres,
@@ -148,6 +151,130 @@ describe('formatEventReportCode', () => {
       'EMG 1042/2027',
     );
   });
+
+  it('is null for a draft, because an unfiled report has no code', () => {
+    // A number is a position in the year's activation-ordered sequence, and a
+    // report nobody has filed has no position yet. Rendering "EMG 000/2026"
+    // would be inventing an identifier that another report is going to be given.
+    expect(formatEventReportCode({ type: EMERGENCY, number: null, year: 2026 })).toBeNull();
+    expect(formatEventReportCode({ type: EMERGENCY, year: 2026 })).toBeNull();
+  });
+});
+
+describe('the clinical type flags', () => {
+  it('gives an emergency a live run, a clinical record and a verbete slot', () => {
+    expect(eventReportRules(EMERGENCY)).toMatchObject({
+      supportsLiveRun: true,
+      hasClinicalRecord: true,
+      hasVerbete: true,
+    });
+  });
+
+  it('gives a support report none of the three', () => {
+    // Live mode is emergency-only, and so is the clinical record: a stall at a
+    // village fair has no vitals to take and no Verbete to attach.
+    for (const type of [LOCAL_SUPPORT, SALOP_SUPPORT]) {
+      expect(eventReportRules(type)).toMatchObject({
+        supportsLiveRun: false,
+        hasClinicalRecord: false,
+        hasVerbete: false,
+      });
+    }
+  });
+});
+
+describe('the clinical record', () => {
+  const withVitals = (assessment: Record<string, unknown>) =>
+    emergency({ assessments: [{ takenAt: '2026-08-22T20:31:00.000Z', ...assessment }] });
+
+  it('accepts every vital at both ends of its range', () => {
+    for (const key of VITAL_KEYS) {
+      const { min, max } = VITALS_RANGES[key];
+      expect(codeOf(validateEventReport(withVitals({ [key]: min })))).toBeNull();
+      expect(codeOf(validateEventReport(withVitals({ [key]: max })))).toBeNull();
+    }
+  });
+
+  it('refuses every vital one step past either end', () => {
+    for (const key of VITAL_KEYS) {
+      const { min, max, decimals } = VITALS_RANGES[key];
+      const step = decimals === 0 ? 1 : 0.1;
+      // Rounded, because 20 - 0.1 in binary floating point is not 19.9.
+      const below = Number((min - step).toFixed(1));
+      const above = Number((max + step).toFixed(1));
+      expect(codeOf(validateEventReport(withVitals({ [key]: below })))).toBe('VITAL_OUT_OF_RANGE');
+      expect(codeOf(validateEventReport(withVitals({ [key]: above })))).toBe('VITAL_OUT_OF_RANGE');
+    }
+  });
+
+  it('records an implausible-but-real measurement without complaint', () => {
+    // The whole point of writing a vital down is that it is abnormal. A form
+    // that refused an SpO₂ of 71 would send the crew back to paper.
+    expect(codeOf(validateEventReport(withVitals({ spo2: 71, heartRate: 0 })))).toBeNull();
+    expect(implausibleVitals({ spo2: 71 })).toContain('spo2');
+    expect(implausibleVitals({ spo2: 97 })).toEqual([]);
+  });
+
+  it('refuses a set of observations with nothing in it', () => {
+    // A bare timestamp is a row that says a crew looked and recorded nothing,
+    // which is worse than no row: it reads as an assessment on the report.
+    expect(codeOf(validateEventReport(withVitals({})))).toBe('ASSESSMENT_EMPTY');
+    // A body position alone is a real observation, though.
+    expect(codeOf(validateEventReport(withVitals({ bodyPosition: 'decúbito dorsal' })))).toBeNull();
+  });
+
+  it('refuses a diastolic above its own systolic', () => {
+    expect(codeOf(validateEventReport(withVitals({ systolic: 90, diastolic: 120 })))).toBe(
+      'DIASTOLIC_ABOVE_SYSTOLIC',
+    );
+    expect(codeOf(validateEventReport(withVitals({ systolic: 120, diastolic: 80 })))).toBeNull();
+  });
+
+  it('refuses a whole-number vital given as a fraction', () => {
+    expect(codeOf(validateEventReport(withVitals({ heartRate: 78.5 })))).toBe('VITAL_NOT_WHOLE');
+    // Temperature is the one that is allowed a decimal.
+    expect(codeOf(validateEventReport(withVitals({ temperature: 36.8 })))).toBeNull();
+  });
+
+  it('keeps the clinical record off a type that has none', () => {
+    expect(codeOf(validateEventReport(support({ chamuHistory: 'Diabética' })))).toBe(
+      'CLINICAL_NOT_FOR_TYPE',
+    );
+    expect(
+      codeOf(
+        validateEventReport(
+          support({ assessments: [{ takenAt: '2026-08-22T20:31:00.000Z', spo2: 97 }] }),
+        ),
+      ),
+    ).toBe('CLINICAL_NOT_FOR_TYPE');
+  });
+
+  it('reads the five CHAMU fields and the five ABCDE bands', () => {
+    const input = emergency({
+      chamuCircumstances: 'Queda da própria altura',
+      chamuHistory: 'HTA',
+      chamuAllergies: 'Nenhuma conhecida',
+      chamuMedication: 'Losartan',
+      chamuLastMeal: 'Almoço às 13h',
+      abcde: {
+        A: { status: 'NORMAL' },
+        B: { status: 'NORMAL' },
+        C: { status: 'ALTERED', note: 'Hemorragia no antebraço' },
+        D: { status: 'NORMAL' },
+        E: { status: 'NOT_ASSESSED' },
+      },
+    });
+    expect(codeOf(validateEventReport(input))).toBeNull();
+  });
+
+  it('refuses an ABCDE band nobody has heard of, and a status nobody has heard of', () => {
+    expect(
+      codeOf(validateEventReport(emergency({ abcde: { Z: { status: 'NORMAL' } } as never }))),
+    ).toBe('ABCDE_UNKNOWN_BAND');
+    expect(
+      codeOf(validateEventReport(emergency({ abcde: { A: { status: 'FINE' } } as never }))),
+    ).toBe('ABCDE_INVALID_STATUS');
+  });
 });
 
 describe('parseEventReportCode', () => {
@@ -171,7 +298,8 @@ describe('parseEventReportCode', () => {
 
   it('strips leading zeros, so the printed form round-trips', () => {
     const code = formatEventReportCode({ type: SALOP_SUPPORT, number: 7, year: 2026 });
-    expect(parseEventReportCode(code)).toEqual({
+    expect(code).not.toBeNull();
+    expect(parseEventReportCode(code!)).toEqual({
       type: SALOP_SUPPORT,
       number: 7,
       year: 2026,

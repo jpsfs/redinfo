@@ -40,6 +40,7 @@ import {
   EventReportEdit,
 } from './resources/eventReports';
 import { HospitalList, HospitalCreate, HospitalEdit } from './resources/hospitals';
+import { LiveEntryPage, LiveRunGate, LiveRunPage } from './resources/liveRuns';
 import { MyAvailabilityPage } from './pages/MyAvailabilityPage';
 import { MyDutiesPage } from './pages/MyDutiesPage';
 import { MyReportsPage } from './pages/MyReportsPage';
@@ -68,6 +69,41 @@ export default function App() {
     >
       <CustomRoutes noLayout>
         <Route path="/auth/callback" element={<OAuthCallback />} />
+
+        {/* Live emergency mode owns the whole viewport: its own app bar carries
+            the run clock and sync state, and the bottom bar has to be the only
+            thing in thumb reach — react-admin's Layout would put a hamburger
+            menu there instead. `noLayout` routes render outside the auth gate,
+            so `LiveRunGate` brings the gate with it.
+
+            The screen is a path segment rather than component state because this
+            is an Android device: with it in the URL, the hardware back button
+            walks screens for free and a mid-run reload lands where the crew
+            was. */}
+        <Route
+          path="/live"
+          element={
+            <LiveRunGate>
+              <LiveEntryPage />
+            </LiveRunGate>
+          }
+        />
+        <Route
+          path="/live/:runId"
+          element={
+            <LiveRunGate>
+              <LiveRunPage />
+            </LiveRunGate>
+          }
+        />
+        <Route
+          path="/live/:runId/:screen"
+          element={
+            <LiveRunGate>
+              <LiveRunPage />
+            </LiveRunGate>
+          }
+        />
       </CustomRoutes>
 
       {/* Personal action page rather than a resource: it only ever shows the

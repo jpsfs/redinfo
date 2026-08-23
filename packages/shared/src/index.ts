@@ -61,6 +61,14 @@ export enum Action {
   MANAGE_EVENT_REPORTS = 'MANAGE_EVENT_REPORTS',
   /** Maintain the hospital list a report's transport destination comes from. */
   MANAGE_HOSPITALS = 'MANAGE_HOSPITALS',
+  /**
+   * Read the board of emergencies currently being run.
+   *
+   * Oversight only. There is deliberately no matching "write" action: field
+   * crew already carry `CREATE_EVENT_REPORT`, which is the "I am the crew"
+   * capability, and a live run is the report before it is finished.
+   */
+  VIEW_LIVE_RUNS = 'VIEW_LIVE_RUNS',
 }
 
 export const ROLE_PERMISSIONS: Record<UserRole, Action[]> = {
@@ -92,6 +100,9 @@ export const ROLE_PERMISSIONS: Record<UserRole, Action[]> = {
     // The hospital list is report configuration, kept by whoever reads the
     // reports — the same hand that keeps the holiday table.
     Action.MANAGE_HOSPITALS,
+    // Watching runs in progress is the coordinator's half of live mode; the
+    // crew's half needs no new capability.
+    Action.VIEW_LIVE_RUNS,
   ],
   [UserRole.LOGISTICS_COORDINATOR]: [
     Action.MANAGE_LOGISTICS,
@@ -1624,6 +1635,20 @@ export interface EventReportTypeRules {
   requiresExternalReference: boolean;
   /** Label for the external reference field. */
   externalReferenceLabel: string;
+  /**
+   * This kind of activity can be recorded live, on a phone, while it happens.
+   * Only an emergency can: a support job has no CODU call to type during and
+   * no chronology to stamp.
+   */
+  supportsLiveRun: boolean;
+  /**
+   * The report carries vitals, CHAMU and ABCDE findings. Clinical detail is
+   * something an emergency crew records about a victim they treated; a
+   * standby at a village fair records nobody.
+   */
+  hasClinicalRecord: boolean;
+  /** A slot for the paper INEM *Verbete de Socorro* the crew was handed. */
+  hasVerbete: boolean;
 }
 
 /** How many victims a support report may carry — a guard, not a domain rule. */
@@ -1642,6 +1667,9 @@ export const EVENT_REPORT_TYPE_RULES: Record<EventReportType, EventReportTypeRul
     maxVictims: 1,
     requiresExternalReference: true,
     externalReferenceLabel: 'CODU',
+    supportsLiveRun: true,
+    hasClinicalRecord: true,
+    hasVerbete: true,
   },
   [EventReportType.LOCAL_SUPPORT]: {
     codePrefix: 'APL',
@@ -1651,6 +1679,9 @@ export const EVENT_REPORT_TYPE_RULES: Record<EventReportType, EventReportTypeRul
     maxVictims: MAX_VICTIMS_PER_REPORT,
     requiresExternalReference: false,
     externalReferenceLabel: 'Reference',
+    supportsLiveRun: false,
+    hasClinicalRecord: false,
+    hasVerbete: false,
   },
   [EventReportType.SALOP_SUPPORT]: {
     codePrefix: 'SAL',
@@ -1660,6 +1691,9 @@ export const EVENT_REPORT_TYPE_RULES: Record<EventReportType, EventReportTypeRul
     maxVictims: MAX_VICTIMS_PER_REPORT,
     requiresExternalReference: false,
     externalReferenceLabel: 'Reference',
+    supportsLiveRun: false,
+    hasClinicalRecord: false,
+    hasVerbete: false,
   },
 };
 
@@ -1703,12 +1737,18 @@ export function eventReportTypeForCategory(
  * and there is one spelling of the rule. Three digits because a delegation
  * files hundreds a year, not tens of thousands — and a wider number simply
  * takes more digits rather than wrapping.
+ *
+ * **Null for a draft.** A report gets its number when it is submitted, so an
+ * unsubmitted one has no code at all — and inventing a placeholder ("EMG
+ * —/2026") would put a string that looks like an identifier on a screen next
+ * to real ones. Callers show `t('report.draftNoNumber')` instead.
  */
 export function formatEventReportCode(report: {
   type: EventReportType | string;
-  number: number;
+  number?: number | null;
   year: number;
-}): string {
+}): string | null {
+  if (report.number === null || report.number === undefined) return null;
   const prefix = eventReportRules(report.type).codePrefix;
   return `${prefix} ${String(report.number).padStart(3, '0')}/${report.year}`;
 }
@@ -1820,12 +1860,36 @@ export interface EventReportCrewMember {
   position: number;
 }
 
+/**
+ * One measured stretch of a run's route, as the Routes API returned it.
+ *
+ * Stored alongside the total so "28 km" is explainable a year later: which
+ * three hops it was the sum of, and how far each was.
+ */
+export interface RouteLeg {
+  /** Human-readable end points, e.g. "Base" → "Ceira". */
+  from: string;
+  to: string;
+  kilometres: number;
+}
+
 export interface EventReportVehicle {
   id: string;
   vehicleId: string;
   vehicle?: Pick<Vehicle, 'id' | 'licensePlate' | 'numeroCauda'>;
   kilometres: number;
   position: number;
+  /**
+   * The legs `kilometres` was computed from — Base → occurrence → hospital →
+   * Base. Null when nobody has computed it yet (no network at close) or when
+   * the figure was typed by hand on a post-hoc report.
+   */
+  routeLegs?: RouteLeg[] | null;
+  /**
+   * The crew edited the computed figure. Kept so an edited number is visibly
+   * an edit rather than silently replacing a measurement.
+   */
+  isOverridden: boolean;
 }
 
 export interface EventReportVictim {
@@ -1888,14 +1952,201 @@ export function validateAttachment(file: {
   return null;
 }
 
+/**
+ * What an attachment *is*, as distinct from what it contains.
+ *
+ * A discriminator rather than a second table: the bytes, the MIME allow-list,
+ * the size cap, the storage keys and the download route are all identical. Only
+ * two things differ — a report has at most one VERBETE, and the Verbete has its
+ * own slot on the screen instead of being one thumbnail among twenty.
+ */
+export enum EventReportAttachmentKind {
+  /** The paper INEM *Verbete de Socorro* the crew was handed. At most one. */
+  VERBETE = 'VERBETE',
+  /** Photographs taken on scene, and anything else. */
+  GENERAL = 'GENERAL',
+}
+
 export interface EventReportAttachment {
   id: string;
   filename: string;
   mimeType: string;
   byteSize: number;
+  kind: EventReportAttachmentKind;
   uploadedById: string;
   uploadedBy?: EventReportPerson;
   createdAt: string;
+}
+
+// ─── The clinical record ──────────────────────────────────────────────────────
+
+/**
+ * One measurable sign, and the bounds the database will accept.
+ *
+ * These are *hard* bounds — the widest value that is a measurement rather than
+ * a typo — and the migration holds each of them as a CHECK. What a crew would
+ * normally expect to see is `VITALS_PLAUSIBLE` below, and that one never
+ * blocks: a real SpO₂ of 71 has to be recordable.
+ */
+export interface VitalRange {
+  min: number;
+  max: number;
+  /** Unit as it is printed beside the field. */
+  unit: string;
+  /** Decimal places the value is stored with. 0 for everything but temperature. */
+  decimals: 0 | 1;
+}
+
+/**
+ * Every vital sign a set of observations may carry.
+ *
+ * The five the product owner named, plus SpO₂, Glasgow and pain score — the
+ * other three the *Verbete*'s assessment grid carries, and cheap to collect on
+ * the same screen.
+ */
+export const VITALS_RANGES = {
+  spo2: { min: 0, max: 100, unit: '%', decimals: 0 },
+  respiratoryRate: { min: 0, max: 120, unit: 'cpm', decimals: 0 },
+  // Asystole is a real, recordable finding — 0 is a measurement, not a blank.
+  heartRate: { min: 0, max: 300, unit: 'bpm', decimals: 0 },
+  systolic: { min: 0, max: 300, unit: 'mmHg', decimals: 0 },
+  diastolic: { min: 0, max: 300, unit: 'mmHg', decimals: 0 },
+  bloodGlucose: { min: 0, max: 1000, unit: 'mg/dL', decimals: 0 },
+  temperature: { min: 20, max: 45, unit: '°C', decimals: 1 },
+  glasgow: { min: 3, max: 15, unit: '', decimals: 0 },
+  painScore: { min: 0, max: 10, unit: '', decimals: 0 },
+} as const satisfies Record<string, VitalRange>;
+
+export type VitalKey = keyof typeof VITALS_RANGES;
+
+/** Declaration order, which is the order the assessment screen shows them in. */
+export const VITAL_KEYS = Object.keys(VITALS_RANGES) as VitalKey[];
+
+/**
+ * What a crew would normally expect to see, for an advisory caption only.
+ *
+ * Never a block. The whole point of writing a vital down is that it is
+ * abnormal, and a form that refused an SpO₂ of 71 would send the crew back to
+ * paper.
+ */
+export const VITALS_PLAUSIBLE: Record<VitalKey, { min: number; max: number }> = {
+  spo2: { min: 90, max: 100 },
+  respiratoryRate: { min: 10, max: 24 },
+  heartRate: { min: 50, max: 110 },
+  systolic: { min: 90, max: 160 },
+  diastolic: { min: 50, max: 100 },
+  bloodGlucose: { min: 70, max: 180 },
+  temperature: { min: 35.5, max: 37.5 },
+  glasgow: { min: 15, max: 15 },
+  painScore: { min: 0, max: 3 },
+};
+
+/** Vitals worth flagging with a caption — never an error. */
+export function implausibleVitals(
+  assessment: Partial<Record<VitalKey, number | null | undefined>>,
+): VitalKey[] {
+  return VITAL_KEYS.filter((key) => {
+    const value = assessment[key];
+    if (value === null || value === undefined || !Number.isFinite(value)) return false;
+    const range = VITALS_PLAUSIBLE[key];
+    return value < range.min || value > range.max;
+  });
+}
+
+/** Where the victim was found or placed, free text — a short one-liner. */
+export const MAX_ASSESSMENT_POSITION_LENGTH = 120;
+
+/** How many sets of vitals one report may carry — a guard, not a domain rule. */
+export const MAX_ASSESSMENTS_PER_REPORT = 12;
+
+/**
+ * One set of observations, taken at one moment.
+ *
+ * A list rather than columns on the report because a set of vitals is something
+ * taken *at a time*: usually once on scene, but a deteriorating victim is
+ * measured again on the way in, and "what were the vitals when they left" must
+ * not overwrite "what were they when we arrived".
+ */
+export interface AssessmentInput extends Partial<Record<VitalKey, number | null>> {
+  takenAt: string;
+  /**
+   * How the victim was found or placed — e.g. "decúbito dorsal", "sentada".
+   * Free text; nothing queries it.
+   *
+   * Named `bodyPosition` rather than `position` because every other child table
+   * here uses `position` for display order, and one word meaning two things in
+   * sibling tables is how a wrong ORDER BY gets written.
+   */
+  bodyPosition?: string | null;
+}
+
+export interface EventReportAssessment extends AssessmentInput {
+  id: string;
+  /** Display order within the report, 0-based — the order they were taken. */
+  position: number;
+}
+
+/** The five ABCDE bands, in the order the primary survey walks them. */
+export enum AbcdeBand {
+  A = 'A',
+  B = 'B',
+  C = 'C',
+  D = 'D',
+  E = 'E',
+}
+
+export const ABCDE_BANDS = Object.values(AbcdeBand);
+
+/**
+ * What the crew found in one band.
+ *
+ * `NOT_ASSESSED` is a real answer and different from an absent band: "we looked
+ * and it was fine" and "we never got to it" are different clinical facts.
+ */
+export type AbcdeStatus = 'NORMAL' | 'ALTERED' | 'NOT_ASSESSED';
+
+export const ABCDE_STATUSES: readonly AbcdeStatus[] = [
+  'NORMAL',
+  'ALTERED',
+  'NOT_ASSESSED',
+];
+
+export interface AbcdeFinding {
+  status: AbcdeStatus;
+  note?: string | null;
+}
+
+/** A band with nothing recorded is simply absent. */
+export type AbcdeFindings = Partial<Record<AbcdeBand, AbcdeFinding>>;
+
+export const MAX_ABCDE_NOTE_LENGTH = 500;
+
+/** The five CHAMU columns, as the national form orders them. */
+export const CHAMU_FIELDS = [
+  'chamuCircumstances',
+  'chamuHistory',
+  'chamuAllergies',
+  'chamuMedication',
+  'chamuLastMeal',
+] as const;
+
+export type ChamuField = (typeof CHAMU_FIELDS)[number];
+
+/** Per CHAMU field. Long enough for a paragraph, short enough to read. */
+export const MAX_CHAMU_LENGTH = 2000;
+
+/**
+ * The clinical part of a report: five CHAMU columns, the ABCDE block, and the
+ * sets of vitals.
+ *
+ * Present only where `hasClinicalRecord` is true. ADO #151 removed vital signs
+ * from the report; this feature puts them back, because the crew is now
+ * recording them live and throwing them away at close would be worse than not
+ * collecting them.
+ */
+export interface EventReportClinical extends Partial<Record<ChamuField, string | null>> {
+  abcde?: AbcdeFindings | null;
+  assessments?: AssessmentInput[];
 }
 
 /** The shift a report's crew was taken from, for display. */
@@ -1910,10 +2161,20 @@ export interface EventReportShift {
   windowLabel?: string;
 }
 
-export interface EventReport {
+export interface EventReport extends EventReportClinical {
   id: string;
   type: EventReportType;
-  number: number;
+  /**
+   * Null until the report is submitted. The number is a position in the year's
+   * activation-ordered sequence, and a draft has no position yet.
+   */
+  number: number | null;
+  /**
+   * What this report was called before the sequence was last recomputed. Kept
+   * forever and searchable, so paper filed as "EMG 042/2026" stays findable
+   * after a renumber.
+   */
+  legacyNumber?: number | null;
   year: number;
   /** ISO date, `YYYY-MM-DD`. */
   occurredOn: string;
@@ -1938,11 +2199,32 @@ export interface EventReport {
   vehicles: EventReportVehicle[];
   victims: EventReportVictim[];
   attachments: EventReportAttachment[];
+  assessments: EventReportAssessment[];
+
+  /**
+   * Who filed it and when, or nulls while it is a draft.
+   *
+   * An actor-and-timestamp pair rather than a boolean, matching
+   * `Schedule.publishedBy/publishedAt`: a transition is a fact about a person
+   * and a moment. `submittedAt === null` *is* the draft state — there is no
+   * separate status enum to disagree with it.
+   */
+  submittedAt?: string | null;
+  submittedById?: string | null;
+  submittedBy?: EventReportPerson | null;
+
+  /** The live run this report was created from, when there was one. */
+  liveRunId?: string | null;
 
   createdById: string;
   createdBy?: EventReportPerson;
   createdAt: string;
   updatedAt: string;
+}
+
+/** Whether a report has been filed, as opposed to being an open draft. */
+export function isEventReportSubmitted(report: Pick<EventReport, 'submittedAt'>): boolean {
+  return !isBlank(report.submittedAt);
 }
 
 // ─── Event report input ───────────────────────────────────────────────────────
@@ -1955,6 +2237,10 @@ export interface EventReportCrewInput {
 export interface EventReportVehicleInput {
   vehicleId: string;
   kilometres: number;
+  /** Only ever written by the distance service; a client sending it is ignored. */
+  routeLegs?: RouteLeg[] | null;
+  /** True once a human has changed a computed figure. */
+  isOverridden?: boolean;
 }
 
 export interface EventReportVictimInput {
@@ -1980,7 +2266,7 @@ export interface EventReportShiftInput {
  * (`type`, `number`, `year`) is not in here — the type is fixed on create and
  * the number is the server's to assign.
  */
-export interface EventReportInput {
+export interface EventReportInput extends EventReportClinical {
   /** Only read on create; ignored on update, where the type is already fixed. */
   type: EventReportType;
   /** ISO date, `YYYY-MM-DD`. */
@@ -2081,7 +2367,32 @@ export type EventReportProblemCode =
   | 'NARRATIVE_TOO_LONG'
   | 'SHIFT_MISSING_SCHEDULE'
   | 'SHIFT_MISSING_DATE'
-  | 'SHIFT_MISSING_SLOT';
+  | 'SHIFT_MISSING_SLOT'
+  // ── The clinical record ──
+  | 'CLINICAL_NOT_FOR_TYPE'
+  | 'CHAMU_TOO_LONG'
+  | 'ABCDE_UNKNOWN_BAND'
+  | 'ABCDE_INVALID_STATUS'
+  | 'ABCDE_NOTE_TOO_LONG'
+  | 'ASSESSMENTS_NOT_A_LIST'
+  | 'TOO_MANY_ASSESSMENTS'
+  | 'ASSESSMENT_INVALID_TIME'
+  | 'ASSESSMENT_EMPTY'
+  | 'VITAL_OUT_OF_RANGE'
+  | 'VITAL_NOT_WHOLE'
+  | 'DIASTOLIC_ABOVE_SYSTOLIC'
+  | 'ASSESSMENT_POSITION_TOO_LONG'
+  // ── Live runs ──
+  | 'LIVE_RUN_MISSING_ID'
+  | 'LIVE_RUN_INVALID_REVISION'
+  | 'LIVE_RUN_UNKNOWN_STATE'
+  | 'LIVE_RUN_MISSING_START'
+  | 'LIVE_RUN_ADDRESS_TOO_LONG'
+  | 'LIVE_RUN_NAME_TOO_LONG'
+  | 'LIVE_RUN_INVALID_DATE_OF_BIRTH'
+  | 'LIVE_RUN_INVALID_SNS'
+  | 'LIVE_RUN_COMPLAINT_TOO_LONG'
+  | 'LIVE_RUN_NOT_CLOSED';
 
 export interface EventReportProblem {
   code: EventReportProblemCode;
@@ -2214,6 +2525,9 @@ export function validateEventReport(input: EventReportInput): EventReportProblem
   const victimsProblem = validateVictims(input.victims, rules);
   if (victimsProblem) return victimsProblem;
 
+  const clinicalProblem = validateClinicalRecord(input, rules);
+  if (clinicalProblem) return clinicalProblem;
+
   // An empty narrative is *not* an error. A crew filing from a layby saves what
   // it has and writes the account later; refusing the save would mean the report
   // never gets filed at all. It comes back from `eventReportWarnings` instead.
@@ -2281,6 +2595,154 @@ export function validateOccurrenceTimes(
         ].toLowerCase()}.`,
       );
     }
+  }
+
+  return null;
+}
+
+/**
+ * The clinical record: refused outright on a type that has none, and otherwise
+ * checked field by field.
+ *
+ * Refusing it on a support report is the same rule as refusing a stray
+ * occurrence timestamp — a standby at a village fair has no victim to have
+ * vitals — and it is stated here rather than as five more CHECK constraints for
+ * the same reason.
+ */
+export function validateClinicalRecord(
+  input: EventReportClinical,
+  rules: EventReportTypeRules,
+): EventReportProblem | null {
+  const hasChamu = CHAMU_FIELDS.some((field) => !isBlank(input[field]));
+  const hasAbcde = input.abcde ? Object.keys(input.abcde).length > 0 : false;
+  const assessments = input.assessments ?? [];
+
+  if (!rules.hasClinicalRecord) {
+    if (hasChamu || hasAbcde || assessments.length > 0) {
+      return problem(
+        'CLINICAL_NOT_FOR_TYPE',
+        'Clinical observations are only recorded on an emergency report.',
+      );
+    }
+    return null;
+  }
+
+  for (const field of CHAMU_FIELDS) {
+    const value = input[field];
+    if (!isBlank(value) && value!.length > MAX_CHAMU_LENGTH) {
+      return problem(
+        'CHAMU_TOO_LONG',
+        `Each CHAMU note may be at most ${MAX_CHAMU_LENGTH} characters.`,
+      );
+    }
+  }
+
+  if (input.abcde) {
+    for (const [band, finding] of Object.entries(input.abcde)) {
+      if (!ABCDE_BANDS.includes(band as AbcdeBand)) {
+        return problem('ABCDE_UNKNOWN_BAND', `"${band}" is not an ABCDE band.`);
+      }
+      if (!finding) continue;
+      if (!ABCDE_STATUSES.includes(finding.status)) {
+        return problem(
+          'ABCDE_INVALID_STATUS',
+          `Band ${band} needs a status of normal, altered or not assessed.`,
+        );
+      }
+      if ((finding.note ?? '').length > MAX_ABCDE_NOTE_LENGTH) {
+        return problem(
+          'ABCDE_NOTE_TOO_LONG',
+          `An ABCDE note may be at most ${MAX_ABCDE_NOTE_LENGTH} characters.`,
+        );
+      }
+    }
+  }
+
+  if (!Array.isArray(assessments)) {
+    return problem('ASSESSMENTS_NOT_A_LIST', 'The observations are missing.');
+  }
+  if (assessments.length > MAX_ASSESSMENTS_PER_REPORT) {
+    return problem(
+      'TOO_MANY_ASSESSMENTS',
+      `A report may carry at most ${MAX_ASSESSMENTS_PER_REPORT} sets of observations (got ${assessments.length}).`,
+    );
+  }
+  for (const assessment of assessments) {
+    const assessmentProblem = validateAssessment(assessment);
+    if (assessmentProblem) return assessmentProblem;
+  }
+
+  return null;
+}
+
+/**
+ * One set of observations.
+ *
+ * The two rules worth naming: a set with no measurement in it at all is not an
+ * observation (the database says the same with `num_nonnulls(...) >= 1`), and a
+ * diastolic above the systolic is a transcription error rather than a reading —
+ * every other out-of-range value is merely advisory.
+ */
+export function validateAssessment(
+  assessment: AssessmentInput,
+): EventReportProblem | null {
+  if (isBlank(assessment?.takenAt) || !isInstant(assessment.takenAt)) {
+    return problem(
+      'ASSESSMENT_INVALID_TIME',
+      'A set of observations needs the time it was taken.',
+    );
+  }
+
+  const measured = VITAL_KEYS.filter((key) => {
+    const value = assessment[key];
+    return value !== null && value !== undefined;
+  });
+
+  if (measured.length === 0 && isBlank(assessment.bodyPosition)) {
+    return problem(
+      'ASSESSMENT_EMPTY',
+      'A set of observations with nothing measured in it is not an observation.',
+    );
+  }
+
+  for (const key of measured) {
+    const value = assessment[key]!;
+    const range = VITALS_RANGES[key];
+    if (!Number.isFinite(value) || value < range.min || value > range.max) {
+      return problem(
+        'VITAL_OUT_OF_RANGE',
+        `${key} must be between ${range.min} and ${range.max}${
+          range.unit ? ` ${range.unit}` : ''
+        }.`,
+      );
+    }
+    // Its own code rather than reusing the range one: "must be a whole number"
+    // and "must be between 0 and 300" are different corrections, and the field
+    // that shows them has to be able to tell a crew which one to make.
+    if (range.decimals === 0 && !Number.isInteger(value)) {
+      return problem('VITAL_NOT_WHOLE', `${key} must be a whole number.`);
+    }
+  }
+
+  const { systolic, diastolic } = assessment;
+  if (
+    systolic !== null &&
+    systolic !== undefined &&
+    diastolic !== null &&
+    diastolic !== undefined &&
+    diastolic > systolic
+  ) {
+    return problem(
+      'DIASTOLIC_ABOVE_SYSTOLIC',
+      'The diastolic pressure cannot be above the systolic.',
+    );
+  }
+
+  if ((assessment.bodyPosition ?? '').length > MAX_ASSESSMENT_POSITION_LENGTH) {
+    return problem(
+      'ASSESSMENT_POSITION_TOO_LONG',
+      `The position may be at most ${MAX_ASSESSMENT_POSITION_LENGTH} characters.`,
+    );
   }
 
   return null;
@@ -2471,6 +2933,12 @@ export interface EventReportListFilters {
   to?: string;
   /** Free text, matched against the report code, locality and crew names. */
   q?: string;
+  /**
+   * Filed, still a draft, or both. Defaults to both: a crew's own list is where
+   * an unfinished report has to be visible, or forgetting the paperwork leaves
+   * nothing to see.
+   */
+  filed?: EventReportFiledState;
 }
 
 /**
@@ -2478,3 +2946,737 @@ export interface EventReportListFilters {
  * tab showing zero is a tab that says "none yet" rather than one that vanishes.
  */
 export type EventReportCounts = Record<EventReportType | 'ALL', number>;
+
+/** `GET /event-reports` filters gain one more axis once drafts exist. */
+export type EventReportFiledState = 'ALL' | 'DRAFT' | 'SUBMITTED';
+
+/**
+ * `POST /event-reports/:id/submit` — the filed report, and every report whose
+ * printed number moved to make room for it.
+ *
+ * The list of displaced reports is returned rather than merely logged because
+ * the coordinator who caused it is the one person who can go and correct the
+ * paper.
+ */
+export interface EventReportSubmitResponse {
+  report: EventReport;
+  renumbered: ReportRenumber[];
+}
+
+/** `DELETE /event-reports/:id` — deleting closes the gap it leaves. */
+export interface EventReportDeleteResponse {
+  id: string;
+  renumbered: ReportRenumber[];
+}
+
+// ─── Numbering ────────────────────────────────────────────────────────────────
+
+/**
+ * The order a `(type, year)` partition is numbered in.
+ *
+ * This is the testable twin of the SQL `ORDER BY` in
+ * `event-report-numbering.ts`: activation time first (falling back to the start
+ * time for a report that never stamped one), then when it was created, then the
+ * id. The id is there to make the ordering *total* — two reports activated in
+ * the same second and created in the same millisecond must still have a
+ * defined order, or the same partition renumbers differently on two runs.
+ */
+export interface NumberableReport {
+  id: string;
+  activationAt?: string | null;
+  startedAt: string;
+  createdAt: string;
+}
+
+export function orderForNumbering<T extends NumberableReport>(reports: T[]): T[] {
+  const key = (report: T) => new Date(report.activationAt || report.startedAt).getTime();
+  return [...reports].sort((a, b) => {
+    const byActivation = key(a) - key(b);
+    if (byActivation !== 0) return byActivation;
+    const byCreation = new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    if (byCreation !== 0) return byCreation;
+    return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+  });
+}
+
+/**
+ * What a resequence did, one line per report whose printed number moved.
+ *
+ * Logged rather than merely returned, because renumbering rewrites the identity
+ * of reports that are already on paper: "EMG 128/2026 is now EMG 127/2026" has
+ * to be answerable a year later.
+ */
+export interface ReportRenumber {
+  reportId: string;
+  from: number | null;
+  to: number;
+}
+
+// ─── The delegation's own configuration ───────────────────────────────────────
+
+/**
+ * The handful of values that are the same for every run of this delegation.
+ *
+ * Configuration rather than constants in code: one place, identical for every
+ * run, and changeable without a deploy when the delegation moves or the
+ * freephone number changes.
+ */
+export interface DelegationSettings {
+  baseName: string;
+  baseLatitude: number;
+  baseLongitude: number;
+  /** Dialled from the live-run overflow menu, and the dial time is stamped. */
+  coduDadosPhone: string;
+}
+
+/**
+ * Campo, Barcelos — resolved once from the delegation's map pin and stored as
+ * coordinates rather than a `maps.app.goo.gl` short link, which can rot. The
+ * Routes API takes lat/lng waypoints directly, so there is no geocoding step
+ * and no ambiguity about which "Campo" is meant.
+ */
+export const DEFAULT_DELEGATION_SETTINGS: DelegationSettings = {
+  baseName: 'Cruz Vermelha Portuguesa — Delegação de Campo',
+  baseLatitude: 41.5923783,
+  baseLongitude: -8.6117829,
+  coduDadosPhone: '+351800203264',
+};
+
+// ─── Live emergency runs ──────────────────────────────────────────────────────
+
+/**
+ * Where a run has got to.
+ *
+ * A run is a walk through these in order, except that `CLOSED` is reachable
+ * from *every* stage: a call can be stood down at any point, and the crew must
+ * never be stuck in a state the screen cannot leave.
+ */
+export enum LiveRunState {
+  INTAKE = 'INTAKE',
+  EN_ROUTE = 'EN_ROUTE',
+  ON_SCENE = 'ON_SCENE',
+  EN_ROUTE_TO_HOSPITAL = 'EN_ROUTE_TO_HOSPITAL',
+  AT_HOSPITAL = 'AT_HOSPITAL',
+  CLOSED = 'CLOSED',
+}
+
+export const LIVE_RUN_STATES = Object.values(LiveRunState);
+
+/** Which live screen a state is captured on. Also the URL segment. */
+export type LiveScreen =
+  | 'intake'
+  | 'enroute'
+  | 'scene'
+  | 'assessment'
+  | 'transport'
+  | 'closing';
+
+export const LIVE_SCREENS: readonly LiveScreen[] = [
+  'intake',
+  'enroute',
+  'scene',
+  'assessment',
+  'transport',
+  'closing',
+];
+
+export interface LiveRunStateRules {
+  /** The screen this state is worked on. */
+  screen: LiveScreen;
+  /** The state the primary transition moves to, or null at the end. */
+  next: LiveRunState | null;
+  /** The occurrence timestamp that transition stamps, or null. */
+  stamps: OccurrenceTimeField | null;
+}
+
+/**
+ * Which stamp each transition writes, as a table rather than a chain of `if`s.
+ *
+ * The same shape as `EVENT_REPORT_TYPE_RULES` and for the same reason: the
+ * bottom bar's label, the stamp it writes and the screen it lives on are one
+ * fact about a state, and reading them from one place is what makes the state
+ * table itself a unit test.
+ */
+export const LIVE_RUN_STATE_RULES: Record<LiveRunState, LiveRunStateRules> = {
+  [LiveRunState.INTAKE]: {
+    screen: 'intake',
+    next: LiveRunState.EN_ROUTE,
+    stamps: 'activationAt',
+  },
+  [LiveRunState.EN_ROUTE]: {
+    screen: 'enroute',
+    next: LiveRunState.ON_SCENE,
+    stamps: 'sceneArrivalAt',
+  },
+  [LiveRunState.ON_SCENE]: {
+    screen: 'scene',
+    next: LiveRunState.EN_ROUTE_TO_HOSPITAL,
+    stamps: 'sceneDepartureAt',
+  },
+  [LiveRunState.EN_ROUTE_TO_HOSPITAL]: {
+    screen: 'transport',
+    next: LiveRunState.AT_HOSPITAL,
+    stamps: 'hospitalArrivalAt',
+  },
+  [LiveRunState.AT_HOSPITAL]: {
+    screen: 'closing',
+    next: LiveRunState.CLOSED,
+    stamps: 'availableAt',
+  },
+  [LiveRunState.CLOSED]: { screen: 'closing', next: null, stamps: null },
+};
+
+/** A support call the crew made during the run, and when they made it. */
+export enum LiveRunSupportActionKind {
+  /** The CODU Dados freephone line. One number, one action. */
+  CODU_DADOS = 'CODU_DADOS',
+}
+
+export interface LiveRunSupportAction {
+  kind: LiveRunSupportActionKind;
+  at: string;
+}
+
+/**
+ * The fields that identify a person, held only while the run is live.
+ *
+ * Stored as one AES-256-GCM blob rather than columns: nothing sorts, filters or
+ * counts by them, and a single sealed value is one thing to destroy rather than
+ * six columns to remember to null out.
+ *
+ * The occurrence address is here — and therefore purged — because a street
+ * number is what makes a report identify a household. What survives on the
+ * report is `locationType` + `localityId`, exactly as before this feature.
+ */
+export interface LiveRunIdentity {
+  victimName?: string | null;
+  /** ISO date, `YYYY-MM-DD`. */
+  victimDateOfBirth?: string | null;
+  victimSnsNumber?: string | null;
+  /** Street and number, for navigation and for the paper form. */
+  occurrenceAddress?: string | null;
+  /** "porta azul ao lado do café" — how to find it, dictated on the call. */
+  referencePoints?: string | null;
+  victimHomeAddress?: string | null;
+}
+
+export const LIVE_RUN_IDENTITY_FIELDS = [
+  'victimName',
+  'victimDateOfBirth',
+  'victimSnsNumber',
+  'occurrenceAddress',
+  'referencePoints',
+  'victimHomeAddress',
+] as const;
+
+export const MAX_LIVE_RUN_ADDRESS_LENGTH = 300;
+export const MAX_LIVE_RUN_NAME_LENGTH = 160;
+export const MAX_LIVE_RUN_COMPLAINT_LENGTH = 300;
+/** Portuguese SNS numbers are nine digits. */
+export const SNS_NUMBER_REGEX = /^\d{9}$/;
+
+/**
+ * Everything typed during the run that has no column of its own.
+ *
+ * JSON on the server because the mirror is a *mirror, not a model*: the server
+ * never edits a field of it, it replaces the whole thing. Giving it columns
+ * would mean migrating the live table every time the phone's form gains a box.
+ */
+export interface LiveRunCapture extends EventReportClinical {
+  /** The narrative as it is being drafted. Plain text — dictation goes here. */
+  notes?: string | null;
+  supportActions?: LiveRunSupportAction[];
+}
+
+/**
+ * A run as one phone is capturing it, and as it is mirrored to the server.
+ *
+ * The client owns `id`: a run created in a dead spot syncs an hour later into
+ * the row it would have created at the time. `revision` is the device's own
+ * counter and the only ordering the server trusts.
+ */
+export interface LiveRunInput {
+  id: string;
+  revision: number;
+  state: LiveRunState;
+  startedAt: string;
+
+  externalReference?: string | null;
+  chiefComplaint?: string | null;
+  locationType?: EventLocationType | null;
+  localityId?: string | null;
+  victimGender?: Gender | null;
+  victimAge?: number | null;
+  vehicleId?: string | null;
+
+  crew?: EventReportCrewInput[];
+  shift?: EventReportShiftInput | null;
+
+  activationAt?: string | null;
+  sceneArrivalAt?: string | null;
+  sceneDepartureAt?: string | null;
+  hospitalArrivalAt?: string | null;
+  availableAt?: string | null;
+
+  destinationKind?: VictimDestinationKind | null;
+  destinationHospitalId?: string | null;
+
+  /** Purged on submission, or 48h after close — whichever comes first. */
+  identity?: LiveRunIdentity | null;
+  capture?: LiveRunCapture | null;
+
+  closedAt?: string | null;
+}
+
+export interface LiveRunCrewMember {
+  userId: string;
+  user?: EventReportPerson;
+  roleName?: string | null;
+  position: number;
+}
+
+export interface LiveRun extends Omit<LiveRunInput, 'crew'> {
+  crew: LiveRunCrewMember[];
+  locality?: Locality | null;
+  destinationHospital?: Pick<Hospital, 'id' | 'name'> | null;
+  /** Set once the run has been closed into a draft report. */
+  reportId?: string | null;
+  /** When the identity blob was destroyed. Distinguishes "gone" from "never had". */
+  identityPurgedAt?: string | null;
+  /**
+   * The blob is present but no key in the environment can open it. Not a 500: a
+   * key retired an hour early must not take the coordinator's board down.
+   */
+  identityUnavailable?: boolean;
+  createdById: string;
+  createdBy?: EventReportPerson;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** How long a closed run — and everything on it — outlives its close. */
+export const LIVE_RUN_RETENTION_HOURS = 48;
+
+/**
+ * How long a run with no activity is left open before it is force-closed.
+ *
+ * Force-closed rather than deleted: the phone may still come back, and closing
+ * starts the 48h clock rather than throwing away a run that is merely quiet.
+ */
+export const LIVE_RUN_ABANDON_HOURS = 24;
+
+/** Whether a closed run is still inside its retention window. */
+export function isLiveRunReadable(
+  run: Pick<LiveRun, 'closedAt'>,
+  now: Date = new Date(),
+): boolean {
+  if (isBlank(run.closedAt)) return true;
+  const closed = new Date(run.closedAt!).getTime();
+  if (!Number.isFinite(closed)) return true;
+  return now.getTime() - closed < LIVE_RUN_RETENTION_HOURS * 3600_000;
+}
+
+/**
+ * Whether a live-run document is coherent.
+ *
+ * The API validates the same document the phone does — the rule this repo
+ * already follows for `validateEventReport` — so a payload that the screen
+ * accepted cannot be refused by the server for a reason the crew never saw.
+ *
+ * Almost nothing is *required*: a run that exists at all is one the crew has
+ * started, and a CODU call that gives only a street is a real call. Only
+ * contradictions are refused.
+ */
+export function validateLiveRun(input: LiveRunInput): EventReportProblem | null {
+  if (!input?.id) {
+    return problem('LIVE_RUN_MISSING_ID', 'A live run needs an id from the device.');
+  }
+  if (!Number.isInteger(input.revision) || input.revision < 0) {
+    return problem(
+      'LIVE_RUN_INVALID_REVISION',
+      'A live run needs a whole, non-negative revision.',
+    );
+  }
+  if (!LIVE_RUN_STATES.includes(input.state)) {
+    return problem('LIVE_RUN_UNKNOWN_STATE', `Unknown live run state "${input.state}".`);
+  }
+  if (isBlank(input.startedAt) || !isInstant(input.startedAt)) {
+    return problem('LIVE_RUN_MISSING_START', 'A live run needs the time it started.');
+  }
+
+  if (
+    !isBlank(input.chiefComplaint) &&
+    input.chiefComplaint!.length > MAX_LIVE_RUN_COMPLAINT_LENGTH
+  ) {
+    return problem(
+      'LIVE_RUN_COMPLAINT_TOO_LONG',
+      `The reason for the call may be at most ${MAX_LIVE_RUN_COMPLAINT_LENGTH} characters.`,
+    );
+  }
+  if (
+    !isBlank(input.externalReference) &&
+    input.externalReference!.length > MAX_EXTERNAL_REFERENCE_LENGTH
+  ) {
+    return problem(
+      'REFERENCE_TOO_LONG',
+      `The reference may be at most ${MAX_EXTERNAL_REFERENCE_LENGTH} characters.`,
+    );
+  }
+  if (
+    !isBlank(input.locationType) &&
+    !EVENT_LOCATION_TYPES.includes(input.locationType as EventLocationType)
+  ) {
+    return problem('MISSING_LOCATION_TYPE', `Unknown location type "${input.locationType}".`);
+  }
+  if (!isBlank(input.victimGender) && !GENDERS.includes(input.victimGender as Gender)) {
+    return problem('VICTIM_GENDER_MISSING', `Unknown gender "${input.victimGender}".`);
+  }
+  if (input.victimAge !== null && input.victimAge !== undefined) {
+    if (
+      !Number.isInteger(input.victimAge) ||
+      input.victimAge < MIN_VICTIM_AGE ||
+      input.victimAge > MAX_VICTIM_AGE
+    ) {
+      return problem(
+        'VICTIM_AGE_INVALID',
+        `A victim's age must be between ${MIN_VICTIM_AGE} and ${MAX_VICTIM_AGE}.`,
+      );
+    }
+  }
+
+  const timesProblem = validateOccurrenceTimes({
+    type: EventReportType.EMERGENCY,
+    activationAt: input.activationAt,
+    sceneArrivalAt: input.sceneArrivalAt,
+    sceneDepartureAt: input.sceneDepartureAt,
+    hospitalArrivalAt: input.hospitalArrivalAt,
+    availableAt: input.availableAt,
+  });
+  if (timesProblem) return timesProblem;
+
+  if (input.crew) {
+    const crewProblem = validateCrew(input.crew);
+    if (crewProblem) return crewProblem;
+  }
+
+  if (!isBlank(input.destinationKind)) {
+    const destinationProblem = validateVictimDestination({
+      destinationKind: input.destinationKind as VictimDestinationKind,
+      destinationHospitalId: input.destinationHospitalId ?? null,
+    });
+    if (destinationProblem) return destinationProblem;
+  } else if (input.destinationHospitalId) {
+    return problem(
+      'DESTINATION_HOSPITAL_NOT_ALLOWED',
+      'A hospital without an outcome is not a destination.',
+    );
+  }
+
+  const identityProblem = validateLiveRunIdentity(input.identity ?? null);
+  if (identityProblem) return identityProblem;
+
+  if (input.capture) {
+    const clinicalProblem = validateClinicalRecord(
+      input.capture,
+      EVENT_REPORT_TYPE_RULES[EventReportType.EMERGENCY],
+    );
+    if (clinicalProblem) return clinicalProblem;
+  }
+
+  return null;
+}
+
+export function validateLiveRunIdentity(
+  identity: LiveRunIdentity | null,
+): EventReportProblem | null {
+  if (!identity) return null;
+
+  if (
+    !isBlank(identity.victimName) &&
+    identity.victimName!.length > MAX_LIVE_RUN_NAME_LENGTH
+  ) {
+    return problem(
+      'LIVE_RUN_NAME_TOO_LONG',
+      `A name may be at most ${MAX_LIVE_RUN_NAME_LENGTH} characters.`,
+    );
+  }
+  for (const field of ['occurrenceAddress', 'referencePoints', 'victimHomeAddress'] as const) {
+    const value = identity[field];
+    if (!isBlank(value) && value!.length > MAX_LIVE_RUN_ADDRESS_LENGTH) {
+      return problem(
+        'LIVE_RUN_ADDRESS_TOO_LONG',
+        `An address may be at most ${MAX_LIVE_RUN_ADDRESS_LENGTH} characters.`,
+      );
+    }
+  }
+  if (!isBlank(identity.victimDateOfBirth)) {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(identity.victimDateOfBirth!)) {
+      return problem(
+        'LIVE_RUN_INVALID_DATE_OF_BIRTH',
+        'A date of birth is a calendar date (YYYY-MM-DD).',
+      );
+    }
+  }
+  if (
+    !isBlank(identity.victimSnsNumber) &&
+    !SNS_NUMBER_REGEX.test(identity.victimSnsNumber!.trim())
+  ) {
+    return problem('LIVE_RUN_INVALID_SNS', 'An SNS number is nine digits.');
+  }
+  return null;
+}
+
+/**
+ * What is unfinished about a run the crew is trying to close.
+ *
+ * Warnings, never blocks — the same split as `eventReportWarnings`. A crew
+ * closing a run has an ambulance to put back in service; the paperwork gaps are
+ * for the report to chase.
+ */
+export type LiveRunWarningCode =
+  | 'NO_COMPLAINT'
+  | 'NO_VICTIM_DETAILS'
+  | 'NO_DESTINATION'
+  | 'NO_VITALS'
+  | 'NO_CREW'
+  | 'NO_VEHICLE'
+  | 'MISSING_STAMPS';
+
+export function liveRunWarnings(run: LiveRunInput): LiveRunWarningCode[] {
+  const warnings: LiveRunWarningCode[] = [];
+
+  if (isBlank(run.chiefComplaint)) warnings.push('NO_COMPLAINT');
+  if (isBlank(run.victimGender) || run.victimAge === null || run.victimAge === undefined) {
+    warnings.push('NO_VICTIM_DETAILS');
+  }
+  if (isBlank(run.destinationKind)) warnings.push('NO_DESTINATION');
+  if ((run.capture?.assessments ?? []).length === 0) warnings.push('NO_VITALS');
+  if ((run.crew ?? []).length === 0) warnings.push('NO_CREW');
+  if (isBlank(run.vehicleId)) warnings.push('NO_VEHICLE');
+
+  const stamped = OCCURRENCE_TIME_FIELDS.filter((field) => !isBlank(run[field]));
+  if (stamped.length < 2) warnings.push('MISSING_STAMPS');
+
+  return warnings;
+}
+
+/**
+ * What actually stops a run being closed, as codes the closing screen names.
+ *
+ * A very short list, and every entry on it is here for the same reason:
+ * **closing a run creates the draft report**, and these four are what a report
+ * cannot exist without — `validateEventReport` refuses a draft missing any of
+ * them, so a run that could not become a report is a run that cannot close.
+ * Everything else the crew has not got round to comes back from
+ * `liveRunWarnings` and closes anyway.
+ *
+ * All four are things CODU gives on the call, so in practice the intake screen
+ * has already collected them; the closing screen offers them inline for the run
+ * where it did not.
+ */
+export type LiveRunBlockerCode =
+  | 'NO_STAMPS'
+  | 'NO_LOCALITY'
+  | 'NO_LOCATION_TYPE'
+  | 'NO_REFERENCE';
+
+export function liveRunCloseBlockers(run: LiveRunInput): LiveRunBlockerCode[] {
+  const blockers: LiveRunBlockerCode[] = [];
+  // A run with no chronology recorded nothing, which is the failure this whole
+  // feature exists to prevent.
+  if (!OCCURRENCE_TIME_FIELDS.some((field) => !isBlank(run[field]))) {
+    blockers.push('NO_STAMPS');
+  }
+  if (isBlank(run.localityId)) blockers.push('NO_LOCALITY');
+  if (isBlank(run.locationType)) blockers.push('NO_LOCATION_TYPE');
+  // An emergency report requires the CODU number — so this is a blocker rather
+  // than the warning it looks like. A run that closed without it would produce a
+  // draft nobody could ever file.
+  if (isBlank(run.externalReference)) blockers.push('NO_REFERENCE');
+  return blockers;
+}
+
+/**
+ * The stamps closing a run writes for itself.
+ *
+ * Two of them, and both for the same reason: the facts are true whether or not
+ * anybody tapped a button. A crew closing from the scene *did* leave the scene,
+ * and a crew closing at all *is* available again — that is what closing means.
+ * Nothing already stamped is ever overwritten; a crew's own time beats an
+ * inferred one.
+ *
+ * A pure function so the no-transport path — stand down on scene, nobody
+ * transported — is provable without a server: `sceneDepartureAt` and
+ * `availableAt` both filled, `hospitalArrivalAt` still null.
+ */
+export interface LiveRunClosingStamps {
+  sceneDepartureAt?: string;
+  availableAt?: string;
+}
+
+export function liveRunClosingStamps(
+  run: LiveRunInput,
+  now: Date = new Date(),
+): LiveRunClosingStamps {
+  const at = now.toISOString();
+  const stamps: LiveRunClosingStamps = {};
+  if (!isBlank(run.sceneArrivalAt) && isBlank(run.sceneDepartureAt)) {
+    stamps.sceneDepartureAt = at;
+  }
+  if (isBlank(run.availableAt)) stamps.availableAt = at;
+  return stamps;
+}
+
+export function canCloseLiveRun(run: LiveRunInput): boolean {
+  if (run.state === LiveRunState.CLOSED) return false;
+  return liveRunCloseBlockers(run).length === 0;
+}
+
+/**
+ * The run as the draft report it becomes.
+ *
+ * A pure function on purpose: closing a run is the moment the whole feature
+ * either works or silently loses twenty minutes of an emergency, and it must be
+ * provable without a server. Every identity field is dropped here rather than
+ * later — the report has never carried an address and does not start now.
+ *
+ * `occurredOn` comes from activation rather than from "today": a call taken at
+ * 23:52 and closed at 00:40 belongs to the day it started, which is the same
+ * rule the paper form uses.
+ */
+export function liveRunToEventReportInput(
+  run: LiveRunInput,
+  options: { now?: Date } = {},
+): EventReportInput {
+  const now = options.now ?? new Date();
+  const startedAt = run.activationAt || run.startedAt;
+  const closedAt = run.availableAt || run.closedAt || now.toISOString();
+
+  const capture = run.capture ?? {};
+  const hasVictim =
+    !isBlank(run.victimGender) ||
+    (run.victimAge !== null && run.victimAge !== undefined) ||
+    !isBlank(run.destinationKind);
+
+  return {
+    type: EventReportType.EMERGENCY,
+    occurredOn: isoDateOf(startedAt),
+    startedAt,
+    endedAt: closedAt,
+    externalReference: run.externalReference ?? null,
+    // A run with no locality still becomes a report; the crew picks one on the
+    // edit page. An empty string is what the wizard's own empty draft uses.
+    locationType: (run.locationType ?? '') as EventLocationType,
+    localityId: run.localityId ?? '',
+
+    activationAt: run.activationAt ?? null,
+    sceneArrivalAt: run.sceneArrivalAt ?? null,
+    sceneDepartureAt: run.sceneDepartureAt ?? null,
+    hospitalArrivalAt: run.hospitalArrivalAt ?? null,
+    availableAt: run.availableAt ?? null,
+
+    shift: run.shift ?? null,
+    // Plain text from the live screens, wrapped once so the rich editor has a
+    // paragraph to open rather than a bare text node.
+    operationalReport: isBlank(capture.notes) ? '' : `<p>${escapeHtml(capture.notes!)}</p>`,
+
+    crew: (run.crew ?? []).map((member) => ({
+      userId: member.userId,
+      roleName: member.roleName ?? null,
+    })),
+    // Kilometres are computed from the route, never carried from the run — a
+    // crew does not reliably return to base, so an odometer reading captured
+    // live would be wrong more often than right.
+    vehicles: run.vehicleId ? [{ vehicleId: run.vehicleId, kilometres: 0 }] : [],
+    victims: hasVictim
+      ? [
+          {
+            gender: (run.victimGender ?? Gender.UNKNOWN) as Gender,
+            age: run.victimAge ?? 0,
+            destinationKind:
+              (run.destinationKind as VictimDestinationKind) ??
+              VictimDestinationKind.TREATED_ON_SCENE,
+            destinationHospitalId:
+              run.destinationKind === VictimDestinationKind.HOSPITAL
+                ? run.destinationHospitalId ?? null
+                : null,
+          },
+        ]
+      : [],
+
+    chamuCircumstances: capture.chamuCircumstances ?? null,
+    chamuHistory: capture.chamuHistory ?? null,
+    chamuAllergies: capture.chamuAllergies ?? null,
+    chamuMedication: capture.chamuMedication ?? null,
+    chamuLastMeal: capture.chamuLastMeal ?? null,
+    abcde: capture.abcde ?? null,
+    assessments: capture.assessments ?? [],
+  };
+}
+
+/** `YYYY-MM-DD` of an instant, in the device's own timezone. */
+function isoDateOf(instant: string): string {
+  const date = new Date(instant);
+  if (Number.isNaN(date.getTime())) return '';
+  const pad2 = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
+}
+
+/**
+ * Minimal escaping for text on its way into the rich-text column.
+ *
+ * The server sanitizes it again with `sanitizeReportHtml`; this exists so a
+ * dictated "tensão < 90" does not arrive as a broken tag in the first place.
+ */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\n/g, '<br />');
+}
+
+/**
+ * A run as the coordinator's board reads it — no identity, ever.
+ *
+ * A separate shape rather than a nulled-out `LiveRun`, because the board's
+ * query never selects the ciphertext column at all: there is nothing to leak by
+ * accident, and the type says so.
+ */
+export interface LiveRunBoardEntry {
+  id: string;
+  state: LiveRunState;
+  startedAt: string;
+  externalReference?: string | null;
+  chiefComplaint?: string | null;
+  locality?: Pick<Locality, 'id' | 'name'> | null;
+  victimGender?: Gender | null;
+  victimAge?: number | null;
+  crew: LiveRunCrewMember[];
+  vehicleId?: string | null;
+  activationAt?: string | null;
+  sceneArrivalAt?: string | null;
+  sceneDepartureAt?: string | null;
+  hospitalArrivalAt?: string | null;
+  availableAt?: string | null;
+  destinationKind?: VictimDestinationKind | null;
+  destinationHospital?: Pick<Hospital, 'id' | 'name'> | null;
+  updatedAt: string;
+}
+
+/** `PUT /live-runs/:id` — the whole document, plus what the server made of it. */
+export interface LiveRunSyncResponse {
+  run: LiveRun;
+  /**
+   * The stored revision won. A phone that has been in a cellar gets its own
+   * later state back rather than a 409 — that is normal operation, not an error
+   * to put in front of a crew.
+   */
+  stale: boolean;
+}
+
+/** `POST /live-runs/:id/close` — the run, and the draft report it became. */
+export interface LiveRunCloseResponse {
+  run: LiveRun;
+  report: EventReport;
+}

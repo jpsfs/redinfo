@@ -18,23 +18,27 @@ import {
 // ── The report form, as data ───────────────────────────────────────────────────
 
 describe('stepsForType', () => {
-  it('gives an emergency seven steps, including the chronology', () => {
+  it('gives an emergency the chronology and the clinical record', () => {
     expect(stepsForType(EventReportType.EMERGENCY)).toEqual([
       'whenWhere',
       'times',
       'crew',
       'vehicles',
       'victims',
+      'clinical',
       'narrative',
       'review',
     ]);
   });
 
-  it('gives a support report six, with no chronology step', () => {
+  it('gives a support report neither', () => {
+    // A standby at a village fair has no chronology and no victim to have
+    // vitals, so both steps are absent rather than empty.
     for (const type of [EventReportType.LOCAL_SUPPORT, EventReportType.SALOP_SUPPORT]) {
       const steps = stepsForType(type);
       expect(steps).toHaveLength(6);
       expect(steps).not.toContain('times');
+      expect(steps).not.toContain('clinical');
     }
   });
 
@@ -218,7 +222,9 @@ describe('draftFromReport', () => {
       operationalReport: '<p>Relato.</p>',
       shift: { scheduleId: 'sch-1', date: '2026-08-16', slot: 1, label: '09:00–18:30' },
       crew: [{ id: 'c1', userId: 'u1', roleName: 'Driver', position: 0 }],
-      vehicles: [{ id: 'v1', vehicleId: 'veh-1', kilometres: 51, position: 0 }],
+      vehicles: [
+        { id: 'v1', vehicleId: 'veh-1', kilometres: 51, position: 0, isOverridden: false },
+      ],
       victims: [
         {
           id: 'vic1',
@@ -252,7 +258,12 @@ describe('draftFromReport', () => {
       shift: { scheduleId: 'sch-1', date: '2026-08-16', slot: 1 },
       operationalReport: '<p>Relato.</p>',
       crew: [{ userId: 'u1', roleName: 'Driver' }],
-      vehicles: [{ vehicleId: 'veh-1', kilometres: 51 }],
+      // The route legs travel with the line: they are how a distance is
+      // explainable a year later, and an edit that dropped them would turn a
+      // measurement into a typed figure.
+      vehicles: [
+        { vehicleId: 'veh-1', kilometres: 51, routeLegs: null, isOverridden: false },
+      ],
       victims: [
         {
           gender: Gender.FEMALE,
@@ -261,7 +272,55 @@ describe('draftFromReport', () => {
           destinationHospitalId: 'hosp-1',
         },
       ],
+      // The clinical record round-trips too. Leaving it out would mean opening a
+      // report from a live run and saving it threw away every vital taken — the
+      // save sends the whole document, so an absent field is a deletion.
+      chamuCircumstances: null,
+      chamuHistory: null,
+      chamuAllergies: null,
+      chamuMedication: null,
+      chamuLastMeal: null,
+      abcde: null,
+      assessments: [],
     });
+  });
+
+  it('carries the clinical record of an emergency back into the form', () => {
+    const report = {
+      id: 'rep-2',
+      type: EventReportType.EMERGENCY,
+      number: 128,
+      year: 2026,
+      occurredOn: '2026-08-22',
+      startedAt: '2026-08-22T20:14:00.000Z',
+      endedAt: null,
+      externalReference: '2608 4471',
+      locationType: 'HOME',
+      localityId: 'loc-1',
+      operationalReport: '',
+      shift: null,
+      crew: [],
+      vehicles: [],
+      victims: [],
+      attachments: [],
+      chamuHistory: 'HTA',
+      abcde: { C: { status: 'ALTERED', note: 'Hemorragia' } },
+      assessments: [
+        { id: 'a1', position: 0, takenAt: '2026-08-22T20:31:00.000Z', spo2: 94, systolic: 88 },
+      ],
+      createdById: 'u1',
+      createdAt: '2026-08-22T22:00:00.000Z',
+      updatedAt: '2026-08-22T22:00:00.000Z',
+    } as never;
+
+    const draft = draftFromReport(report);
+    expect(draft.chamuHistory).toBe('HTA');
+    expect(draft.abcde).toEqual({ C: { status: 'ALTERED', note: 'Hemorragia' } });
+    // The child rows' own ids and display order are the server's business, not
+    // the form's — sending them back would be sending back a primary key.
+    expect(draft.assessments).toEqual([
+      { takenAt: '2026-08-22T20:31:00.000Z', spo2: 94, systolic: 88 },
+    ]);
   });
 });
 

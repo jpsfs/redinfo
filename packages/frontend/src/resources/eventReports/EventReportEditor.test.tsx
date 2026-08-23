@@ -14,7 +14,7 @@ import { EventReportEditor } from './EventReportEditor';
 import { useEventReportDraft } from './useEventReportDraft';
 import { apiFetch } from '../../api';
 import { useIsMobile } from '../../hooks/useIsMobile';
-import { loadDraft } from './reportDraft';
+import { loadDraft, stepsForType } from './reportDraft';
 
 vi.mock('../../api', () => ({ apiFetch: vi.fn(), apiDownload: vi.fn() }));
 vi.mock('../../hooks/useIsMobile', () => ({ useIsMobile: vi.fn(() => true) }));
@@ -147,11 +147,11 @@ beforeEach(() => {
 });
 
 describe('the wizard on a phone', () => {
-  it('starts on the first of seven steps for an emergency', async () => {
+  it('starts on the first of eight steps for an emergency', async () => {
     renderEditor();
 
     expect(await screen.findByText('Quando e onde')).toBeInTheDocument();
-    expect(screen.getByText('1 de 7')).toBeInTheDocument();
+    expect(screen.getByText('1 de 8')).toBeInTheDocument();
   });
 
   it('has six steps for a support report, and no chronology', async () => {
@@ -171,7 +171,7 @@ describe('the wizard on a phone', () => {
     // Emergencies stamp their chronology second, while the crew still
     // remembers it.
     expect(await screen.findByText(/^Tempos/)).toBeInTheDocument();
-    expect(screen.getByText('2 de 7')).toBeInTheDocument();
+    expect(screen.getByText('2 de 8')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /seguinte/i }));
     expect(await screen.findByText('Equipa')).toBeInTheDocument();
@@ -243,15 +243,30 @@ describe('when and where', () => {
   });
 });
 
+/**
+ * Walks the wizard to the review step.
+ *
+ * Derived from `stepsForType` rather than counted by hand, so adding a step —
+ * the clinical record did exactly that — does not silently leave three tests
+ * asserting against the wrong screen.
+ */
+const walkToReview = async (
+  user: ReturnType<typeof userEvent.setup>,
+  type = EventReportType.EMERGENCY,
+) => {
+  const steps = stepsForType(type).length;
+  for (let step = 0; step < steps - 1; step += 1) {
+    await user.click(screen.getByRole('button', { name: /seguinte|revisão/i }));
+  }
+};
+
 describe('saving', () => {
   it('will not save while the report contradicts itself', async () => {
     const user = userEvent.setup();
     renderEditor();
 
     await screen.findByText('Quando e onde');
-    for (let step = 0; step < 6; step += 1) {
-      await user.click(screen.getByRole('button', { name: /seguinte|revisão/i }));
-    }
+    await walkToReview(user);
 
     const save = await screen.findByRole('button', { name: /gravar relatório/i });
     expect(save).toBeDisabled();
@@ -262,9 +277,7 @@ describe('saving', () => {
     renderEditor({ seed: COHERENT });
 
     await screen.findByText('Guardado');
-    for (let step = 0; step < 6; step += 1) {
-      await user.click(screen.getByRole('button', { name: /seguinte|revisão/i }));
-    }
+    await walkToReview(user);
 
     const save = await screen.findByRole('button', { name: /gravar relatório/i });
     expect(save).toBeEnabled();
@@ -296,9 +309,7 @@ describe('saving', () => {
     renderEditor({ seed: COHERENT });
 
     await screen.findByText('Guardado');
-    for (let step = 0; step < 6; step += 1) {
-      await user.click(screen.getByRole('button', { name: /seguinte|revisão/i }));
-    }
+    await walkToReview(user);
 
     // Portuguese, from the warning code — not the rule's English sentence.
     expect(await screen.findByText('Falta a hora de fim.')).toBeInTheDocument();

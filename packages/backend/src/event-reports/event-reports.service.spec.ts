@@ -56,6 +56,18 @@ const row = (overrides: Record<string, unknown> = {}) =>
     vehicles: [],
     victims: [],
     attachments: [],
+    assessments: [],
+    legacyNumber: null,
+    chamuCircumstances: null,
+    chamuHistory: null,
+    chamuAllergies: null,
+    chamuMedication: null,
+    chamuLastMeal: null,
+    abcde: null,
+    submittedAt: new Date('2026-08-22T22:11:00.000Z'),
+    submittedById: 'user-filer',
+    submittedBy: null,
+    liveRun: null,
     createdById: 'user-filer',
     createdBy: null,
     createdAt: new Date('2026-08-22T22:11:00.000Z'),
@@ -121,6 +133,7 @@ function makePrisma(overrides: Record<string, unknown> = {}) {
         ]);
       }),
       findUnique: jest.fn(() => Promise.resolve(null)),
+      findUniqueOrThrow: jest.fn(() => Promise.resolve(row())),
       delete: jest.fn(() => Promise.resolve({ id: 'rep-1' })),
       create: jest.fn(() => Promise.resolve(row())),
       update: jest.fn(() => Promise.resolve(row())),
@@ -130,10 +143,9 @@ function makePrisma(overrides: Record<string, unknown> = {}) {
     user: { findMany: jest.fn(() => Promise.resolve([{ id: 'user-tiago' }])) },
     hospital: { findMany: jest.fn(() => Promise.resolve([{ id: 'hosp-1' }])) },
     schedule: { count: jest.fn(() => Promise.resolve(1)) },
-    eventReportCounter: {
-      upsert: jest.fn(() => Promise.resolve({ sequence: 129 })),
-    },
+    liveRun: { updateMany: jest.fn(() => Promise.resolve({ count: 0 })) },
     eventReportCrewMember: { deleteMany: jest.fn(() => Promise.resolve({ count: 1 })) },
+    eventReportAssessment: { deleteMany: jest.fn(() => Promise.resolve({ count: 0 })) },
     eventReportVehicle: { deleteMany: jest.fn(() => Promise.resolve({ count: 1 })) },
     eventReportVictim: { deleteMany: jest.fn(() => Promise.resolve({ count: 1 })) },
     $transaction: jest.fn((arg: unknown) =>
@@ -151,8 +163,29 @@ const shiftSchedule = {
   getPatternForWindow: jest.fn(() => Promise.resolve([])),
 } as unknown as ShiftScheduleService;
 
-function makeService(prisma = makePrisma()) {
-  return { service: new EventReportsService(prisma, shiftSchedule), prisma };
+/**
+ * A numbering stand-in.
+ *
+ * Stubbed rather than real because the real one is three raw SQL statements:
+ * what they compute is proved by `event-report-numbering.spec.ts` against
+ * `orderForNumbering`, and that they compute it in Postgres is proved by the
+ * integration suite. What these tests are about is *when* the service reaches
+ * for it.
+ */
+function makeNumbering() {
+  return {
+    lockPartition: jest.fn(() => Promise.resolve()),
+    countDisplaced: jest.fn(() => Promise.resolve(0)),
+    resequence: jest.fn(() => Promise.resolve([])),
+  };
+}
+
+function makeService(prisma = makePrisma(), numbering = makeNumbering()) {
+  return {
+    service: new EventReportsService(prisma, shiftSchedule, numbering as never),
+    prisma,
+    numbering,
+  };
 }
 
 describe('reading a report', () => {
@@ -256,7 +289,7 @@ describe('changing a report', () => {
 });
 
 describe('deleting a report', () => {
-  it('is refused to the crew, because it leaves a gap in the numbering', async () => {
+  it('is refused to the crew, because it renumbers everything after it', async () => {
     const prisma = makePrisma();
     prisma.eventReport.findUnique = jest.fn(() => Promise.resolve(row())) as never;
     const { service } = makeService(prisma);
@@ -265,13 +298,79 @@ describe('deleting a report', () => {
     expect(prisma.eventReport.delete).not.toHaveBeenCalled();
   });
 
-  it('is allowed to a coordinator', async () => {
+  it('closes the gap it leaves, and says what moved', async () => {
+    const prisma = makePrisma();
+    prisma.eventReport.findUnique = jest.fn(() => Promise.resolve(row())) as never;
+    const numbering = makeNumbering();
+    numbering.resequence = jest.fn(() =>
+      Promise.resolve([{ reportId: 'rep-2', from: 129, to: 128 }]),
+    ) as never;
+    const { service } = makeService(prisma, numbering);
+
+    // Numbering is gap-free by construction now, so deleting 128 pulls 129 down
+    // into its place. The caller is handed the list rather than left to discover
+    // it: every move is a report whose printed identity has changed.
+    await expect(service.remove('rep-1', COORDINATOR)).resolves.toEqual({
+      id: 'rep-1',
+      renumbered: [{ reportId: 'rep-2', from: 129, to: 128 }],
+    });
+    expect(prisma.eventReport.delete).toHaveBeenCalledWith({ where: { id: 'rep-1' } });
+  });
+});
+
+describe('filing a draft', () => {
+  const draft = (overrides: Record<string, unknown> = {}) =>
+    row({ number: null, submittedAt: null, submittedById: null, ...overrides });
+
+  it('marks it filed and resequences the partition', async () => {
+    const prisma = makePrisma();
+    prisma.eventReport.findUnique = jest.fn(() => Promise.resolve(draft())) as never;
+    const { service, numbering } = makeService(prisma);
+
+    const result = await service.submit('rep-1', OPERATIONAL);
+
+    expect((prisma.eventReport.update as jest.Mock).mock.calls[0][0].data.submittedAt).toBeInstanceOf(
+      Date,
+    );
+    expect(numbering.resequence).toHaveBeenCalled();
+    expect(result.renumbered).toEqual([]);
+  });
+
+  it('destroys the run’s identity in the same transaction', async () => {
+    const prisma = makePrisma();
+    prisma.eventReport.findUnique = jest.fn(() => Promise.resolve(draft())) as never;
+    const { service } = makeService(prisma);
+
+    await service.submit('rep-1', OPERATIONAL);
+
+    // Filing is the moment identity stops being needed, so it is destroyed then
+    // — not on the next sweep, which would leave a window where a filed report
+    // and a live victim name coexist.
+    expect(prisma.liveRun.updateMany).toHaveBeenCalledWith({
+      where: { reportId: 'rep-1', identity: { not: null } },
+      data: { identity: null, identityPurgedAt: expect.any(Date) },
+    });
+  });
+
+  it('refuses to file the same report twice', async () => {
     const prisma = makePrisma();
     prisma.eventReport.findUnique = jest.fn(() => Promise.resolve(row())) as never;
     const { service } = makeService(prisma);
 
-    await expect(service.remove('rep-1', COORDINATOR)).resolves.toEqual({ id: 'rep-1' });
-    expect(prisma.eventReport.delete).toHaveBeenCalledWith({ where: { id: 'rep-1' } });
+    await expect(service.submit('rep-1', OPERATIONAL)).rejects.toThrow(/already been filed/i);
+  });
+
+  it('validates what is stored, not what was posted', async () => {
+    const prisma = makePrisma();
+    // A draft closed out of a live run in a dead spot: no CODU number, which an
+    // emergency report cannot be filed without.
+    prisma.eventReport.findUnique = jest.fn(() =>
+      Promise.resolve(draft({ externalReference: null })),
+    ) as never;
+    const { service } = makeService(prisma);
+
+    await expect(service.submit('rep-1', OPERATIONAL)).rejects.toThrow(BadRequestException);
+    expect(prisma.eventReport.update).not.toHaveBeenCalled();
   });
 });
 
@@ -301,19 +400,72 @@ describe('filing a report', () => {
     expect(data.operationalReport).toBe('');
   });
 
-  it('takes its number from the per-type, per-year counter', async () => {
+  it('inserts with no number and lets the resequence assign one', async () => {
     const prisma = makePrisma();
-    const { service } = makeService(prisma);
+    const { service, numbering } = makeService(prisma);
 
     await service.create(input({ occurredOn: '2026-08-22' }), 'user-filer');
 
-    expect(prisma.eventReportCounter.upsert).toHaveBeenCalledWith({
-      where: { type_year: { type: EventReportType.EMERGENCY, year: 2026 } },
-      create: { type: EventReportType.EMERGENCY, year: 2026, sequence: 1 },
-      update: { sequence: { increment: 1 } },
-    });
+    // A number is a *position* in the year's activation-ordered sequence, so it
+    // is never written by the insert — the insert says "this is filed", and the
+    // resequence works out where it lands.
     const data = (prisma.eventReport.create as jest.Mock).mock.calls[0][0].data;
-    expect(data).toMatchObject({ number: 129, year: 2026 });
+    expect(data).toMatchObject({ number: null, year: 2026 });
+    expect(data.submittedAt).toBeInstanceOf(Date);
+    expect(numbering.resequence).toHaveBeenCalledWith(
+      expect.anything(),
+      EventReportType.EMERGENCY,
+      2026,
+    );
+  });
+
+  it('locks the partition before the insert, not after it', async () => {
+    const prisma = makePrisma();
+    const numbering = makeNumbering();
+    const order: string[] = [];
+    numbering.lockPartition = jest.fn(() => {
+      order.push('lock');
+      return Promise.resolve();
+    }) as never;
+    (prisma.eventReport.create as jest.Mock).mockImplementation(() => {
+      order.push('insert');
+      return Promise.resolve(row());
+    });
+    const { service } = makeService(prisma, numbering);
+
+    await service.create(input(), 'user-filer');
+
+    // The other way round, a concurrent filing could slip between the insert and
+    // the resequence and compute the same position.
+    expect(order).toEqual(['lock', 'insert']);
+  });
+
+  it('leaves a draft unnumbered and unfiled', async () => {
+    const prisma = makePrisma();
+    const { service, numbering } = makeService(prisma);
+
+    await service.create(input(), 'user-filer', { submit: false });
+
+    const data = (prisma.eventReport.create as jest.Mock).mock.calls[0][0].data;
+    expect(data.number).toBeNull();
+    expect(data.submittedAt).toBeUndefined();
+    expect(numbering.lockPartition).not.toHaveBeenCalled();
+    expect(numbering.resequence).not.toHaveBeenCalled();
+  });
+
+  it('refuses a filing that would renumber reports already on paper', async () => {
+    const numbering = makeNumbering();
+    numbering.countDisplaced = jest.fn(() => Promise.resolve(4)) as never;
+    const { service } = makeService(makePrisma(), numbering);
+
+    // An operational cannot rewrite four numbers that are already in a binder;
+    // a coordinator can be told and decide.
+    await expect(
+      service.create(input(), 'user-filer', { actor: OPERATIONAL }),
+    ).rejects.toThrow(/4 report/);
+    await expect(
+      service.create(input(), 'user-ana', { actor: COORDINATOR }),
+    ).resolves.toBeDefined();
   });
 
   it('scopes the year to the day the activity happened, not to today', async () => {
@@ -330,10 +482,8 @@ describe('filing a report', () => {
       'user-filer',
     );
 
-    expect(prisma.eventReportCounter.upsert).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { type_year: { type: EventReportType.EMERGENCY, year: 2026 } },
-      }),
+    expect(prisma.eventReport.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ year: 2026 }) }),
     );
   });
 
@@ -413,7 +563,6 @@ describe('filing a report', () => {
       service.create(input({ externalReference: null }), 'user-filer'),
     ).rejects.toThrow(BadRequestException);
     expect(prisma.eventReport.create).not.toHaveBeenCalled();
-    expect(prisma.eventReportCounter.upsert).not.toHaveBeenCalled();
   });
 
   it('names the missing thing rather than leaking a foreign-key error', async () => {
@@ -454,8 +603,17 @@ describe('filtering the list', () => {
 
     await service.findAll({ q: 'EMG 128/2026' });
 
+    // `legacyNumber` as well, because renumbering rewrites the identity of
+    // reports that are already printed: someone holding "EMG 128/2026" has to be
+    // able to find what it became.
     expect(whereOf(prisma)).toEqual({
-      AND: [{ type: EventReportType.EMERGENCY, number: 128, year: 2026 }],
+      AND: [
+        {
+          type: EventReportType.EMERGENCY,
+          year: 2026,
+          OR: [{ number: 128 }, { legacyNumber: 128 }],
+        },
+      ],
     });
   });
 

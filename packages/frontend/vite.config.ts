@@ -37,6 +37,16 @@ export default defineConfig({
     environment: 'jsdom',
     globals: true,
     setupFiles: ['./src/test/setup.ts'],
+    /**
+     * Well above what any single case needs.
+     *
+     * The component tests here mount real react-admin trees with real MUI, and
+     * the slowest of them take 1–2s alone but 5s+ when a dozen workers are
+     * competing for the same cores. The default 5s made those fail on a busy
+     * machine and pass on a quiet one, which is the least useful kind of test
+     * result — a genuinely hung test still fails, just later.
+     */
+    testTimeout: 20_000,
     include: ['src/**/*.{test,spec}.{ts,tsx}'],
     server: {
       deps: {

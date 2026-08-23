@@ -6,13 +6,22 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#ED1B24" />
     <title>RedInfo — Cruz Vermelha</title>
-    <!-- Inter font — required by brand typography token -->
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
-    />
+    <!--
+      Inter, self-hosted. Served from our own origin rather than
+      fonts.googleapis.com because live mode is a PWA that has to open with no
+      network: a third-party stylesheet cannot be cached by our service worker,
+      and the shell would come up unstyled exactly when a crew cannot afford it.
+    -->
+    <link rel="preload" href="/fonts/inter-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="stylesheet" href="/fonts/inter.css" />
+
+    <!-- Installable: a crew opens this from the home screen, not from a tab. -->
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="apple-touch-icon" href="/icons/icon-192.png" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="RedInfo" />
+    <meta name="description" content="Registo de ocorrências e emergências em direto." />
   </head>
   <body>
     <div id="root"></div>

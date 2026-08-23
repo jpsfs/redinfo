@@ -19,9 +19,14 @@ import CloseIcon from '@mui/icons-material/Close';
 import RemoveIcon from '@mui/icons-material/Remove';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import EventIcon from '@mui/icons-material/Event';
 import {
+  ABCDE_BANDS,
+  AbcdeFindings,
+  AssessmentInput,
+  CHAMU_FIELDS,
   CrewSuggestionShift,
   EVENT_LOCATION_TYPES,
   EventLocationType,
@@ -42,6 +47,8 @@ import {
 } from '@redinfo/shared';
 import { RichTextEditor } from '../../components/RichTextEditor';
 import {
+  abcdeBandLabel,
+  chamuLabel,
   destinationLabel,
   genderLabel,
   locationTypeLabel,
@@ -50,6 +57,9 @@ import {
   t,
   warningLabel,
 } from '../../i18n/labels';
+import { NowButton } from './NowButton';
+import { AbcdeStatusPicker, VitalControl } from '../liveRuns/VitalField';
+import { VITAL_FIELDS } from '../liveRuns/vitalsFields';
 import { StepId, composeInstant, minutesBetween, timeOfDay } from './reportDraft';
 import { ReportLookups, personName, vehicleLabel } from './useReportLookups';
 import { LocalityPicker, localityLabel } from './LocalityPicker';
@@ -75,24 +85,6 @@ const LABEL_SX = { fontWeight: 600, color: 'text.secondary', fontSize: '0.8125re
 
 const SectionLabel = ({ children }: { children: React.ReactNode }) => (
   <Typography sx={{ ...LABEL_SX, mb: 0.75 }}>{children}</Typography>
-);
-
-/** A "stamp the time now" button. Big, because it is pressed with a glove on. */
-const NowButton = ({ onClick, label }: { onClick: () => void; label: string }) => (
-  <Button
-    size="small"
-    onClick={onClick}
-    sx={{
-      minHeight: 40,
-      borderRadius: 20,
-      px: 1.75,
-      flexShrink: 0,
-      fontWeight: 700,
-      bgcolor: 'rgba(237, 27, 36, 0.08)',
-    }}
-  >
-    {label}
-  </Button>
 );
 
 // ── When and where ────────────────────────────────────────────────────────────
@@ -1017,5 +1009,177 @@ export const ReviewSection = ({
   );
 };
 
+// ── The clinical record ───────────────────────────────────────────────────────
+
+/**
+ * CHAMU, ABCDE and the sets of vital signs, on the report itself.
+ *
+ * The same controls the live screens use, over the report's own draft rather
+ * than a run — extracted into `VitalField.tsx` precisely so a coordinator
+ * correcting a temperature at a desk and a crew taking one at 3am cannot be
+ * looking at two different fields.
+ *
+ * Present only where the type has a clinical record. A support report never
+ * reaches this section, and `retypeDraft` clears it if the type changes.
+ */
+export const ClinicalSection = ({ draft, patch }: SectionProps) => {
+  const [index, setIndex] = useState(0);
+  const assessments = draft.assessments ?? [];
+  const findings = (draft.abcde ?? {}) as AbcdeFindings;
+  const current = assessments[index];
+
+  const setAssessment = (at: number, changes: Partial<AssessmentInput>) =>
+    patch({
+      assessments: assessments.map((entry, position) =>
+        position === at ? { ...entry, ...changes } : entry,
+      ),
+    });
+
+  const add = () => {
+    patch({ assessments: [...assessments, { takenAt: new Date().toISOString() }] });
+    setIndex(assessments.length);
+  };
+
+  const remove = (at: number) => {
+    patch({ assessments: assessments.filter((_, position) => position !== at) });
+    setIndex((position) => Math.max(0, Math.min(position, assessments.length - 2)));
+  };
+
+  return (
+    <Stack spacing={2.5}>
+      <Box>
+        <SectionLabel>{t('live.chamu')}</SectionLabel>
+        <Stack spacing={2}>
+          {CHAMU_FIELDS.map((field) => (
+            <TextField
+              key={field}
+              fullWidth
+              multiline
+              minRows={2}
+              label={chamuLabel(field)}
+              value={draft[field] ?? ''}
+              onChange={(event) =>
+                patch({ [field]: event.target.value } as Partial<EventReportInput>)
+              }
+            />
+          ))}
+        </Stack>
+      </Box>
+
+      <Divider />
+
+      <Box>
+        <SectionLabel>{t('live.abcde')}</SectionLabel>
+        <Stack spacing={2.5}>
+          {ABCDE_BANDS.map((band) => (
+            <Box key={band}>
+              <Typography sx={{ fontWeight: 700, mb: 1 }}>{abcdeBandLabel(band)}</Typography>
+              <AbcdeStatusPicker
+                band={band}
+                findings={findings}
+                onChange={(next) => patch({ abcde: next })}
+              />
+            </Box>
+          ))}
+        </Stack>
+      </Box>
+
+      <Divider />
+
+      <Box>
+        <SectionLabel>{t('live.vitals')}</SectionLabel>
+
+        {assessments.length === 0 ? (
+          <Button
+            fullWidth
+            variant="outlined"
+            startIcon={<AddIcon />}
+            onClick={add}
+            sx={{ minHeight: 56, fontWeight: 700 }}
+          >
+            {t('live.addAssessment')}
+          </Button>
+        ) : (
+          <Stack spacing={2}>
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <IconButton
+                disabled={index === 0}
+                aria-label={t('action.back')}
+                onClick={() => setIndex((at) => Math.max(0, at - 1))}
+              >
+                <ChevronLeftIcon />
+              </IconButton>
+              <Typography sx={{ flex: 1, textAlign: 'center', fontWeight: 700 }}>
+                {t('live.assessmentPager')} {index + 1} {t('step.of')} {assessments.length}
+              </Typography>
+              <IconButton
+                disabled={index >= assessments.length - 1}
+                aria-label={t('action.next')}
+                onClick={() => setIndex((at) => Math.min(assessments.length - 1, at + 1))}
+              >
+                <ChevronRightIcon />
+              </IconButton>
+              <IconButton aria-label={t('live.addAssessment')} onClick={add}>
+                <AddIcon />
+              </IconButton>
+            </Stack>
+
+            {current && (
+              <Stack spacing={2}>
+                <Stack direction="row" spacing={1} alignItems="flex-end">
+                  <TextField
+                    fullWidth
+                    type="time"
+                    label={t('field.takenAt')}
+                    value={timeOfDay(current.takenAt)}
+                    onChange={(event) => {
+                      const instant = composeInstant(draft.occurredOn, event.target.value);
+                      if (instant) setAssessment(index, { takenAt: instant });
+                    }}
+                  />
+                  <NowButton
+                    label={t('action.now')}
+                    onClick={() =>
+                      setAssessment(index, { takenAt: new Date().toISOString() })
+                    }
+                  />
+                </Stack>
+
+                {VITAL_FIELDS.map((field) => (
+                  <VitalControl
+                    key={field.key}
+                    field={field}
+                    assessment={current}
+                    onChange={(changes) => setAssessment(index, changes)}
+                  />
+                ))}
+
+                <TextField
+                  fullWidth
+                  label={t('field.bodyPosition')}
+                  value={current.bodyPosition ?? ''}
+                  onChange={(event) =>
+                    setAssessment(index, { bodyPosition: event.target.value })
+                  }
+                />
+
+                <Button
+                  color="error"
+                  startIcon={<CloseIcon />}
+                  onClick={() => remove(index)}
+                  sx={{ minHeight: 48 }}
+                >
+                  {t('live.removeAssessment')}
+                </Button>
+              </Stack>
+            )}
+          </Stack>
+        )}
+      </Box>
+    </Stack>
+  );
+};
+
 /** The code a filed report is known by, for the confirmation screen. */
 export const reportCode = formatEventReportCode;
+

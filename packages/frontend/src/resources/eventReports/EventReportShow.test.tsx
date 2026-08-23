@@ -332,6 +332,7 @@ describe('vehicleSummary', () => {
               vehicle: { id: 'veh-a', licensePlate: 'AA-12-BC', numeroCauda: '1' },
               kilometres: 51,
               position: 0,
+              isOverridden: false,
             },
             {
               id: 'b',
@@ -339,6 +340,7 @@ describe('vehicleSummary', () => {
               vehicle: { id: 'veh-b', licensePlate: '34-XY-90', numeroCauda: '2' },
               kilometres: 36,
               position: 1,
+              isOverridden: false,
             },
           ],
         }),

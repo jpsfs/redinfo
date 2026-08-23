@@ -50,8 +50,12 @@ model User {
   assignmentsMade     ScheduleAssignment[] @relation("ScheduleAssignedBy")
 
   eventReportsCreated    EventReport[]           @relation("EventReportCreatedBy")
+  eventReportsSubmitted  EventReport[]           @relation("EventReportSubmittedBy")
   eventReportCrew        EventReportCrewMember[]
   eventReportAttachments EventReportAttachment[] @relation("EventReportAttachmentUploadedBy")
+
+  liveRunsCreated LiveRun[]           @relation("LiveRunCreatedBy")
+  liveRunCrew     LiveRunCrewMember[]
 
   @@index([email])
   @@index([provider, providerId])
@@ -92,6 +96,7 @@ model Vehicle {
   maintenanceEntries    MaintenanceEntry[]
   vehicleInventoryItems VehicleInventoryItem[]
   eventReports          EventReportVehicle[]
+  liveRuns              LiveRun[]
 
   @@index([vehicleType])
   @@index([isDeleted])
@@ -343,6 +348,8 @@ model Schedule {
   assignments  ScheduleAssignment[]
   /// Reports whose crew was pre-filled from a shift of this schedule.
   eventReports EventReport[]
+  /// Runs in progress whose crew came from a shift of this schedule.
+  liveRuns     LiveRun[]
 
   @@index([status])
 }
@@ -443,6 +450,7 @@ model Locality {
   searchName String
 
   eventReports EventReport[]
+  liveRuns     LiveRun[]
 
   @@unique([municipalityId, name])
   @@index([searchName])
@@ -469,7 +477,8 @@ model Hospital {
   /// must keep naming it. False hides it from new pickers only.
   isActive Boolean @default(true)
 
-  victims EventReportVictim[]
+  victims  EventReportVictim[]
+  liveRuns LiveRun[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -529,18 +538,37 @@ enum VictimDestinationKind {
 /// `formatEventReportCode` in `@redinfo/shared`, which keeps one spelling of
 /// the rule and leaves the columns something a report can group by.
 ///
-/// Drafts are not here. An unfinished report lives on the device that is
-/// filling it in, because the crew is often out of coverage; a row in this
-/// table is a report that was filed.
+/// Drafts *are* here, since live mode (ADO #154). A run that closes becomes a
+/// draft report immediately — a row whose `submittedAt` is null — so a crew that
+/// forgets the paperwork still leaves something visible behind. The device is
+/// still where a run in progress lives; this table takes over the moment the
+/// ambulance is available again.
 model EventReport {
   id     String          @id @default(cuid())
   type   EventReportType
-  /// Sequence within `(type, year)`, assigned on create. 1-based.
-  number Int
+  /// Position within `(type, year)`, 1-based, assigned when the report is
+  /// **submitted** and recomputed whenever the partition changes. Null while
+  /// the report is a draft: a report with no number is a report nobody has
+  /// filed yet, and Postgres treats NULLs as distinct so the unique constraint
+  /// stays quiet about drafts.
+  number Int?
+  /// What this report was called before the sequence was last recomputed. Kept
+  /// forever and searchable, so paper filed as "EMG 042/2026" stays findable
+  /// after a renumber.
+  legacyNumber Int?
   /// Calendar year the sequence belongs to, taken from `occurredOn`. Stored
   /// rather than derived so the unique index below can hold the numbering
   /// rule, and so a year's reports are one index seek away.
   year   Int
+
+  /// Who filed it and when. An actor-and-timestamp pair rather than a boolean,
+  /// matching `Schedule.publishedBy/publishedAt`: a transition is a fact about a
+  /// person and a moment. `submittedAt IS NULL` *is* the draft state — there is
+  /// no status enum to disagree with it, and no `unsubmit`, because un-filing a
+  /// report would re-punch the hole in the numbering.
+  submittedAt   DateTime?
+  submittedById String?
+  submittedBy   User?     @relation("EventReportSubmittedBy", fields: [submittedById], references: [id], onDelete: SetNull)
 
   /// The day the activity happened — the date on the paper form. Separate from
   /// `startedAt` because it is what reports group by, and because a service
@@ -589,10 +617,34 @@ model EventReport {
   /// neither end.
   operationalReport String @db.Text
 
+  // ── The clinical record (emergencies only) ──
+  /// CHAMU, as five columns rather than one JSON blob: the set is fixed by a
+  /// national form, each is shown as its own labelled field, and a blob would
+  /// make "which reports mention an allergy" unanswerable for no gain.
+  ///
+  /// These carry no names — the screens say "sem nomes" on the fields — but they
+  /// are free text a crew types, so they are treated as clinical data rather
+  /// than as safe.
+  chamuCircumstances String? @db.Text
+  chamuHistory       String? @db.Text
+  chamuAllergies     String? @db.Text
+  chamuMedication    String? @db.Text
+  chamuLastMeal      String? @db.Text
+
+  /// Five optional `{ status, note }` pairs. JSON *because nothing queries a
+  /// letter*: it is read as one block, written as one block, and its shape is
+  /// INEM's to change rather than ours.
+  abcde Json?
+
   crew        EventReportCrewMember[]
   vehicles    EventReportVehicle[]
   victims     EventReportVictim[]
   attachments EventReportAttachment[]
+  assessments EventReportAssessment[]
+
+  /// The run this report was closed out of, if there was one. The run owns the
+  /// link, so this side is read-only provenance.
+  liveRun LiveRun?
 
   createdById String
   createdBy   User     @relation("EventReportCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
@@ -600,12 +652,71 @@ model EventReport {
   updatedAt   DateTime @updatedAt
 
   /// The numbering rule, as a constraint rather than a convention.
+  ///
+  /// The migration replaces the index Prisma would create with a same-named
+  /// **DEFERRABLE** unique constraint: shifting a whole partition along by one
+  /// transiently collides with itself, and a row-by-row check would reject the
+  /// UPDATE halfway through. Deferrability is not something Prisma models, so
+  /// this line and the database still agree.
   @@unique([type, year, number])
   @@index([occurredOn])
   @@index([type, occurredOn])
   @@index([localityId])
   @@index([createdById])
   @@index([scheduleId])
+  /// Numbering reads a whole `(type, year)` partition in activation order.
+  @@index([type, year, activationAt])
+  /// The *Pendentes* grouping, and the purge's "has this been filed yet".
+  @@index([submittedAt])
+  @@index([type, year, legacyNumber])
+}
+
+/// One set of observations, taken at one moment.
+///
+/// A child table because a set of vitals is something taken *at a time*:
+/// usually once on scene, but a deteriorating victim is measured again on the
+/// way in, and "what were the vitals when they left" must not overwrite "what
+/// were they when we arrived".
+///
+/// Every measurement is individually optional and each has a CHECK for its own
+/// plausible-instrument range (see the migration). Two are worth naming:
+/// `heartRate` allows **0**, because asystole is a real recordable finding
+/// rather than a missing value, and a row with nothing measured in it at all is
+/// refused — an assessment with no measurement is not an assessment.
+model EventReportAssessment {
+  id       String      @id @default(cuid())
+  reportId String
+  report   EventReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  /// Display order within the report, 0-based — the order they were taken.
+  position Int
+  takenAt  DateTime
+
+  /// mg/dL
+  bloodGlucose    Int?
+  /// mmHg
+  systolic        Int?
+  diastolic       Int?
+  /// °C. Decimal rather than Float, following `MaintenanceEntry.cost`: 36.8 is
+  /// a number, not a float to be surprised by.
+  temperature     Decimal? @db.Decimal(3, 1)
+  /// bpm
+  heartRate       Int?
+  /// cpm
+  respiratoryRate Int?
+  /// %
+  spo2            Int?
+  /// 3–15
+  glasgow         Int?
+  /// 0–10
+  painScore       Int?
+
+  /// How the victim was found or placed. Named `bodyPosition` because
+  /// `position` above already means display order in every sibling table.
+  bodyPosition String?
+
+  @@unique([reportId, position])
+  @@index([reportId])
 }
 
 /// Who was on the activity, and in what post.
@@ -651,6 +762,15 @@ model EventReportVehicle {
   kilometres Int
   /// Display order within the report, 0-based.
   position   Int
+
+  /// The legs `kilometres` was computed from — Base → occurrence → hospital →
+  /// Base — as returned by the Google Routes API. Stored so "28 km" is
+  /// explainable a year later rather than being a number with no provenance.
+  /// Null on a report whose distance was typed, or not computed yet.
+  routeLegs Json?
+  /// A human changed the computed figure. Kept so an edited number is visibly
+  /// an edit rather than silently replacing a measurement.
+  isOverridden Boolean @default(false)
 
   @@unique([reportId, vehicleId])
   @@index([reportId])
@@ -700,6 +820,13 @@ model EventReportAttachment {
   reportId String
   report   EventReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
 
+  /// What the file *is*, as distinct from what it contains. A discriminator
+  /// rather than a second table: the bytes, the MIME allow-list, the size cap,
+  /// the storage keys and the download route are all identical. A partial unique
+  /// index (see the migration) holds "at most one Verbete per report"; the
+  /// service refuses the second one first, with a message worth reading.
+  kind EventReportAttachmentKind @default(GENERAL)
+
   /// Name as the uploader's device gave it, for display and download only.
   /// Never used to build a path.
   filename   String
@@ -717,17 +844,148 @@ model EventReportAttachment {
   @@index([uploadedById])
 }
 
-/// Per-type, per-year report-number sequence — one row per pair, created
-/// lazily on first use.
-///
-/// Postgres's `INSERT ... ON CONFLICT DO UPDATE` (what Prisma's `upsert`
-/// compiles to) row-locks for the statement's duration, so concurrent filings
-/// for the same type and year serialise on this row and cannot read the same
-/// sequence value.
-model EventReportCounter {
-  type     EventReportType
-  year     Int
-  sequence Int             @default(0)
+/// What an attachment *is*. See `EventReportAttachment.kind`.
+enum EventReportAttachmentKind {
+  /// The paper INEM *Verbete de Socorro*. At most one per report.
+  VERBETE
+  /// Photographs taken on scene, and anything else.
+  GENERAL
+}
 
-  @@id([type, year])
+// ─── Live emergency runs ──────────────────────────────────────────────────────
+
+/// Where a run has got to. `CLOSED` is reachable from every stage — a call can
+/// be stood down at any point. Which stamp each transition writes lives in
+/// `LIVE_RUN_STATE_RULES` in `@redinfo/shared`, not in a chain here, following
+/// the `EVENT_REPORT_TYPE_RULES` pattern.
+enum LiveRunState {
+  INTAKE
+  EN_ROUTE
+  ON_SCENE
+  EN_ROUTE_TO_HOSPITAL
+  AT_HOSPITAL
+  CLOSED
+}
+
+/// The server's mirror of what one phone is capturing during an emergency.
+///
+/// **The device is the source of truth.** This row exists so a dead phone, a
+/// lost phone or a back-to-back call loses nothing, and so a coordinator can see
+/// what is running. `PUT /live-runs/:id` is an idempotent whole-row replace
+/// guarded by the device-owned `revision`; a PUT at or below the stored revision
+/// is a stale replay from a phone that has been in a cellar, and is answered 200
+/// with the stored row rather than 409.
+///
+/// `id` has **no** `@default(cuid())` on purpose: the client owns it, so a run
+/// created with no coverage syncs an hour later into the row it would have
+/// created at the time.
+model LiveRun {
+  id       String       @id
+  revision Int          @default(0)
+  state    LiveRunState @default(INTAKE)
+
+  /// When the crew opened the screen — before activation, while still on the
+  /// call from CODU.
+  startedAt DateTime
+
+  // ── Plaintext: everything the coordinator's board sorts, filters or counts ──
+  externalReference String?
+  /// The reason for the call as CODU gave it, e.g. "queda com traumatismo".
+  chiefComplaint    String?
+  locationType      EventLocationType?
+  localityId        String?
+  locality          Locality?          @relation(fields: [localityId], references: [id], onDelete: Restrict)
+  victimGender      Gender?
+  victimAge         Int?
+  vehicleId         String?
+  vehicle           Vehicle?           @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+
+  scheduleId String?
+  schedule   Schedule? @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
+  shiftDate  DateTime? @db.Date
+  shiftSlot  Int?
+
+  activationAt      DateTime?
+  sceneArrivalAt    DateTime?
+  sceneDepartureAt  DateTime?
+  hospitalArrivalAt DateTime?
+  availableAt       DateTime?
+
+  destinationKind       VictimDestinationKind?
+  destinationHospitalId String?
+  destinationHospital   Hospital?              @relation(fields: [destinationHospitalId], references: [id], onDelete: Restrict)
+
+  /// Vitals, CHAMU, ABCDE and the narrative in progress. JSON because this is a
+  /// *mirror, not a model*: the server never edits a field of it, it replaces
+  /// the whole thing. Columns would mean migrating this table every time the
+  /// phone's form gains a box.
+  capture Json?
+
+  /// One AES-256-GCM blob: victim name, date of birth, SNS number, occurrence
+  /// address, reference points, home address. Sealed with the run id as
+  /// additional authenticated data, so copying row A's blob into row B fails to
+  /// open — which matters here more than usual, because rows are keyed by
+  /// client-supplied ids.
+  identity         Bytes?
+  /// Set when the blob was destroyed, so "we never had it" and "we had it and it
+  /// is gone" are different facts.
+  identityPurgedAt DateTime?
+
+  closedAt DateTime?
+
+  /// The draft report this run became. One report per run.
+  reportId String?      @unique
+  report   EventReport? @relation(fields: [reportId], references: [id], onDelete: SetNull)
+
+  createdById String
+  createdBy   User     @relation("LiveRunCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  crew LiveRunCrewMember[]
+
+  @@index([state])
+  /// The purge sweep, and the 48h readability gate.
+  @@index([closedAt])
+  @@index([createdById])
+  /// Force-closing abandoned runs reads this.
+  @@index([updatedAt])
+  @@index([localityId])
+}
+
+/// Who is on a run in progress.
+///
+/// The one part of a run that stays relational, because "may this person read
+/// this run" is the table's hottest query and the coordinator's board shows
+/// names. Replaced wholesale on every PUT, the same way a report's children are.
+model LiveRunCrewMember {
+  id     String  @id @default(cuid())
+  runId  String
+  run    LiveRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  userId String
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  roleName String?
+  position Int
+
+  @@unique([runId, userId])
+  @@index([runId])
+  @@index([userId])
+}
+
+/// The handful of values that are the same for every run of this delegation.
+///
+/// A table rather than environment variables so a coordinator can change the
+/// freephone number without a deploy, and so "where is our base" has one answer
+/// the reports and the distance calculation both read. Exactly one row: the id
+/// is fixed by a CHECK in the migration, so an accidental second row is
+/// impossible rather than merely unlikely.
+model DelegationSettings {
+  id             String   @id @default("delegation")
+  baseName       String
+  baseLatitude   Float
+  baseLongitude  Float
+  /// Dialled from the live-run overflow menu; the dial time is stamped on the run.
+  coduDadosPhone String
+  updatedAt      DateTime @updatedAt
 }

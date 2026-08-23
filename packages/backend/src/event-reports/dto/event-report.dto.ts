@@ -3,10 +3,12 @@ import { Type } from 'class-transformer';
 import {
   ArrayMaxSize,
   IsArray,
+  IsBoolean,
   IsDateString,
   IsEnum,
   IsInt,
   IsNotEmpty,
+  IsNumber,
   IsObject,
   IsOptional,
   IsString,
@@ -19,6 +21,9 @@ import {
   EventLocationType,
   EventReportType,
   Gender,
+  MAX_ASSESSMENTS_PER_REPORT,
+  MAX_ASSESSMENT_POSITION_LENGTH,
+  MAX_CHAMU_LENGTH,
   MAX_CREW_PER_REPORT,
   MAX_EXTERNAL_REFERENCE_LENGTH,
   MAX_OPERATIONAL_REPORT_LENGTH,
@@ -55,6 +60,24 @@ export class EventReportCrewMemberDto {
   roleName?: string | null;
 }
 
+export class RouteLegDto {
+  @ApiProperty({ example: 'Base' })
+  @IsString()
+  @MaxLength(200)
+  from: string;
+
+  @ApiProperty({ example: 'Hospital de Braga' })
+  @IsString()
+  @MaxLength(200)
+  to: string;
+
+  @ApiProperty({ example: 18, minimum: 0, maximum: MAX_VEHICLE_KILOMETRES })
+  @IsNumber()
+  @Min(0)
+  @Max(MAX_VEHICLE_KILOMETRES)
+  kilometres: number;
+}
+
 export class EventReportVehicleDto {
   @ApiProperty()
   @IsString()
@@ -66,6 +89,23 @@ export class EventReportVehicleDto {
   @Min(0)
   @Max(MAX_VEHICLE_KILOMETRES)
   kilometres: number;
+
+  @ApiPropertyOptional({
+    type: [RouteLegDto],
+    nullable: true,
+    description: 'The legs the distance was computed from. Never typed by the crew.',
+  })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(8)
+  @ValidateNested({ each: true })
+  @Type(() => RouteLegDto)
+  routeLegs?: RouteLegDto[] | null;
+
+  @ApiPropertyOptional({ description: 'The crew edited the computed distance.' })
+  @IsOptional()
+  @IsBoolean()
+  isOverridden?: boolean;
 }
 
 export class EventReportVictimDto {
@@ -87,6 +127,75 @@ export class EventReportVictimDto {
   @IsOptional()
   @IsString()
   destinationHospitalId?: string | null;
+}
+
+/**
+ * One set of vitals.
+ *
+ * The bounds live in `VITALS_RANGES` and are enforced by `validateAssessment`
+ * and by a CHECK constraint per column — not repeated here. A third copy in
+ * decorators would be the one that drifts, and the DB is the copy that cannot
+ * be bypassed. What this class is for is refusing a *string* where a number
+ * belongs, which the domain rules assume has already been settled.
+ */
+export class EventReportAssessmentDto {
+  @ApiProperty({ example: '2026-08-22T20:31:00.000Z' })
+  @IsDateString()
+  takenAt: string;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'How the victim was found or placed, e.g. "decúbito dorsal".',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(MAX_ASSESSMENT_POSITION_LENGTH)
+  bodyPosition?: string | null;
+
+  @ApiPropertyOptional({ example: 97, nullable: true })
+  @IsOptional()
+  @IsNumber()
+  spo2?: number | null;
+
+  @ApiPropertyOptional({ example: 16, nullable: true })
+  @IsOptional()
+  @IsNumber()
+  respiratoryRate?: number | null;
+
+  @ApiPropertyOptional({ example: 78, nullable: true })
+  @IsOptional()
+  @IsNumber()
+  heartRate?: number | null;
+
+  @ApiPropertyOptional({ example: 130, nullable: true })
+  @IsOptional()
+  @IsNumber()
+  systolic?: number | null;
+
+  @ApiPropertyOptional({ example: 85, nullable: true })
+  @IsOptional()
+  @IsNumber()
+  diastolic?: number | null;
+
+  @ApiPropertyOptional({ example: 104, nullable: true })
+  @IsOptional()
+  @IsNumber()
+  bloodGlucose?: number | null;
+
+  @ApiPropertyOptional({ example: 36.8, nullable: true })
+  @IsOptional()
+  @IsNumber()
+  temperature?: number | null;
+
+  @ApiPropertyOptional({ example: 15, nullable: true })
+  @IsOptional()
+  @IsNumber()
+  glasgow?: number | null;
+
+  @ApiPropertyOptional({ example: 4, nullable: true })
+  @IsOptional()
+  @IsNumber()
+  painScore?: number | null;
 }
 
 export class EventReportShiftDto {
@@ -195,6 +304,68 @@ export class CreateEventReportDto {
   @ValidateNested({ each: true })
   @Type(() => EventReportVictimDto)
   victims: EventReportVictimDto[];
+
+  // ── Clinical record ────────────────────────────────────────────────────────
+  // Emergency reports only. `validateEventReport` refuses these on a type whose
+  // rules say `hasClinicalRecord: false`, so a support report cannot smuggle a
+  // blood glucose in through the API.
+
+  @ApiPropertyOptional({ nullable: true, description: 'CHAMU — C: circumstances.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(MAX_CHAMU_LENGTH)
+  chamuCircumstances?: string | null;
+
+  @ApiPropertyOptional({ nullable: true, description: 'CHAMU — H: history.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(MAX_CHAMU_LENGTH)
+  chamuHistory?: string | null;
+
+  @ApiPropertyOptional({ nullable: true, description: 'CHAMU — A: allergies.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(MAX_CHAMU_LENGTH)
+  chamuAllergies?: string | null;
+
+  @ApiPropertyOptional({ nullable: true, description: 'CHAMU — M: medication.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(MAX_CHAMU_LENGTH)
+  chamuMedication?: string | null;
+
+  @ApiPropertyOptional({ nullable: true, description: 'CHAMU — U: last meal.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(MAX_CHAMU_LENGTH)
+  chamuLastMeal?: string | null;
+
+  /**
+   * `{ A: { status, note }, … }` — a keyed record, not a list.
+   *
+   * Checked as a plain object here and validated for real by
+   * `validateEventReport`: the band names, the three statuses and the
+   * MAX_ABCDE_NOTE_LENGTH note cap all live in `@redinfo/shared`,
+   * where the wizard reads them too. A `@ValidateNested` on a `Partial<Record>`
+   * would need a class per band to say the same thing worse.
+   */
+  @ApiPropertyOptional({
+    type: 'object',
+    additionalProperties: true,
+    nullable: true,
+    example: { A: { status: 'NORMAL' }, C: { status: 'ALTERED', note: 'Hemorragia' } },
+  })
+  @IsOptional()
+  @IsObject()
+  abcde?: Record<string, { status: string; note?: string | null }> | null;
+
+  @ApiPropertyOptional({ type: [EventReportAssessmentDto] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MAX_ASSESSMENTS_PER_REPORT)
+  @ValidateNested({ each: true })
+  @Type(() => EventReportAssessmentDto)
+  assessments?: EventReportAssessmentDto[];
 }
 
 /**

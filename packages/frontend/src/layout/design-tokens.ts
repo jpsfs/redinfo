@@ -13,6 +13,19 @@
 
 // ─── Brand colors ────────────────────────────────────────────────────────────
 export const colorRedCrossRed = '#ED1B24';
+/**
+ * The red to put white text on.
+ *
+ * Measured, not chosen: white on `#ED1B24` is **4.39:1**, which clears WCAG AA
+ * only for large text (bold ≥ 18.66px / normal ≥ 24px). White on `#B01218` is
+ * **7.2:1** and clears AA at every size.
+ *
+ * So the rule for any red surface carrying white text is: `colorRedCrossRed`
+ * for a bold headline and nothing else; `colorRedCrossRedDark` wherever a
+ * caption, a chip or ordinary body text sits on red. Live mode's chrome is all
+ * dark red for exactly this reason — a crew reads it at arm's length, in a
+ * moving vehicle, sometimes in sunlight.
+ */
 export const colorRedCrossRedDark = '#B01218';
 export const colorRedCrossRedLight = '#F8878B';
 

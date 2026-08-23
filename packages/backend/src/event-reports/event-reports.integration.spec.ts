@@ -7,6 +7,7 @@ import {
   AvailabilityWindowCategory,
   AvailabilityWindowStatus,
   EventLocationType,
+  EventReportAttachmentKind,
   EventReportInput,
   EventReportType,
   Gender,
@@ -23,6 +24,7 @@ import { ShiftScheduleService } from '../availability/shift-schedule.service';
 import { GeographyService } from '../geography/geography.service';
 import { HospitalsService } from '../hospitals/hospitals.service';
 import { EventReportsService, RequestUser } from './event-reports.service';
+import { EventReportNumbering } from './event-report-numbering';
 import { EventReportCrewService } from './event-report-crew.service';
 import { EventReportAttachmentsService } from './event-report-attachments.service';
 import { DiskAttachmentStorage } from './attachment-storage';
@@ -118,7 +120,7 @@ describeIntegration('Event reports (integration)', () => {
     const shiftSchedule = new ShiftScheduleService(holidays, prisma);
     geography = new GeographyService(prisma);
     hospitals = new HospitalsService(prisma, geography);
-    reports = new EventReportsService(prisma, shiftSchedule);
+    reports = new EventReportsService(prisma, shiftSchedule, new EventReportNumbering());
     crewService = new EventReportCrewService(prisma, shiftSchedule);
 
     attachmentRoot = await mkdtemp(join(tmpdir(), 'redinfo-it-attachments-'));
@@ -211,7 +213,6 @@ describeIntegration('Event reports (integration)', () => {
     if (createdReportIds.length) {
       await prisma.eventReport.deleteMany({ where: { id: { in: createdReportIds } } });
     }
-    await prisma.eventReportCounter.deleteMany({ where: { year: { in: [2028, 2029] } } });
     await prisma.availabilityWindow.deleteMany({
       where: { name: { contains: RUN } },
     });
@@ -239,7 +240,7 @@ describeIntegration('Event reports (integration)', () => {
       const first = await file();
       const second = await file();
 
-      expect(second.number).toBe(first.number + 1);
+      expect(second.number).toBe(first.number! + 1);
       expect(second.year).toBe(2029);
       expect(second.type).toBe(EventReportType.EMERGENCY);
     });
@@ -254,13 +255,13 @@ describeIntegration('Event reports (integration)', () => {
       // The support sequence has its own life; the only thing tying them
       // together would be a shared counter, which is exactly what this refuses.
       const nextEmergency = await file();
-      expect(nextEmergency.number).toBe(emergency.number + 1);
+      expect(nextEmergency.number).toBe(emergency.number! + 1);
 
       const nextSupport = await file({
         type: EventReportType.LOCAL_SUPPORT,
         externalReference: null,
       });
-      expect(nextSupport.number).toBe(support.number + 1);
+      expect(nextSupport.number).toBe(support.number! + 1);
     });
 
     it('starts a new year over again', async () => {
@@ -291,6 +292,197 @@ describeIntegration('Event reports (integration)', () => {
     it('renders the code the crew reads off the screen', async () => {
       const report = await file();
       expect(formatEventReportCode(report)).toMatch(/^EMG \d{3,}\/2029$/);
+    });
+  });
+
+  // ── Numbering as a projection ───────────────────────────────────────────────
+  //
+  // A report's number is its *position among the filed reports of one
+  // (type, year), ordered by activation time* — recomputed whole rather than
+  // handed out. Only a real Postgres can answer whether that holds: the
+  // ordering, the advisory lock and the deferrable unique constraint are all in
+  // the database, and there is nothing to test in a unit.
+
+  describe('numbering by activation order', () => {
+    /**
+     * A filed report in its own year, activated on a chosen day.
+     *
+     * Its own year per test group so the partition is this test's alone — a
+     * resequence is partition-scoped, so two tests sharing (type, year) would
+     * renumber each other's rows.
+     */
+    const filedOn = (year: number, day: string, type = EventReportType.SALOP_SUPPORT) =>
+      file({
+        type,
+        externalReference: type === EventReportType.EMERGENCY ? '2608 4471' : null,
+        occurredOn: `${year}-08-${day}`,
+        startedAt: `${year}-08-${day}T20:00:00.000Z`,
+        endedAt: `${year}-08-${day}T21:00:00.000Z`,
+        activationAt: type === EventReportType.EMERGENCY ? `${year}-08-${day}T20:00:00.000Z` : null,
+        victims: [],
+      });
+
+    const numbersIn = async (year: number, type = EventReportType.SALOP_SUPPORT) => {
+      const rows = await prisma.eventReport.findMany({
+        where: { year, type: type as never, submittedAt: { not: null } },
+        orderBy: { number: 'asc' },
+        select: { number: true, occurredOn: true },
+      });
+      return rows.map((row) => [row.occurredOn.toISOString().slice(0, 10), row.number]);
+    };
+
+    it('numbers three out-of-order filings by when they happened', async () => {
+      // Filed 20th, 18th, 19th — a crew that got round to the paperwork days
+      // later, which is the ordinary case this exists for.
+      await filedOn(2031, '20');
+      await filedOn(2031, '18');
+      await filedOn(2031, '19');
+
+      await expect(numbersIn(2031)).resolves.toEqual([
+        ['2031-08-18', 1],
+        ['2031-08-19', 2],
+        ['2031-08-20', 3],
+      ]);
+    });
+
+    it('shifts a whole partition along in one statement', async () => {
+      // Three on file, then one activated before all of them. Every existing
+      // number moves up by one, which transiently collides with itself — so this
+      // succeeding is the only real proof the unique constraint is deferrable.
+      // With an immediate constraint it fails on the first row it touches.
+      await filedOn(2032, '18');
+      await filedOn(2032, '19');
+      await filedOn(2032, '20');
+      await expect(numbersIn(2032)).resolves.toEqual([
+        ['2032-08-18', 1],
+        ['2032-08-19', 2],
+        ['2032-08-20', 3],
+      ]);
+
+      await filedOn(2032, '17');
+
+      await expect(numbersIn(2032)).resolves.toEqual([
+        ['2032-08-17', 1],
+        ['2032-08-18', 2],
+        ['2032-08-19', 3],
+        ['2032-08-20', 4],
+      ]);
+    });
+
+    it('keeps the number a displaced report was first given, forever', async () => {
+      const second = await filedOn(2033, '19');
+      expect(second.number).toBe(1);
+
+      await filedOn(2033, '18');
+
+      const displaced = await reports.findOne(second.id, coordinatorUser);
+      expect(displaced.number).toBe(2);
+      // Someone holding the paper printed "SAL 001/2033". That has to remain
+      // findable, so the *first* number is kept rather than the previous one.
+      expect(displaced.legacyNumber).toBe(1);
+    });
+
+    it('finds a renumbered report by the code that was printed on it', async () => {
+      const report = await filedOn(2034, '19');
+      const printed = formatEventReportCode(report);
+      expect(printed).not.toBeNull();
+
+      await filedOn(2034, '18');
+
+      const { data } = await reports.findAll({ q: printed! }, 1, 50);
+      expect(data.map((entry) => entry.id)).toContain(report.id);
+    });
+
+    it('closes the gap when a report in the middle is deleted', async () => {
+      await filedOn(2035, '18');
+      const middle = await filedOn(2035, '19');
+      await filedOn(2035, '20');
+
+      const { renumbered } = await reports.remove(middle.id, coordinatorUser);
+
+      expect(renumbered).toEqual([{ reportId: expect.any(String), from: 3, to: 2 }]);
+      await expect(numbersIn(2035)).resolves.toEqual([
+        ['2035-08-18', 1],
+        ['2035-08-20', 2],
+      ]);
+    });
+
+    it('gives a draft no number at all', async () => {
+      const draft = await reports.create(
+        input({ occurredOn: '2036-08-18', startedAt: '2036-08-18T20:00:00.000Z', endedAt: null }),
+        tiago.id,
+        { submit: false },
+      );
+      createdReportIds.push(draft.id);
+
+      expect(draft.number).toBeNull();
+      expect(draft.submittedAt).toBeNull();
+      expect(formatEventReportCode(draft)).toBeNull();
+      // And it is invisible to the filed partition, so it displaces nothing.
+      await expect(numbersIn(2036, EventReportType.EMERGENCY)).resolves.toEqual([]);
+    });
+
+    it('leaves concurrent filings numbered 1..n, with no two the same', async () => {
+      const drafts = await Promise.all(
+        ['11', '12', '13', '14', '15'].map((day) =>
+          reports.create(
+            input({
+              type: EventReportType.LOCAL_SUPPORT,
+              externalReference: null,
+              occurredOn: `2037-08-${day}`,
+              startedAt: `2037-08-${day}T20:00:00.000Z`,
+              endedAt: `2037-08-${day}T21:00:00.000Z`,
+              activationAt: null,
+              victims: [],
+            }),
+            tiago.id,
+            { submit: false },
+          ),
+        ),
+      );
+      createdReportIds.push(...drafts.map((draft) => draft.id));
+
+      // All five at once, and every one of them succeeds. Without the advisory
+      // lock two of these compute the same position from the same snapshot, and
+      // the deferred unique constraint then fails one of them at commit.
+      await Promise.all(drafts.map((draft) => reports.submit(draft.id, coordinatorUser)));
+
+      // The *stored* numbers are what the assertion is about, not the ones each
+      // call returned. A number is a position, so a report filed second can be
+      // handed "1" and become "2" a moment later when an earlier one is filed —
+      // the caller's copy is a snapshot, and the partition is the truth.
+      await expect(numbersIn(2037, EventReportType.LOCAL_SUPPORT)).resolves.toEqual([
+        ['2037-08-11', 1],
+        ['2037-08-12', 2],
+        ['2037-08-13', 3],
+        ['2037-08-14', 4],
+        ['2037-08-15', 5],
+      ]);
+    });
+
+    it('refuses an operational the filing that would renumber filed reports', async () => {
+      await filedOn(2038, '19');
+      const late = await reports.create(
+        input({
+          type: EventReportType.SALOP_SUPPORT,
+          externalReference: null,
+          occurredOn: '2038-08-18',
+          startedAt: '2038-08-18T20:00:00.000Z',
+          endedAt: '2038-08-18T21:00:00.000Z',
+          activationAt: null,
+          victims: [],
+        }),
+        tiago.id,
+        { submit: false },
+      );
+      createdReportIds.push(late.id);
+
+      // Rewriting a number that is already in a binder reaches a coordinator's
+      // judgement rather than happening by an operational's thumb.
+      await expect(reports.submit(late.id, tiagoUser)).rejects.toThrow(/already filed/i);
+      await expect(reports.submit(late.id, coordinatorUser)).resolves.toMatchObject({
+        report: { number: 1 },
+      });
     });
   });
 
@@ -567,7 +759,7 @@ describeIntegration('Event reports (integration)', () => {
       const report = await file();
 
       await expect(reports.remove(report.id, tiagoUser)).rejects.toThrow(ForbiddenException);
-      await expect(reports.remove(report.id, coordinatorUser)).resolves.toEqual({
+      await expect(reports.remove(report.id, coordinatorUser)).resolves.toMatchObject({
         id: report.id,
       });
     });
@@ -579,8 +771,9 @@ describeIntegration('Event reports (integration)', () => {
     it('finds it by the code printed on it', async () => {
       const report = await file();
       const code = formatEventReportCode(report);
+      expect(code).not.toBeNull();
 
-      const { data } = await reports.findAll({ q: code }, 1, 50);
+      const { data } = await reports.findAll({ q: code! }, 1, 50);
       expect(data.map((entry) => entry.id)).toContain(report.id);
     });
 
@@ -894,6 +1087,80 @@ describeIntegration('Event reports (integration)', () => {
       await expect(attachments.add(report.id, photo, outsiderUser)).rejects.toThrow(
         ForbiddenException,
       );
+    });
+
+    describe('the Verbete de Socorro slot', () => {
+      const verbete = {
+        originalname: 'verbete.pdf',
+        mimetype: 'application/pdf',
+        size: 9,
+        buffer: Buffer.from('paperwork'),
+      };
+
+      it('takes one, and marks it as one', async () => {
+        const report = await file();
+
+        const added = await attachments.add(
+          report.id,
+          verbete,
+          tiagoUser,
+          EventReportAttachmentKind.VERBETE,
+        );
+        expect(added.kind).toBe(EventReportAttachmentKind.VERBETE);
+
+        const read = await reports.findOne(report.id, coordinatorUser);
+        expect(read.attachments.filter((entry) => entry.kind === 'VERBETE')).toHaveLength(1);
+      });
+
+      it('refuses a second one, in words, before the index refuses it in Postgres', async () => {
+        const report = await file();
+        await attachments.add(report.id, verbete, tiagoUser, EventReportAttachmentKind.VERBETE);
+
+        await expect(
+          attachments.add(report.id, verbete, tiagoUser, EventReportAttachmentKind.VERBETE),
+        ).rejects.toThrow(/already has a Verbete/i);
+      });
+
+      it('is backed by the database, not only by the service', async () => {
+        // The partial unique index is what makes the rule true rather than
+        // merely usually true — so it is asserted by going round the service.
+        const report = await file();
+        await attachments.add(report.id, verbete, tiagoUser, EventReportAttachmentKind.VERBETE);
+
+        await expect(
+          prisma.eventReportAttachment.create({
+            data: {
+              reportId: report.id,
+              filename: 'segundo.pdf',
+              mimeType: 'application/pdf',
+              byteSize: 9,
+              kind: EventReportAttachmentKind.VERBETE as never,
+              storageKey: `${report.id}/segundo.pdf`,
+              uploadedById: tiago.id,
+            },
+          }),
+        ).rejects.toThrow(/Unique constraint failed.*reportId/s);
+      });
+
+      it('lets a photograph in alongside it, because photographs are not capped at one', async () => {
+        const report = await file();
+        await attachments.add(report.id, verbete, tiagoUser, EventReportAttachmentKind.VERBETE);
+        await attachments.add(report.id, photo, tiagoUser);
+        await attachments.add(report.id, photo, tiagoUser);
+
+        await expect(attachments.list(report.id, tiagoUser)).resolves.toHaveLength(3);
+      });
+
+      it('refuses a Verbete on a type that has no such form', async () => {
+        const support = await file({
+          type: EventReportType.LOCAL_SUPPORT,
+          externalReference: null,
+        });
+
+        await expect(
+          attachments.add(support.id, verbete, tiagoUser, EventReportAttachmentKind.VERBETE),
+        ).rejects.toThrow(/only an emergency/i);
+      });
     });
   });
 });

@@ -1,4 +1,5 @@
 import {
+  CHAMU_FIELDS,
   EventLocationType,
   EventReport,
   EventReportInput,
@@ -26,6 +27,7 @@ export type StepId =
   | 'crew'
   | 'vehicles'
   | 'victims'
+  | 'clinical'
   | 'narrative'
   | 'review';
 
@@ -45,6 +47,12 @@ export function stepsForType(type: EventReportType | string): StepId[] {
     'crew',
     'vehicles',
     'victims',
+    // Present only where the type has a clinical record, which is what makes an
+    // emergency eight steps and a support report six. ADO #151 removed vital
+    // signs from the report; live mode puts them back, because the crew is now
+    // recording them during the call and throwing them away at close would be
+    // worse than not collecting them.
+    ...(rules.hasClinicalRecord ? (['clinical'] as StepId[]) : []),
     'narrative',
     'review',
   ];
@@ -151,6 +159,13 @@ export function emptyDraft(type: EventReportType, now: Date = new Date()): Event
     crew: [],
     vehicles: [],
     victims: [],
+    chamuCircumstances: null,
+    chamuHistory: null,
+    chamuAllergies: null,
+    chamuMedication: null,
+    chamuLastMeal: null,
+    abcde: null,
+    assessments: [],
   };
 }
 
@@ -184,6 +199,11 @@ export function draftFromReport(report: EventReport): EventReportInput {
     vehicles: report.vehicles.map((vehicle) => ({
       vehicleId: vehicle.vehicleId,
       kilometres: vehicle.kilometres,
+      // Carried, not recomputed: the legs are how "28 km" is explainable a year
+      // later, and an edit that dropped them would silently turn a measurement
+      // into a typed figure.
+      routeLegs: vehicle.routeLegs ?? null,
+      isOverridden: vehicle.isOverridden,
     })),
     victims: report.victims.map((victim) => ({
       gender: victim.gender,
@@ -191,6 +211,16 @@ export function draftFromReport(report: EventReport): EventReportInput {
       destinationKind: victim.destinationKind,
       destinationHospitalId: victim.destinationHospitalId ?? null,
     })),
+    // The clinical record travels with the report. Leaving it out here would
+    // mean opening a report from a live run and saving it threw away every vital
+    // the crew took — the save sends the whole document, so an absent field is a
+    // deletion.
+    ...Object.fromEntries(CHAMU_FIELDS.map((field) => [field, report[field] ?? null])),
+    abcde: report.abcde ?? null,
+    assessments: (report.assessments ?? []).map((assessment) => {
+      const { id: _id, position: _position, ...rest } = assessment;
+      return rest;
+    }),
   };
 }
 
@@ -213,6 +243,14 @@ export function retypeDraft(
     }
   }
   const rules = eventReportRules(type);
+  // The same reasoning as the timestamps: a support report cannot carry a
+  // clinical record, and leaving one on the payload would earn a validation
+  // error about a field the form has stopped showing.
+  if (!rules.hasClinicalRecord) {
+    for (const field of CHAMU_FIELDS) next[field] = null;
+    next.abcde = null;
+    next.assessments = [];
+  }
   return {
     ...next,
     // Trim rather than refuse: changing an event from a support job to an

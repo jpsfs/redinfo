@@ -22,12 +22,14 @@ import {
   UserRole,
   formatEventReportCode,
   hasPermission,
+  isEventReportSubmitted,
   totalKilometres,
 } from '@redinfo/shared';
 import { apiFetch } from '../api';
 import { destinationLabel, reportTypeLabel, t } from '../i18n/labels';
 import { StoredDraft, loadDraft } from '../resources/eventReports/reportDraft';
 import { timeOfDay } from '../resources/eventReports/reportDraft';
+import { LiveRunEntryCard } from '../resources/liveRuns';
 
 const ReportCard = ({
   report,
@@ -39,8 +41,16 @@ const ReportCard = ({
   <Paper variant="outlined" onClick={onOpen} sx={{ p: 2, cursor: 'pointer' }}>
     <Stack spacing={0.75}>
       <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-        <Typography sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}>
-          {formatEventReportCode(report)}
+        <Typography
+          sx={{
+            fontWeight: 700,
+            fontVariantNumeric: 'tabular-nums',
+            // A draft has no code, so the slot says why rather than sitting
+            // empty — an unnumbered row reads as a rendering bug otherwise.
+            color: report.number === null ? 'text.disabled' : 'text.primary',
+          }}
+        >
+          {formatEventReportCode(report) ?? t('report.noNumberYet')}
         </Typography>
         <Chip size="small" variant="outlined" label={reportTypeLabel(report.type)} />
       </Stack>
@@ -113,11 +123,19 @@ export const MyReportsPage = () => {
     ? hasPermission(permissions, Action.CREATE_EVENT_REPORT)
     : false;
 
+  // Drafts first and grouped, because they are the ones with something still to
+  // do. A report closed out of a live run at 3am is unfinished by construction,
+  // and burying it under six filed ones is how it stays unfinished.
+  const pending = reports?.filter((report) => !isEventReportSubmitted(report)) ?? [];
+  const filed = reports?.filter((report) => isEventReportSubmitted(report)) ?? [];
+
   return (
     <Container maxWidth="sm" sx={{ py: 2, pb: 12 }}>
       <Title title={t('report.mine')} />
 
       <Stack spacing={1.5}>
+        {canFile && <LiveRunEntryCard />}
+
         {error && <Alert severity="warning">{error}</Alert>}
 
         {draft && (
@@ -144,7 +162,29 @@ export const MyReportsPage = () => {
           </Typography>
         )}
 
-        {reports?.map((report) => (
+        {pending.length > 0 && (
+          <>
+            <Typography sx={{ fontWeight: 800, pt: 1 }}>{t('report.pending')}</Typography>
+            <Typography variant="body2" color="text.secondary">
+              {t('report.pendingHint')}
+            </Typography>
+            {pending.map((report) => (
+              <ReportCard
+                key={report.id}
+                report={report}
+                // Straight to the editor, not the read-only view: what a pending
+                // report needs is finishing.
+                onOpen={() => navigate(`/event-reports/${report.id}`)}
+              />
+            ))}
+          </>
+        )}
+
+        {filed.length > 0 && pending.length > 0 && (
+          <Typography sx={{ fontWeight: 800, pt: 1 }}>{t('report.filed')}</Typography>
+        )}
+
+        {filed.map((report) => (
           <ReportCard
             key={report.id}
             report={report}

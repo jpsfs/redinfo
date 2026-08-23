@@ -23,19 +23,23 @@ import {
   EventReport,
   EventReportAttachment,
   EventReportInput,
+  EventReportSubmitResponse,
   EventReportType,
   eventReportRules,
   formatEventReportCode,
+  isEventReportSubmitted,
   validateAttachment,
 } from '@redinfo/shared';
 import { apiFetch } from '../../api';
-import { getAccessToken } from '../../authProvider';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { problemLabel, reportTypeLabel, t, warningLabel } from '../../i18n/labels';
+import { uploadAttachment } from './uploadAttachment';
 import { StepId } from './reportDraft';
 import { EventReportDraft } from './useEventReportDraft';
 import { useReportLookups } from './useReportLookups';
+import { PendingPhotosBanner } from '../liveRuns';
 import {
+  ClinicalSection,
   CrewSection,
   NarrativeSection,
   ReviewSection,
@@ -45,36 +49,6 @@ import {
   VictimsSection,
   WhenWhereSection,
 } from './ReportSections';
-
-/**
- * Uploads one attachment.
- *
- * `apiFetch` sends JSON; a file has to go as multipart, which means building the
- * request here. `fetch` sets its own boundary when handed a `FormData`, so the
- * content type is deliberately not set.
- */
-async function uploadAttachment(
-  reportId: string,
-  file: File,
-): Promise<EventReportAttachment> {
-  const body = new FormData();
-  body.append('file', file);
-
-  const token = getAccessToken();
-  const response = await fetch(
-    `${import.meta.env.VITE_API_URL ?? ''}/event-reports/${reportId}/attachments`,
-    {
-      method: 'POST',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      body,
-    },
-  );
-
-  if (!response.ok) {
-    throw new Error(`${file.name}: ${response.statusText}`);
-  }
-  return (await response.json()) as EventReportAttachment;
-}
 
 /**
  * The title of a step, which depends on the type: an emergency has one vehicle
@@ -94,6 +68,8 @@ const stepTitle = (step: StepId, type: EventReportType | string): string => {
       return rules.maxVehicles === 1 ? t('step.vehicles') : t('step.vehiclesPlural');
     case 'victims':
       return rules.maxVictims === 1 ? t('step.victims') : t('step.victimsPlural');
+    case 'clinical':
+      return t('live.vitals');
     case 'narrative':
       return t('step.narrative');
     case 'review':
@@ -128,6 +104,14 @@ export const EventReportEditor = ({ form, report = null }: EventReportEditorProp
     report?.attachments ?? [],
   );
   const [saving, setSaving] = useState(false);
+  const [filing, setFiling] = useState(false);
+
+  /**
+   * A report that exists but has not been filed — the one a closed live run left
+   * behind. Saving it keeps it a draft; filing it is the separate, deliberate act
+   * that claims its number.
+   */
+  const isDraft = report !== null && !isEventReportSubmitted(report);
 
   const addFiles = useCallback(
     (chosen: File[]) => {
@@ -196,14 +180,17 @@ export const EventReportEditor = ({ form, report = null }: EventReportEditorProp
       form.forget();
       setPendingFiles([]);
 
+      // A draft has no code yet, so the confirmation says what happened rather
+      // than showing an empty string where a number belongs.
+      const label = formatEventReportCode(saved) ?? t('report.pending');
       if (failed.length) {
-        notify(`${formatEventReportCode(saved)} — ${failed.join(', ')}`, {
-          type: 'warning',
-        });
+        notify(`${label} — ${failed.join(', ')}`, { type: 'warning' });
       } else {
-        notify(`${formatEventReportCode(saved)}`, { type: 'success' });
+        notify(label, { type: 'success' });
       }
-      redirect('show', 'event-reports', saved.id);
+      // A draft stays where it is: the crew is mid-way through finishing it, and
+      // bouncing them to a read-only view is how the next field never gets typed.
+      if (isEventReportSubmitted(saved)) redirect('show', 'event-reports', saved.id);
     } catch (cause) {
       notify(cause instanceof Error ? cause.message : 'Could not save the report', {
         type: 'error',
@@ -212,6 +199,40 @@ export const EventReportEditor = ({ form, report = null }: EventReportEditorProp
       setSaving(false);
     }
   }, [form, notify, pendingFiles, redirect, report]);
+
+  /**
+   * Files the report, and says what it displaced.
+   *
+   * Saved first: filing validates what is *stored*, so an unsaved correction
+   * would be judged against the old row and refused for a reason the crew has
+   * already fixed on screen.
+   */
+  const file = useCallback(async () => {
+    if (!report) return;
+    setFiling(true);
+    try {
+      await apiFetch<EventReport>(`/event-reports/${report.id}`, {
+        method: 'PATCH',
+        body: form.draft as EventReportInput,
+      });
+      const result = await apiFetch<EventReportSubmitResponse>(
+        `/event-reports/${report.id}/submit`,
+        { method: 'POST' },
+      );
+
+      notify(
+        result.renumbered.length > 0
+          ? `${formatEventReportCode(result.report)} — ${result.renumbered.length} ${t('report.renumbered')}`
+          : `${t('report.submitted')} · ${formatEventReportCode(result.report)}`,
+        { type: 'success' },
+      );
+      redirect('show', 'event-reports', report.id);
+    } catch (cause) {
+      notify(cause instanceof Error ? cause.message : t('sync.failed'), { type: 'error' });
+    } finally {
+      setFiling(false);
+    }
+  }, [form.draft, notify, redirect, report]);
 
   const sectionProps: SectionProps = {
     draft: form.draft,
@@ -241,6 +262,8 @@ export const EventReportEditor = ({ form, report = null }: EventReportEditorProp
         return <VehiclesSection {...sectionProps} />;
       case 'victims':
         return <VictimsSection {...sectionProps} />;
+      case 'clinical':
+        return <ClinicalSection {...sectionProps} />;
       case 'narrative':
         return <NarrativeSection {...narrativeProps} />;
       case 'review':
@@ -300,7 +323,14 @@ export const EventReportEditor = ({ form, report = null }: EventReportEditorProp
           </Box>
         </AppBar>
 
-        <Box sx={{ flex: 1, p: 2 }}>{renderStep(form.stepId)}</Box>
+        <Box sx={{ flex: 1, p: 2 }}>
+          {report && (
+            <Box sx={{ mb: 2 }}>
+              <PendingPhotosBanner reportId={report.id} liveRunId={report.liveRunId} />
+            </Box>
+          )}
+          {renderStep(form.stepId)}
+        </Box>
 
         <Paper
           square
@@ -319,16 +349,30 @@ export const EventReportEditor = ({ form, report = null }: EventReportEditorProp
             </Button>
           )}
           {form.isLastStep ? (
-            <Button
-              fullWidth
-              variant="contained"
-              startIcon={saving ? <CircularProgress size={16} /> : <CheckIcon />}
-              disabled={!form.canSave || saving}
-              onClick={save}
-              sx={{ minHeight: 52, fontWeight: 700 }}
-            >
-              {saving ? t('status.saving') : t('action.save')}
-            </Button>
+            <Stack sx={{ flex: 1 }} spacing={1}>
+              <Button
+                fullWidth
+                variant={isDraft ? 'outlined' : 'contained'}
+                startIcon={saving ? <CircularProgress size={16} /> : <CheckIcon />}
+                disabled={!form.canSave || saving || filing}
+                onClick={save}
+                sx={{ minHeight: 52, fontWeight: 700 }}
+              >
+                {saving ? t('status.saving') : t('action.save')}
+              </Button>
+              {isDraft && (
+                <Button
+                  fullWidth
+                  variant="contained"
+                  startIcon={filing ? <CircularProgress size={16} /> : <CheckIcon />}
+                  disabled={!form.canSave || saving || filing}
+                  onClick={file}
+                  sx={{ minHeight: 52, fontWeight: 700 }}
+                >
+                  {filing ? t('report.submitting') : t('report.submit')}
+                </Button>
+              )}
+            </Stack>
           ) : (
             <Button
               fullWidth
@@ -352,6 +396,9 @@ export const EventReportEditor = ({ form, report = null }: EventReportEditorProp
     <Box sx={{ pb: 12 }}>
       <Container maxWidth="lg" sx={{ pt: 2 }}>
         <Stack spacing={2.5}>
+          {report && (
+            <PendingPhotosBanner reportId={report.id} liveRunId={report.liveRunId} />
+          )}
           <Paper variant="outlined" sx={{ p: 2 }}>
             <Stack direction="row" alignItems="center" spacing={2}>
               <Box>
@@ -366,9 +413,11 @@ export const EventReportEditor = ({ form, report = null }: EventReportEditorProp
                   {t('field.reportNumber').toUpperCase()}
                 </Typography>
                 <Typography variant="h6" sx={{ fontVariantNumeric: 'tabular-nums' }}>
-                  {report
-                    ? formatEventReportCode(report)
-                    : `${rules.codePrefix} ···/${form.draft.occurredOn.slice(0, 4)}`}
+                  {/* A report that has not been filed has no code, and the
+                      placeholder is the honest answer for both cases: a new
+                      report, and a draft a live run left behind. */}
+                  {(report && formatEventReportCode(report)) ||
+                    `${rules.codePrefix} ···/${form.draft.occurredOn.slice(0, 4)}`}
                 </Typography>
               </Box>
               <Box sx={{ flex: 1 }} />
@@ -430,13 +479,23 @@ export const EventReportEditor = ({ form, report = null }: EventReportEditorProp
         )}
         <Box sx={{ flex: 1 }} />
         <Button
-          variant="contained"
+          variant={isDraft ? 'outlined' : 'contained'}
           startIcon={saving ? <CircularProgress size={16} /> : <SaveIcon />}
-          disabled={!form.canSave || saving}
+          disabled={!form.canSave || saving || filing}
           onClick={save}
         >
           {saving ? t('status.saving') : t('action.save')}
         </Button>
+        {isDraft && (
+          <Button
+            variant="contained"
+            startIcon={filing ? <CircularProgress size={16} /> : <CheckIcon />}
+            disabled={!form.canSave || saving || filing}
+            onClick={file}
+          >
+            {filing ? t('report.submitting') : t('report.submit')}
+          </Button>
+        )}
       </Paper>
     </Box>
   );

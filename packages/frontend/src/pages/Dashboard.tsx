@@ -16,6 +16,7 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import InventoryIcon from '@mui/icons-material/Inventory';
+import { LiveRunBoard } from '../resources/liveRuns';
 
 const API_URL = import.meta.env.VITE_API_URL ?? '';
 
@@ -218,6 +219,12 @@ export const Dashboard = () => (
         </Typography>
       </CardContent>
     </Card>
+    {/* First, and above the maintenance panels: an emergency being run right now
+        outranks an insurance renewal in three weeks. Renders nothing at all when
+        there are no open runs, or when the reader has no oversight permission. */}
+    <Box sx={{ mt: 2 }}>
+      <LiveRunBoard />
+    </Box>
     <UpcomingAlertsPanel />
     <LowStockPanel />
     <Alert severity="info" sx={{ mt: 2 }}>

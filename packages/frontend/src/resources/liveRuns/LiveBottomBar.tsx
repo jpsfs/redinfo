@@ -1,0 +1,143 @@
+import { Box, Button, CircularProgress, Paper, Stack, Typography } from '@mui/material';
+import NavigationIcon from '@mui/icons-material/Navigation';
+import { LiveRunInput } from '@redinfo/shared';
+import { liveStampLabel, t } from '../../i18n/labels';
+import { timeOfDay } from '../eventReports/reportDraft';
+import { nextStamp } from './liveRun';
+
+export interface LiveBottomBarProps {
+  run: LiveRunInput;
+  /** Writes the stamp and advances the run. */
+  onStamp: () => void;
+  /** Opens the correction sheet for a transition already marked. */
+  onCorrect: () => void;
+  /** Present only on the screens that hand off to a map, and only with an address. */
+  navigateHref?: string | null;
+  /** The closing screen's second act, once the run is stamped available. */
+  onFinish?: () => void;
+  finishing?: boolean;
+  /** Why the run cannot be closed yet, already translated. */
+  blockedReason?: string | null;
+}
+
+/**
+ * The one control in thumb reach.
+ *
+ * Its whole state table is `nextStamp` — a pure function over the run — so what
+ * the button says, what it writes and where the run goes next are three views of
+ * one fact rather than three places to keep in sync.
+ *
+ * Tapping an already-stamped transition **re-labels to "Alterar" and opens the
+ * correction sheet** rather than silently overwriting: the same
+ * `value ? change : now` rule the report form already follows, and for the same
+ * reason — a stamp records a moment, and quietly moving one is how a chronology
+ * stops being evidence.
+ *
+ * Nothing destructive is ever rendered here. That lives in the top bar's
+ * overflow, out of thumb sweep.
+ */
+export const LiveBottomBar = ({
+  run,
+  onStamp,
+  onCorrect,
+  navigateHref,
+  onFinish,
+  finishing = false,
+  blockedReason,
+}: LiveBottomBarProps) => {
+  const step = nextStamp(run);
+
+  return (
+    <Paper
+      square
+      elevation={8}
+      sx={{
+        position: 'fixed',
+        left: 0,
+        right: 0,
+        bottom: 0,
+        zIndex: (theme) => theme.zIndex.appBar,
+        px: 2,
+        pt: 1.5,
+        // Clears the Android navigation bar, which otherwise sits on top of the
+        // one control the crew needs.
+        pb: 'calc(12px + env(safe-area-inset-bottom))',
+      }}
+    >
+      {blockedReason && (
+        <Typography
+          variant="body2"
+          sx={{ mb: 1, fontWeight: 600, color: 'warning.dark' }}
+          role="status"
+        >
+          {blockedReason}
+        </Typography>
+      )}
+
+      <Stack direction="row" spacing={1.5} alignItems="stretch">
+        {step && (
+          <Button
+            fullWidth
+            variant={step.done ? 'outlined' : 'contained'}
+            onClick={step.done ? onCorrect : onStamp}
+            sx={{
+              minHeight: 64,
+              borderRadius: 2,
+              fontWeight: 800,
+              fontSize: '1.0625rem',
+              letterSpacing: '0.02em',
+              lineHeight: 1.15,
+            }}
+          >
+            {step.done ? (
+              <Box>
+                <Box sx={{ fontSize: '0.75rem', fontWeight: 700, opacity: 0.8 }}>
+                  {liveStampLabel(step.field)}
+                </Box>
+                <Box sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                  {timeOfDay(run[step.field])} · {t('live.stamp.change')}
+                </Box>
+              </Box>
+            ) : (
+              liveStampLabel(step.field)
+            )}
+          </Button>
+        )}
+
+        {/*
+          A real anchor, not `window.open` from an onClick. Chrome on Android
+          keeps the SPA alive behind `target="_blank"` (so the run, the timers
+          and the wake lock survive), long-press gives "open in app / copy" for
+          free, and it is keyboard- and screen-reader-correct with no ARIA patch.
+        */}
+        {navigateHref && (
+          <Button
+            component="a"
+            href={navigateHref}
+            target="_blank"
+            rel="noopener noreferrer"
+            variant="outlined"
+            startIcon={<NavigationIcon />}
+            sx={{ minHeight: 64, minWidth: 132, borderRadius: 2, fontWeight: 800 }}
+          >
+            {t('live.navigate')}
+          </Button>
+        )}
+      </Stack>
+
+      {onFinish && (
+        <Button
+          fullWidth
+          variant="contained"
+          color="primary"
+          disabled={finishing}
+          onClick={onFinish}
+          startIcon={finishing ? <CircularProgress size={16} color="inherit" /> : undefined}
+          sx={{ mt: 1.5, minHeight: 64, borderRadius: 2, fontWeight: 800 }}
+        >
+          {finishing ? t('live.finishing') : t('live.finish')}
+        </Button>
+      )}
+    </Paper>
+  );
+};

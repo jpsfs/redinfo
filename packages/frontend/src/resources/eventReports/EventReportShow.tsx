@@ -18,7 +18,10 @@ import PrintIcon from '@mui/icons-material/Print';
 import DownloadIcon from '@mui/icons-material/Download';
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import {
+  ABCDE_BANDS,
   Action,
+  AbcdeFindings,
+  CHAMU_FIELDS,
   EventReport,
   OCCURRENCE_TIME_FIELDS,
   UserRole,
@@ -30,6 +33,9 @@ import {
 import { apiDownload, apiFetch } from '../../api';
 import { RichTextViewer } from '../../components/RichTextViewer';
 import {
+  abcdeBandLabel,
+  abcdeStatusLabel,
+  chamuLabel,
   destinationLabel,
   genderLabel,
   locationTypeLabel,
@@ -37,7 +43,9 @@ import {
   reportTypeLabel,
   roleLabel,
   t,
+  vitalLabel,
 } from '../../i18n/labels';
+import { VITAL_FIELDS, formatVital } from '../liveRuns/vitalsFields';
 import { minutesBetween, timeOfDay } from './reportDraft';
 
 const Fact = ({ label, value }: { label: string; value: React.ReactNode }) => (
@@ -171,7 +179,9 @@ export const EventReportShow = () => {
     );
   }
 
-  const code = formatEventReportCode(report);
+  // A draft has no code. Naming that in the title beats a blank heading, and
+  // beats inventing a number another report is going to be given.
+  const code = formatEventReportCode(report) ?? t('report.noNumberYet');
   const rules = eventReportRules(report.type);
   const canEdit =
     permissions ? hasPermission(permissions, Action.CREATE_EVENT_REPORT) : false;
@@ -292,7 +302,7 @@ export const EventReportShow = () => {
               />
               <Fact
                 label={t('field.kilometres')}
-                value={`${totalKilometres(report.vehicles)} ${t('field.kilometresShort')}`}
+                value={kilometresText(report)}
               />
             </Box>
           </Card>
@@ -353,6 +363,8 @@ export const EventReportShow = () => {
           )}
         </Card>
 
+        {rules.hasClinicalRecord && <ClinicalCard report={report} />}
+
         <Card title={t('field.narrative')}>
           {report.operationalReport ? (
             <RichTextViewer html={report.operationalReport} />
@@ -395,5 +407,147 @@ export const EventReportShow = () => {
         </Typography>
       </Stack>
     </Container>
+  );
+};
+
+/**
+ * How far the vehicles went, and where the figure came from.
+ *
+ * "por calcular" rather than "0 km" for a run closed with no network: zero is a
+ * measurement, and a report that claims an ambulance travelled no distance is
+ * worse than one that admits nobody has worked it out yet.
+ */
+function kilometresText(report: EventReport): string {
+  const total = totalKilometres(report.vehicles);
+  const computed = report.vehicles.some((line) => (line.routeLegs ?? []).length > 0);
+  const overridden = report.vehicles.some((line) => line.isOverridden);
+
+  if (total === 0 && !computed && report.vehicles.length > 0) {
+    return t('report.kilometresPending');
+  }
+
+  const provenance = overridden
+    ? ` · ${t('report.kilometresOverridden')}`
+    : computed
+      ? ` · ${t('report.kilometresComputed')}`
+      : '';
+  return `${total} ${t('field.kilometresShort')}${provenance}`;
+}
+
+/**
+ * The clinical record, read-only.
+ *
+ * Emergency reports only. Vitals are a table with one column per set of
+ * observations, because that is the question a reader has: not "what was the
+ * blood pressure" but "what was it when we arrived, and what was it when we
+ * handed over".
+ */
+const ClinicalCard = ({ report }: { report: EventReport }) => {
+  const assessments = report.assessments ?? [];
+  const findings = (report.abcde ?? {}) as AbcdeFindings;
+  const chamu = CHAMU_FIELDS.filter((field) => (report[field] ?? '').trim() !== '');
+  const bands = ABCDE_BANDS.filter((band) => findings[band]);
+
+  if (assessments.length === 0 && chamu.length === 0 && bands.length === 0) return null;
+
+  return (
+    <Card title={t('live.vitals')}>
+      <Stack spacing={2.5}>
+        {assessments.length > 0 && (
+          <Box sx={{ overflowX: 'auto' }}>
+            <Box
+              component="table"
+              sx={{
+                borderCollapse: 'collapse',
+                minWidth: '100%',
+                '& th, & td': {
+                  textAlign: 'left',
+                  py: 0.75,
+                  pr: 2,
+                  borderBottom: 1,
+                  borderColor: 'divider',
+                  whiteSpace: 'nowrap',
+                },
+                '& td': { fontVariantNumeric: 'tabular-nums' },
+              }}
+            >
+              <thead>
+                <tr>
+                  <th>{t('field.takenAt')}</th>
+                  {assessments.map((assessment) => (
+                    <th key={assessment.id}>{timeOfDay(assessment.takenAt) || '--:--'}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {VITAL_FIELDS.filter((field) =>
+                  assessments.some(
+                    (assessment) =>
+                      assessment[field.key] !== null && assessment[field.key] !== undefined,
+                  ),
+                ).map((field) => (
+                  <tr key={field.key}>
+                    <th scope="row">
+                      {vitalLabel(field.key)}
+                      {field.unit ? ` (${field.unit})` : ''}
+                    </th>
+                    {assessments.map((assessment) => (
+                      <td key={assessment.id}>
+                        {formatVital(assessment[field.key] ?? null, field.decimals) || '—'}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+                {assessments.some((assessment) => assessment.bodyPosition) && (
+                  <tr>
+                    <th scope="row">{t('field.bodyPosition')}</th>
+                    {assessments.map((assessment) => (
+                      <td key={assessment.id}>{assessment.bodyPosition ?? '—'}</td>
+                    ))}
+                  </tr>
+                )}
+              </tbody>
+            </Box>
+          </Box>
+        )}
+
+        {bands.length > 0 && (
+          <Box>
+            <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.disabled' }}>
+              {t('live.abcde').toUpperCase()}
+            </Typography>
+            <Stack spacing={1} sx={{ mt: 0.75 }}>
+              {bands.map((band) => (
+                <Stack key={band} direction="row" spacing={1.5} alignItems="baseline">
+                  <Typography sx={{ fontWeight: 700, minWidth: 200 }}>
+                    {abcdeBandLabel(band)}
+                  </Typography>
+                  <Typography sx={{ flex: 1 }}>
+                    {abcdeStatusLabel(findings[band]!.status)}
+                    {findings[band]!.note ? ` — ${findings[band]!.note}` : ''}
+                  </Typography>
+                </Stack>
+              ))}
+            </Stack>
+          </Box>
+        )}
+
+        {chamu.length > 0 && (
+          <Box>
+            <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.disabled' }}>
+              {t('live.chamu').toUpperCase()}
+            </Typography>
+            <Stack spacing={1} sx={{ mt: 0.75 }}>
+              {chamu.map((field) => (
+                <Box key={field}>
+                  <Typography sx={{ fontWeight: 700 }}>{chamuLabel(field)}</Typography>
+                  <Typography sx={{ whiteSpace: 'pre-wrap' }}>{report[field]}</Typography>
+                </Box>
+              ))}
+            </Stack>
+          </Box>
+        )}
+      </Stack>
+    </Card>
   );
 };

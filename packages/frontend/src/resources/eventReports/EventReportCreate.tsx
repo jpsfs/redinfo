@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Title } from 'react-admin';
+import { useNavigate } from 'react-router-dom';
 import {
   Alert,
   Box,
@@ -12,8 +13,9 @@ import {
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import DescriptionIcon from '@mui/icons-material/Description';
-import { EVENT_REPORT_TYPES, EventReportType } from '@redinfo/shared';
+import { EVENT_REPORT_TYPES, EventReportType, eventReportRules } from '@redinfo/shared';
 import { reportTypeHint, reportTypeLabel, t } from '../../i18n/labels';
+import { readCurrentRunId } from '../liveRuns';
 import { StoredDraft, clearDraft, loadDraft } from './reportDraft';
 import { useEventReportDraft } from './useEventReportDraft';
 import { EventReportEditor } from './EventReportEditor';
@@ -32,12 +34,14 @@ const TypeChooser = ({
   onChoose,
   onResume,
   onDiscard,
+  onGoLive,
 }: {
   suggested: EventReportType | null;
   resumable: StoredDraft | null;
   onChoose: (type: EventReportType) => void;
   onResume: () => void;
   onDiscard: () => void;
+  onGoLive: () => void;
 }) => (
   <Container maxWidth="sm" sx={{ py: 3 }}>
     <Stack spacing={2}>
@@ -85,6 +89,24 @@ const TypeChooser = ({
                 </Typography>
               </Stack>
             )}
+
+            {/*
+              The fork, exactly where the decision is made. `stopPropagation` so
+              the card's own target is unchanged: this is an extra door, not a
+              replacement, and typing the report up afterwards stays the default.
+            */}
+            {eventReportRules(type).supportsLiveRun && (
+              <Button
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onGoLive();
+                }}
+                endIcon={<ChevronRightIcon />}
+                sx={{ mt: 0.5, ml: -1, minHeight: 48, fontWeight: 700 }}
+              >
+                {readCurrentRunId() ? t('live.resume') : t('live.start')}
+              </Button>
+            )}
           </Box>
           <ChevronRightIcon sx={{ color: 'text.disabled' }} />
         </Paper>
@@ -123,6 +145,7 @@ const TypeChooser = ({
  * quietly reopening yesterday's half-report would be worse than asking.
  */
 export const EventReportCreate = () => {
+  const navigate = useNavigate();
   // Read once on mount: a draft that gets saved while this screen is open
   // belongs to the form below, not to this offer.
   const [resumable, setResumable] = useState<StoredDraft | null>(() => loadDraft());
@@ -147,6 +170,10 @@ export const EventReportCreate = () => {
           onDiscard={() => {
             clearDraft();
             setResumable(null);
+          }}
+          onGoLive={() => {
+            const open = readCurrentRunId();
+            navigate(open ? `/live/${open}` : '/live');
           }}
         />
       </>

@@ -67,7 +67,9 @@ const LoadedEditor = ({ report }: { report: EventReport }) => {
   const form = useEventReportDraft({ report });
   return (
     <>
-      <Title title={`${formatEventReportCode(report)} — ${t('action.edit')}`} />
+      <Title
+        title={`${formatEventReportCode(report) ?? t('report.pending')} — ${t('action.edit')}`}
+      />
       <EventReportEditor form={form} report={report} />
     </>
   );

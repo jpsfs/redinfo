@@ -6,7 +6,9 @@ import {
 } from '@nestjs/common';
 import {
   EventReportAttachment,
+  EventReportAttachmentKind,
   MAX_ATTACHMENTS_PER_REPORT,
+  eventReportRules,
   validateAttachment,
 } from '@redinfo/shared';
 import { PrismaService } from '../prisma/prisma.service';
@@ -34,6 +36,7 @@ function serialize(row: {
   filename: string;
   mimeType: string;
   byteSize: number;
+  kind: string;
   uploadedById: string;
   uploadedBy?: { id: string; firstName: string; lastName: string } | null;
   createdAt: Date;
@@ -43,6 +46,7 @@ function serialize(row: {
     filename: row.filename,
     mimeType: row.mimeType,
     byteSize: row.byteSize,
+    kind: row.kind as EventReportAttachmentKind,
     uploadedById: row.uploadedById,
     ...(row.uploadedBy ? { uploadedBy: row.uploadedBy } : {}),
     createdAt: row.createdAt.toISOString(),
@@ -91,6 +95,7 @@ export class EventReportAttachmentsService {
     reportId: string,
     file: UploadedAttachment,
     user: RequestUser,
+    kind: EventReportAttachmentKind = EventReportAttachmentKind.GENERAL,
   ): Promise<EventReportAttachment> {
     const report = await this.reports.loadRow(reportId);
     this.reports.assertCanWrite(report, user);
@@ -101,6 +106,10 @@ export class EventReportAttachmentsService {
       byteSize: file.size,
     });
     if (error) throw new BadRequestException(error);
+
+    if (kind === EventReportAttachmentKind.VERBETE) {
+      await this.assertVerbeteSlotFree(reportId, report.type);
+    }
 
     const existing = await this.prisma.eventReportAttachment.count({ where: { reportId } });
     if (existing >= MAX_ATTACHMENTS_PER_REPORT) {
@@ -118,6 +127,7 @@ export class EventReportAttachmentsService {
           filename: file.originalname,
           mimeType: file.mimetype,
           byteSize: file.size,
+          kind: kind as never,
           storageKey,
           uploadedById: user.id,
         },
@@ -128,6 +138,30 @@ export class EventReportAttachmentsService {
       // Nothing references the bytes now, so do not leave them behind.
       await this.storage.remove(storageKey).catch(() => undefined);
       throw cause;
+    }
+  }
+
+  /**
+   * A report carries at most one Verbete de Socorro, and only a type that has
+   * one at all.
+   *
+   * Refused here, in words, before the partial unique index refuses it in
+   * Postgres's own words. The index is the backstop that makes the rule true
+   * rather than merely usually true; this is the half a crew reads.
+   */
+  private async assertVerbeteSlotFree(reportId: string, type: string): Promise<void> {
+    if (!eventReportRules(type).hasVerbete) {
+      throw new BadRequestException(
+        'Only an emergency report has a Verbete de Socorro slot.',
+      );
+    }
+    const existing = await this.prisma.eventReportAttachment.count({
+      where: { reportId, kind: EventReportAttachmentKind.VERBETE as never },
+    });
+    if (existing > 0) {
+      throw new BadRequestException(
+        'This report already has a Verbete de Socorro. Remove it before attaching another.',
+      );
     }
   }
 

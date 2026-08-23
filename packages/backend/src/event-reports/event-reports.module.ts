@@ -3,6 +3,7 @@ import { AvailabilityModule } from '../availability/availability.module';
 import { GeographyModule } from '../geography/geography.module';
 import { AuditInterceptor } from '../auth/interceptors/audit.interceptor';
 import { EventReportsService } from './event-reports.service';
+import { EventReportNumbering } from './event-report-numbering';
 import { EventReportCrewService } from './event-report-crew.service';
 import { EventReportAttachmentsService } from './event-report-attachments.service';
 import { EventReportsController } from './event-reports.controller';
@@ -14,6 +15,7 @@ import { ATTACHMENT_STORAGE, DiskAttachmentStorage } from './attachment-storage'
   imports: [AvailabilityModule, GeographyModule],
   providers: [
     EventReportsService,
+    EventReportNumbering,
     EventReportCrewService,
     EventReportAttachmentsService,
     AuditInterceptor,

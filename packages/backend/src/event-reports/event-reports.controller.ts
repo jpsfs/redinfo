@@ -20,6 +20,8 @@ import type { Response } from 'express';
 import { ApiBearerAuth, ApiConsumes, ApiQuery, ApiTags } from '@nestjs/swagger';
 import {
   Action,
+  EventReportAttachmentKind,
+  EventReportFiledState,
   EventReportListFilters,
   EventReportType,
   MAX_ATTACHMENT_BYTES,
@@ -61,6 +63,7 @@ export class EventReportsController {
   @ApiQuery({ name: 'from', required: false, type: String })
   @ApiQuery({ name: 'to', required: false, type: String })
   @ApiQuery({ name: 'q', required: false, type: String })
+  @ApiQuery({ name: 'filed', required: false, enum: ['ALL', 'DRAFT', 'SUBMITTED'] })
   findAll(
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('perPage', new DefaultValuePipe(25), ParseIntPipe) perPage: number,
@@ -137,8 +140,25 @@ export class EventReportsController {
 
   @Post()
   @Actions(Action.CREATE_EVENT_REPORT)
-  create(@Body() dto: CreateEventReportDto, @CurrentUser() user: { id: string }) {
-    return this.reports.create(dto, user.id);
+  create(@Body() dto: CreateEventReportDto, @CurrentUser() user: RequestUser) {
+    // `actor` and not `submit`: the wizard's Save files a report, which is the
+    // service's default. What the caller is needed for is the displacement
+    // guard — filing a late report renumbers the ones already on paper, and
+    // that decision belongs to a coordinator.
+    return this.reports.create(dto, user.id, { actor: user });
+  }
+
+  /**
+   * Files a draft — the one a closed live run left behind, or one saved
+   * unfinished.
+   *
+   * Ungated for the same reason as `PATCH :id`: the crew of a run finish and
+   * file their own report, and whether *this* caller may is a question about
+   * the row. There is deliberately no `unsubmit` route.
+   */
+  @Post(':id/submit')
+  submit(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.reports.submit(id, user);
   }
 
   /** Ungated for the same reason as `GET :id` — the service checks the row. */
@@ -175,6 +195,7 @@ export class EventReportsController {
    */
   @Post(':id/attachments')
   @ApiConsumes('multipart/form-data')
+  @ApiQuery({ name: 'kind', required: false, enum: EventReportAttachmentKind })
   @UseInterceptors(
     FileInterceptor('file', {
       limits: { fileSize: MAX_ATTACHMENT_BYTES, files: 1 },
@@ -184,9 +205,29 @@ export class EventReportsController {
     @Param('id') id: string,
     @UploadedFile() file: UploadedAttachment | undefined,
     @CurrentUser() user: RequestUser,
+    @Query('kind') kindFromQuery?: string,
+    @Body('kind') kindFromForm?: string,
   ) {
     if (!file) throw new BadRequestException('No file was uploaded.');
-    return this.attachments.add(id, file, user);
+    return this.attachments.add(id, file, user, this.toAttachmentKind(kindFromQuery ?? kindFromForm));
+  }
+
+  /**
+   * `?kind=VERBETE` or the same name as a form field, defaulting to a general
+   * attachment.
+   *
+   * Read from either place because the upload is `multipart/form-data`: a
+   * browser `FormData` carries it in the body, while a `curl -F` or a retry
+   * from the outbox is easier to write with it on the URL. Unknown values are
+   * refused rather than quietly treated as general — a Verbete misspelt into
+   * the photo pile is a document nobody finds again.
+   */
+  private toAttachmentKind(value: string | undefined): EventReportAttachmentKind {
+    if (!value) return EventReportAttachmentKind.GENERAL;
+    if (!Object.values(EventReportAttachmentKind).includes(value as EventReportAttachmentKind)) {
+      throw new BadRequestException(`Unknown attachment kind "${value}"`);
+    }
+    return value as EventReportAttachmentKind;
   }
 
   @Get(':id/attachments/:attachmentId')
@@ -227,8 +268,11 @@ export class EventReportsController {
    */
   private toFilters(query: Record<string, string>): EventReportListFilters {
     const type = query.type as EventReportType | undefined;
+    const filed = query.filed as EventReportFiledState | undefined;
+    const FILED_STATES: EventReportFiledState[] = ['ALL', 'DRAFT', 'SUBMITTED'];
     return {
       ...(type && Object.values(EventReportType).includes(type) ? { type } : {}),
+      ...(filed && FILED_STATES.includes(filed) ? { filed } : {}),
       ...(query.from ? { from: query.from } : {}),
       ...(query.to ? { to: query.to } : {}),
       ...(query.q ? { q: query.q } : {}),

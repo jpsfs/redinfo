@@ -173,6 +173,174 @@ const MESSAGES = {
   'hint.searchHospital': { pt: 'Procurar hospital…', en: 'Search for a hospital…' },
   'hint.nothingFound': { pt: 'Nada encontrado.', en: 'Nothing found.' },
   'hint.loading': { pt: 'A carregar…', en: 'Loading…' },
+
+  // ── Live emergency mode ──
+  // The screens a crew uses one-handed, in a moving ambulance, at three in the
+  // morning. Every label here is read at a glance rather than studied, which is
+  // why they are short, upper-case on the primary controls, and name the act
+  // rather than the field.
+  'live.title': { pt: 'Emergência em direto', en: 'Live emergency' },
+  'live.start': { pt: 'Registar em direto', en: 'Record live' },
+  'live.startHint': {
+    pt: 'Marca os tempos à medida que acontecem.',
+    en: 'Mark the times as they happen.',
+  },
+  'live.resume': { pt: 'Continuar ocorrência em curso', en: 'Continue the run in progress' },
+  'live.openRuns': { pt: 'Ocorrências em curso', en: 'Runs in progress' },
+  'live.noOpenRuns': { pt: 'Não há ocorrências em curso.', en: 'No runs in progress.' },
+  'live.newRun': { pt: 'Nova ocorrência', en: 'New run' },
+  'live.onlyEmergency': {
+    pt: 'O registo em direto é só para emergências.',
+    en: 'Live recording is for emergencies only.',
+  },
+  'live.notPermitted': {
+    pt: 'Não tens permissão para registar ocorrências.',
+    en: 'You are not allowed to record runs.',
+  },
+
+  // ── Screens ──
+  'live.screen.intake': { pt: 'Ativação', en: 'Intake' },
+  'live.screen.enroute': { pt: 'A caminho', en: 'En route' },
+  'live.screen.scene': { pt: 'No local', en: 'On scene' },
+  'live.screen.assessment': { pt: 'Avaliação', en: 'Assessment' },
+  'live.screen.transport': { pt: 'Transporte', en: 'Transport' },
+  'live.screen.closing': { pt: 'Fecho', en: 'Closing' },
+
+  // ── The bottom bar ──
+  'live.stamp.activationAt': { pt: 'A CAMINHO', en: 'ON OUR WAY' },
+  'live.stamp.sceneArrivalAt': { pt: 'CHEGUEI AO LOCAL', en: 'ARRIVED ON SCENE' },
+  'live.stamp.sceneDepartureAt': { pt: 'SAÍDA DO LOCAL', en: 'LEFT THE SCENE' },
+  'live.stamp.hospitalArrivalAt': { pt: 'CHEGADA AO HOSPITAL', en: 'ARRIVED AT HOSPITAL' },
+  'live.stamp.availableAt': { pt: 'AMBULÂNCIA DISPONÍVEL', en: 'AMBULANCE AVAILABLE' },
+  'live.stamp.change': { pt: 'Alterar', en: 'Change' },
+  'live.navigate': { pt: 'NAVEGAR', en: 'NAVIGATE' },
+  'live.navigateNoAddress': {
+    pt: 'Sem morada ainda — a hora fica marcada.',
+    en: 'No address yet — the time is still marked.',
+  },
+  'live.finish': { pt: 'TERMINAR E ABRIR RELATÓRIO', en: 'FINISH AND OPEN THE REPORT' },
+  'live.finishing': { pt: 'A fechar…', en: 'Closing…' },
+  'live.confirmAvailable': {
+    pt: 'Marcar a ambulância como disponível e fechar a ocorrência?',
+    en: 'Mark the ambulance available and close the run?',
+  },
+  'live.assessmentOpen': { pt: 'Avaliação', en: 'Assessment' },
+
+  // ── The top bar ──
+  'live.clock': { pt: 'Decorrido', en: 'Elapsed' },
+  'live.menu': { pt: 'Mais', en: 'More' },
+  'live.coduDados': { pt: 'Ligar CODU DADOS', en: 'Call CODU DADOS' },
+  'live.coduDadosDialled': { pt: 'CODU DADOS contactado', en: 'CODU DADOS contacted' },
+  'live.correctTimes': { pt: 'Corrigir horas', en: 'Correct the times' },
+  'live.abandon': { pt: 'Abandonar ocorrência', en: 'Abandon the run' },
+  'live.abandonConfirm': {
+    pt: 'Abandonar apaga o que está registado neste telefone. Continuar?',
+    en: 'Abandoning erases what is recorded on this phone. Continue?',
+  },
+
+  // ── Sync, in words that answer "will I lose this" ──
+  'sync.saved': { pt: 'Gravado no dispositivo', en: 'Saved on the device' },
+  'sync.syncing': { pt: 'A sincronizar…', en: 'Syncing…' },
+  'sync.synced': { pt: 'Sincronizado', en: 'Synced' },
+  'sync.offline': { pt: 'Sem rede — gravado no dispositivo', en: 'No network — saved on the device' },
+  'sync.failed': { pt: 'Falha ao sincronizar', en: 'Could not sync' },
+  'sync.retry': { pt: 'Tentar agora', en: 'Try now' },
+  'sync.pendingOne': { pt: '1 alteração por enviar', en: '1 change to send' },
+  'sync.pendingMany': { pt: 'alterações por enviar', en: 'changes to send' },
+
+  // ── Fields the live screens add ──
+  'field.chiefComplaint': { pt: 'Motivo da chamada', en: 'Reason for the call' },
+  'field.occurrenceAddress': { pt: 'Rua e número', en: 'Street and number' },
+  'field.referencePoints': { pt: 'Pontos de referência', en: 'Reference points' },
+  'field.victimName': { pt: 'Nome da vítima', en: 'Victim’s name' },
+  'field.victimDateOfBirth': { pt: 'Data de nascimento', en: 'Date of birth' },
+  'field.victimSnsNumber': { pt: 'Nº de utente (SNS)', en: 'SNS number' },
+  'field.victimHomeAddress': { pt: 'Residência', en: 'Home address' },
+  'field.bodyPosition': { pt: 'Posição da vítima', en: 'Victim’s position' },
+  'field.notes': { pt: 'Notas', en: 'Notes' },
+  'field.takenAt': { pt: 'Hora da avaliação', en: 'Time of the assessment' },
+
+  // ── Identity, and why it does not last ──
+  'live.identityNotice': {
+    pt: 'O nome, a data de nascimento, o nº de utente e a morada ficam só nesta ocorrência e são apagados quando o relatório é entregue.',
+    en: 'The name, date of birth, SNS number and address stay on this run only and are destroyed when the report is filed.',
+  },
+  'live.identityPurged': {
+    pt: 'Os dados de identificação já foram apagados.',
+    en: 'The identifying details have already been destroyed.',
+  },
+  'live.identityUnavailable': {
+    pt: 'Os dados de identificação não podem ser lidos neste momento.',
+    en: 'The identifying details cannot be read right now.',
+  },
+
+  // ── The clinical record ──
+  'live.abcde': { pt: 'ABCDE', en: 'ABCDE' },
+  'live.chamu': { pt: 'CHAMU', en: 'CHAMU' },
+  'live.vitals': { pt: 'Sinais vitais', en: 'Vital signs' },
+  'live.addAssessment': { pt: 'Nova avaliação', en: 'New assessment' },
+  'live.removeAssessment': { pt: 'Apagar esta avaliação', en: 'Delete this assessment' },
+  'live.assessmentPager': { pt: 'Avaliação', en: 'Assessment' },
+  'live.noAssessments': {
+    pt: 'Ainda não há sinais vitais registados.',
+    en: 'No vital signs recorded yet.',
+  },
+  'live.outOfRange': { pt: 'Fora do intervalo possível', en: 'Outside the possible range' },
+  'live.implausible': { pt: 'Valor invulgar — confirma', en: 'Unusual value — check it' },
+  'live.dictate': { pt: 'Ditar', en: 'Dictate' },
+  'live.dictating': { pt: 'A ouvir…', en: 'Listening…' },
+  'live.dictationUnavailable': {
+    pt: 'Este telefone não suporta ditado.',
+    en: 'This phone does not support dictation.',
+  },
+
+  // ── Photographs and the Verbete ──
+  'live.photos': { pt: 'Fotografias', en: 'Photographs' },
+  'live.addPhoto': { pt: 'Tirar fotografia', en: 'Take a photograph' },
+  'live.verbete': { pt: 'Verbete de Socorro', en: 'Verbete de Socorro' },
+  'live.verbeteHint': {
+    pt: 'Uma fotografia do verbete em papel. Só uma por relatório.',
+    en: 'A photograph of the paper form. One per report.',
+  },
+  'live.verbeteReplace': { pt: 'Substituir', en: 'Replace' },
+  'live.photosPending': { pt: 'fotografias por enviar', en: 'photographs to send' },
+  'live.photoPending': { pt: '1 fotografia por enviar', en: '1 photograph to send' },
+  'live.photosUploading': { pt: 'A enviar fotografias…', en: 'Sending photographs…' },
+
+  // ── Closing ──
+  'live.chronology': { pt: 'Cronologia', en: 'Chronology' },
+  'live.notMarked': { pt: 'não marcado', en: 'not marked' },
+  'live.closeBlocked': {
+    pt: 'Falta o seguinte para fechar:',
+    en: 'These are still needed to close:',
+  },
+  'live.closeWarnings': {
+    pt: 'Podes fechar assim — isto fica para o relatório:',
+    en: 'You can close as it is — these are for the report:',
+  },
+  'live.closedIntoDraft': {
+    pt: 'Ocorrência fechada. O relatório está por entregar.',
+    en: 'Run closed. The report is not filed yet.',
+  },
+
+  // ── Drafts and filing ──
+  'report.pending': { pt: 'Por entregar', en: 'Not filed' },
+  'report.pendingHint': {
+    pt: 'Relatórios abertos a partir de uma ocorrência em direto, à espera de serem entregues.',
+    en: 'Reports opened from a live run, waiting to be filed.',
+  },
+  'report.filed': { pt: 'Entregues', en: 'Filed' },
+  'report.noNumberYet': { pt: 'Sem número', en: 'No number yet' },
+  'report.submit': { pt: 'Entregar relatório', en: 'File the report' },
+  'report.submitting': { pt: 'A entregar…', en: 'Filing…' },
+  'report.submitted': { pt: 'Relatório entregue', en: 'Report filed' },
+  'report.renumbered': {
+    pt: 'relatórios já entregues mudaram de número',
+    en: 'already-filed reports changed number',
+  },
+  'report.kilometresPending': { pt: 'por calcular', en: 'not computed yet' },
+  'report.kilometresComputed': { pt: 'Calculado a partir do percurso', en: 'Computed from the route' },
+  'report.kilometresOverridden': { pt: 'Alterado à mão', en: 'Edited by hand' },
 } as const;
 
 export type MessageKey = keyof typeof MESSAGES;
@@ -361,6 +529,152 @@ const ENUM_MESSAGES = {
     en: 'None of the occurrence times were marked.',
   },
 
+  // ── The clinical record's own problems ──
+  'problem.CLINICAL_NOT_FOR_TYPE': {
+    pt: 'Só um relatório de emergência tem registo clínico.',
+    en: 'Only an emergency report has a clinical record.',
+  },
+  'problem.CHAMU_TOO_LONG': { pt: 'A nota é demasiado longa.', en: 'The note is too long.' },
+  'problem.ABCDE_UNKNOWN_BAND': { pt: 'Letra ABCDE desconhecida.', en: 'Unknown ABCDE band.' },
+  'problem.ABCDE_INVALID_STATUS': {
+    pt: 'Escolhe normal, alterado ou não avaliado.',
+    en: 'Choose normal, altered or not assessed.',
+  },
+  'problem.ABCDE_NOTE_TOO_LONG': {
+    pt: 'A nota ABCDE é demasiado longa.',
+    en: 'The ABCDE note is too long.',
+  },
+  'problem.ASSESSMENTS_NOT_A_LIST': {
+    pt: 'Faltam as avaliações.',
+    en: 'The assessments are missing.',
+  },
+  'problem.TOO_MANY_ASSESSMENTS': {
+    pt: 'Demasiadas avaliações neste relatório.',
+    en: 'Too many assessments on this report.',
+  },
+  'problem.ASSESSMENT_INVALID_TIME': {
+    pt: 'A avaliação precisa da hora a que foi feita.',
+    en: 'The assessment needs the time it was taken.',
+  },
+  'problem.ASSESSMENT_EMPTY': {
+    pt: 'Esta avaliação não tem nada registado.',
+    en: 'This assessment has nothing recorded in it.',
+  },
+  'problem.VITAL_OUT_OF_RANGE': {
+    pt: 'Valor fora do intervalo possível.',
+    en: 'The value is outside the possible range.',
+  },
+  'problem.VITAL_NOT_WHOLE': {
+    pt: 'Este valor é um número inteiro.',
+    en: 'This value is a whole number.',
+  },
+  'problem.DIASTOLIC_ABOVE_SYSTOLIC': {
+    pt: 'A diastólica não pode ser maior que a sistólica.',
+    en: 'The diastolic cannot be above the systolic.',
+  },
+  'problem.ASSESSMENT_POSITION_TOO_LONG': {
+    pt: 'A posição da vítima é demasiado longa.',
+    en: 'The victim’s position is too long.',
+  },
+
+  // ── The live run's own problems ──
+  'problem.LIVE_RUN_MISSING_ID': {
+    pt: 'A ocorrência não tem identificador.',
+    en: 'The run has no id.',
+  },
+  'problem.LIVE_RUN_INVALID_REVISION': {
+    pt: 'A ocorrência tem uma versão inválida.',
+    en: 'The run has an invalid revision.',
+  },
+  'problem.LIVE_RUN_UNKNOWN_STATE': {
+    pt: 'Estado da ocorrência desconhecido.',
+    en: 'Unknown run state.',
+  },
+  'problem.LIVE_RUN_MISSING_START': {
+    pt: 'Falta a hora de início da ocorrência.',
+    en: 'The run needs a start time.',
+  },
+  'problem.LIVE_RUN_COMPLAINT_TOO_LONG': {
+    pt: 'O motivo da chamada é demasiado longo.',
+    en: 'The reason for the call is too long.',
+  },
+  'problem.LIVE_RUN_ADDRESS_TOO_LONG': {
+    pt: 'A morada é demasiado longa.',
+    en: 'The address is too long.',
+  },
+  'problem.LIVE_RUN_NAME_TOO_LONG': { pt: 'O nome é demasiado longo.', en: 'The name is too long.' },
+  'problem.LIVE_RUN_INVALID_DATE_OF_BIRTH': {
+    pt: 'A data de nascimento é uma data (AAAA-MM-DD).',
+    en: 'The date of birth is a calendar date (YYYY-MM-DD).',
+  },
+  'problem.LIVE_RUN_INVALID_SNS': {
+    pt: 'O nº de utente tem nove dígitos.',
+    en: 'An SNS number is nine digits.',
+  },
+
+  // ── What is unfinished on a run, and what actually blocks the close ──
+  'liveWarning.NO_COMPLAINT': {
+    pt: 'Falta o motivo da chamada.',
+    en: 'The reason for the call is missing.',
+  },
+  'liveWarning.NO_VICTIM_DETAILS': {
+    pt: 'Faltam o género e a idade da vítima.',
+    en: 'The victim’s gender and age are missing.',
+  },
+  'liveWarning.NO_DESTINATION': {
+    pt: 'Falta o destino da vítima.',
+    en: 'The victim’s outcome is missing.',
+  },
+  'liveWarning.NO_VITALS': {
+    pt: 'Não há sinais vitais registados.',
+    en: 'No vital signs were recorded.',
+  },
+  'liveWarning.NO_CREW': { pt: 'Não há ninguém na equipa.', en: 'Nobody is on the crew.' },
+  'liveWarning.NO_VEHICLE': { pt: 'Não há viatura registada.', en: 'No vehicle is listed.' },
+  'liveWarning.MISSING_STAMPS': {
+    pt: 'Faltam tempos da ocorrência.',
+    en: 'Some occurrence times are missing.',
+  },
+
+  'liveBlocker.NO_STAMPS': {
+    pt: 'Marca pelo menos um tempo da ocorrência.',
+    en: 'Mark at least one occurrence time.',
+  },
+  'liveBlocker.NO_LOCALITY': { pt: 'Escolhe a localidade.', en: 'Choose the locality.' },
+  'liveBlocker.NO_LOCATION_TYPE': {
+    pt: 'Escolhe o tipo de local.',
+    en: 'Choose the kind of place.',
+  },
+  'liveBlocker.NO_REFERENCE': { pt: 'Escreve o nº CODU.', en: 'Enter the CODU number.' },
+
+  // ── ABCDE ──
+  'abcde.A': { pt: 'A — Via aérea', en: 'A — Airway' },
+  'abcde.B': { pt: 'B — Ventilação', en: 'B — Breathing' },
+  'abcde.C': { pt: 'C — Circulação', en: 'C — Circulation' },
+  'abcde.D': { pt: 'D — Disfunção neurológica', en: 'D — Disability' },
+  'abcde.E': { pt: 'E — Exposição', en: 'E — Exposure' },
+  'abcdeStatus.NORMAL': { pt: 'Normal', en: 'Normal' },
+  'abcdeStatus.ALTERED': { pt: 'Alterado', en: 'Altered' },
+  'abcdeStatus.NOT_ASSESSED': { pt: 'Não avaliado', en: 'Not assessed' },
+
+  // ── CHAMU, as the national form names it ──
+  'chamu.chamuCircumstances': { pt: 'C — Circunstâncias', en: 'C — Circumstances' },
+  'chamu.chamuHistory': { pt: 'H — História clínica', en: 'H — History' },
+  'chamu.chamuAllergies': { pt: 'A — Alergias', en: 'A — Allergies' },
+  'chamu.chamuMedication': { pt: 'M — Medicação', en: 'M — Medication' },
+  'chamu.chamuLastMeal': { pt: 'U — Última refeição', en: 'U — Last meal' },
+
+  // ── Vitals ──
+  'vital.spo2': { pt: 'SpO₂', en: 'SpO₂' },
+  'vital.respiratoryRate': { pt: 'Freq. respiratória', en: 'Respiratory rate' },
+  'vital.heartRate': { pt: 'Freq. cardíaca', en: 'Heart rate' },
+  'vital.systolic': { pt: 'T.A. sistólica', en: 'Systolic' },
+  'vital.diastolic': { pt: 'T.A. diastólica', en: 'Diastolic' },
+  'vital.bloodGlucose': { pt: 'Glicemia', en: 'Blood glucose' },
+  'vital.temperature': { pt: 'Temperatura', en: 'Temperature' },
+  'vital.glasgow': { pt: 'Escala de Glasgow', en: 'Glasgow scale' },
+  'vital.painScore': { pt: 'Dor (0–10)', en: 'Pain (0–10)' },
+
   // Crew posts as the schedule names them, translated where we recognise them.
   'role.Driver': { pt: 'Condutor', en: 'Driver' },
   'role.Team Leader': { pt: 'Chefe de Equipa', en: 'Team Leader' },
@@ -429,6 +743,32 @@ export const problemLabel = (problem: EventReportProblem | null): string => {
 /** What is still unfinished, in the crew's language. */
 export const warningLabel = (code: EventReportWarningCode): string =>
   t(`warning.${code}` as EnumMessageKey);
+
+/** What is still unfinished on a live run, in the crew's language. */
+export const liveWarningLabel = (code: string): string =>
+  t(`liveWarning.${code}` as EnumMessageKey);
+
+/** What actually stops a run being closed. */
+export const liveBlockerLabel = (code: string): string =>
+  t(`liveBlocker.${code}` as EnumMessageKey);
+
+/** The label on the bottom bar's primary control, from the stamp it writes. */
+export const liveStampLabel = (field: string): string =>
+  t(`live.stamp.${field}` as EnumMessageKey);
+
+export const liveScreenLabel = (screen: string): string =>
+  t(`live.screen.${screen}` as EnumMessageKey);
+
+export const abcdeBandLabel = (band: string): string => t(`abcde.${band}` as EnumMessageKey);
+
+export const abcdeStatusLabel = (status: string): string =>
+  t(`abcdeStatus.${status}` as EnumMessageKey);
+
+export const chamuLabel = (field: string): string => t(`chamu.${field}` as EnumMessageKey);
+
+export const vitalLabel = (key: string): string => t(`vital.${key}` as EnumMessageKey);
+
+export const syncStateLabel = (state: string): string => t(`sync.${state}` as EnumMessageKey);
 
 /**
  * A crew post, translated when it is one of the standard three and left as

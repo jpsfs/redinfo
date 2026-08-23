@@ -38,11 +38,13 @@ describe('starting a report', () => {
     expect(result.current.draft.occurredOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
-  it('has seven steps for an emergency and six for a support report', () => {
+  it('has eight steps for an emergency and six for a support report', () => {
+    // Eight rather than seven: an emergency carries a chronology *and* a
+    // clinical record, and a support report carries neither.
     const emergency = renderHook(() =>
       useEventReportDraft({ type: EventReportType.EMERGENCY }),
     );
-    expect(emergency.result.current.steps).toHaveLength(7);
+    expect(emergency.result.current.steps).toHaveLength(8);
 
     const support = renderHook(() =>
       useEventReportDraft({ type: EventReportType.LOCAL_SUPPORT }),
