@@ -39,6 +39,32 @@ describe('navigationQuery', () => {
       'Rua X, Coimbra, Portugal',
     );
   });
+
+  it('takes a named place instead of a street, for a hospital', () => {
+    expect(navigationQuery({ name: 'Hospital de Braga', municipality: 'Braga' })).toBe(
+      'Hospital de Braga, Braga, Portugal',
+    );
+  });
+
+  it('prefers coordinates over every text field, unadorned', () => {
+    expect(
+      navigationQuery({
+        name: 'Hospital de Braga',
+        municipality: 'Braga',
+        latitude: 41.5923783,
+        longitude: -8.6117829,
+      }),
+    ).toBe('41.5923783,-8.6117829');
+  });
+
+  it('falls back to text when a coordinate is missing or not a number', () => {
+    expect(navigationQuery({ name: 'Hospital de Braga', latitude: 41.59, longitude: null })).toBe(
+      'Hospital de Braga, Portugal',
+    );
+    expect(
+      navigationQuery({ name: 'Hospital de Braga', latitude: NaN, longitude: -8.61 }),
+    ).toBe('Hospital de Braga, Portugal');
+  });
 });
 
 describe('mapsUrl', () => {
@@ -72,6 +98,12 @@ describe('mapsUrl', () => {
     expect(mapsUrl({})).toBeNull();
     expect(canNavigate({})).toBe(false);
     expect(canNavigate({ locality: 'Taveiro' })).toBe(true);
+  });
+
+  it('points straight at a hospital by coordinates, when it has them', () => {
+    const url = mapsUrl({ name: 'Hospital de Braga', latitude: 41.55, longitude: -8.42 })!;
+    const destination = new URL(url).searchParams.get('destination');
+    expect(destination).toBe('41.55,-8.42');
   });
 });
 

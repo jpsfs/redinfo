@@ -22,6 +22,7 @@ import SaveIcon from '@mui/icons-material/Save';
 import {
   EventReport,
   EventReportAttachment,
+  EventReportAttachmentKind,
   EventReportInput,
   EventReportSubmitResponse,
   EventReportType,
@@ -100,6 +101,9 @@ export const EventReportEditor = ({ form, report = null }: EventReportEditorProp
 
   const lookups = useReportLookups(form.draft);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  // Kept apart from `pendingFiles`: the Verbete is one named slot, not a list,
+  // and the API accepts it as its own `kind`.
+  const [pendingVerbete, setPendingVerbete] = useState<File | null>(null);
   const [attachments, setAttachments] = useState<EventReportAttachment[]>(
     report?.attachments ?? [],
   );
@@ -150,6 +154,45 @@ export const EventReportEditor = ({ form, report = null }: EventReportEditorProp
   );
 
   /**
+   * Chooses (or replaces) the Verbete.
+   *
+   * No report yet — stage it, same as any other pending file, uploaded once
+   * `save()` has one to hang it off. A report already exists — act at once,
+   * mirroring the live run's own `VerbeteSlot`: the old one is removed before
+   * the new one goes up, since the API keeps at most one per report.
+   */
+  const chooseVerbete = useCallback(
+    async (file: File) => {
+      const error = validateAttachment({
+        filename: file.name,
+        mimeType: file.type,
+        byteSize: file.size,
+      });
+      if (error) {
+        notify(`${file.name}: ${error}`, { type: 'warning' });
+        return;
+      }
+      if (!report) {
+        setPendingVerbete(file);
+        return;
+      }
+      const existing = attachments.find(
+        (attachment) => attachment.kind === EventReportAttachmentKind.VERBETE,
+      );
+      if (existing) await removeAttachment(existing.id);
+      try {
+        const created = await uploadAttachment(report.id, file, {
+          kind: EventReportAttachmentKind.VERBETE,
+        });
+        setAttachments((current) => [...current, created]);
+      } catch (cause) {
+        notify(cause instanceof Error ? cause.message : 'Could not upload', { type: 'error' });
+      }
+    },
+    [attachments, notify, removeAttachment, report],
+  );
+
+  /**
    * Saves the report, then the photographs.
    *
    * That order is forced — an attachment needs a report to hang off — and it is
@@ -176,9 +219,19 @@ export const EventReportEditor = ({ form, report = null }: EventReportEditorProp
           failed.push(file.name);
         }
       }
+      if (pendingVerbete) {
+        try {
+          await uploadAttachment(saved.id, pendingVerbete, {
+            kind: EventReportAttachmentKind.VERBETE,
+          });
+        } catch {
+          failed.push(pendingVerbete.name);
+        }
+      }
 
       form.forget();
       setPendingFiles([]);
+      setPendingVerbete(null);
 
       // A draft has no code yet, so the confirmation says what happened rather
       // than showing an empty string where a number belongs.
@@ -198,7 +251,7 @@ export const EventReportEditor = ({ form, report = null }: EventReportEditorProp
     } finally {
       setSaving(false);
     }
-  }, [form, notify, pendingFiles, redirect, report]);
+  }, [form, notify, pendingFiles, pendingVerbete, redirect, report]);
 
   /**
    * Files the report, and says what it displaced.
@@ -248,6 +301,9 @@ export const EventReportEditor = ({ form, report = null }: EventReportEditorProp
       setPendingFiles((current) => current.filter((_, at) => at !== index)),
     attachments,
     onRemoveAttachment: report ? removeAttachment : undefined,
+    pendingVerbete,
+    onChooseVerbete: (file: File) => void chooseVerbete(file),
+    reportId: report?.id ?? null,
   };
 
   const renderStep = (step: StepId) => {
@@ -272,7 +328,9 @@ export const EventReportEditor = ({ form, report = null }: EventReportEditorProp
             {...sectionProps}
             warnings={form.warnings}
             onEditStep={form.goTo}
-            pendingFileCount={pendingFiles.length + attachments.length}
+            pendingFileCount={
+              pendingFiles.length + attachments.length + (pendingVerbete ? 1 : 0)
+            }
           />
         );
       default:

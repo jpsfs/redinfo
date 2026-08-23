@@ -9,8 +9,10 @@ import {
   MenuItem,
   Stack,
   Toolbar,
+  Tooltip,
   Typography,
 } from '@mui/material';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CloudOffIcon from '@mui/icons-material/CloudOff';
 import CloudSyncIcon from '@mui/icons-material/CloudSync';
@@ -20,13 +22,13 @@ import PhoneInTalkIcon from '@mui/icons-material/PhoneInTalk';
 import ScheduleIcon from '@mui/icons-material/Schedule';
 import SmartphoneIcon from '@mui/icons-material/Smartphone';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
-import { LiveRunInput } from '@redinfo/shared';
-import { syncStateLabel, t } from '../../i18n/labels';
+import { LiveRunInput, LiveScreen } from '@redinfo/shared';
+import { liveScreenLabel, syncStateLabel, t } from '../../i18n/labels';
 import { colorRedCrossRedDark } from '../../layout/design-tokens';
-import { elapsedLabel } from './liveRun';
+import { elapsedLabel, previousStep, screenForState, visitedScreens } from './liveRun';
 import { SyncState } from './liveRunSync';
 
-/** Which icon says which state, so the chip is readable without reading. */
+/** Which icon says which state, kept for the screen-reader-only label's neighbours. */
 const SYNC_ICON: Record<SyncState, JSX.Element> = {
   saved: <SmartphoneIcon fontSize="small" />,
   syncing: <CloudSyncIcon fontSize="small" />,
@@ -35,12 +37,29 @@ const SYNC_ICON: Record<SyncState, JSX.Element> = {
   failed: <ErrorOutlineIcon fontSize="small" />,
 };
 
+/**
+ * `saved` and `syncing` are resting/transient states, not alarms — see
+ * `syncState`'s own doc. Only these two mean the crew should notice.
+ */
+const SYNC_NEEDS_ATTENTION: Record<SyncState, boolean> = {
+  saved: false,
+  syncing: false,
+  synced: false,
+  offline: true,
+  failed: true,
+};
+
 export interface LiveTopBarProps {
   run: LiveRunInput;
   sync: SyncState;
+  /** The screen actually on display — not necessarily the run's real one. */
+  screen: LiveScreen;
+  /** Jumps to a screen already visited. Never offered for one that is not. */
+  onJump: (screen: LiveScreen) => void;
   /** Dialling is the OS's job; this is only offered when a number is configured. */
   coduDadosHref?: string | null;
   onCoduDados?: () => void;
+  onBack: () => void;
   onCorrectTimes: () => void;
   onAbandon: () => void;
 }
@@ -59,13 +78,18 @@ export interface LiveTopBarProps {
 export const LiveTopBar = ({
   run,
   sync,
+  screen,
+  onJump,
   coduDadosHref,
   onCoduDados,
+  onBack,
   onCorrectTimes,
   onAbandon,
 }: LiveTopBarProps) => {
   const [menu, setMenu] = useState<HTMLElement | null>(null);
   const [elapsed, setElapsed] = useState(() => elapsedLabel(run));
+  const back = previousStep(run);
+  const visited = visitedScreens(run);
 
   /** One interval for the whole screen; the label is derived, not stored. */
   useEffect(() => {
@@ -111,6 +135,25 @@ export const LiveTopBar = ({
           >
             {elapsed}
           </Typography>
+          {/*
+            The chip this used to be had its own row; that cost a line of
+            height on every screen for something the crew needs to notice only
+            when it goes wrong. `saved` and `syncing` say nothing here for the
+            same reason `syncState` treats them as resting, not alarming — see
+            its doc. The icon rides next to the clock because that is the one
+            other thing on this bar tied to *this* occurrence.
+          */}
+          {SYNC_NEEDS_ATTENTION[sync] && (
+            <Tooltip title={syncStateLabel(sync)}>
+              {/* Amber, not `colorWarning` (`#F57C00`, 2.64:1 on this red — under
+                  the 3:1 floor for a graphical icon): `#FFD54F` measures 5.05:1
+                  on `colorRedCrossRedDark` and is what actually reads as "look
+                  at me" against the bar's white text and chips. */}
+              <Box component="span" aria-hidden="true" sx={{ display: 'flex', color: '#FFD54F' }}>
+                {SYNC_ICON[sync]}
+              </Box>
+            </Tooltip>
+          )}
         </Stack>
 
         <IconButton
@@ -125,33 +168,66 @@ export const LiveTopBar = ({
 
       {/*
         `polite`, never `assertive`: a screen reader must not be interrupted
-        mid-vital to be told the network came back. And the words always name
-        *where the data is*, because the crew's question is "will I lose this".
+        mid-vital to be told the network came back. Visually hidden — the icon
+        above already carries this for sighted crews, and only when it is bad
+        news — but always present, because the crew's question ("will I lose
+        this") deserves an answer for every state, not only the alarming ones.
       */}
       <Box
         aria-live="polite"
         sx={{
-          // A shade over the bar rather than another colour, so the band reads as
-          // part of it while still being separable.
-          bgcolor: 'rgba(0, 0, 0, 0.16)',
-          px: 2,
-          py: 0.75,
-          display: 'flex',
-          alignItems: 'center',
+          position: 'absolute',
+          width: 1,
+          height: 1,
+          overflow: 'hidden',
+          clip: 'rect(0 0 0 0)',
+          whiteSpace: 'nowrap',
         }}
       >
-        <Chip
-          size="small"
-          icon={SYNC_ICON[sync]}
-          label={syncStateLabel(sync)}
-          sx={{
-            bgcolor: 'rgba(255,255,255,0.18)',
-            color: '#fff',
-            fontWeight: 600,
-            '& .MuiChip-icon': { color: '#fff' },
-          }}
-        />
+        {syncStateLabel(sync)}
       </Box>
+
+      {/*
+        Only once there is somewhere to jump: a run still on intake has
+        nowhere else visited yet, and `screen === 'assessment'` is a branch
+        with its own chevron back to `scene`, not a stop on this walk.
+      */}
+      {visited.length > 1 && screen !== 'assessment' && (
+        <Stack
+          direction="row"
+          spacing={1}
+          role="tablist"
+          aria-label={t('live.visited')}
+          sx={{
+            px: 2,
+            py: 0.75,
+            overflowX: 'auto',
+            bgcolor: 'rgba(0, 0, 0, 0.08)',
+          }}
+        >
+          {visited.map((step) => (
+            <Chip
+              key={step}
+              component="button"
+              type="button"
+              role="tab"
+              aria-selected={step === screen}
+              clickable
+              size="small"
+              label={liveScreenLabel(step)}
+              onClick={() => onJump(step)}
+              sx={{
+                flexShrink: 0,
+                fontWeight: 700,
+                color: '#fff',
+                border: 'none',
+                bgcolor: step === screen ? 'rgba(255,255,255,0.32)' : 'rgba(255,255,255,0.12)',
+                '&:hover': { bgcolor: 'rgba(255,255,255,0.32)' },
+              }}
+            />
+          ))}
+        </Stack>
+      )}
 
       <Menu anchorEl={menu} open={Boolean(menu)} onClose={() => setMenu(null)}>
         {coduDadosHref && (
@@ -166,6 +242,18 @@ export const LiveTopBar = ({
           >
             <PhoneInTalkIcon fontSize="small" sx={{ mr: 1.5 }} />
             {t('live.coduDados')}
+          </MenuItem>
+        )}
+        {back && (
+          <MenuItem
+            onClick={() => {
+              onBack();
+              setMenu(null);
+            }}
+            sx={{ minHeight: 48 }}
+          >
+            <ArrowBackIcon fontSize="small" sx={{ mr: 1.5 }} />
+            {`${t('live.back')} — ${liveScreenLabel(screenForState(back.state))}`}
           </MenuItem>
         )}
         <MenuItem

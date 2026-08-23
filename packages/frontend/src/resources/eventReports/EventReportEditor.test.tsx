@@ -6,6 +6,8 @@ import { AdminContext, testDataProvider } from 'react-admin';
 import { MemoryRouter } from 'react-router-dom';
 import {
   EventLocationType,
+  EventReport,
+  EventReportAttachmentKind,
   EventReportType,
   Gender,
   VictimDestinationKind,
@@ -111,9 +113,12 @@ const COHERENT = {
 function renderEditor({
   type = EventReportType.EMERGENCY,
   seed,
+  report = null,
 }: {
   type?: EventReportType;
   seed?: Record<string, unknown>;
+  /** Set to edit a filed report rather than fill a new one. */
+  report?: EventReport | null;
 } = {}) {
   const Harness = () => {
     const form = useEventReportDraft({ type });
@@ -126,7 +131,7 @@ function renderEditor({
         form.patch(seed as never);
       }
     }, [form, seed]);
-    return <EventReportEditor form={form} />;
+    return <EventReportEditor form={form} report={report} />;
   };
 
   // `MemoryRouter` outside `AdminContext`: react-admin provides a router of its
@@ -432,5 +437,150 @@ describe('the desktop layout', () => {
 
     await screen.findByText('Quando e onde');
     expect(screen.queryByText(/^Tempos/)).not.toBeInTheDocument();
+  });
+});
+
+/** A report already filed, so replacing its Verbete is reachable. */
+const existingReport = (overrides: Partial<EventReport> = {}): EventReport =>
+  ({
+    id: 'rep-1',
+    type: EventReportType.EMERGENCY,
+    number: null,
+    year: 2026,
+    occurredOn: '2026-08-22',
+    startedAt: new Date(2026, 7, 22, 20, 14).toISOString(),
+    locationType: EventLocationType.HOME,
+    localityId: TAVEIRO.id,
+    operationalReport: '',
+    crew: [],
+    vehicles: [],
+    victims: [],
+    attachments: [],
+    createdById: 'u-tiago',
+    createdAt: new Date(2026, 7, 22, 20, 14).toISOString(),
+    updatedAt: new Date(2026, 7, 22, 20, 14).toISOString(),
+    ...overrides,
+  }) as EventReport;
+
+describe('the Verbete slot', () => {
+  beforeEach(() => mockUseIsMobile.mockReturnValue(false));
+
+  it('appears only on an emergency, where the backend expects one', async () => {
+    renderEditor({ type: EventReportType.EMERGENCY });
+    expect(await screen.findByText('Verbete CODU')).toBeInTheDocument();
+  });
+
+  it('is absent on a support report', async () => {
+    renderEditor({ type: EventReportType.LOCAL_SUPPORT });
+
+    await screen.findByText('Quando e onde');
+    expect(screen.queryByText('Verbete CODU')).not.toBeInTheDocument();
+  });
+
+  it('stages a chosen file, distinct from the general attachments', async () => {
+    const user = userEvent.setup();
+    renderEditor({ seed: COHERENT });
+
+    await screen.findByText('Guardado');
+    const file = new File(['x'], 'verbete.jpg', { type: 'image/jpeg' });
+    await user.upload(screen.getByTestId('verbete-input'), file);
+
+    // Staged as its own chip, not folded into the general attachments list.
+    expect(await screen.findByText('verbete.jpg')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /substituir/i })).toBeInTheDocument();
+  });
+
+  it('uploads the staged file with its own kind on save', async () => {
+    const user = userEvent.setup();
+    const originalFetch = globalThis.fetch;
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: 'att-verbete',
+        filename: 'verbete.jpg',
+        mimeType: 'image/jpeg',
+        byteSize: 1,
+        kind: EventReportAttachmentKind.VERBETE,
+        uploadedById: 'u-tiago',
+        createdAt: new Date().toISOString(),
+      }),
+    });
+    globalThis.fetch = mockFetch as unknown as typeof fetch;
+
+    try {
+      renderEditor({ seed: COHERENT });
+
+      await screen.findByText('Guardado');
+      await user.upload(
+        screen.getByTestId('verbete-input'),
+        new File(['x'], 'verbete.jpg', { type: 'image/jpeg' }),
+      );
+
+      await user.click(await screen.findByRole('button', { name: /gravar relatório/i }));
+
+      await waitFor(() =>
+        expect(mockFetch).toHaveBeenCalledWith(
+          expect.stringContaining(`/event-reports/rep-new/attachments?kind=${EventReportAttachmentKind.VERBETE}`),
+          expect.objectContaining({ method: 'POST' }),
+        ),
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('replaces an existing Verbete on a filed report — old one removed first', async () => {
+    const user = userEvent.setup();
+    const originalFetch = globalThis.fetch;
+    const mockFetch = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        id: 'att-verbete-2',
+        filename: 'verbete-2.jpg',
+        mimeType: 'image/jpeg',
+        byteSize: 1,
+        kind: EventReportAttachmentKind.VERBETE,
+        uploadedById: 'u-tiago',
+        createdAt: new Date().toISOString(),
+      }),
+    });
+    globalThis.fetch = mockFetch as unknown as typeof fetch;
+
+    const report = existingReport({
+      attachments: [
+        {
+          id: 'att-verbete-1',
+          filename: 'verbete-1.jpg',
+          mimeType: 'image/jpeg',
+          byteSize: 1,
+          kind: EventReportAttachmentKind.VERBETE,
+          uploadedById: 'u-tiago',
+          createdAt: new Date(2026, 7, 22, 20, 20).toISOString(),
+        },
+      ],
+    });
+
+    try {
+      renderEditor({ report });
+
+      expect(await screen.findByText('verbete-1.jpg')).toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: /substituir/i }));
+      await user.upload(
+        screen.getByTestId('verbete-input'),
+        new File(['x'], 'verbete-2.jpg', { type: 'image/jpeg' }),
+      );
+
+      // The old attachment is gone before the new one lands.
+      await waitFor(() =>
+        expect(mockApiFetch).toHaveBeenCalledWith(
+          '/event-reports/rep-1/attachments/att-verbete-1',
+          expect.objectContaining({ method: 'DELETE' }),
+        ),
+      );
+      expect(await screen.findByText('verbete-2.jpg')).toBeInTheDocument();
+      expect(screen.queryByText('verbete-1.jpg')).not.toBeInTheDocument();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

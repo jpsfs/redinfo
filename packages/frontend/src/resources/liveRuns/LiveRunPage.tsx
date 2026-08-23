@@ -9,11 +9,13 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  IconButton,
   LinearProgress,
   Stack,
   TextField,
   Typography,
 } from '@mui/material';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import {
   DelegationSettings,
   EventReportType,
@@ -71,6 +73,7 @@ export const LiveRunPage = () => {
   const [closing, setClosing] = useState(false);
   const [correcting, setCorrecting] = useState(false);
   const [locality, setLocality] = useState<Locality | null>(null);
+  const [homeLocality, setHomeLocality] = useState<Locality | null>(null);
   const [settings, setSettings] = useState<DelegationSettings | null>(null);
 
   const photos = usePhotoQueue({ runId, reportId });
@@ -111,6 +114,31 @@ export const LiveRunPage = () => {
     if (lookups.locality) setLocality(lookups.locality);
   }, [lookups.locality]);
 
+  /**
+   * The victim's home locality, resolved separately from `lookups` — it lives
+   * in the sealed identity blob, not on the run itself, so nothing about the
+   * report's own locality-driven lookups (vehicles, hospitals, the rota)
+   * should depend on it.
+   */
+  const homeLocalityId = form.run.identity?.victimHomeLocalityId ?? null;
+  useEffect(() => {
+    if (!homeLocalityId) {
+      setHomeLocality(null);
+      return undefined;
+    }
+    let cancelled = false;
+    apiFetch<Locality>(`/localities/${homeLocalityId}`)
+      .then((found) => {
+        if (!cancelled) setHomeLocality(found);
+      })
+      .catch(() => {
+        if (!cancelled) setHomeLocality(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [homeLocalityId]);
+
   /** `/live/:runId` with no screen, or a screen nobody knows, lands where the run is. */
   useEffect(() => {
     if (!form.ready) return;
@@ -128,6 +156,30 @@ export const LiveRunPage = () => {
         municipality: locality?.municipality?.name ?? null,
       }),
     [address, locality],
+  );
+
+  /**
+   * The transport screen's own destination, once a hospital has been chosen.
+   *
+   * Same mechanics as `navigateHref` above — a `NAVEGAR` button in the bottom
+   * bar the crew can ignore — but pointed at the hospital instead of the
+   * occurrence, and precise when the hospital has its own coordinates rather
+   * than only a municipality.
+   */
+  const hospital = form.run.destinationHospitalId
+    ? lookups.hospitalsById[form.run.destinationHospitalId]
+    : null;
+  const hospitalNavigateHref = useMemo(
+    () =>
+      hospital
+        ? mapsUrl({
+            name: hospital.name,
+            municipality: hospital.municipality?.name ?? null,
+            latitude: hospital.latitude,
+            longitude: hospital.longitude,
+          })
+        : null,
+    [hospital],
   );
 
   /**
@@ -185,6 +237,20 @@ export const LiveRunPage = () => {
     navigate('/live', { replace: true });
   }, [navigate, runId]);
 
+  /**
+   * Undoes the run's last stamp, after asking first.
+   *
+   * `LiveTopBar` only ever offers this when there is a step to undo, but the
+   * confirmation still matters: this is the one action in the overflow that
+   * erases a moment, and it must not be one mis-tap away like the bottom bar's
+   * stamp button.
+   */
+  const goBack = useCallback(() => {
+    // eslint-disable-next-line no-alert
+    if (!window.confirm(t('live.backConfirm'))) return;
+    form.goBack();
+  }, [form]);
+
   if (!form.ready) {
     return (
       <Box sx={{ p: 4 }}>
@@ -206,6 +272,11 @@ export const LiveRunPage = () => {
       setLocality(picked);
       form.patch({ localityId: picked.id });
     },
+    homeLocality,
+    onPickHomeLocality: (picked) => {
+      setHomeLocality(picked);
+      form.patchIdentity({ victimHomeLocalityId: picked.id });
+    },
     onOpenAssessment: () => navigate(`/live/${runId}/assessment`),
     onRefusedFiles: (messages) =>
       messages.forEach((message) => notify(message, { type: 'warning' })),
@@ -219,16 +290,34 @@ export const LiveRunPage = () => {
       <LiveTopBar
         run={form.run}
         sync={sync.state}
+        screen={current}
+        onJump={(target) => navigate(`/live/${runId}/${target}`)}
         coduDadosHref={telUrl(settings?.coduDadosPhone)}
         onCoduDados={() => form.recordSupportAction(LiveRunSupportActionKind.CODU_DADOS)}
+        onBack={goBack}
         onCorrectTimes={() => setCorrecting(true)}
         onAbandon={() => void abandon()}
       />
 
       <Container maxWidth="sm" sx={{ pt: 2, pb: 'calc(140px + env(safe-area-inset-bottom))' }}>
-        <Typography variant="h6" sx={{ fontWeight: 800, mb: 1.5 }}>
-          {liveScreenLabel(current)}
-        </Typography>
+        <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 1.5 }}>
+          {current === 'assessment' && (
+            <IconButton
+              edge="start"
+              // Distinct from the assessment pager's own chevrons, which share
+              // `action.back` for "the set before this one" — this one leaves
+              // the screen entirely, so it names where it goes.
+              aria-label={`${t('action.back')} — ${liveScreenLabel('scene')}`}
+              onClick={() => navigate(`/live/${runId}/scene`)}
+              sx={{ ml: -1 }}
+            >
+              <ArrowBackIcon />
+            </IconButton>
+          )}
+          <Typography variant="h6" sx={{ fontWeight: 800 }}>
+            {liveScreenLabel(current)}
+          </Typography>
+        </Stack>
 
         {current === 'intake' && <IntakeScreen {...screenProps} />}
         {current === 'enroute' && <EnRouteScreen {...screenProps} />}
@@ -240,9 +329,16 @@ export const LiveRunPage = () => {
 
       <LiveBottomBar
         run={form.run}
+        screen={current}
         onStamp={stamp}
         onCorrect={() => setCorrecting(true)}
-        navigateHref={current === 'intake' || current === 'enroute' ? navigateHref : null}
+        navigateHref={
+          current === 'intake' || current === 'enroute'
+            ? navigateHref
+            : current === 'transport'
+              ? hospitalNavigateHref
+              : null
+        }
         onFinish={current === 'closing' && stampedAvailable ? () => void close() : undefined}
         finishing={closing}
         blockedReason={

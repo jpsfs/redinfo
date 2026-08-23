@@ -7,6 +7,7 @@ import {
   LiveRunCapture,
   LiveRunIdentity,
   LiveRunInput,
+  LiveRunStateRules,
   LiveScreen,
   LiveRunState,
   LiveRunSupportActionKind,
@@ -38,6 +39,31 @@ export function screenForState(state: LiveRunState | string): LiveScreen {
 
 export function isLiveScreen(value: string | undefined): value is LiveScreen {
   return Boolean(value) && LIVE_SCREENS.includes(value as LiveScreen);
+}
+
+/**
+ * The screens a run walks through in order.
+ *
+ * `assessment` is deliberately left out: it is a branch off `scene`, reached
+ * only by choice and returned from by its own chevron, never a stage the run
+ * passes through on its way to the next one.
+ */
+export const LIVE_RUN_WALK: readonly LiveScreen[] = LIVE_SCREENS.filter(
+  (screen) => screen !== 'assessment',
+);
+
+/**
+ * Every screen the run has actually passed through, oldest first.
+ *
+ * The state machine only moves forward except through the top bar's own
+ * "Voltar" (which rewrites `run.state` itself), so "visited" is simply the
+ * walk's prefix ending at the run's real screen — never a screen the run has
+ * not reached yet, however the crew got to look at this one.
+ */
+export function visitedScreens(run: Pick<LiveRunInput, 'state'>): LiveScreen[] {
+  const real = screenForRun(run);
+  const at = LIVE_RUN_WALK.indexOf(real);
+  return at === -1 ? [real] : LIVE_RUN_WALK.slice(0, at + 1);
 }
 
 /**
@@ -172,6 +198,36 @@ export function nextStamp(run: Pick<LiveRunInput, 'state'> & Partial<LiveRunInpu
 }
 
 /**
+ * What the bottom bar shows for a screen being *viewed*, which the Android
+ * back gesture can leave behind the run's real one — it walks the URL's
+ * history without touching `run.state`.
+ *
+ * On the real screen this is `nextStamp` unchanged. On an earlier one it is
+ * found by reversing `LIVE_RUN_STATE_RULES` for the state that screen belongs
+ * to: the run has necessarily moved past it, so its stamp is always already
+ * written and this always reads as `done` — the bar offers the correction
+ * sheet for the step being looked at, never the live action for a step that
+ * is not on screen.
+ *
+ * `assessment` has no state or stamp of its own — it is a branch off `scene`,
+ * not a stop on the walk — so it always mirrors the real `nextStamp`, exactly
+ * as it did before there was a "viewed screen" to tell apart from the real
+ * one.
+ */
+export function nextStampForScreen(
+  run: Pick<LiveRunInput, 'state'> & Partial<LiveRunInput>,
+  screen: LiveScreen,
+): NextStamp | null {
+  if (screen === 'assessment' || screen === screenForRun(run)) return nextStamp(run);
+  const entry = (Object.entries(LIVE_RUN_STATE_RULES) as [LiveRunState, LiveRunStateRules][]).find(
+    ([, rules]) => rules.screen === screen,
+  );
+  const rules = entry?.[1];
+  if (!rules?.stamps || !rules.next) return null;
+  return { field: rules.stamps, state: rules.next, done: Boolean(run[rules.stamps]) };
+}
+
+/**
  * Stamps the transition and moves the run on.
  *
  * Never overwrites: a stamp records a moment, so an already-marked time is left
@@ -187,6 +243,46 @@ export function stampedRun(run: LiveRunInput, now: Date = new Date()): LiveRunIn
     [step.field]: run[step.field] ?? now.toISOString(),
     revision: run.revision + 1,
   };
+}
+
+export interface PreviousStep {
+  /** The state Back returns the run to. */
+  state: LiveRunState;
+  /** The timestamp that transition had stamped, and Back clears. */
+  field: OccurrenceTimeField;
+}
+
+/**
+ * The transition that put the run into its current state, or null when there
+ * is none to undo.
+ *
+ * The mirror of `nextStamp`, read backwards off the same table: found by
+ * looking for the state whose `next` is the run's current one. `CLOSED` is
+ * refused outright — it is reachable from *every* stage (a call can be stood
+ * down at any point), so there is no single state "before" it to return to.
+ */
+export function previousStep(run: Pick<LiveRunInput, 'state'>): PreviousStep | null {
+  if (run.state === LiveRunState.CLOSED) return null;
+  const entry = (Object.entries(LIVE_RUN_STATE_RULES) as [LiveRunState, LiveRunStateRules][]).find(
+    ([, rules]) => rules.next === run.state,
+  );
+  if (!entry || !entry[1].stamps) return null;
+  return { state: entry[0], field: entry[1].stamps };
+}
+
+/**
+ * Undoes the run's last stamp and steps it back one state.
+ *
+ * The mirror of `stampedRun`: a crew that advanced by mistake needs the screen
+ * and the record to agree again, so this clears the timestamp that put the
+ * run where it is rather than only changing which screen is shown — a stale
+ * stamp left behind would have the bar reading "already done" for a step the
+ * crew is being handed back to redo.
+ */
+export function backedRun(run: LiveRunInput): LiveRunInput {
+  const step = previousStep(run);
+  if (!step) return run;
+  return { ...run, state: step.state, [step.field]: null, revision: run.revision + 1 };
 }
 
 /**

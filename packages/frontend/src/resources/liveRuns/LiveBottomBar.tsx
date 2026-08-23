@@ -1,12 +1,18 @@
 import { Box, Button, CircularProgress, Paper, Stack, Typography } from '@mui/material';
 import NavigationIcon from '@mui/icons-material/Navigation';
-import { LiveRunInput } from '@redinfo/shared';
+import { LiveRunInput, LiveScreen } from '@redinfo/shared';
 import { liveStampLabel, t } from '../../i18n/labels';
 import { timeOfDay } from '../eventReports/reportDraft';
-import { nextStamp } from './liveRun';
+import { nextStampForScreen } from './liveRun';
 
 export interface LiveBottomBarProps {
   run: LiveRunInput;
+  /**
+   * The screen actually on display, which the Android back gesture can leave
+   * behind the run's real one — the bar reads off this, not off `run.state`
+   * directly, so it never disagrees with what is on screen above it.
+   */
+  screen: LiveScreen;
   /** Writes the stamp and advances the run. */
   onStamp: () => void;
   /** Opens the correction sheet for a transition already marked. */
@@ -23,9 +29,14 @@ export interface LiveBottomBarProps {
 /**
  * The one control in thumb reach.
  *
- * Its whole state table is `nextStamp` — a pure function over the run — so what
- * the button says, what it writes and where the run goes next are three views of
- * one fact rather than three places to keep in sync.
+ * Its whole state table is `nextStampForScreen` — a pure function over the run
+ * *and the screen on display* — so what the button says, what it writes and
+ * where the run goes next are three views of one fact rather than three places
+ * to keep in sync. Reading off the screen rather than off `run.state` directly
+ * is what keeps the bar honest when the crew has browsed back with the OS
+ * gesture to an earlier screen than the run is really on: it offers that
+ * earlier step's own correction, never the live action for a step that is not
+ * the one on screen.
  *
  * Tapping an already-stamped transition **re-labels to "Alterar" and opens the
  * correction sheet** rather than silently overwriting: the same
@@ -38,6 +49,7 @@ export interface LiveBottomBarProps {
  */
 export const LiveBottomBar = ({
   run,
+  screen,
   onStamp,
   onCorrect,
   navigateHref,
@@ -45,7 +57,7 @@ export const LiveBottomBar = ({
   finishing = false,
   blockedReason,
 }: LiveBottomBarProps) => {
-  const step = nextStamp(run);
+  const step = nextStampForScreen(run, screen);
 
   return (
     <Paper

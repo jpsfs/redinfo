@@ -3158,6 +3158,12 @@ export interface LiveRunIdentity {
   /** "porta azul ao lado do café" — how to find it, dictated on the call. */
   referencePoints?: string | null;
   victimHomeAddress?: string | null;
+  /**
+   * Where the victim lives, when that differs from the occurrence — captured
+   * only for the verbete, and purged with the rest of identity like every
+   * other field here.
+   */
+  victimHomeLocalityId?: string | null;
 }
 
 export const LIVE_RUN_IDENTITY_FIELDS = [
@@ -3167,6 +3173,7 @@ export const LIVE_RUN_IDENTITY_FIELDS = [
   'occurrenceAddress',
   'referencePoints',
   'victimHomeAddress',
+  'victimHomeLocalityId',
 ] as const;
 
 export const MAX_LIVE_RUN_ADDRESS_LENGTH = 300;

@@ -52,7 +52,7 @@ import { PhotoQueueHandle } from './usePhotoQueue';
 import { LiveRunHandle } from './useLiveRun';
 import { DictationControl } from './useDictation';
 import { AssessmentEditor } from './AssessmentEditor';
-import { PhotoTray, VerbeteSlot } from './PhotoTray';
+import { PhotoTray } from './PhotoTray';
 
 /**
  * The six live screens, over one shared prop bag.
@@ -73,6 +73,12 @@ export interface LiveScreenProps {
   /** The locality resolved for display, from the picker or from the lookups. */
   locality: Locality | null;
   onPickLocality: (locality: Locality) => void;
+  /**
+   * Where the victim lives, resolved for display — asked only when the scene
+   * itself is not the home, and never sent anywhere but the verbete.
+   */
+  homeLocality: Locality | null;
+  onPickHomeLocality: (locality: Locality) => void;
   /** Opens the assessment screen, which is reached rather than walked into. */
   onOpenAssessment: () => void;
   onRefusedFiles?: (messages: string[]) => void;
@@ -84,11 +90,13 @@ const Label = ({ children }: { children: React.ReactNode }) => (
   </Typography>
 );
 
-/** The locality control, shared by intake and scene. */
+/** The locality control, shared by intake and scene — and, with its own label, by the victim's home. */
 const LocalityField = ({
+  label = t('field.locality'),
   locality,
   onPick,
 }: {
+  label?: string;
   locality: Locality | null;
   onPick: (locality: Locality) => void;
 }) => {
@@ -96,7 +104,7 @@ const LocalityField = ({
 
   return (
     <Box>
-      <Label>{t('field.locality')}</Label>
+      <Label>{label}</Label>
       <Button
         fullWidth
         variant="outlined"
@@ -129,12 +137,7 @@ const LocalityField = ({
  * the crew is stationary, on the phone, writing down what they are being told.
  * Everything after this is captured in motion.
  */
-export const IntakeScreen = ({
-  form,
-  lookups,
-  locality,
-  onPickLocality,
-}: LiveScreenProps) => {
+export const IntakeScreen = ({ form, lookups, locality, onPickLocality }: LiveScreenProps) => {
   const { run } = form;
 
   return (
@@ -184,22 +187,16 @@ export const IntakeScreen = ({
       <LocalityField locality={locality} onPick={onPickLocality} />
 
       <Box>
-        <Label>{t('field.locationType')}</Label>
-        <ToggleButtonGroup
-          exclusive
+        <Label>{t('field.referencePoints')}</Label>
+        <TextField
           fullWidth
-          value={run.locationType ?? null}
-          onChange={(_event, value) =>
-            form.patch({ locationType: (value as EventLocationType) ?? null })
-          }
-          sx={{ '& .MuiToggleButton-root': { minHeight: 60, fontWeight: 700 } }}
-        >
-          {EVENT_LOCATION_TYPES.map((type) => (
-            <ToggleButton key={type} value={type}>
-              {locationTypeLabel(type)}
-            </ToggleButton>
-          ))}
-        </ToggleButtonGroup>
+          value={run.identity?.referencePoints ?? ''}
+          onChange={(event) => form.patchIdentityLater({ referencePoints: event.target.value })}
+          inputProps={{
+            maxLength: MAX_LIVE_RUN_ADDRESS_LENGTH,
+            'aria-label': t('field.referencePoints'),
+          }}
+        />
       </Box>
 
       <Divider />
@@ -340,14 +337,19 @@ export const EnRouteScreen = ({ form, locality }: LiveScreenProps) => {
 /**
  * The identifying details, and the paperwork.
  *
- * The notice above them is not decoration: these are the only fields in the
- * whole application that are destroyed on a timer, and a crew is entitled to
- * know that before they type a patient's name into a phone.
+ * Confirmed on arrival rather than taken from the call: "type of location"
+ * moved here from intake because it is only really known once the crew can
+ * see it. When it turns out not to be the victim's own home, a second
+ * locality and a second address appear — the home address, kept only for the
+ * verbete and purged with the rest of identity, never carried onto the
+ * report.
  */
 export const SceneScreen = ({
   form,
   locality,
   onPickLocality,
+  homeLocality,
+  onPickHomeLocality,
   photos,
   onOpenAssessment,
   onRefusedFiles,
@@ -355,6 +357,9 @@ export const SceneScreen = ({
   const { run } = form;
   const sns = run.identity?.victimSnsNumber ?? '';
   const snsInvalid = sns.trim() !== '' && !SNS_NUMBER_REGEX.test(sns.trim());
+  // Not asked until the crew is actually there to see it — the CODU call
+  // reports what was said, not what is confirmed.
+  const notHome = Boolean(run.locationType) && run.locationType !== EventLocationType.HOME;
 
   return (
     <Stack spacing={2.5}>
@@ -369,9 +374,24 @@ export const SceneScreen = ({
         {t('live.assessmentOpen')}
       </Button>
 
-      <Alert severity="info" sx={{ alignItems: 'flex-start' }}>
-        {t('live.identityNotice')}
-      </Alert>
+      <Box>
+        <Label>{t('field.locationType')}</Label>
+        <ToggleButtonGroup
+          exclusive
+          fullWidth
+          value={run.locationType ?? null}
+          onChange={(_event, value) =>
+            form.patch({ locationType: (value as EventLocationType) ?? null })
+          }
+          sx={{ '& .MuiToggleButton-root': { minHeight: 60, fontWeight: 700 } }}
+        >
+          {EVENT_LOCATION_TYPES.map((type) => (
+            <ToggleButton key={type} value={type}>
+              {locationTypeLabel(type)}
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
+      </Box>
 
       <Box>
         <Label>{t('field.victimName')}</Label>
@@ -427,24 +447,37 @@ export const SceneScreen = ({
         />
       </Box>
 
-      <Box>
-        <Label>{t('field.referencePoints')}</Label>
-        <TextField
-          fullWidth
-          value={run.identity?.referencePoints ?? ''}
-          onChange={(event) => form.patchIdentityLater({ referencePoints: event.target.value })}
-          inputProps={{
-            maxLength: MAX_LIVE_RUN_ADDRESS_LENGTH,
-            'aria-label': t('field.referencePoints'),
-          }}
-        />
-      </Box>
-
       <LocalityField locality={locality} onPick={onPickLocality} />
 
-      <Divider />
+      {notHome && (
+        <>
+          {/*
+            Two locations on one run: where the occurrence is, and where the
+            victim lives. The home address is captured for the verbete alone —
+            it never reaches the report, exactly like the rest of identity.
+          */}
+          <Box>
+            <Label>{t('field.victimHomeAddress')}</Label>
+            <TextField
+              fullWidth
+              value={run.identity?.victimHomeAddress ?? ''}
+              onChange={(event) =>
+                form.patchIdentityLater({ victimHomeAddress: event.target.value })
+              }
+              inputProps={{
+                maxLength: MAX_LIVE_RUN_ADDRESS_LENGTH,
+                'aria-label': t('field.victimHomeAddress'),
+              }}
+            />
+          </Box>
 
-      <VerbeteSlot queue={photos} onRefused={onRefusedFiles} />
+          <LocalityField
+            label={t('field.victimHomeLocality')}
+            locality={homeLocality}
+            onPick={onPickHomeLocality}
+          />
+        </>
+      )}
 
       <Divider />
 

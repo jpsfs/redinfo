@@ -75,6 +75,14 @@ const MESSAGES = {
   'field.destination': { pt: 'Transportado para', en: 'Taken to' },
   'field.narrative': { pt: 'Relato operacional', en: 'Operational report' },
   'field.attachments': { pt: 'Anexos', en: 'Attachments' },
+  'field.verbete': { pt: 'Verbete CODU', en: 'CODU verbete' },
+  'field.verbeteHint': {
+    pt: 'Uma fotografia ou ficheiro do verbete em papel. Só um por relatório.',
+    en: 'A photograph or file of the paper form. One per report.',
+  },
+  'field.verbeteAdd': { pt: 'Adicionar verbete', en: 'Add the verbete' },
+  'field.verbeteReplace': { pt: 'Substituir', en: 'Replace' },
+  'field.verbeteOpen': { pt: 'Abrir', en: 'Open' },
   'field.reportNumber': { pt: 'Nº do relatório', en: 'Report number' },
   'field.type': { pt: 'Tipo de evento', en: 'Event type' },
   'field.crew': { pt: 'Equipa', en: 'Crew' },
@@ -229,8 +237,14 @@ const MESSAGES = {
   // ── The top bar ──
   'live.clock': { pt: 'Decorrido', en: 'Elapsed' },
   'live.menu': { pt: 'Mais', en: 'More' },
+  'live.visited': { pt: 'Ecrãs já vistos', en: 'Screens already seen' },
   'live.coduDados': { pt: 'Ligar CODU DADOS', en: 'Call CODU DADOS' },
   'live.coduDadosDialled': { pt: 'CODU DADOS contactado', en: 'CODU DADOS contacted' },
+  'live.back': { pt: 'Voltar', en: 'Back' },
+  'live.backConfirm': {
+    pt: 'Voltar apaga a hora marcada neste passo. Continuar?',
+    en: 'Going back clears the time recorded for this step. Continue?',
+  },
   'live.correctTimes': { pt: 'Corrigir horas', en: 'Correct the times' },
   'live.abandon': { pt: 'Abandonar ocorrência', en: 'Abandon the run' },
   'live.abandonConfirm': {
@@ -256,15 +270,12 @@ const MESSAGES = {
   'field.victimDateOfBirth': { pt: 'Data de nascimento', en: 'Date of birth' },
   'field.victimSnsNumber': { pt: 'Nº de utente (SNS)', en: 'SNS number' },
   'field.victimHomeAddress': { pt: 'Residência', en: 'Home address' },
+  'field.victimHomeLocality': { pt: 'Localidade da residência', en: 'Home locality' },
   'field.bodyPosition': { pt: 'Posição da vítima', en: 'Victim’s position' },
   'field.notes': { pt: 'Notas', en: 'Notes' },
   'field.takenAt': { pt: 'Hora da avaliação', en: 'Time of the assessment' },
 
   // ── Identity, and why it does not last ──
-  'live.identityNotice': {
-    pt: 'O nome, a data de nascimento, o nº de utente e a morada ficam só nesta ocorrência e são apagados quando o relatório é entregue.',
-    en: 'The name, date of birth, SNS number and address stay on this run only and are destroyed when the report is filed.',
-  },
   'live.identityPurged': {
     pt: 'Os dados de identificação já foram apagados.',
     en: 'The identifying details have already been destroyed.',
@@ -294,15 +305,9 @@ const MESSAGES = {
     en: 'This phone does not support dictation.',
   },
 
-  // ── Photographs and the Verbete ──
+  // ── Photographs ──
   'live.photos': { pt: 'Fotografias', en: 'Photographs' },
   'live.addPhoto': { pt: 'Tirar fotografia', en: 'Take a photograph' },
-  'live.verbete': { pt: 'Verbete de Socorro', en: 'Verbete de Socorro' },
-  'live.verbeteHint': {
-    pt: 'Uma fotografia do verbete em papel. Só uma por relatório.',
-    en: 'A photograph of the paper form. One per report.',
-  },
-  'live.verbeteReplace': { pt: 'Substituir', en: 'Replace' },
   'live.photosPending': { pt: 'fotografias por enviar', en: 'photographs to send' },
   'live.photoPending': { pt: '1 fotografia por enviar', en: '1 photograph to send' },
   'live.photosUploading': { pt: 'A enviar fotografias…', en: 'Sending photographs…' },

@@ -78,6 +78,14 @@ export class LiveRunIdentityDto {
   @IsString()
   @MaxLength(MAX_LIVE_RUN_ADDRESS_LENGTH)
   victimHomeAddress?: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'Where the victim lives, when that differs from the occurrence.',
+  })
+  @IsOptional()
+  @IsString()
+  victimHomeLocalityId?: string | null;
 }
 
 /**
@@ -229,6 +237,21 @@ export class SyncLiveRunDto {
   @IsOptional()
   @IsObject()
   capture?: Record<string, unknown> | null;
+
+  /**
+   * Accepted and ignored.
+   *
+   * `LiveRunInput` — the whole document a phone holds — always carries this
+   * field, so a sync PUT always sends it even though closing is a different
+   * route. Declaring it here is what lets the global `ValidationPipe`'s
+   * `forbidNonWhitelisted` accept the document instead of rejecting every
+   * sync with "property closedAt should not exist"; `LiveRunsService.toColumns`
+   * is what actually keeps it from being written.
+   */
+  @ApiPropertyOptional({ nullable: true })
+  @IsOptional()
+  @IsDateString()
+  closedAt?: string | null;
 }
 
 /** The delegation's own configuration, as a coordinator may change it. */

@@ -15,10 +15,19 @@ const BASE = 'https://www.google.com/maps/dir/?api=1';
 export interface NavigationTarget {
   /** Street and number, as CODU gave it. */
   address?: string | null;
+  /** A named place instead of a street — a hospital, mutually exclusive with `address`. */
+  name?: string | null;
   /** The locality, which is what makes a street name unambiguous. */
   locality?: string | null;
   /** The municipality, for a street that exists in four villages. */
   municipality?: string | null;
+  /**
+   * The destination's own coordinates, when known — a hospital that has them
+   * skips geocoding entirely, which also skips whatever a same-named place in
+   * another country would otherwise resolve to.
+   */
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 /**
@@ -27,10 +36,24 @@ export interface NavigationTarget {
  *
  * `Portugal` is appended so a street name that also exists in Brazil resolves
  * where the ambulance actually is — Google's geocoder is happy to send a crew to
- * the wrong hemisphere given "Rua da Boavista" and nothing else.
+ * the wrong hemisphere given "Rua da Boavista" and nothing else. Coordinates need
+ * no such help: `lat,lng` is unambiguous on its own, so it is returned as-is and
+ * takes priority over every text field.
  */
 export function navigationQuery(target: NavigationTarget): string | null {
-  const parts = [target.address, target.locality, target.municipality]
+  const { latitude, longitude } = target;
+  if (
+    latitude !== null &&
+    latitude !== undefined &&
+    longitude !== null &&
+    longitude !== undefined &&
+    Number.isFinite(latitude) &&
+    Number.isFinite(longitude)
+  ) {
+    return `${latitude},${longitude}`;
+  }
+
+  const parts = [target.name, target.address, target.locality, target.municipality]
     .map((part) => part?.trim())
     .filter((part): part is string => Boolean(part));
 

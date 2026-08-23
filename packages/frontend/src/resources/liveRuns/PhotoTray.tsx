@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
-  Alert,
   Box,
   Button,
   Chip,
@@ -184,77 +183,6 @@ export const PhotoTray = ({ queue, onRefused }: PhotoTrayProps) => {
           void choose(event.target.files);
           // Cleared so photographing the same thing twice fires a change event
           // the second time too.
-          event.target.value = '';
-        }}
-      />
-    </Stack>
-  );
-};
-
-/**
- * The Verbete de Socorro slot — one per report, and only on an emergency.
- *
- * A slot rather than a photograph in the tray because it is a *specific
- * document*: somebody looking for the Verbete a year later has to find it
- * without opening nine photographs of a medication box. The API enforces the one
- * per report; this is the half a crew reads.
- */
-export const VerbeteSlot = ({ queue, onRefused }: PhotoTrayProps) => {
-  const input = useRef<HTMLInputElement | null>(null);
-  const existing = queue.photos.find(
-    (photo) => photo.kind === EventReportAttachmentKind.VERBETE,
-  );
-
-  const choose = async (files: FileList | null) => {
-    const file = files?.[0];
-    if (!file) return;
-    // Replacing rather than refusing: the crew photographed it crookedly, and a
-    // second attempt is the ordinary case. The slot holds one, so the old one
-    // goes.
-    if (existing) await queue.remove(existing.id);
-    const refused = await queue.add([file], EventReportAttachmentKind.VERBETE);
-    if (refused.length) onRefused?.(refused);
-  };
-
-  return (
-    <Stack spacing={1}>
-      <Typography sx={{ fontWeight: 700 }}>{t('live.verbete')}</Typography>
-      <Typography variant="caption" color="text.secondary">
-        {t('live.verbeteHint')}
-      </Typography>
-
-      {existing ? (
-        <Stack direction="row" spacing={1.5} alignItems="center">
-          <Thumbnail photo={existing} onRemove={() => void queue.remove(existing.id)} />
-          <Button onClick={() => input.current?.click()} sx={{ minHeight: 48, fontWeight: 700 }}>
-            {t('live.verbeteReplace')}
-          </Button>
-        </Stack>
-      ) : (
-        <Button
-          variant="outlined"
-          startIcon={<DescriptionIcon />}
-          onClick={() => input.current?.click()}
-          sx={{ minHeight: 56, fontWeight: 700 }}
-        >
-          {t('live.verbete')}
-        </Button>
-      )}
-
-      {existing && !existing.uploadedAt && (
-        <Alert severity="info" sx={{ py: 0 }}>
-          {t('live.photoPending')}
-        </Alert>
-      )}
-
-      <input
-        ref={input}
-        type="file"
-        accept="image/*,application/pdf"
-        capture="environment"
-        hidden
-        onChange={(event) => {
-          void choose(event.target.files);
           event.target.value = '';
         }}
       />

@@ -17,6 +17,7 @@ import {
 } from '@redinfo/shared';
 import {
   assessmentsOf,
+  backedRun,
   correctedStamp,
   emptyRun,
   nextStamp,
@@ -58,6 +59,8 @@ export interface LiveRunHandle {
   /** Advance the run and stamp the transition. The bottom bar's primary act. */
   stamp: () => void;
   correct: (field: OccurrenceTimeField, instant: string | null) => void;
+  /** Undo the last stamp and step the run back one state. The overflow menu's "Voltar". */
+  goBack: () => void;
   recordSupportAction: (kind: LiveRunSupportActionKind) => void;
 
   assessments: AssessmentInput[];
@@ -214,6 +217,12 @@ export function useLiveRun(options: UseLiveRunOptions): LiveRunHandle {
     [apply],
   );
 
+  const goBack = useCallback(() => {
+    // Same reasoning as `stamp`: undoing one is exactly as write-through as
+    // making one.
+    apply((current) => backedRun(current), true);
+  }, [apply]);
+
   const recordSupportAction = useCallback(
     (kind: LiveRunSupportActionKind) =>
       apply((current) => withSupportAction(current, kind, new Date()), true),
@@ -272,6 +281,7 @@ export function useLiveRun(options: UseLiveRunOptions): LiveRunHandle {
     patchCaptureLater,
     stamp,
     correct,
+    goBack,
     recordSupportAction,
     assessments: assessmentsOf(run),
     addAssessment,

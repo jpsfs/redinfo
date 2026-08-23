@@ -16,6 +16,7 @@ import {
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import CloseIcon from '@mui/icons-material/Close';
+import DescriptionIcon from '@mui/icons-material/Description';
 import RemoveIcon from '@mui/icons-material/Remove';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import AttachFileIcon from '@mui/icons-material/AttachFile';
@@ -31,6 +32,7 @@ import {
   EVENT_LOCATION_TYPES,
   EventLocationType,
   EventReportAttachment,
+  EventReportAttachmentKind,
   EventReportInput,
   EventReportWarningCode,
   GENDERS,
@@ -45,6 +47,7 @@ import {
   formatEventReportCode,
   totalKilometres,
 } from '@redinfo/shared';
+import { apiDownload } from '../../api';
 import { RichTextEditor } from '../../components/RichTextEditor';
 import {
   abcdeBandLabel,
@@ -781,6 +784,15 @@ export interface NarrativeSectionProps extends SectionProps {
   /** Already uploaded, when editing a filed report. */
   attachments?: EventReportAttachment[];
   onRemoveAttachment?: (id: string) => void;
+  /**
+   * The CODU verbete, staged before the report exists — uploaded on save, the
+   * same way `pendingFiles` is, but kept apart because it is one slot, not a
+   * list.
+   */
+  pendingVerbete?: File | null;
+  onChooseVerbete?: (file: File) => void;
+  /** Needed to build the "Abrir" link once the report — and the file — exist. */
+  reportId?: string | null;
 }
 
 export const NarrativeSection = ({
@@ -791,9 +803,20 @@ export const NarrativeSection = ({
   onRemovePendingFile,
   attachments = [],
   onRemoveAttachment,
+  pendingVerbete = null,
+  onChooseVerbete,
+  reportId = null,
 }: NarrativeSectionProps) => {
   const cameraInput = useRef<HTMLInputElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
+  const verbeteInput = useRef<HTMLInputElement>(null);
+
+  // A dedicated slot only on the type it applies to — same rule the backend
+  // enforces (`assertVerbeteSlotFree`), read off the one table both trust.
+  const showVerbete = eventReportRules(draft.type).hasVerbete && Boolean(onChooseVerbete);
+  const verbete = attachments.find(
+    (attachment) => attachment.kind === EventReportAttachmentKind.VERBETE,
+  );
 
   const takeFiles = (event: React.ChangeEvent<HTMLInputElement>) => {
     const chosen = Array.from(event.target.files ?? []);
@@ -858,13 +881,17 @@ export const NarrativeSection = ({
         />
 
         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ mt: 1.5 }}>
-          {attachments.map((attachment) => (
-            <Chip
-              key={attachment.id}
-              label={attachment.filename}
-              onDelete={onRemoveAttachment ? () => onRemoveAttachment(attachment.id) : undefined}
-            />
-          ))}
+          {/* The Verbete has its own named slot below; it does not also
+              belong in this general, unordered list. */}
+          {attachments
+            .filter((attachment) => attachment.kind !== EventReportAttachmentKind.VERBETE)
+            .map((attachment) => (
+              <Chip
+                key={attachment.id}
+                label={attachment.filename}
+                onDelete={onRemoveAttachment ? () => onRemoveAttachment(attachment.id) : undefined}
+              />
+            ))}
           {pendingFiles.map((pending, index) => (
             <Chip
               key={`${pending.name}-${index}`}
@@ -876,6 +903,75 @@ export const NarrativeSection = ({
           ))}
         </Stack>
       </Box>
+
+      {showVerbete && (
+        <>
+          <Divider />
+
+          <Box>
+            <SectionLabel>{t('field.verbete')}</SectionLabel>
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+              {t('field.verbeteHint')}
+            </Typography>
+
+            {verbete ? (
+              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                <Chip icon={<DescriptionIcon />} label={verbete.filename} />
+                <Button
+                  size="small"
+                  onClick={() =>
+                    reportId &&
+                    void apiDownload(
+                      `/event-reports/${reportId}/attachments/${verbete.id}`,
+                      verbete.filename,
+                    )
+                  }
+                >
+                  {t('field.verbeteOpen')}
+                </Button>
+                <Button size="small" onClick={() => verbeteInput.current?.click()}>
+                  {t('field.verbeteReplace')}
+                </Button>
+              </Stack>
+            ) : pendingVerbete ? (
+              <Stack direction="row" spacing={1} alignItems="center">
+                <Chip
+                  icon={<DescriptionIcon />}
+                  label={pendingVerbete.name}
+                  color="warning"
+                  variant="outlined"
+                />
+                <Button size="small" onClick={() => verbeteInput.current?.click()}>
+                  {t('field.verbeteReplace')}
+                </Button>
+              </Stack>
+            ) : (
+              <Button
+                variant="outlined"
+                startIcon={<DescriptionIcon />}
+                onClick={() => verbeteInput.current?.click()}
+                sx={{ minHeight: 56, fontWeight: 700 }}
+              >
+                {t('field.verbeteAdd')}
+              </Button>
+            )}
+
+            <input
+              ref={verbeteInput}
+              type="file"
+              accept="image/*,application/pdf"
+              capture="environment"
+              hidden
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) onChooseVerbete?.(file);
+                event.target.value = '';
+              }}
+              data-testid="verbete-input"
+            />
+          </Box>
+        </>
+      )}
     </Stack>
   );
 };

@@ -325,6 +325,7 @@ describe('liveRunToEventReportInput', () => {
           occurrenceAddress: 'R. Dr. Manuel Rodrigues nº 12, 3º Esq.',
           referencePoints: 'porta azul ao lado do café',
           victimHomeAddress: 'R. das Flores 4',
+          victimHomeLocalityId: 'loc-flores',
           victimDateOfBirth: '1948-03-17',
         },
       }),
@@ -339,6 +340,7 @@ describe('liveRunToEventReportInput', () => {
     expect(asText).not.toContain('Manuel Rodrigues');
     expect(asText).not.toContain('porta azul');
     expect(asText).not.toContain('1948-03-17');
+    expect(asText).not.toContain('loc-flores');
   });
 
   it('dates the report from activation, in the device’s own timezone', () => {

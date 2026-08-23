@@ -23,6 +23,7 @@ const identity: LiveRunIdentity = {
   occurrenceAddress: 'R. Dr. Manuel Rodrigues nº 12, 3º Esq.',
   referencePoints: 'porta azul ao lado do café',
   victimHomeAddress: null,
+  victimHomeLocalityId: null,
 };
 
 describe('parseIdentityKeys', () => {

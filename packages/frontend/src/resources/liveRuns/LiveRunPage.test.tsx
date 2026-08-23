@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Route, Routes } from 'react-router-dom';
-import { EventLocationType, Gender, LiveRunState } from '@redinfo/shared';
+import { EventLocationType, Gender, LiveRunState, VictimDestinationKind } from '@redinfo/shared';
 import { renderMobile } from '../../test/renderMobile';
 import { apiFetch } from '../../api';
 import { LiveRunPage } from './LiveRunPage';
@@ -49,6 +49,27 @@ const AMBULANCE = {
   vehicleType: 'EMERGENCY',
 };
 
+const HOSPITAL = {
+  id: 'hosp-braga',
+  name: 'Hospital de Braga',
+  municipalityId: 'mun-braga',
+  municipality: {
+    id: 'mun-braga',
+    ineCode: '0303',
+    name: 'Braga',
+    district: 'Braga',
+    latitude: 41.55,
+    longitude: -8.42,
+  },
+  latitude: 41.5505,
+  longitude: -8.4201,
+  isActive: true,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+  distanceKm: null,
+  approximate: false,
+};
+
 /** Every read the shell makes, answered by path. */
 function respondWith(overrides: Record<string, unknown> = {}) {
   mockApiFetch.mockImplementation((path: string, options?: { method?: string }) => {
@@ -79,7 +100,9 @@ function respondWith(overrides: Record<string, unknown> = {}) {
       return Promise.resolve({ suggested: null, recent: [] });
     }
     if (path.startsWith('/vehicles')) return Promise.resolve({ data: [AMBULANCE] });
-    if (path.startsWith('/hospitals/picker')) return Promise.resolve([]);
+    if (path.startsWith('/hospitals/picker')) {
+      return Promise.resolve((overrides.hospitals as unknown[]) ?? []);
+    }
     if (path.startsWith('/hospitals')) return Promise.resolve({ data: [] });
     if (path.startsWith('/localities/')) return Promise.resolve(TAVEIRO);
     return Promise.resolve(overrides.fallback ?? {});
@@ -167,6 +190,48 @@ describe('the bottom bar', () => {
   });
 });
 
+describe('browsing back to an earlier screen', () => {
+  /**
+   * The Android back gesture moves the URL's `:screen` segment without ever
+   * touching `run.state` — `renderRun` with an earlier screen than the run's
+   * real one is exactly what that leaves behind, with no gesture needed to
+   * reproduce it.
+   */
+  const seedOnTransport = () =>
+    seed({
+      state: LiveRunState.EN_ROUTE_TO_HOSPITAL,
+      activationAt: '2026-08-22T20:14:00.000Z',
+      sceneArrivalAt: '2026-08-22T20:26:00.000Z',
+      sceneDepartureAt: '2026-08-22T20:40:00.000Z',
+    });
+
+  it('offers the correction for the screen on display, not the live action for the run', async () => {
+    await seedOnTransport();
+    renderRun('scene');
+
+    // Not "CHEGADA AO HOSPITAL" — that belongs to `transport`, which is not
+    // what is on screen, however far the run has actually got.
+    expect(screen.queryByRole('button', { name: 'CHEGADA AO HOSPITAL' })).not.toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: /Alterar/ })).toBeInTheDocument();
+  });
+
+  it('offers a way back to where the run really is, and only to screens already visited', async () => {
+    const user = userEvent.setup();
+    await seedOnTransport();
+    renderRun('scene');
+
+    // Enroute and scene are visited; transport is the real screen. Closing
+    // has never been seen and must not be offered.
+    expect(await screen.findByRole('tab', { name: 'Ativação' })).toBeInTheDocument();
+    expect(screen.queryByRole('tab', { name: 'Fecho' })).not.toBeInTheDocument();
+
+    await user.click(await screen.findByRole('tab', { name: 'Transporte' }));
+
+    // Landed back on the run's real screen and its real action.
+    expect(await screen.findByRole('button', { name: 'CHEGADA AO HOSPITAL' })).toBeInTheDocument();
+  });
+});
+
 describe('the handoff into Maps', () => {
   it('is a real anchor, with the address encoded', async () => {
     await seed();
@@ -197,6 +262,38 @@ describe('the handoff into Maps', () => {
     expect(
       await screen.findByRole('button', { name: 'CHEGUEI AO LOCAL' }),
     ).toBeInTheDocument();
+  });
+
+  it('offers the same handoff to the chosen hospital, on the transport screen', async () => {
+    respondWith({ hospitals: [HOSPITAL] });
+    await seed({
+      state: LiveRunState.EN_ROUTE_TO_HOSPITAL,
+      activationAt: '2026-08-22T20:14:00.000Z',
+      sceneArrivalAt: '2026-08-22T20:26:00.000Z',
+      sceneDepartureAt: '2026-08-22T20:40:00.000Z',
+      destinationKind: VictimDestinationKind.HOSPITAL,
+      destinationHospitalId: HOSPITAL.id,
+    });
+    renderRun('transport');
+
+    const link = await screen.findByRole('link', { name: /NAVEGAR/ });
+    const url = new URL(link.getAttribute('href')!);
+    // Precise coordinates, not the occurrence address — the hospital has its
+    // own position, so there is nothing to geocode.
+    expect(url.searchParams.get('destination')).toBe(`${HOSPITAL.latitude},${HOSPITAL.longitude}`);
+  });
+
+  it('is absent from the transport screen until a hospital is chosen', async () => {
+    await seed({
+      state: LiveRunState.EN_ROUTE_TO_HOSPITAL,
+      activationAt: '2026-08-22T20:14:00.000Z',
+      sceneArrivalAt: '2026-08-22T20:26:00.000Z',
+      sceneDepartureAt: '2026-08-22T20:40:00.000Z',
+    });
+    renderRun('transport');
+
+    await screen.findByRole('button', { name: 'CHEGADA AO HOSPITAL' });
+    expect(screen.queryByRole('link', { name: /NAVEGAR/ })).not.toBeInTheDocument();
   });
 });
 
@@ -243,16 +340,83 @@ describe('the top bar', () => {
     const region = await screen.findByText(/Gravado no dispositivo|Sincronizado|Sem rede/);
     expect(region.closest('[aria-live="polite"]')).not.toBeNull();
   });
+
+  it('offers a way back that undoes the last stamp', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    await seed({ state: LiveRunState.EN_ROUTE, activationAt: '2026-08-22T20:14:00.000Z' });
+    renderRun('enroute');
+
+    await user.click(await screen.findByRole('button', { name: /Mais/ }));
+    await user.click(await screen.findByRole('menuitem', { name: /Voltar/ }));
+
+    // Back on `INTAKE`, with `activationAt` cleared: the bar offers the
+    // original transition again rather than "Alterar".
+    expect(await screen.findByRole('button', { name: 'A CAMINHO' })).toBeInTheDocument();
+  });
+
+  it('says nothing to undo, without asking, when going back is declined', async () => {
+    const user = userEvent.setup();
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    await seed({ state: LiveRunState.EN_ROUTE, activationAt: '2026-08-22T20:14:00.000Z' });
+    renderRun('enroute');
+
+    await user.click(await screen.findByRole('button', { name: /Mais/ }));
+    await user.click(await screen.findByRole('menuitem', { name: /Voltar/ }));
+
+    // Declined: the run stays exactly where it was.
+    expect(await screen.findByRole('button', { name: 'CHEGUEI AO LOCAL' })).toBeInTheDocument();
+  });
+
+  it('offers nothing to undo at the first step', async () => {
+    const user = userEvent.setup();
+    await seed();
+    renderRun('intake');
+
+    await user.click(await screen.findByRole('button', { name: /Mais/ }));
+    expect(screen.queryByRole('menuitem', { name: /Voltar/ })).not.toBeInTheDocument();
+  });
+
+  it('offers nothing to undo once the run is closed', async () => {
+    const user = userEvent.setup();
+    // `CLOSED` is reachable from every stage, not only from `AT_HOSPITAL` — so
+    // there is no single "previous" state Back could trust once it is reached.
+    await seed({ state: LiveRunState.CLOSED, availableAt: '2026-08-22T21:00:00.000Z' });
+    renderRun('closing');
+
+    await user.click(await screen.findByRole('button', { name: /Mais/ }));
+    expect(screen.queryByRole('menuitem', { name: /Voltar/ })).not.toBeInTheDocument();
+  });
 });
 
 describe('the scene screen', () => {
-  it('says the identifying details do not last', async () => {
+  it('asks for the type of location, confirmed on arrival rather than at intake', async () => {
+    await seed({ state: LiveRunState.ON_SCENE, locationType: null });
+    renderRun('scene');
+
+    expect(await screen.findByRole('button', { name: 'Habitação' })).toBeInTheDocument();
+  });
+
+  it('asks for the victim’s home address once the scene turns out not to be it', async () => {
+    const user = userEvent.setup();
+    await seed({ state: LiveRunState.ON_SCENE, locationType: EventLocationType.HOME });
+    renderRun('scene');
+
+    // Not asked while the scene is still the victim's own home.
+    expect(screen.queryByLabelText('Residência')).not.toBeInTheDocument();
+
+    await user.click(await screen.findByRole('button', { name: 'Via pública' }));
+
+    expect(await screen.findByLabelText('Residência')).toBeInTheDocument();
+    expect(screen.getByText('Localidade da residência')).toBeInTheDocument();
+  });
+
+  it('no longer offers a Verbete slot — that moved to the report editor', async () => {
     await seed({ state: LiveRunState.ON_SCENE });
     renderRun('scene');
 
-    // A crew is entitled to know that before they type a patient's name into a
-    // phone.
-    expect(await screen.findByText(/são apagados quando o relatório é entregue/)).toBeInTheDocument();
+    await screen.findByText('Fotografias');
+    expect(screen.queryByText('Verbete de Socorro')).not.toBeInTheDocument();
   });
 
   it('warns about an SNS number that is not nine digits, without blocking', async () => {
@@ -353,6 +517,19 @@ describe('platform features that may not be there', () => {
     } finally {
       globalThis.IntersectionObserver = original;
     }
+  });
+});
+
+describe('the assessment screen', () => {
+  it('has a way back to the scene screen', async () => {
+    const user = userEvent.setup();
+    await seed({ state: LiveRunState.ON_SCENE });
+    renderRun('assessment');
+
+    await user.click(await screen.findByRole('button', { name: /Voltar — No local/ }));
+
+    // Back on Scene: its own heading, with the identity fields on it.
+    expect(await screen.findByLabelText('Nome da vítima')).toBeInTheDocument();
   });
 });
 

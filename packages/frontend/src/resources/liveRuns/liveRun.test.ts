@@ -15,12 +15,14 @@ import {
   isLiveScreen,
   newRunId,
   nextStamp,
+  nextStampForScreen,
   patchedCapture,
   patchedIdentity,
   patchedRun,
   readCurrentRunId,
   screenForRun,
   stampedRun,
+  visitedScreens,
   withAssessment,
   withNewAssessment,
   withSupportAction,
@@ -175,6 +177,65 @@ describe('screens', () => {
   it('refuses a screen nobody has heard of', () => {
     expect(isLiveScreen('vitals')).toBe(false);
     expect(isLiveScreen(undefined)).toBe(false);
+  });
+});
+
+describe('visitedScreens — the top bar jump row', () => {
+  it('is just the one screen at intake', () => {
+    expect(visitedScreens({ state: LiveRunState.INTAKE })).toEqual(['intake']);
+  });
+
+  it('grows with every step the run has actually taken', () => {
+    expect(visitedScreens({ state: LiveRunState.ON_SCENE })).toEqual(['intake', 'enroute', 'scene']);
+  });
+
+  it('never names a screen the run has not reached yet', () => {
+    const visited = visitedScreens({ state: LiveRunState.EN_ROUTE });
+    expect(visited).not.toContain('scene');
+    expect(visited).not.toContain('transport');
+  });
+
+  it('leaves assessment out — it is a branch off scene, not a stop on the walk', () => {
+    expect(visitedScreens({ state: LiveRunState.AT_HOSPITAL })).not.toContain('assessment');
+  });
+
+  it('reaches closing once the run is closed', () => {
+    expect(visitedScreens({ state: LiveRunState.CLOSED })).toEqual([
+      'intake',
+      'enroute',
+      'scene',
+      'transport',
+      'closing',
+    ]);
+  });
+});
+
+describe('nextStampForScreen — the bottom bar when browsing history', () => {
+  it('is nextStamp unchanged on the run’s real screen', () => {
+    const run = { ...emptyRun('run-1', NOW), state: LiveRunState.EN_ROUTE };
+    expect(nextStampForScreen(run, 'enroute')).toEqual(nextStamp(run));
+  });
+
+  it('offers the correction for a screen the run has already passed, not the live action', () => {
+    const run = {
+      ...emptyRun('run-1', NOW),
+      state: LiveRunState.EN_ROUTE_TO_HOSPITAL,
+      activationAt: NOW.toISOString(),
+      sceneArrivalAt: '2026-08-22T20:26:00.000Z',
+      sceneDepartureAt: '2026-08-22T20:34:00.000Z',
+    };
+    // Browsed back to `scene` with the run really on `transport`: the field
+    // `scene` writes is already stamped, so this must read `done`, never the
+    // hospital-arrival action that belongs to the real screen.
+    expect(nextStampForScreen(run, 'scene')).toMatchObject({
+      field: 'sceneDepartureAt',
+      done: true,
+    });
+  });
+
+  it('always mirrors the real action on assessment, which has no stamp of its own', () => {
+    const run = { ...emptyRun('run-1', NOW), state: LiveRunState.ON_SCENE };
+    expect(nextStampForScreen(run, 'assessment')).toEqual(nextStamp(run));
   });
 });
 
