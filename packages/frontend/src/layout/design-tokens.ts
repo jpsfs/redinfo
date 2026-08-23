@@ -98,6 +98,25 @@ export const borderRadiusLarge = 12; // px
 export const elevationCard = 1;
 export const elevationAppBar = 2;
 
+// ─── Activity category colors ──────────────────────────────────────────────────
+/**
+ * One color per activity category, used everywhere `EventReportType` or
+ * `AvailabilityWindowCategory` is shown — the two enums are deliberately the
+ * same three values (see the doc comment on `EventReportType` in
+ * `@redinfo/shared`), so report screens, schedules and availability windows
+ * all read the same color for the same category. See `CategoryChip` in
+ * `components/CategoryChip.tsx`.
+ *
+ * Confirmed with the delegation 2026-08-23: new, non-overlapping hues rather
+ * than reusing the semantic `error`/`warning`/`success`/`info` slots above,
+ * which the rest of the app already uses for status (published/open/ok vs.
+ * declined/holiday/low-stock) — a category color and a status color are
+ * never the same hue anywhere in the app.
+ */
+export const colorCategoryEmergency = colorRedCrossRed;
+export const colorCategoryLocalSupport = '#0E7C86'; // teal
+export const colorCategorySalopSupport = '#6B4FA0'; // violet
+
 // ─── Logo assets ──────────────────────────────────────────────────────────────
 /** Primary local path for the full Delegação de Campo logotype (/public). */
 export const logoDelegacaoCampoUrl = '/logo-delegacao-campo.jpg';

@@ -32,6 +32,7 @@ import {
   validateAttachment,
 } from '@redinfo/shared';
 import { apiFetch } from '../../api';
+import { categoryColor } from '../../components/CategoryChip';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { problemLabel, reportTypeLabel, t, warningLabel } from '../../i18n/labels';
 import { uploadAttachment } from './uploadAttachment';
@@ -463,7 +464,9 @@ export const EventReportEditor = ({ form, report = null }: EventReportEditorProp
                 <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.disabled' }}>
                   {t('field.type').toUpperCase()}
                 </Typography>
-                <Typography variant="h6">{reportTypeLabel(form.draft.type)}</Typography>
+                <Typography variant="h6" sx={{ color: categoryColor(form.draft.type) }}>
+                  {reportTypeLabel(form.draft.type)}
+                </Typography>
               </Box>
               <Divider orientation="vertical" flexItem />
               <Box>

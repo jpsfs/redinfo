@@ -31,6 +31,7 @@ import {
   totalKilometres,
 } from '@redinfo/shared';
 import { apiDownload, apiFetch } from '../../api';
+import { CategoryChip } from '../../components/CategoryChip';
 import { RichTextViewer } from '../../components/RichTextViewer';
 import {
   abcdeBandLabel,
@@ -205,7 +206,7 @@ export const EventReportShow = () => {
                 >
                   {code}
                 </Typography>
-                <Chip label={reportTypeLabel(report.type)} color="primary" size="small" />
+                <CategoryChip category={report.type} label={reportTypeLabel(report.type)} size="small" />
               </Stack>
               <Typography variant="body2" color="text.secondary">
                 {[

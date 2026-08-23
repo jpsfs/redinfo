@@ -5,7 +5,6 @@ import {
   Alert,
   Box,
   Button,
-  Chip,
   CircularProgress,
   Container,
   Fab,
@@ -26,6 +25,7 @@ import {
   totalKilometres,
 } from '@redinfo/shared';
 import { apiFetch } from '../api';
+import { CategoryChip } from '../components/CategoryChip';
 import { destinationLabel, reportTypeLabel, t } from '../i18n/labels';
 import { StoredDraft, loadDraft } from '../resources/eventReports/reportDraft';
 import { timeOfDay } from '../resources/eventReports/reportDraft';
@@ -52,7 +52,7 @@ const ReportCard = ({
         >
           {formatEventReportCode(report) ?? t('report.noNumberYet')}
         </Typography>
-        <Chip size="small" variant="outlined" label={reportTypeLabel(report.type)} />
+        <CategoryChip category={report.type} label={reportTypeLabel(report.type)} size="small" />
       </Stack>
 
       <Typography variant="body2" color="text.secondary">

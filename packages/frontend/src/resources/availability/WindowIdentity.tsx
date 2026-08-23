@@ -6,17 +6,17 @@ import {
   AvailabilityWindowRole,
   formatRoleCapacity,
 } from '@redinfo/shared';
+import { CategoryChip } from '../../components/CategoryChip';
 
-/** One colour per rota, so a category is recognisable before it is read. */
-const CATEGORY_COLOR: Record<
-  AvailabilityWindowCategory,
-  'error' | 'info' | 'secondary'
-> = {
-  [AvailabilityWindowCategory.EMERGENCY]: 'error',
-  [AvailabilityWindowCategory.LOCAL_SUPPORT]: 'info',
-  [AvailabilityWindowCategory.SALOP_SUPPORT]: 'secondary',
-};
-
+/**
+ * A rota's category, colored so it's recognisable before it's read.
+ *
+ * `AvailabilityWindowCategory` is deliberately the same three values as
+ * `EventReportType` (see the doc comment on `EventReportType` in
+ * `@redinfo/shared`), so this shares its color mapping with event reports —
+ * `CategoryChip` in `components/CategoryChip.tsx` is the one place it's
+ * defined.
+ */
 export const WindowCategoryChip = ({
   category,
   size = 'small',
@@ -26,11 +26,10 @@ export const WindowCategoryChip = ({
 }) => {
   if (!category) return null;
   return (
-    <Chip
-      size={size}
-      variant="outlined"
-      color={CATEGORY_COLOR[category as AvailabilityWindowCategory] ?? 'default'}
+    <CategoryChip
+      category={category}
       label={availabilityWindowCategoryLabel(category)}
+      size={size}
     />
   );
 };

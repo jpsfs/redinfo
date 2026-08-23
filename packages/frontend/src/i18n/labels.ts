@@ -89,6 +89,12 @@ const MESSAGES = {
   'field.shift': { pt: 'Turno', en: 'Shift' },
   'field.victims': { pt: 'Vítimas assistidas', en: 'Victims assisted' },
 
+  // ── Filters (report list) ──
+  'filter.allDates': { pt: 'Todas as datas', en: 'All dates' },
+  'filter.previousMonth': { pt: 'Mês anterior', en: 'Previous month' },
+  'filter.nextMonth': { pt: 'Mês seguinte', en: 'Next month' },
+  'filter.clearMonth': { pt: 'Limpar filtro de mês', en: 'Clear month filter' },
+
   // ── Actions ──
   'action.next': { pt: 'Seguinte', en: 'Next' },
   'action.back': { pt: 'Voltar', en: 'Back' },

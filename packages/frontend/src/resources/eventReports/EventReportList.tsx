@@ -8,7 +8,7 @@ import {
   usePermissions,
 } from 'react-admin';
 import { useNavigate } from 'react-router-dom';
-import { Box, Button, Chip, Stack } from '@mui/material';
+import { Box, Button, Chip, CircularProgress, Paper, Stack } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import {
   Action,
@@ -18,12 +18,19 @@ import {
   EventReportType,
   UserRole,
   hasPermission,
-  totalKilometres,
-  transportedVictimCount,
 } from '@redinfo/shared';
 import { apiFetch } from '../../api';
-import { destinationLabel, reportTypeLabel, t } from '../../i18n/labels';
+import { CategoryChip } from '../../components/CategoryChip';
+import { useIsMobile } from '../../hooks/useIsMobile';
+import { reportTypeLabel, t } from '../../i18n/labels';
+import { MonthFilter } from './MonthFilter';
+import { ReportListCard } from './ReportListCard';
 import { timeOfDay } from './reportDraft';
+
+import { crewSummary, vehicleSummary, victimSummary } from './reportSummaries';
+
+// Re-exported for `EventReportShow.test.tsx`, which unit-tests these directly.
+export { crewSummary, vehicleSummary, victimSummary };
 
 /**
  * Filter tabs, one per kind of activity plus "all".
@@ -60,7 +67,7 @@ const TypeTabs = () => {
   const active = filterValues.type as EventReportType | undefined;
 
   return (
-    <Stack direction="row" spacing={1} sx={{ mb: 2, flexWrap: 'wrap' }} useFlexGap>
+    <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }} useFlexGap>
       <Chip
         label={`${t('report.all')}${counts ? ` · ${counts.ALL}` : ''}`}
         color={active ? 'default' : 'primary'}
@@ -69,13 +76,13 @@ const TypeTabs = () => {
         sx={{ height: 40, fontWeight: 600 }}
       />
       {EVENT_REPORT_TYPES.map((type) => (
-        <Chip
+        <CategoryChip
           key={type}
+          category={type}
           label={`${reportTypeLabel(type)}${counts ? ` · ${counts[type]}` : ''}`}
-          color={active === type ? 'primary' : 'default'}
-          variant={active === type ? 'filled' : 'outlined'}
+          selected={active === type}
           onClick={() => select(type)}
-          sx={{ height: 40, fontWeight: 600 }}
+          sx={{ height: 40, fontWeight: 600, cursor: 'pointer' }}
         />
       ))}
     </Stack>
@@ -103,35 +110,30 @@ const ListActions = () => {
   );
 };
 
-/** `1 · CHUC — Hospital Geral`, or `3 · 1 transportada`. */
-export function victimSummary(report: EventReport): string {
-  if (report.victims.length === 0) return '—';
-  if (report.victims.length === 1) {
-    const [victim] = report.victims;
-    const where =
-      victim.destinationHospital?.name ?? destinationLabel(victim.destinationKind);
-    return `1 · ${where}`;
-  }
-  const transported = transportedVictimCount(report.victims);
-  return `${report.victims.length} · ${transported}`;
-}
+/** Stacked cards instead of a table — the mobile replacement for `Datagrid`. */
+const MobileReportList = () => {
+  const { data, isLoading } = useListContext<EventReport>();
+  const navigate = useNavigate();
 
-/** `AA-12-BC · 42 km`, or `2 · 87 km` once there is more than one. */
-export function vehicleSummary(report: EventReport): string {
-  if (report.vehicles.length === 0) return '—';
-  const kilometres = `${totalKilometres(report.vehicles)} ${t('field.kilometresShort')}`;
-  if (report.vehicles.length === 1) {
-    return `${report.vehicles[0].vehicle?.licensePlate ?? ''} · ${kilometres}`;
+  if (isLoading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+        <CircularProgress size={24} />
+      </Box>
+    );
   }
-  return `${report.vehicles.length} · ${kilometres}`;
-}
 
-export const crewSummary = (report: EventReport): string => {
-  const names = report.crew
-    .map((member) => member.user?.lastName)
-    .filter((name): name is string => Boolean(name));
-  if (names.length === 0) return '—';
-  return names.length <= 2 ? names.join(' · ') : `${names.slice(0, 2).join(' · ')} · +${names.length - 2}`;
+  return (
+    <Stack spacing={1.5}>
+      {(data ?? []).map((report) => (
+        <ReportListCard
+          key={report.id}
+          report={report}
+          onOpen={() => navigate(`/event-reports/${report.id}/show`)}
+        />
+      ))}
+    </Stack>
+  );
 };
 
 /**
@@ -141,52 +143,77 @@ export const crewSummary = (report: EventReport): string => {
  * question is usually "what happened last week", not "what emergencies happened
  * last week", and the type is a column and a filter rather than a place.
  */
-export const EventReportList = () => (
-  <List
-    actions={<ListActions />}
-    sort={{ field: 'occurredOn', order: 'DESC' }}
-    perPage={25}
-  >
-    <Box>
-      <TypeTabs />
-      <Datagrid rowClick="show" bulkActionButtons={false}>
-        <FunctionField
-          label={t('field.reportNumber')}
-          render={(record: EventReport) =>
-            // Rendered rather than stored: `(type, number, year)` is the truth.
-            `${reportTypeLabel(record.type).slice(0, 3).toUpperCase()} ${String(
-              record.number,
-            ).padStart(3, '0')}/${record.year}`
-          }
-        />
-        <FunctionField
-          label={t('field.type')}
-          render={(record: EventReport) => (
-            <Chip size="small" label={reportTypeLabel(record.type)} variant="outlined" />
-          )}
-        />
-        <FunctionField
-          label={t('field.date')}
-          render={(record: EventReport) => record.occurredOn}
-        />
-        <FunctionField
-          label={t('field.hours')}
-          render={(record: EventReport) =>
-            `${timeOfDay(record.startedAt) || '--:--'}–${timeOfDay(record.endedAt) || '--:--'}`
-          }
-        />
-        <FunctionField
-          label={t('field.locality')}
-          render={(record: EventReport) => record.locality?.name ?? '—'}
-        />
-        <FunctionField label={t('field.victims')} render={victimSummary} />
-        <FunctionField label={t('field.crew')} render={crewSummary} />
-        <FunctionField label={t('field.vehicle')} render={vehicleSummary} />
-        <FunctionField
-          label={t('field.attachments')}
-          render={(record: EventReport) => record.attachments.length || '—'}
-        />
-      </Datagrid>
-    </Box>
-  </List>
-);
+export const EventReportList = () => {
+  const isMobile = useIsMobile();
+
+  return (
+    <List
+      actions={<ListActions />}
+      sort={{ field: 'occurredOn', order: 'DESC' }}
+      perPage={25}
+      component="div"
+    >
+      <Box sx={{ pt: 2 }}>
+        <Paper
+          variant="outlined"
+          sx={{
+            p: 2,
+            mb: 2,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: 2,
+          }}
+        >
+          <TypeTabs />
+          <MonthFilter />
+        </Paper>
+
+        {isMobile ? (
+          <MobileReportList />
+        ) : (
+          <Paper variant="outlined">
+            <Datagrid rowClick="show" bulkActionButtons={false}>
+              <FunctionField
+                label={t('field.reportNumber')}
+                render={(record: EventReport) =>
+                  // Rendered rather than stored: `(type, number, year)` is the truth.
+                  `${reportTypeLabel(record.type).slice(0, 3).toUpperCase()} ${String(
+                    record.number,
+                  ).padStart(3, '0')}/${record.year}`
+                }
+              />
+              <FunctionField
+                label={t('field.type')}
+                render={(record: EventReport) => (
+                  <CategoryChip
+                    category={record.type}
+                    label={reportTypeLabel(record.type)}
+                    size="small"
+                  />
+                )}
+              />
+              <FunctionField
+                label={t('field.date')}
+                render={(record: EventReport) => record.occurredOn}
+              />
+              <FunctionField
+                label={t('field.hours')}
+                render={(record: EventReport) =>
+                  `${timeOfDay(record.startedAt) || '--:--'}–${timeOfDay(record.endedAt) || '--:--'}`
+                }
+              />
+              <FunctionField
+                label={t('field.locality')}
+                render={(record: EventReport) => record.locality?.name ?? '—'}
+              />
+              <FunctionField label={t('field.crew')} render={crewSummary} />
+              <FunctionField label={t('field.vehicle')} render={vehicleSummary} />
+            </Datagrid>
+          </Paper>
+        )}
+      </Box>
+    </List>
+  );
+};

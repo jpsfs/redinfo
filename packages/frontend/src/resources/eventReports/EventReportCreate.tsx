@@ -14,6 +14,7 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import DescriptionIcon from '@mui/icons-material/Description';
 import { EVENT_REPORT_TYPES, EventReportType, eventReportRules } from '@redinfo/shared';
+import { categoryColor } from '../../components/CategoryChip';
 import { reportTypeHint, reportTypeLabel, t } from '../../i18n/labels';
 import { readCurrentRunId } from '../liveRuns';
 import { StoredDraft, clearDraft, loadDraft } from './reportDraft';
@@ -72,9 +73,20 @@ const TypeChooser = ({
           }}
         >
           <Box sx={{ flex: 1 }}>
-            <Typography sx={{ fontWeight: 700, fontSize: '1.125rem' }}>
-              {reportTypeLabel(type)}
-            </Typography>
+            <Stack direction="row" spacing={1} alignItems="center">
+              <Box
+                sx={{
+                  width: 10,
+                  height: 10,
+                  borderRadius: '50%',
+                  bgcolor: categoryColor(type),
+                  flexShrink: 0,
+                }}
+              />
+              <Typography sx={{ fontWeight: 700, fontSize: '1.125rem' }}>
+                {reportTypeLabel(type)}
+              </Typography>
+            </Stack>
             <Typography variant="body2" color="text.secondary">
               {reportTypeHint(type)}
             </Typography>
