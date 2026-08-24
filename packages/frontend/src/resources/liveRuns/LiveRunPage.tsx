@@ -230,7 +230,6 @@ export const LiveRunPage = () => {
   }, [form, navigate, notify, runId]);
 
   const abandon = useCallback(async () => {
-    // eslint-disable-next-line no-alert
     if (!window.confirm(t('live.abandonConfirm'))) return;
     await deleteRun(runId);
     writeCurrentRunId(null);
@@ -246,7 +245,6 @@ export const LiveRunPage = () => {
    * stamp button.
    */
   const goBack = useCallback(() => {
-    // eslint-disable-next-line no-alert
     if (!window.confirm(t('live.backConfirm'))) return;
     form.goBack();
   }, [form]);

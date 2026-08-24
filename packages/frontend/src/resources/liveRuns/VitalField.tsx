@@ -69,7 +69,6 @@ export const VitalControl = ({
     }
     // Deliberately not on `text`: this reacts to the stored value moving, and
     // depending on the text would make every keystroke re-seed itself.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stored, field.decimals]);
 
   const value = parseVital(text);

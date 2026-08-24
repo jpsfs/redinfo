@@ -580,7 +580,7 @@ describeIntegration('Availability module (integration)', () => {
     });
 
     it('refuses a slot that does not exist in this window', async () => {
-      const window = await openCustomWindow(
+      await openCustomWindow(
         {
           startDate: '2026-10-03', // a Saturday, two shifts by default
           endDate: '2026-10-03',

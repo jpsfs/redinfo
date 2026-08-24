@@ -10,7 +10,6 @@ import {
 import { Chip } from '@mui/material';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
-import InventoryIcon from '@mui/icons-material/Inventory';
 
 const VehicleTypeField = () => (
   <FunctionField

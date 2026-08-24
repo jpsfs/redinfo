@@ -4,10 +4,6 @@ import { VehicleType } from '@redinfo/shared';
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 
-const tomorrow = new Date();
-tomorrow.setDate(tomorrow.getDate() + 1);
-const tomorrowStr = tomorrow.toISOString().slice(0, 10);
-
 const farFuture = '2099-12-31';
 
 function makeVehicleDto(overrides: Partial<{

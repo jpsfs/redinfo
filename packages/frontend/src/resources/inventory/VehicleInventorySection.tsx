@@ -19,7 +19,6 @@ import {
   Alert,
 } from '@mui/material';
 import SaveIcon from '@mui/icons-material/Save';
-import InventoryIcon from '@mui/icons-material/Inventory';
 import DownloadIcon from '@mui/icons-material/Download';
 
 const API_URL = import.meta.env.VITE_API_URL ?? '';
@@ -93,7 +92,7 @@ export const VehicleInventorySection = () => {
       if (!res.ok) throw new Error('Failed to load inventory');
       const data = await res.json();
       setInventory(data);
-    } catch (e) {
+    } catch {
       setError('Could not load inventory data.');
     } finally {
       setLoading(false);

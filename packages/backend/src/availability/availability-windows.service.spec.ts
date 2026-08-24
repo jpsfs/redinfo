@@ -115,6 +115,7 @@ function buildPrismaStub(overrides: Record<string, unknown> = {}) {
 }
 
 // Only for the return type above — keeps `prisma.availabilityWindow.create` typed.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars -- used only in a `typeof` type position
 function buildStubShape() {
   return {
     availabilityWindow: {

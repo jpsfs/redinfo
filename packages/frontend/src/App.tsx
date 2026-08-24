@@ -48,7 +48,6 @@ import PeopleIcon from '@mui/icons-material/People';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import BuildIcon from '@mui/icons-material/Build';
 import InventoryIcon from '@mui/icons-material/Inventory';
-import EventAvailableIcon from '@mui/icons-material/EventAvailable';
 import DateRangeIcon from '@mui/icons-material/DateRange';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
 import EventNoteIcon from '@mui/icons-material/EventNote';

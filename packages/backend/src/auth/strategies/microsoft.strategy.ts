@@ -5,7 +5,7 @@ import { UsersService } from '../../users/users.service';
 import { AuthProvider } from '@prisma/client';
 
 // passport-microsoft does not ship types; use require
-// eslint-disable-next-line @typescript-eslint/no-var-requires
+// eslint-disable-next-line @typescript-eslint/no-require-imports
 const MicrosoftStrategy = require('passport-microsoft').Strategy;
 
 @Injectable()

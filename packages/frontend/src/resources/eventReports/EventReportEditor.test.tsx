@@ -130,7 +130,7 @@ function renderEditor({
         seeded.current = true;
         form.patch(seed as never);
       }
-    }, [form, seed]);
+    }, [form]);
     return <EventReportEditor form={form} report={report} />;
   };
 
