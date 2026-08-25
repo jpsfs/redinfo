@@ -115,20 +115,25 @@ const NavMenuItem = ({ entry }: { entry: NavEntry }) => {
               backgroundColor: colorRedCrossRedDark,
               color: 'common.white',
               borderRadius: `${borderRadiusMedium}px`,
+              // `mx: 1` insets the pill from the drawer edges, but it shifts
+              // the whole row right — including the icon column, which every
+              // other entry keeps flush at the default 16px padding.
+              // Trimming `pl` by the same 8px it added keeps the icon lined
+              // up with Home's, right below it.
               mx: 1,
+              pl: 1,
+              mb: 1,
               minHeight: 52,
               [`& .${MenuItemLinkClasses.icon}`]: { color: 'common.white' },
               '&:hover': { backgroundColor: colorRedCrossRedDark, opacity: 0.9 },
             }
-          : isLive
-            ? { justifyContent: 'center' }
-            : {
-                [`&.${MenuItemLinkClasses.active}`]: {
-                  backgroundColor: 'rgba(237,27,36,0.08)',
-                  color: colorRedCrossRedDark,
-                  [`& .${MenuItemLinkClasses.icon}`]: { color: colorRedCrossRedDark },
-                },
+          : {
+              [`&.${MenuItemLinkClasses.active}`]: {
+                backgroundColor: 'rgba(237,27,36,0.08)',
+                color: colorRedCrossRedDark,
+                [`& .${MenuItemLinkClasses.icon}`]: { color: colorRedCrossRedDark },
               },
+            },
       ]}
     />
   );
