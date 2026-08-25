@@ -718,6 +718,616 @@ const MESSAGES = {
   'vehicleInventory.statusOk': { pt: 'OK', en: 'OK' },
   'vehicleInventory.statusAboveRec': { pt: 'Acima do Rec.', en: 'Above Rec.' },
   'vehicleInventory.saveQuantityTooltip': { pt: 'Guardar quantidade', en: 'Save quantity' },
+
+  // ── Availability & schedules (#180 phase 3 slice 2) — shared words ──
+  'common.collapse': { pt: 'Recolher', en: 'Collapse' },
+  'common.expand': { pt: 'Expandir', en: 'Expand' },
+  'common.exportCsv': { pt: 'Exportar CSV', en: 'Export CSV' },
+  'dayType.holiday': { pt: 'Feriado', en: 'Holiday' },
+  'dayType.holidayNamed': { pt: 'Feriado · %{name}', en: 'Holiday · %{name}' },
+  'dayType.weekend': { pt: 'Fim de semana', en: 'Weekend' },
+  'dayType.workday': { pt: 'Dia útil', en: 'Workday' },
+  'windowForm.openWindow': { pt: 'Abrir janela', en: 'Open window' },
+  'schedule.statusDraft': { pt: 'Rascunho', en: 'Draft' },
+  'schedule.statusPublished': { pt: 'Publicada', en: 'Published' },
+
+  // ── Resource fields — availability-windows, schedules, holidays ──
+  'resources.availability-windows.fields.category': { pt: 'Categoria', en: 'Category' },
+  'resources.availability-windows.fields.status': { pt: 'Estado', en: 'Status' },
+  'resources.availability-windows.fields.name': { pt: 'Nome', en: 'Name' },
+  'resources.availability-windows.fields.openedBy': { pt: 'Aberta por', en: 'Opened by' },
+  'resources.availability-windows.fields.openedAt': { pt: 'Aberta em', en: 'Opened at' },
+  'resources.availability-windows.fields.closedBy': { pt: 'Fechada por', en: 'Closed by' },
+  'resources.availability-windows.fields.closedAt': { pt: 'Fechada em', en: 'Closed at' },
+  'resources.schedules.fields.category': { pt: 'Categoria', en: 'Category' },
+  'resources.schedules.fields.status': { pt: 'Estado', en: 'Status' },
+  'resources.schedules.fields.publishedBy': { pt: 'Publicada por', en: 'Published by' },
+  'resources.schedules.fields.publishedAt': { pt: 'Publicada em', en: 'Published at' },
+  'resources.holidays.fields.date': { pt: 'Data', en: 'Date' },
+  'resources.holidays.fields.name': { pt: 'Feriado', en: 'Holiday' },
+
+  // ── Window roles (WindowRoleChips, WindowRoleEditor) ──
+  'windowRole.none': {
+    pt: 'Sem funções — as pessoas são escaladas para esta janela sem uma.',
+    en: 'No roles — people are scheduled onto this window without one.',
+  },
+  'windowRole.editorNone': {
+    pt: 'Sem funções — as pessoas vão ser escaladas para esta janela sem uma.',
+    en: 'No roles — people will be scheduled onto this window without one.',
+  },
+  'windowRole.requiresTooltip': {
+    pt: 'Requer a certificação %{certification} — pode ser substituída com justificação.',
+    en: 'Requires the %{certification} certification — overridable with a reason.',
+  },
+  'windowRole.roleName': { pt: 'Função %{index}', en: 'Role %{index}' },
+  'windowRole.roleNameAria': { pt: 'Função %{index} nome', en: 'Role %{index} name' },
+  'windowRole.rolePeopleAria': { pt: 'Função %{index} pessoas', en: 'Role %{index} people' },
+  'windowRole.roleCertAria': {
+    pt: 'Função %{index} certificação obrigatória',
+    en: 'Role %{index} required certification',
+  },
+  'windowRole.removeAria': { pt: 'Remover função %{index}', en: 'Remove role %{index}' },
+  'windowRole.peopleLabel': { pt: 'Pessoas', en: 'People' },
+  'windowRole.requiresLabel': { pt: 'Requer', en: 'Requires' },
+  'windowRole.suggestedFromName': {
+    pt: 'Sugerido a partir do nome: %{certification}',
+    en: 'Suggested from the name: %{certification}',
+  },
+  'windowRole.noSuggestion': { pt: 'Sem sugestão', en: 'No suggestion' },
+  'windowRole.coordinatorChoice': { pt: 'Escolha do coordenador', en: "Coordinator's choice" },
+  'windowRole.suggestedShort': { pt: 'Sugestão: %{certification}', en: 'Suggested: %{certification}' },
+  'windowRole.unset': { pt: 'Por definir', en: 'Unset' },
+  'windowRole.noRequirement': { pt: 'Sem requisito', en: 'No requirement' },
+  'windowRole.addRole': { pt: 'Adicionar função', en: 'Add role' },
+  'windowRole.capacityHint': {
+    pt: 'Pessoas é o máximo que a escala pode colocar numa função por turno; %{unlimited} significa ilimitado. Uma certificação obrigatória é exigível mas não absoluta — um coordenador ainda pode escalar alguém que não a tenha, com justificação.',
+    en: 'People is the most the schedule may put in a role on one shift; %{unlimited} means unlimited. A required certification is enforceable but not absolute — a coordinator may still assign someone who lacks it, with a reason.',
+  },
+
+  // ── Day shift editor ──
+  'dayShift.copyWorkdays': { pt: 'Todos os dias úteis', en: 'All working days' },
+  'dayShift.copyNonWorkdays': { pt: 'Todos os fins de semana e feriados', en: 'All weekends & holidays' },
+  'dayShift.copyAll': { pt: 'Todos os dias', en: 'All days' },
+  'dayShift.startAria': { pt: '%{day} turno %{index} início', en: '%{day} shift %{index} start' },
+  'dayShift.endAria': { pt: '%{day} turno %{index} fim', en: '%{day} shift %{index} end' },
+  'dayShift.vehiclesAria': { pt: '%{day} turno %{index} viaturas', en: '%{day} shift %{index} vehicles' },
+  'dayShift.removeAria': { pt: 'Remover %{day} turno %{index}', en: 'Remove %{day} shift %{index}' },
+  'dayShift.addShiftAria': { pt: 'Adicionar um turno a %{day}', en: 'Add a shift to %{day}' },
+  'dayShift.copyToAria': {
+    pt: 'Copiar os turnos de %{day} para outros dias',
+    en: 'Copy %{day} shifts to other days',
+  },
+  'dayShift.colDay': { pt: 'Dia', en: 'Day' },
+  'dayShift.colShifts': { pt: 'Turnos', en: 'Shifts' },
+  'dayShift.colShiftsHint': {
+    pt: 'início, fim e viaturas necessárias',
+    en: 'start, end and vehicles needed',
+  },
+  'dayShift.noShifts': {
+    pt: 'Sem turnos — não é pedido a ninguém que cubra este dia.',
+    en: 'No shifts — nobody is asked to cover this day.',
+  },
+  'dayShift.addShift': { pt: 'Adicionar turno', en: 'Add shift' },
+  'dayShift.copyToButton': { pt: 'Copiar para…', en: 'Copy to…' },
+
+  // ── Emergency window dialog ──
+  'emergencyDialog.title': { pt: 'Nova disponibilidade de emergência', en: 'New emergency availability' },
+  'emergencyDialog.description': {
+    pt: 'Abre uma janela que cobre um mês inteiro, com os turnos padrão: um turno das 20:00–24:00 nos dias úteis, e 08:00–16:00 mais 16:00–24:00 aos fins de semana e feriados. Cada turno pede uma viatura, e a escala é construída a partir da equipa padrão — %{crew}, uma pessoa em cada. Para variar algo disto, usa o editor completo.',
+    en: 'Opens a window covering a whole month, with the standard shifts: one 20:00–24:00 shift on working days, and 08:00–16:00 plus 16:00–24:00 on weekends and holidays. Every shift asks for one vehicle, and the schedule is built from the standard crew — %{crew}, one person each. To vary any of that, use the full editor instead.',
+  },
+  'emergencyDialog.month': { pt: 'Mês', en: 'Month' },
+  'emergencyDialog.year': { pt: 'Ano', en: 'Year' },
+  'emergencyDialog.openOverlap': {
+    pt: 'Já existe uma janela de Emergência aberta sobre este mês. Fecha-a antes de abrir outra.',
+    en: 'An Emergency window is already open over this month. Close it before opening another one.',
+  },
+  'emergencyDialog.closedOverlap': {
+    pt: 'Uma janela de Emergência já fechada cobre já estas datas.',
+    en: 'A closed Emergency window already covers these dates.',
+  },
+  'emergencyDialog.acknowledgeAgain': {
+    pt: 'Pedir disponibilidade para este mês outra vez, mesmo assim',
+    en: 'Ask for this month again anyway',
+  },
+  'emergencyDialog.opened': { pt: '%{window} aberta para %{dates}', en: '%{window} opened for %{dates}' },
+  'emergencyDialog.saveFailed': { pt: 'Não foi possível abrir a janela.', en: 'Could not open the window.' },
+
+  // ── Availability window list & show ──
+  'windowList.manageHolidays': { pt: 'Gerir feriados', en: 'Manage holidays' },
+  'windowList.newEmergencyAvailability': { pt: 'Nova Disponibilidade de Emergência', en: 'New Emergency Availability' },
+  'windowList.newWindow': { pt: 'Nova janela de disponibilidade', en: 'New availability window' },
+  'windowList.statusOpen': { pt: 'Aberta', en: 'Open' },
+  'windowList.statusClosed': { pt: 'Fechada', en: 'Closed' },
+  'windowList.upcomingHolidays': { pt: 'Próximos feriados', en: 'Upcoming holidays' },
+  'windowList.overlapRuleInfo': {
+    pt: 'Pode estar aberta uma janela por categoria em qualquer dia: uma janela de Emergência e uma de Apoio Local podem cobrir as mesmas datas ao mesmo tempo, duas de Emergência não podem. Cada janela tem os seus próprios turnos, definidos quando é aberta.',
+    en: 'One window per category can be open over any given day: an Emergency and a Local Support window may cover the same dates at once, two Emergency windows may not. Each window carries its own shifts, set when it is opened.',
+  },
+  'windowList.colWindow': { pt: 'Janela', en: 'Window' },
+  'windowShow.pageTitle': { pt: 'Janela de disponibilidade', en: 'Availability window' },
+  'windowShow.rolesHeading': { pt: 'Funções para a escala', en: 'Roles for the schedule' },
+  'windowShow.closeButton': { pt: 'Fechar janela', en: 'Close window' },
+  'windowShow.closeConfirmTitle': { pt: 'Fechar janela de disponibilidade?', en: 'Close availability window?' },
+  'windowShow.closeConfirmBody': {
+    pt: 'Deixam de ser aceites submissões para %{window} (%{dates}) depois de esta janela ser fechada. Esta ação não pode ser desfeita.',
+    en: 'Submissions will no longer be accepted for %{window} (%{dates}) once this window is closed. This cannot be undone.',
+  },
+  'windowShow.closeStatsSummary': {
+    pt: '%{submitted} de %{total} pessoas responderam; %{declined} recusaram; %{pending} ainda sem resposta.',
+    en: '%{submitted} of %{total} personnel submitted; %{declined} declined; %{pending} still pending.',
+  },
+  'windowShow.closeFailed': { pt: 'Não foi possível fechar a janela.', en: 'Could not close the window.' },
+  'windowShow.closed': { pt: 'Janela de disponibilidade fechada', en: 'Availability window closed' },
+  'windowShow.buildSchedule': { pt: 'Construir escala', en: 'Build schedule' },
+  'windowShow.openSchedule': { pt: 'Abrir escala', en: 'Open schedule' },
+  'windowShow.startScheduleFailed': {
+    pt: 'Não foi possível iniciar a escala.',
+    en: 'Could not start the schedule.',
+  },
+
+  // ── Window create form ──
+  'windowCreate.pageTitle': { pt: 'Abrir janela de disponibilidade', en: 'Open availability window' },
+  'windowCreate.info': {
+    pt: 'Os voluntários vão poder submeter disponibilidade para cada turno abaixo. Os dias começam na grelha padrão — um turno das 20:00–24:00 nos dias úteis, e 08:00–16:00 mais 16:00–24:00 aos fins de semana e feriados, cada um precisando de uma viatura — e podes alterar qualquer parte disto. As viaturas contam para a cobertura: um turno só conta como coberto quando todas as viaturas têm condutor.',
+    en: 'Volunteers will be able to submit availability for every shift below. Days start on the default grid — one 20:00–24:00 shift on working days, and 08:00–16:00 plus 16:00–24:00 on weekends and holidays, each needing one vehicle — and you can change any of it. Vehicles matter for coverage: a shift counts as covered only once every vehicle has a driver.',
+  },
+  'windowCreate.nameOptional': { pt: 'Nome (opcional)', en: 'Name (optional)' },
+  'windowCreate.nameHelp': {
+    pt: 'Mostrado aos voluntários junto às datas. Não precisa de ser único.',
+    en: 'Shown to volunteers alongside the dates. Need not be unique.',
+  },
+  'windowCreate.startDate': { pt: 'Data de início', en: 'Start date' },
+  'windowCreate.endDate': { pt: 'Data de fim', en: 'End date' },
+  'windowCreate.pickDates': { pt: 'Escolhe uma data de início e uma de fim.', en: 'Pick a start and an end date.' },
+  'windowCreate.endBeforeStart': {
+    pt: 'A data de fim tem de ser igual ou posterior à data de início.',
+    en: 'End date must be on or after the start date.',
+  },
+  'windowCreate.rangeTooLong': {
+    pt: 'Uma janela pode ter, no máximo, %{max} dias (esta tem %{length}).',
+    en: 'A window may span at most %{max} days (this one spans %{length}).',
+  },
+  'windowCreate.overlapCheckFailed': {
+    pt: 'Não foi possível verificar as janelas sobre estas datas',
+    en: 'Could not check for windows over these dates',
+  },
+  'windowCreate.calendarLoadFailed': { pt: 'Não foi possível carregar o calendário.', en: 'Could not load the calendar.' },
+  'windowCreate.openOverlapError': {
+    pt: 'Já existe uma janela de disponibilidade de %{category} aberta sobre estas datas (%{windows}). Fecha-a primeiro, ou escolhe datas que ela não cubra. Janelas de categorias diferentes podem sobrepor-se livremente.',
+    en: 'An availability window for %{category} is already open over these dates (%{windows}). Close it first, or pick dates it does not cover. Windows of a different category may overlap freely.',
+  },
+  'windowCreate.closedOverlapWarning': {
+    pt: 'Uma janela de disponibilidade de %{category} já fechada cobre já estas datas (%{windows}). Ainda podes abrir esta — confirma abaixo se era mesmo pedir disponibilidade outra vez para as mesmas datas.',
+    en: 'A closed availability window for %{category} already covers these dates (%{windows}). You can still open this one — check below if you meant to ask for the same dates again.',
+  },
+  'windowCreate.acknowledgeOverlap': {
+    pt: 'Abrir outra janela de %{category} sobre estas datas',
+    en: 'Open another %{category} window over these dates',
+  },
+  'windowCreate.rolesHint': {
+    pt: 'Nunca se pergunta a um voluntário qual função quer — ele diz apenas quando pode estar presente. Estas são as funções às quais o vais associar quando construíres a escala desta janela.',
+    en: 'Volunteers are never asked which role they want — they say only when they can be there. These are the roles you will assign them to when building the schedule for this window.',
+  },
+  'windowCreate.shiftsPerDayHeading': { pt: 'Turnos por dia', en: 'Shifts per day' },
+  'windowCreate.dayErrorsOne': {
+    pt: 'Um dia tem turnos que não podem ser gravados — vê a mensagem nessa linha.',
+    en: 'One day has shifts that cannot be saved — see the message on that row.',
+  },
+  'windowCreate.dayErrorsMany': {
+    pt: '%{count} dias têm turnos que não podem ser gravados — vê as mensagens nessas linhas.',
+    en: '%{count} days have shifts that cannot be saved — see the messages on those rows.',
+  },
+  'windowCreate.daysShiftsSummary': {
+    pt: '%{days} dias · %{shifts} turnos no total',
+    en: '%{days} days · %{shifts} shifts in total',
+  },
+  'windowCreate.saved': { pt: 'Janela de disponibilidade aberta', en: 'Availability window opened' },
+  'windowCreate.saveFailed': { pt: 'Não foi possível abrir a janela', en: 'Could not open the window' },
+
+  // ── Holidays ──
+  'holidayList.help': {
+    pt: 'Um feriado faz esse dia da semana começar no padrão de fim de semana quando uma janela é aberta: dois turnos (08:00–16:00 e 16:00–24:00) em vez do único turno de 20:00–24:00 dos dias úteis. As janelas já abertas mantêm os turnos que lhes foram dados.',
+    en: 'A holiday makes that weekday start on the weekend pattern when a window is opened: two shifts (08:00–16:00 and 16:00–24:00) instead of the single 20:00–24:00 workday shift. Windows already open keep the shifts they were given.',
+  },
+  'holidayList.backToWindows': { pt: 'Janelas de disponibilidade', en: 'Availability windows' },
+  'holidayList.addHoliday': { pt: 'Adicionar feriado', en: 'Add holiday' },
+  'holidayList.nameHelp': {
+    pt: 'P. ex.: Implantação da República',
+    en: 'e.g. Implantação da República',
+  },
+
+  // ── Availability matrix ──
+  'matrix.heading': { pt: 'Matriz de cobertura', en: 'Coverage matrix' },
+  'matrix.eligiblePersonnel': { pt: '%{count} elegíveis', en: '%{count} eligible personnel' },
+  'matrix.capacityNote': {
+    pt: 'Um turno escalado tem no máximo %{max} pessoas, e cada viatura que precisa tem de ter condutor — esta matriz mostra quem está disponível, não quem acaba escalado.',
+    en: 'A scheduled shift holds at most %{max} people, and every vehicle it needs has to have a driver — this matrix shows everyone who is available, not who ends up scheduled.',
+  },
+  'matrix.reminderTooltip': {
+    pt: 'Os avisos precisam de um canal de notificação (email/SMS), que este sistema ainda não tem.',
+    en: 'Reminders need a notification channel (email/SMS), which this system does not have yet.',
+  },
+  'matrix.noVehicleNeeded': { pt: 'nenhuma viatura necessária', en: 'no vehicle needed' },
+  'matrix.vehicleNeededOne': { pt: '%{count} viatura necessária', en: '%{count} vehicle needed' },
+  'matrix.vehicleNeededMany': { pt: '%{count} viaturas necessárias', en: '%{count} vehicles needed' },
+  'matrix.availableCount': { pt: '%{count} disponíveis', en: '%{count} available' },
+  'matrix.driverCountOne': { pt: '%{count} condutor', en: '%{count} driver' },
+  'matrix.driverCountMany': { pt: '%{count} condutores', en: '%{count} drivers' },
+  'matrix.cellAriaLabel': {
+    pt: '%{label}: %{available} disponíveis, %{drivers} condutores, %{vehicles}, %{level}',
+    en: '%{label}: %{available} available, %{drivers} drivers, %{vehicles}, %{level}',
+  },
+  'matrix.driverBadgeTooltipOne': {
+    pt: '%{count} condutor certificado disponível, %{vehicles}',
+    en: '%{count} certified driver available, %{vehicles}',
+  },
+  'matrix.driverBadgeTooltipMany': {
+    pt: '%{count} condutores certificados disponíveis, %{vehicles}',
+    en: '%{count} certified drivers available, %{vehicles}',
+  },
+  'matrix.legendRed': {
+    pt: 'Menos de 2 disponíveis, ou sem condutor para uma viatura',
+    en: 'Fewer than 2 available, or no driver for a vehicle',
+  },
+  'matrix.legendYellow': {
+    pt: 'Alguma cobertura, mas não há condutor para todas as viaturas',
+    en: 'Some cover, but not a driver for every vehicle',
+  },
+  'matrix.legendGreen': {
+    pt: '%{max}+ disponíveis, um condutor por viatura',
+    en: '%{max}+ available, one driver per vehicle',
+  },
+  'matrix.legendDriversVehicles': {
+    pt: 'Condutores disponíveis / viaturas necessárias',
+    en: 'Drivers available / vehicles needed',
+  },
+  'matrix.submitted': { pt: 'Submetido', en: 'Submitted' },
+  'matrix.declined': { pt: 'Recusado', en: 'Declined' },
+  'matrix.notYetResponded': { pt: 'Ainda sem resposta', en: 'Not yet responded' },
+  'matrix.declinedThisWindow': { pt: 'Recusou esta janela', en: 'Declined this window' },
+  'matrix.nobody': { pt: 'Ninguém.', en: 'Nobody.' },
+  'matrix.nobodyAvailable': { pt: 'Ninguém disponível.', en: 'Nobody available.' },
+  'matrix.sendReminder': { pt: 'Enviar aviso', en: 'Send reminder' },
+  'matrix.colDate': { pt: 'Data', en: 'Date' },
+  'matrix.historicalView': {
+    pt: 'Vista histórica — esta janela está fechada e já não aceita submissões.',
+    en: 'Historical view — this window is closed and no longer accepts submissions.',
+  },
+  'matrix.selectCoverageHint': {
+    pt: 'Seleciona um valor de cobertura para ver quem está disponível nesse turno.',
+    en: 'Select a coverage figure to see who is available for that shift.',
+  },
+  'matrix.drillDownHeading': {
+    pt: '%{day} · %{shift} — %{count} disponíveis',
+    en: '%{day} · %{shift} — %{count} available',
+  },
+  'matrix.nobodyDeclared': {
+    pt: 'Ninguém declarou disponibilidade para este turno.',
+    en: 'Nobody has declared availability for this shift.',
+  },
+  'matrix.loadFailed': { pt: 'Não foi possível carregar a matriz de cobertura.', en: 'Could not load the coverage matrix.' },
+  'matrix.exportFailed': { pt: 'Não foi possível exportar a matriz de cobertura.', en: 'Could not export the coverage matrix.' },
+
+  // ── Schedule list ──
+  'scheduleList.buildSchedulePrompt': { pt: 'Construir escala para uma janela…', en: 'Build schedule for a window…' },
+  'scheduleList.overlapRuleInfo': {
+    pt: 'Uma escala é construída para uma janela de disponibilidade, sobre as datas dessa janela e contra os seus próprios turnos e funções. Janelas de categorias diferentes são escaladas de forma independente, mesmo quando as suas datas se sobrepõem.',
+    en: "A schedule is built for one availability window, over that window's dates and against its own shifts and roles. Windows of different categories are scheduled independently, even when their dates overlap.",
+  },
+  'scheduleList.colWindow': { pt: 'Janela', en: 'Window' },
+  'scheduleList.colDates': { pt: 'Datas', en: 'Dates' },
+  'scheduleList.colSlotsFilled': { pt: 'Lugares preenchidos', en: 'Slots filled' },
+  'scheduleList.colFlags': { pt: 'Alertas', en: 'Flags' },
+  'scheduleList.gapsTooltip': { pt: '%{count} turnos sem escala completa', en: '%{count} shifts are not fully crewed' },
+  'scheduleList.overridesTooltip': {
+    pt: '%{count} atribuições foram acordadas fora da plataforma',
+    en: '%{count} assignments were agreed off-platform',
+  },
+  'scheduleShow.pageTitle': { pt: 'Escala', en: 'Schedule' },
+
+  // ── Schedule board ──
+  'scheduleBoard.crewColumn': { pt: 'Equipa', en: 'Crew' },
+  'scheduleBoard.heading': { pt: 'Escala', en: 'Schedule' },
+  'scheduleBoard.loadFailed': { pt: 'Não foi possível carregar a escala.', en: 'Could not load the schedule.' },
+  'scheduleBoard.removeFailed': { pt: 'Não foi possível remover essa atribuição.', en: 'Could not remove that assignment.' },
+  'scheduleBoard.exportFailed': { pt: 'Não foi possível exportar a escala.', en: 'Could not export the schedule.' },
+  'scheduleBoard.autofillButton': { pt: 'Preencher automaticamente', en: 'Auto-fill draft' },
+  'scheduleBoard.publishButton': { pt: 'Publicar escala', en: 'Publish schedule' },
+  'scheduleBoard.windowOpenInfo': {
+    pt: 'Esta janela ainda está aberta — a disponibilidade pode mudar. Podes continuar a construir; quem responder mais tarde aparece na lista de atribuição.',
+    en: 'This window is still open — availability may still change. You can keep building; anyone who submits later shows up in the assign list.',
+  },
+  'scheduleBoard.publishedCoordinatorInfo': {
+    pt: 'Publicada — toda a gente pode ver esta escala, e as pessoas podem inscrever-se num lugar aberto. As alterações que fizeres agora ficam visíveis de imediato.',
+    en: 'Published — everyone can see this rota, and members can add themselves to an open place. Changes you make now are live straight away.',
+  },
+  'scheduleBoard.publishedMemberInfo': {
+    pt: 'Podes inscrever-te em qualquer lugar aberto que consigas cobrir. Depois de estares num turno não te podes remover — pede a um coordenador, que pode arranjar substituição ao mesmo tempo.',
+    en: 'You can add yourself to any open place you are able to cover. Once you are on a shift you cannot take yourself off — ask a coordinator, who can arrange cover at the same time.',
+  },
+  'scheduleBoard.statSlotsFilled': { pt: 'Lugares preenchidos', en: 'Slots filled' },
+  'scheduleBoard.statShiftsWithGaps': { pt: 'Turnos com falhas', en: 'Shifts with gaps' },
+  'scheduleBoard.statOverrides': { pt: 'Substituições', en: 'Overrides' },
+  'scheduleBoard.doubleBooked': { pt: 'Duplamente escalado', en: 'Double-booked' },
+  'scheduleBoard.conflictLine': {
+    pt: '%{user}, %{day} — também em %{window}, %{label}',
+    en: '%{user}, %{day} — also on %{window}, %{label}',
+  },
+  'scheduleBoard.noShifts': {
+    pt: 'Esta janela não tem turnos, por isso não há nada para escalar.',
+    en: 'This window has no shifts, so there is nothing to schedule.',
+  },
+  'scheduleBoard.footerCoordinator': {
+    pt: 'As pessoas que submeteram disponibilidade para um turno são oferecidas primeiro. Qualquer outra pessoa ainda pode ser escalada — a substituição é muitas vezes acordada por telefone — e fica registada como uma excepção.',
+    en: 'People who submitted availability for a shift are offered first. Anyone else can still be assigned — cover is often agreed by phone — and is recorded as an override.',
+  },
+  'scheduleBoard.footerMember': {
+    pt: 'Só são oferecidos os lugares que consegues cobrir: as funções de condutor exigem a certificação de condutor, e uma função já preenchida ao seu limite não aceita mais ninguém.',
+    en: 'Only places you are able to cover are offered: the driver posts need the driver certification, and a role that is already full cannot take another person.',
+  },
+  'scheduleBoard.colDate': { pt: 'Data', en: 'Date' },
+  'scheduleBoard.colShift': { pt: 'Turno', en: 'Shift' },
+  'scheduleBoard.noRolesOnWindow': { pt: 'sem funções nesta janela', en: 'no roles on this window' },
+  'scheduleBoard.certRequiredSuffix': { pt: ' · %{certification} obrigatória', en: ' · %{certification} required' },
+  'scheduleBoard.assign': { pt: 'Atribuir', en: 'Assign' },
+  'scheduleBoard.addMe': { pt: 'Inscrever-me', en: 'Add me' },
+  'scheduleBoard.assignToVerb': { pt: 'Atribuir a', en: 'Assign to' },
+  'scheduleBoard.addMeToVerb': { pt: 'Inscrever-me em', en: 'Add me to' },
+  'scheduleBoard.placeLabel': { pt: '%{verb} %{where}', en: '%{verb} %{where}' },
+  'scheduleBoard.placeLabelWithIndex': {
+    pt: '%{verb} %{where} — lugar %{index} de %{total}',
+    en: '%{verb} %{where} — place %{index} of %{total}',
+  },
+  'scheduleBoard.legendAssigned': { pt: 'Atribuído a partir de disponibilidade submetida', en: 'Assigned from submitted availability' },
+  'scheduleBoard.legendSignedUp': { pt: 'Inscrito pela própria pessoa', en: 'Signed up by the person themselves' },
+  'scheduleBoard.legendOverride': { pt: 'Substituição — não submeteu disponibilidade para este turno', en: 'Override — did not submit for this shift' },
+  'scheduleBoard.legendException': {
+    pt: 'Atribuído sem a certificação obrigatória da função, com justificação',
+    en: "Assigned without the post's required certification, with a reason",
+  },
+  'scheduleBoard.legendLapsed': { pt: 'Certificação caducou desde que este turno foi construído', en: 'Certification lapsed since this shift was built' },
+  'scheduleBoard.legendOpen': { pt: 'Um lugar aberto, um por cada pessoa que a função ainda quer', en: 'An open place, one per person the role still wants' },
+  'scheduleBoard.legendGap': { pt: 'Sem condutor para as viaturas deste turno', en: 'No driver for the vehicles this shift crews' },
+  'scheduleBoard.legendConflict': { pt: 'Duplamente escalado', en: 'Double-booked' },
+  'scheduleBoard.legendNameChip': { pt: 'Nome', en: 'Name' },
+  'scheduleBoard.doubleBookedTooltip': {
+    pt: 'Duplamente escalado: também em %{window}, %{label}',
+    en: 'Double-booked: also on %{window}, %{label}',
+  },
+  'scheduleBoard.lapsedTooltip': {
+    pt: '%{certification} caducou desde que este turno foi construído — mantido de propósito, mas vale a pena rever.',
+    en: '%{certification} lapsed since this shift was built — kept on purpose, but worth reviewing.',
+  },
+  'scheduleBoard.exceptionTooltip': {
+    pt: 'Atribuído por excepção — não tem %{certification}. %{reason}',
+    en: 'Assigned by exception — does not hold %{certification}. %{reason}',
+  },
+  'scheduleBoard.signedUpTooltip': { pt: 'Inscrito em %{date}', en: 'Signed up on %{date}' },
+  'scheduleBoard.overrideTooltip': {
+    pt: 'Substituição — não submeteu disponibilidade para este turno. Atribuído por %{assigner} em %{date}',
+    en: 'Override — did not submit for this shift. Assigned by %{assigner} on %{date}',
+  },
+  'scheduleBoard.aCoordinator': { pt: 'um coordenador', en: 'a coordinator' },
+  'scheduleBoard.submittedTooltip': { pt: 'Submeteu disponibilidade para este turno', en: 'Submitted availability for this shift' },
+  'scheduleBoard.noLongerAvailableTooltip': { pt: 'Já não está disponível para este turno', en: 'No longer available for this shift' },
+  'scheduleBoard.suffixSignedUp': { pt: ', inscrito', en: ', signed up' },
+  'scheduleBoard.suffixOverride': { pt: ', substituição', en: ', override' },
+  'scheduleBoard.suffixDoubleBooked': { pt: ', duplamente escalado', en: ', double-booked' },
+  'scheduleBoard.suffixCertification': { pt: ', certificação %{issue}', en: ', certification %{issue}' },
+  'scheduleBoard.issueException': { pt: 'em excepção', en: 'exception' },
+  'scheduleBoard.issueLapsed': { pt: 'caducada', en: 'lapsed' },
+  'scheduleBoard.suffixYou': { pt: ', tu', en: ', you' },
+
+  // ── Assign / autofill / create schedule / publish / sign-up dialogs ──
+  'assignDialog.alreadyOnRole': {
+    pt: 'Já está em %{role} neste turno — uma pessoa não pode ocupar dois lugares',
+    en: 'Already on %{role} for this shift — one person cannot hold two places',
+  },
+  'assignDialog.alreadyOnShift': { pt: 'Já está neste turno', en: 'Already on this shift' },
+  'assignDialog.loadFailed': { pt: 'Não foi possível carregar quem está disponível.', en: 'Could not load who is available.' },
+  'assignDialog.assignFailed': { pt: 'Não foi possível atribuir essa pessoa.', en: 'Could not assign that person.' },
+  'assignDialog.declinedNote': {
+    pt: 'Declarou não ter disponibilidade nesta janela — acorda isso com a pessoa antes de atribuir',
+    en: 'Declared no availability this window — agree it with them before assigning',
+  },
+  'assignDialog.pendingNote': { pt: 'Ainda não respondeu a esta janela', en: 'Has not responded to this window' },
+  'assignDialog.dutyCountOne': { pt: '%{count} serviço já nesta janela', en: '%{count} duty already this window' },
+  'assignDialog.dutyCountMany': { pt: '%{count} serviços já nesta janela', en: '%{count} duties already this window' },
+  'assignDialog.declinedChip': { pt: 'Recusou', en: 'Declined' },
+  'assignDialog.missingCertChip': { pt: 'Sem %{certification}', en: 'No %{certification}' },
+  'assignDialog.assigned': { pt: 'Atribuído', en: 'Assigned' },
+  'assignDialog.assignByException': { pt: 'Atribuir por excepção', en: 'Assign by exception' },
+  'assignDialog.assignAsOverride': { pt: 'Atribuir como substituição', en: 'Assign as override' },
+  'assignDialog.title': { pt: 'Atribuir · %{role}', en: 'Assign · %{role}' },
+  'assignDialog.requiresChip': { pt: 'Requer %{certification}', en: 'Requires %{certification}' },
+  'assignDialog.searchLabel': { pt: 'Procurar pessoal', en: 'Search personnel' },
+  'assignDialog.availableHeading': { pt: 'Disponível para este turno', en: 'Available for this shift' },
+  'assignDialog.nobodySubmitted': {
+    pt: 'Ninguém submeteu disponibilidade para este turno.',
+    en: 'Nobody submitted availability for this shift.',
+  },
+  'assignDialog.hideOthers': { pt: 'Ocultar todos os outros', en: 'Hide everyone else' },
+  'assignDialog.showOthers': { pt: 'Mostrar todos os outros (%{count})', en: 'Show everyone else (%{count})' },
+  'assignDialog.overrideWarning': {
+    pt: 'Ninguém aqui submeteu disponibilidade para este turno. Atribuir alguém fica registado como uma substituição, com o teu nome e a hora.',
+    en: 'Nobody here submitted availability for this shift. Assigning them is recorded as an override, stamped with your name and the time.',
+  },
+  'assignDialog.certRequirementNote': {
+    pt: 'As pessoas que não têm a certificação %{certification} aparecem na lista em vez de serem ocultadas — atribuir uma delas precisa de uma justificação, registada contra a atribuição.',
+    en: 'People who do not hold the %{certification} certification are listed rather than hidden — assigning one of them needs a reason, recorded against the assignment.',
+  },
+  'assignDialog.closeButton': { pt: 'Fechar', en: 'Close' },
+  'assignDialog.confirmTitle': {
+    pt: 'Atribuir sem a certificação obrigatória?',
+    en: 'Assign without the required certification?',
+  },
+  'assignDialog.requiresCertBold': { pt: '%{role} requer %{certification}.', en: '%{role} requires %{certification}.' },
+  'assignDialog.exceptionNote': {
+    pt: '%{person} não a tem. Atribuir esta pessoa fica registado como uma excepção contra este turno, com o teu nome e a hora.',
+    en: '%{person} does not hold it. Assigning them is recorded as an exception against this shift, stamped with your name and the time.',
+  },
+  'assignDialog.reasonLabel': { pt: 'Justificação', en: 'Reason' },
+  'assignDialog.reasonHelp': {
+    pt: 'Aparece na escala e na versão publicada.',
+    en: 'Shown on the board and on the published schedule.',
+  },
+  'autofillDialog.title': { pt: 'Preenchimento automático', en: 'Auto-fill draft' },
+  'autofillDialog.description': {
+    pt: 'Preenche a partir da disponibilidade submetida, condutores primeiro para cada viatura que um turno precisa. Ninguém que não tenha submetido é colocado.',
+    en: 'Fills from submitted availability, drivers first for every vehicle a shift needs. Nobody who did not submit is placed.',
+  },
+  'autofillDialog.failed': { pt: 'Não foi possível preencher o rascunho.', en: 'Could not fill the draft.' },
+  'autofillDialog.result': {
+    pt: 'Colocadas %{placed}. %{unfilled} lugares ainda abertos, %{withoutDriver} turnos sem condutor para todas as viaturas.',
+    en: 'Placed %{placed}. %{unfilled} slots still open, %{withoutDriver} shifts without a driver for every vehicle.',
+  },
+  'autofillDialog.modeEmptyTitle': { pt: 'Só lugares vazios', en: 'Only empty slots' },
+  'autofillDialog.modeEmptyHint': {
+    pt: 'Mantém quem colocaste à mão, incluindo substituições.',
+    en: 'Keeps everyone you placed by hand, overrides included.',
+  },
+  'autofillDialog.modeReplaceTitle': { pt: 'Limpar e voltar a preencher tudo', en: 'Clear and refill everything' },
+  'autofillDialog.modeReplaceHint': {
+    pt: 'Descarta primeiro todas as atribuições atuais desta escala.',
+    en: 'Discards every current assignment on this schedule first.',
+  },
+  'autofillDialog.fairnessTitle': { pt: 'Repartir serviços de forma equilibrada', en: 'Spread duties evenly' },
+  'autofillDialog.fairnessHint': {
+    pt: 'Prefere quem tem menos serviços até agora nesta janela.',
+    en: 'Prefers whoever has fewest duties so far in this window.',
+  },
+  'autofillDialog.currentFill': {
+    pt: '%{filled} de %{required} lugares estão preenchidos agora.',
+    en: '%{filled} of %{required} slots are filled right now.',
+  },
+  'autofillDialog.replaceWarning': {
+    pt: 'Tudo o que está agora nesta escala vai ser descartado primeiro.',
+    en: 'Everything currently on this schedule will be discarded first.',
+  },
+  'autofillDialog.emptyOnlyNote': {
+    pt: 'Só os lugares vazios vão ser tocados.',
+    en: 'Only the empty slots will be touched.',
+  },
+  'autofillDialog.fillButton': { pt: 'Preencher rascunho', en: 'Fill draft' },
+  'createScheduleDialog.title': { pt: 'Construir uma escala', en: 'Build a schedule' },
+  'createScheduleDialog.loadFailed': {
+    pt: 'Não foi possível carregar as janelas de disponibilidade.',
+    en: 'Could not load the availability windows.',
+  },
+  'createScheduleDialog.startFailed': { pt: 'Não foi possível iniciar essa escala.', en: 'Could not start that schedule.' },
+  'createScheduleDialog.noneAvailable': {
+    pt: 'Todas as janelas de disponibilidade já têm uma escala. Abre primeiro uma nova janela.',
+    en: 'Every availability window already has a schedule. Open a new window first.',
+  },
+  'createScheduleDialog.stillOpen': { pt: 'ainda aberta', en: 'still open' },
+  'publishDialog.title': { pt: 'Publicar escala', en: 'Publish schedule' },
+  'publishDialog.failed': { pt: 'Não foi possível publicar a escala.', en: 'Could not publish the schedule.' },
+  'publishDialog.slotsFilled': { pt: '%{filled} de %{required} lugares preenchidos', en: '%{filled} of %{required} slots filled' },
+  'publishDialog.shiftsWithGaps': { pt: '%{count} turnos com falhas', en: '%{count} shifts with gaps' },
+  'publishDialog.withoutDriverNote': { pt: '%{count} sem condutor', en: '%{count} without a driver' },
+  'publishDialog.overridesCount': { pt: '%{count} substituições', en: '%{count} overrides' },
+  'publishDialog.agreedOffPlatform': { pt: 'acordadas fora da plataforma', en: 'agreed off-platform' },
+  'publishDialog.certExceptions': { pt: '%{count} excepções de certificação', en: '%{count} certification exceptions' },
+  'publishDialog.eachWithReason': { pt: 'cada uma com justificação registada', en: 'each with a recorded reason' },
+  'publishDialog.lapsedCerts': {
+    pt: '%{count} certificações caducadas desde a atribuição',
+    en: '%{count} certifications lapsed since assignment',
+  },
+  'publishDialog.worthSecondLook': {
+    pt: 'vale a pena rever, não é uma decisão que alguém tenha tomado',
+    en: 'worth a second look, not a decision anyone made',
+  },
+  'publishDialog.doubleBookedCount': { pt: '%{count} duplamente escalados', en: '%{count} double-booked' },
+  'publishDialog.gapsAllowedInfo': {
+    pt: 'É permitido publicar com falhas — a escala é muitas vezes acabada por telefone. O pessoal atribuído vê os seus serviços de imediato, e podes continuar a editar depois.',
+    en: 'Publishing with gaps is allowed — the roster is often finished by phone. Assigned personnel see their duties straight away, and you can keep editing afterwards.',
+  },
+  'publishDialog.publishButton': { pt: 'Publicar', en: 'Publish' },
+  'signUpDialog.title': { pt: 'Inscrever-te neste turno?', en: 'Add yourself to this shift?' },
+  'signUpDialog.failed': { pt: 'Não foi possível adicionar-te a este turno.', en: 'Could not add you to this shift.' },
+  'signUpDialog.vehicleCountOne': { pt: '%{count} viatura', en: '%{count} vehicle' },
+  'signUpDialog.vehicleCountMany': { pt: '%{count} viaturas', en: '%{count} vehicles' },
+  'signUpDialog.cannotUndo': {
+    pt: 'Depois de te inscreveres, não te podes remover — pede a um coordenador, que pode arranjar substituição ao mesmo tempo.',
+    en: 'Once you are on, you cannot take yourself off — ask a coordinator, who can arrange cover at the same time.',
+  },
+
+  // ── My duties & my availability ──
+  'myDuties.pageTitle': { pt: 'As minhas escalas', en: 'My Duties' },
+  'myDuties.heading': { pt: 'As minhas escalas', en: 'My Duties' },
+  'myDuties.subheading': {
+    pt: 'Turnos para os quais estás escalado em escalas publicadas. O que disseste ao coordenador que estavas livre para fazer fica em A minha disponibilidade.',
+    en: 'Shifts you are scheduled for on published rotas. What you told the coordinator you were free for lives on My Availability.',
+  },
+  'myDuties.loadFailed': { pt: 'Não foi possível carregar as tuas escalas.', en: 'Could not load your duties.' },
+  'myDuties.upcoming': { pt: 'Próximas', en: 'Upcoming' },
+  'myDuties.noneScheduled': {
+    pt: 'Ainda não tens serviços escalados. Um coordenador vai publicar aqui a próxima escala.',
+    en: 'No duties scheduled yet. A coordinator will publish the next rota here.',
+  },
+  'myDuties.pastDuties': { pt: 'Serviços passados', en: 'Past duties' },
+  'myDuties.vehicleCountOne': { pt: '%{count} viatura', en: '%{count} vehicle' },
+  'myDuties.vehicleCountMany': { pt: '%{count} viaturas', en: '%{count} vehicles' },
+  'myAvailability.pageTitle': { pt: 'A minha disponibilidade', en: 'My availability' },
+  'myAvailability.heading': { pt: 'A minha disponibilidade', en: 'My availability' },
+  'myAvailability.weekendHoliday': { pt: 'Fim de semana / feriado', en: 'Weekend / holiday' },
+  'myAvailability.legendHint': {
+    pt: 'Cada dia mostra os turnos que o teu coordenador definiu para ele.',
+    en: "Each day shows the shifts your coordinator set for it.",
+  },
+  'myAvailability.windowPickerLabel': { pt: 'Janela de disponibilidade', en: 'Availability window' },
+  'myAvailability.prevMonth': { pt: 'Mês anterior', en: 'Previous month' },
+  'myAvailability.nextMonth': { pt: 'Mês seguinte', en: 'Next month' },
+  'myAvailability.notSelected': { pt: 'Não selecionado', en: 'Not selected' },
+  'myAvailability.allShifts': { pt: 'Todos os turnos', en: 'All shifts' },
+  'myAvailability.selectedOfTotal': { pt: '%{selected} de %{total}', en: '%{selected} of %{total}' },
+  'myAvailability.noShiftsOnDay': { pt: 'Sem turnos neste dia.', en: 'No shifts on this day.' },
+  'myAvailability.windowOpenChip': { pt: 'Janela aberta', en: 'Window open' },
+  'myAvailability.windowClosedChip': { pt: 'Janela fechada', en: 'Window closed' },
+  'myAvailability.noWindowHeading': {
+    pt: 'Não há nenhuma janela de disponibilidade aberta',
+    en: 'No availability window is currently open',
+  },
+  'myAvailability.noWindowBody': {
+    pt: "Um coordenador vai abrir aqui a próxima janela de disponibilidade. Verifica de novo em breve — vais poder submeter a tua disponibilidade para cada dia e turno quando ela abrir.",
+    en: "A coordinator will open the next availability window here. Check back soon — you'll be able to submit your availability for each day and shift once it opens.",
+  },
+  'myAvailability.noAvailabilityLabel': { pt: 'Não tenho disponibilidade nesta janela', en: 'I have no availability this window' },
+  'myAvailability.noAvailabilityHint': {
+    pt: "Avisa o teu coordenador que não podes fazer nenhum turno entre %{dates}, em vez de deixares todos os dias sem resposta.",
+    en: "Let your coordinator know you can't take any shifts between %{dates}, instead of leaving every day unanswered.",
+  },
+  'myAvailability.declinedHeading': {
+    pt: "Avisámos que não estás disponível nesta janela",
+    en: "You've told us you're not available this window",
+  },
+  'myAvailability.declinedBody': {
+    pt: 'O teu coordenador pode ver isto. Se isso mudar antes de a janela fechar, desmarca a caixa acima e seleciona os teus turnos disponíveis.',
+    en: 'Your coordinator can see this. If that changes before the window closes, uncheck the box above and select your available shifts.',
+  },
+  'myAvailability.canSubmitInfo': {
+    pt: 'Seleciona os turnos que consegues cobrir. Podes alterar em qualquer momento antes de a janela fechar — só os dias entre %{dates} estão abertos para submissão.',
+    en: 'Select the shifts you can cover. You can amend anytime before the window closes — only days between %{dates} are open for submission.',
+  },
+  'myAvailability.closedInfo': {
+    pt: 'Esta janela está fechada. A mostrar as tuas submissões finais para referência — não podem ser feitas mais alterações.',
+    en: 'This window is closed. Showing your final submissions for reference — no further changes can be made.',
+  },
+  'myAvailability.saveHint': {
+    pt: 'As alterações são gravadas para a janela toda de uma vez.',
+    en: 'Changes are saved for the whole window at once.',
+  },
+  'myAvailability.saveButton': { pt: 'Gravar disponibilidade', en: 'Save availability' },
+  'myAvailability.savedNotify': { pt: 'Disponibilidade gravada', en: 'Availability saved' },
+  'myAvailability.saveFailedNotify': { pt: 'Não foi possível gravar a tua disponibilidade', en: 'Could not save your availability' },
+  'myAvailability.declinedNotify': {
+    pt: 'O teu coordenador foi informado de que não estás disponível nesta janela',
+    en: 'Your coordinator has been told you are not available this window',
+  },
+  'myAvailability.undeclinedNotify': { pt: 'Podes voltar a selecionar os teus turnos', en: 'You can select your shifts again' },
+  'myAvailability.declineFailedNotify': { pt: 'Não foi possível atualizar a tua resposta', en: 'Could not update your response' },
+  'myAvailability.loadFailedNotify': { pt: 'Não foi possível carregar a tua disponibilidade.', en: 'Could not load your availability.' },
 } as const;
 
 export type MessageKey = keyof typeof MESSAGES;

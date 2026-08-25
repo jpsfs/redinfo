@@ -37,6 +37,8 @@ import {
 } from '@redinfo/shared';
 import { apiDownload, apiFetch } from '../../api';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { Translate } from '../../i18n/labels';
+import { useT } from '../../i18n/useT';
 import { formatDayLabel, formatDateRange } from '../../utils/dates';
 import { WindowIdentity } from './WindowIdentity';
 
@@ -72,14 +74,6 @@ const shiftKey = (shift: { startMinute: number; endMinute: number }) =>
  */
 const MAX_TABLE_COLUMNS = 6;
 
-const CAPACITY_NOTE =
-  `A scheduled shift holds at most ${SHIFT_MAX_PEOPLE} people, and every vehicle it ` +
-  'needs has to have a driver — this matrix shows everyone who is available, not who ' +
-  'ends up scheduled.';
-
-const REMINDER_TOOLTIP =
-  'Reminders need a notification channel (email/SMS), which this system does not have yet.';
-
 interface SelectedCell {
   date: string;
   /** Slot within its own day — only unique together with the date. */
@@ -89,10 +83,15 @@ interface SelectedCell {
 // ─── Small pieces ──────────────────────────────────────────────────────────────
 
 /** e.g. "2 vehicles needed", "no vehicle needed". */
-const describeVehicles = (vehiclesNeeded: number) =>
+const describeVehicles = (t: Translate, vehiclesNeeded: number) =>
   vehiclesNeeded === 0
-    ? 'no vehicle needed'
-    : `${vehiclesNeeded} vehicle${vehiclesNeeded === 1 ? '' : 's'} needed`;
+    ? t('matrix.noVehicleNeeded')
+    : t(vehiclesNeeded === 1 ? 'matrix.vehicleNeededOne' : 'matrix.vehicleNeededMany', {
+        count: vehiclesNeeded,
+      });
+
+const driverCountLabel = (t: Translate, count: number) =>
+  t(count === 1 ? 'matrix.driverCountOne' : 'matrix.driverCountMany', { count });
 
 const CoveragePill = ({
   cell,
@@ -103,20 +102,22 @@ const CoveragePill = ({
   selected?: boolean;
   onClick?: () => void;
 }) => {
+  const t = useT();
   const style = COVERAGE_STYLE[cell.coverageLevel];
   return (
     <Tooltip
-      title={`${cell.availableCount} available, ${cell.driverCount} driver${
-        cell.driverCount === 1 ? '' : 's'
-      }, ${describeVehicles(cell.vehiclesNeeded)}`}
+      title={`${t('matrix.availableCount', { count: cell.availableCount })}, ${driverCountLabel(t, cell.driverCount)}, ${describeVehicles(t, cell.vehiclesNeeded)}`}
     >
       <Box
         component={onClick ? 'button' : 'span'}
         onClick={onClick}
-        aria-label={
-          `${cell.label}: ${cell.availableCount} available, ${cell.driverCount} drivers, ` +
-          `${describeVehicles(cell.vehiclesNeeded)}, ${cell.coverageLevel}`
-        }
+        aria-label={t('matrix.cellAriaLabel', {
+          label: cell.label,
+          available: cell.availableCount,
+          drivers: cell.driverCount,
+          vehicles: describeVehicles(t, cell.vehiclesNeeded),
+          level: cell.coverageLevel,
+        })}
         sx={{
           display: 'inline-flex',
           alignItems: 'center',
@@ -152,30 +153,34 @@ const DriverBadge = ({
 }: {
   count: number;
   vehiclesNeeded: number;
-}) => (
-  <Tooltip
-    title={`${count} certified driver${count === 1 ? '' : 's'} available, ${describeVehicles(
-      vehiclesNeeded,
-    )}`}
-  >
-    <Chip
-      size="small"
-      icon={<DirectionsCarIcon fontSize="small" />}
-      label={vehiclesNeeded > 0 ? `${count}/${vehiclesNeeded}` : count}
-      variant="outlined"
-      color={
-        vehiclesNeeded === 0
-          ? 'default'
-          : count === 0
-            ? 'error'
-            : count < vehiclesNeeded
-              ? 'warning'
-              : 'success'
-      }
-      sx={{ height: 22, '& .MuiChip-label': { px: 0.75, fontWeight: 700 } }}
-    />
-  </Tooltip>
-);
+}) => {
+  const t = useT();
+  return (
+    <Tooltip
+      title={t(count === 1 ? 'matrix.driverBadgeTooltipOne' : 'matrix.driverBadgeTooltipMany', {
+        count,
+        vehicles: describeVehicles(t, vehiclesNeeded),
+      })}
+    >
+      <Chip
+        size="small"
+        icon={<DirectionsCarIcon fontSize="small" />}
+        label={vehiclesNeeded > 0 ? `${count}/${vehiclesNeeded}` : count}
+        variant="outlined"
+        color={
+          vehiclesNeeded === 0
+            ? 'default'
+            : count === 0
+              ? 'error'
+              : count < vehiclesNeeded
+                ? 'warning'
+                : 'success'
+        }
+        sx={{ height: 22, '& .MuiChip-label': { px: 0.75, fontWeight: 700 } }}
+      />
+    </Tooltip>
+  );
+};
 
 const PersonChip = ({ person }: { person: AvailabilityMatrixPerson }) => (
   <Chip
@@ -188,51 +193,63 @@ const PersonChip = ({ person }: { person: AvailabilityMatrixPerson }) => (
   />
 );
 
-const DayBadges = ({ day }: { day: AvailabilityMatrixDay }) => (
-  <>
-    {day.isHoliday && (
-      <Chip
-        size="small"
-        color="warning"
-        variant="outlined"
-        label={day.holidayName ? `Holiday · ${day.holidayName}` : 'Holiday'}
-      />
-    )}
-    {day.isWeekend && !day.isHoliday && <Chip size="small" variant="outlined" label="Weekend" />}
-  </>
-);
-
-const CoverageLegend = () => (
-  <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap sx={{ mb: 1.5 }}>
-    {(
-      [
-        ['red', 'Fewer than 2 available, or no driver for a vehicle'],
-        ['yellow', 'Some cover, but not a driver for every vehicle'],
-        ['green', `${SHIFT_MAX_PEOPLE}+ available, one driver per vehicle`],
-      ] as const
-    ).map(([level, label]) => (
-      <Box key={level} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-        <Box
-          sx={{
-            width: 12,
-            height: 12,
-            borderRadius: '50%',
-            backgroundColor: COVERAGE_STYLE[level].fg,
-          }}
+const DayBadges = ({ day }: { day: AvailabilityMatrixDay }) => {
+  const t = useT();
+  return (
+    <>
+      {day.isHoliday && (
+        <Chip
+          size="small"
+          color="warning"
+          variant="outlined"
+          label={
+            day.holidayName
+              ? t('dayType.holidayNamed', { name: day.holidayName })
+              : t('dayType.holiday')
+          }
         />
+      )}
+      {day.isWeekend && !day.isHoliday && (
+        <Chip size="small" variant="outlined" label={t('dayType.weekend')} />
+      )}
+    </>
+  );
+};
+
+const CoverageLegend = () => {
+  const t = useT();
+  return (
+    <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap sx={{ mb: 1.5 }}>
+      {(
+        [
+          ['red', t('matrix.legendRed')],
+          ['yellow', t('matrix.legendYellow')],
+          ['green', t('matrix.legendGreen', { max: SHIFT_MAX_PEOPLE })],
+        ] as const
+      ).map(([level, label]) => (
+        <Box key={level} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+          <Box
+            sx={{
+              width: 12,
+              height: 12,
+              borderRadius: '50%',
+              backgroundColor: COVERAGE_STYLE[level].fg,
+            }}
+          />
+          <Typography variant="caption" color="text.secondary">
+            {label}
+          </Typography>
+        </Box>
+      ))}
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
+        <DirectionsCarIcon fontSize="small" sx={{ color: 'text.secondary' }} />
         <Typography variant="caption" color="text.secondary">
-          {label}
+          {t('matrix.legendDriversVehicles')}
         </Typography>
       </Box>
-    ))}
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
-      <DirectionsCarIcon fontSize="small" sx={{ color: 'text.secondary' }} />
-      <Typography variant="caption" color="text.secondary">
-        Drivers available / vehicles needed
-      </Typography>
-    </Box>
-  </Stack>
-);
+    </Stack>
+  );
+};
 
 const ResponseStat = ({
   value,
@@ -261,37 +278,40 @@ const FollowUpCard = ({
   title: string;
   people: AvailabilityMatrixPerson[];
   action?: React.ReactNode;
-}) => (
-  <Card variant="outlined" sx={{ flex: 1, minWidth: 240 }}>
-    <CardContent>
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          gap: 1,
-          mb: 1,
-        }}
-      >
-        <Typography variant="subtitle2">
-          {title} ({people.length})
-        </Typography>
-        {action}
-      </Box>
-      {people.length === 0 ? (
-        <Typography variant="body2" color="text.secondary">
-          Nobody.
-        </Typography>
-      ) : (
-        <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
-          {people.map((person) => (
-            <PersonChip key={person.id} person={person} />
-          ))}
-        </Stack>
-      )}
-    </CardContent>
-  </Card>
-);
+}) => {
+  const t = useT();
+  return (
+    <Card variant="outlined" sx={{ flex: 1, minWidth: 240 }}>
+      <CardContent>
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 1,
+            mb: 1,
+          }}
+        >
+          <Typography variant="subtitle2">
+            {title} ({people.length})
+          </Typography>
+          {action}
+        </Box>
+        {people.length === 0 ? (
+          <Typography variant="body2" color="text.secondary">
+            {t('matrix.nobody')}
+          </Typography>
+        ) : (
+          <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+            {people.map((person) => (
+              <PersonChip key={person.id} person={person} />
+            ))}
+          </Stack>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
 
 // ─── Desktop table ─────────────────────────────────────────────────────────────
 
@@ -305,13 +325,15 @@ const DesktopMatrix = ({
   columns: ShiftColumn[];
   selected: SelectedCell | null;
   onSelect: (cell: SelectedCell | null) => void;
-}) => (
+}) => {
+  const t = useT();
+  return (
   <TableContainer component={Paper} variant="outlined">
     <Table size="small">
       <TableHead>
         <TableRow sx={{ backgroundColor: 'grey.100' }}>
           <TableCell sx={{ minWidth: 190 }}>
-            <strong>Date</strong>
+            <strong>{t('matrix.colDate')}</strong>
           </TableCell>
           {columns.map((column) => (
             <TableCell key={column.key}>
@@ -375,7 +397,8 @@ const DesktopMatrix = ({
       </TableBody>
     </Table>
   </TableContainer>
-);
+  );
+};
 
 // ─── Mobile day cards ──────────────────────────────────────────────────────────
 
@@ -386,6 +409,7 @@ const MobileMatrix = ({
   matrix: AvailabilityMatrixResponse;
   peopleById: Map<string, AvailabilityMatrixPerson>;
 }) => {
+  const t = useT();
   const [expanded, setExpanded] = useState<string | null>(matrix.days[0]?.date ?? null);
 
   return (
@@ -415,7 +439,7 @@ const MobileMatrix = ({
                       ))}
                   </Stack>
                 </Box>
-                <IconButton size="small" aria-label={isExpanded ? 'Collapse' : 'Expand'}>
+                <IconButton size="small" aria-label={isExpanded ? t('common.collapse') : t('common.expand')}>
                   {isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
                 </IconButton>
               </Box>
@@ -449,7 +473,7 @@ const MobileMatrix = ({
                       >
                         {shift.availableUserIds.length === 0 ? (
                           <Typography variant="caption" color="text.secondary">
-                            Nobody available.
+                            {t('matrix.nobodyAvailable')}
                           </Typography>
                         ) : (
                           shift.availableUserIds.map((id) => {
@@ -478,6 +502,7 @@ const MobileMatrix = ({
  * hasn't answered.
  */
 export const AvailabilityMatrix = ({ windowId }: { windowId?: string }) => {
+  const t = useT();
   const isMobile = useIsMobile();
   const [matrix, setMatrix] = useState<AvailabilityMatrixResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -492,11 +517,11 @@ export const AvailabilityMatrix = ({ windowId }: { windowId?: string }) => {
       const query = windowId ? `?windowId=${encodeURIComponent(windowId)}` : '';
       setMatrix(await apiFetch<AvailabilityMatrixResponse>(`/availability/matrix${query}`));
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not load the coverage matrix.');
+      setError(e instanceof Error ? e.message : t('matrix.loadFailed'));
     } finally {
       setLoading(false);
     }
-  }, [windowId]);
+  }, [windowId, t]);
 
   useEffect(() => {
     void load();
@@ -511,7 +536,7 @@ export const AvailabilityMatrix = ({ windowId }: { windowId?: string }) => {
         `availability-${windowId ?? 'current'}.csv`,
       );
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not export the coverage matrix.');
+      setError(e instanceof Error ? e.message : t('matrix.exportFailed'));
     } finally {
       setExporting(false);
     }
@@ -576,10 +601,10 @@ export const AvailabilityMatrix = ({ windowId }: { windowId?: string }) => {
         }}
       >
         <Box>
-          <Typography variant="h6">Coverage matrix</Typography>
+          <Typography variant="h6">{t('matrix.heading')}</Typography>
           <Typography variant="body2" color="text.secondary">
             {formatDateRange(matrix.window.startDate, matrix.window.endDate)} ·{' '}
-            {matrix.responseStats.total} eligible personnel
+            {t('matrix.eligiblePersonnel', { count: matrix.responseStats.total })}
           </Typography>
           <Box sx={{ mt: 0.5 }}>
             <WindowIdentity
@@ -595,41 +620,41 @@ export const AvailabilityMatrix = ({ windowId }: { windowId?: string }) => {
           disabled={exporting}
           onClick={() => void handleExport()}
         >
-          Export CSV
+          {t('common.exportCsv')}
         </Button>
       </Box>
 
       <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap sx={{ mb: 2 }}>
         <ResponseStat
           value={matrix.responseStats.submitted}
-          label="Submitted"
+          label={t('matrix.submitted')}
           color="#2E7D32"
         />
-        <ResponseStat value={matrix.responseStats.declined} label="Declined" color="#616161" />
+        <ResponseStat value={matrix.responseStats.declined} label={t('matrix.declined')} color="#616161" />
         <ResponseStat
           value={matrix.responseStats.pending}
-          label="Not yet responded"
+          label={t('matrix.notYetResponded')}
           color="#B26A00"
         />
       </Stack>
 
       <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap sx={{ mb: 2 }}>
         <FollowUpCard
-          title="Not yet responded"
+          title={t('matrix.notYetResponded')}
           people={pending}
           action={
             isOpen && pending.length > 0 ? (
-              <Tooltip title={REMINDER_TOOLTIP}>
+              <Tooltip title={t('matrix.reminderTooltip')}>
                 <span>
                   <Button size="small" startIcon={<NotificationsNoneIcon />} disabled>
-                    Send reminder
+                    {t('matrix.sendReminder')}
                   </Button>
                 </span>
               </Tooltip>
             ) : undefined
           }
         />
-        <FollowUpCard title="Declined this window" people={declined} />
+        <FollowUpCard title={t('matrix.declinedThisWindow')} people={declined} />
       </Stack>
 
       <Typography
@@ -637,12 +662,12 @@ export const AvailabilityMatrix = ({ windowId }: { windowId?: string }) => {
         color="text.secondary"
         sx={{ display: 'block', mb: 2 }}
       >
-        {CAPACITY_NOTE}
+        {t('matrix.capacityNote', { max: SHIFT_MAX_PEOPLE })}
       </Typography>
 
       {!isOpen && (
         <Alert severity="info" sx={{ mb: 2 }}>
-          Historical view — this window is closed and no longer accepts submissions.
+          {t('matrix.historicalView')}
         </Alert>
       )}
 
@@ -661,13 +686,16 @@ export const AvailabilityMatrix = ({ windowId }: { windowId?: string }) => {
           {selectedCell && (
             <Paper variant="outlined" sx={{ mt: 1, p: 2, backgroundColor: 'grey.50' }}>
               <Typography variant="subtitle2" gutterBottom>
-                {formatDayLabel(selectedCell.day.date)} · {selectedCell.shift.label} —{' '}
-                {selectedCell.shift.availableCount} available
+                {t('matrix.drillDownHeading', {
+                  day: formatDayLabel(selectedCell.day.date),
+                  shift: selectedCell.shift.label,
+                  count: selectedCell.shift.availableCount,
+                })}
               </Typography>
               <Divider sx={{ mb: 1 }} />
               {selectedCell.shift.availableUserIds.length === 0 ? (
                 <Typography variant="body2" color="text.secondary">
-                  Nobody has declared availability for this shift.
+                  {t('matrix.nobodyDeclared')}
                 </Typography>
               ) : (
                 <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
@@ -685,7 +713,7 @@ export const AvailabilityMatrix = ({ windowId }: { windowId?: string }) => {
               color="text.secondary"
               sx={{ display: 'block', mt: 1 }}
             >
-              Select a coverage figure to see who is available for that shift.
+              {t('matrix.selectCoverageHint')}
             </Typography>
           )}
         </>

@@ -41,6 +41,7 @@ import { WindowCategoryChip } from './WindowIdentity';
  * fine and the only question is which month.
  */
 export const WindowListActions = () => {
+  const t = useT();
   const [emergencyOpen, setEmergencyOpen] = useState(false);
 
   return (
@@ -51,16 +52,16 @@ export const WindowListActions = () => {
         size="small"
         startIcon={<EventBusyIcon />}
       >
-        Manage holidays
+        {t('windowList.manageHolidays')}
       </Button>
       <Button
         size="small"
         startIcon={<BoltIcon />}
         onClick={() => setEmergencyOpen(true)}
       >
-        New Emergency Availability
+        {t('windowList.newEmergencyAvailability')}
       </Button>
-      <CreateButton label="New availability window" />
+      <CreateButton label={t('windowList.newWindow')} />
       <EmergencyWindowDialog
         open={emergencyOpen}
         onClose={() => setEmergencyOpen(false)}
@@ -69,12 +70,14 @@ export const WindowListActions = () => {
   );
 };
 
-export const WindowStatusChip = ({ status }: { status?: string }) =>
-  status === AvailabilityWindowStatus.OPEN ? (
-    <Chip size="small" label="Open" color="success" variant="outlined" />
+export const WindowStatusChip = ({ status }: { status?: string }) => {
+  const t = useT();
+  return status === AvailabilityWindowStatus.OPEN ? (
+    <Chip size="small" label={t('windowList.statusOpen')} color="success" variant="outlined" />
   ) : (
-    <Chip size="small" label="Closed" variant="outlined" />
+    <Chip size="small" label={t('windowList.statusClosed')} variant="outlined" />
   );
+};
 
 const actorName = (actor?: { firstName: string; lastName: string } | null) =>
   actor ? `${actor.firstName} ${actor.lastName}` : '—';
@@ -84,6 +87,7 @@ const actorName = (actor?: { firstName: string; lastName: string } | null) =>
  * against it, since a holiday inside the window doubles that day's shifts.
  */
 const UpcomingHolidays = () => {
+  const t = useT();
   const [holidays, setHolidays] = useState<Holiday[] | null>(null);
 
   useEffect(() => {
@@ -107,7 +111,7 @@ const UpcomingHolidays = () => {
     <Card variant="outlined" sx={{ mb: 2 }}>
       <CardContent>
         <Typography variant="subtitle2" gutterBottom>
-          Upcoming holidays
+          {t('windowList.upcomingHolidays')}
         </Typography>
         <Stack spacing={0.5}>
           {holidays.map((holiday) => (
@@ -123,7 +127,7 @@ const UpcomingHolidays = () => {
           ))}
         </Stack>
         <Button component={Link} to="/holidays" size="small" sx={{ mt: 1, px: 0 }}>
-          Manage holidays
+          {t('windowList.manageHolidays')}
         </Button>
       </CardContent>
     </Card>
@@ -138,7 +142,6 @@ export const AvailabilityWindowList = () => {
     <SelectInput
       key="category"
       source="category"
-      label="Category"
       alwaysOn
       choices={AVAILABILITY_WINDOW_CATEGORIES.map((category) => ({
         id: category,
@@ -148,10 +151,9 @@ export const AvailabilityWindowList = () => {
     <SelectInput
       key="status"
       source="status"
-      label="Status"
       choices={[
-        { id: AvailabilityWindowStatus.OPEN, name: 'Open' },
-        { id: AvailabilityWindowStatus.CLOSED, name: 'Closed' },
+        { id: AvailabilityWindowStatus.OPEN, name: t('windowList.statusOpen') },
+        { id: AvailabilityWindowStatus.CLOSED, name: t('windowList.statusClosed') },
       ]}
     />,
   ];
@@ -166,38 +168,36 @@ export const AvailabilityWindowList = () => {
     <>
       <UpcomingHolidays />
       <Alert severity="info" sx={{ mb: 2 }}>
-        One window per category can be open over any given day: an Emergency and a
-        Local Support window may cover the same dates at once, two Emergency windows
-        may not. Each window carries its own shifts, set when it is opened.
+        {t('windowList.overlapRuleInfo')}
       </Alert>
       <Datagrid rowClick="show" bulkActionButtons={false}>
         <FunctionField
-          label="Window"
+          label={t('windowList.colWindow')}
           render={(record: AvailabilityWindow) =>
             formatDateRange(record.startDate, record.endDate)
           }
         />
         <FunctionField
-          label="Category"
+          source="category"
           render={(record: AvailabilityWindow) => (
             <WindowCategoryChip category={record.category} />
           )}
         />
-        <TextField source="name" label="Name" emptyText="—" />
+        <TextField source="name" emptyText="—" />
         <FunctionField
-          label="Status"
+          source="status"
           render={(record: AvailabilityWindow) => <WindowStatusChip status={record.status} />}
         />
         <FunctionField
-          label="Opened by"
+          source="openedBy"
           render={(record: AvailabilityWindow) => actorName(record.openedBy)}
         />
-        <DateField source="openedAt" label="Opened at" showTime />
+        <DateField source="openedAt" showTime />
         <FunctionField
-          label="Closed by"
+          source="closedBy"
           render={(record: AvailabilityWindow) => actorName(record.closedBy)}
         />
-        <DateField source="closedAt" label="Closed at" showTime emptyText="—" />
+        <DateField source="closedAt" showTime emptyText="—" />
       </Datagrid>
     </>
   </List>

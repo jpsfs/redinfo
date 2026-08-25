@@ -15,6 +15,7 @@ import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import HowToRegIcon from '@mui/icons-material/HowToReg';
 import { formatRoleCapacity, ScheduleAssignment } from '@redinfo/shared';
 import { apiFetch } from '../../api';
+import { useT } from '../../i18n/useT';
 import { formatDayLabel } from '../../utils/dates';
 import { AssignTarget } from './AssignPersonDialog';
 
@@ -38,6 +39,7 @@ export const SignUpDialog = ({
   onClose: () => void;
   onSignedUp: () => void;
 }) => {
+  const t = useT();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -56,7 +58,7 @@ export const SignUpDialog = ({
       });
       onSignedUp();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not add you to this shift.');
+      setError(e instanceof Error ? e.message : t('signUpDialog.failed'));
     } finally {
       setBusy(false);
     }
@@ -68,7 +70,7 @@ export const SignUpDialog = ({
     <Dialog open onClose={busy ? undefined : onClose} fullWidth maxWidth="xs">
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, pb: 1 }}>
         <HowToRegIcon color="primary" />
-        Add yourself to this shift?
+        {t('signUpDialog.title')}
       </DialogTitle>
 
       <DialogContent>
@@ -83,7 +85,7 @@ export const SignUpDialog = ({
         </Typography>
 
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>
-          <Chip size="small" variant="outlined" label={target.role?.name ?? 'Crew'} />
+          <Chip size="small" variant="outlined" label={target.role?.name ?? t('scheduleBoard.crewColumn')} />
           {target.role && (
             <Chip
               size="small"
@@ -96,20 +98,22 @@ export const SignUpDialog = ({
               size="small"
               variant="outlined"
               icon={<DirectionsCarIcon fontSize="small" />}
-              label={`${vehiclesNeeded} vehicle${vehiclesNeeded === 1 ? '' : 's'}`}
+              label={t(
+                vehiclesNeeded === 1 ? 'signUpDialog.vehicleCountOne' : 'signUpDialog.vehicleCountMany',
+                { count: vehiclesNeeded },
+              )}
             />
           )}
         </Stack>
 
         <Alert severity="info" sx={{ mt: 2 }}>
-          Once you are on, you cannot take yourself off — ask a coordinator, who can
-          arrange cover at the same time.
+          {t('signUpDialog.cannotUndo')}
         </Alert>
       </DialogContent>
 
       <DialogActions>
         <Button onClick={onClose} disabled={busy}>
-          Cancel
+          {t('action.cancel')}
         </Button>
         <Button
           variant="contained"
@@ -117,7 +121,7 @@ export const SignUpDialog = ({
           disabled={busy}
           startIcon={busy ? <CircularProgress size={16} color="inherit" /> : <HowToRegIcon />}
         >
-          Add me
+          {t('scheduleBoard.addMe')}
         </Button>
       </DialogActions>
     </Dialog>

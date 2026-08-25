@@ -25,6 +25,7 @@ import {
   WindowRoleSpec,
 } from '@redinfo/shared';
 import { apiFetch } from '../../api';
+import { useT } from '../../i18n/useT';
 import {
   addMonths,
   formatDateRange,
@@ -69,6 +70,7 @@ export const EmergencyWindowDialog = ({
   /** Injectable so the default month is testable. */
   today?: Date;
 }) => {
+  const t = useT();
   const notify = useNotify();
   const refresh = useRefresh();
 
@@ -123,7 +125,10 @@ export const EmergencyWindowDialog = ({
         body: { year, month, acknowledgeOverlap: acknowledged || undefined },
       });
       notify(
-        `${windowName} opened for ${formatDateRange(bounds.startDate, bounds.endDate)}`,
+        t('emergencyDialog.opened', {
+          window: windowName,
+          dates: formatDateRange(bounds.startDate, bounds.endDate),
+        }),
         { type: 'success' },
       );
       onClose();
@@ -131,7 +136,7 @@ export const EmergencyWindowDialog = ({
       // so the coordinator stays where they were.
       refresh();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not open the window.');
+      setError(e instanceof Error ? e.message : t('emergencyDialog.saveFailed'));
     } finally {
       setSaving(false);
     }
@@ -139,26 +144,22 @@ export const EmergencyWindowDialog = ({
 
   return (
     <Dialog open={open} onClose={saving ? undefined : onClose} maxWidth="xs" fullWidth>
-      <DialogTitle>New emergency availability</DialogTitle>
+      <DialogTitle>{t('emergencyDialog.title')}</DialogTitle>
       <DialogContent>
         {/* One string rather than interpolated JSX, so the sentence is one text
             node: the crew is part of the prose, not a field beside it. */}
         <DialogContentText sx={{ mb: 2 }}>
-          {'Opens a window covering a whole month, with the standard shifts: one ' +
-            '20:00–24:00 shift on working days, and 08:00–16:00 plus 16:00–24:00 on ' +
-            'weekends and holidays. Every shift asks for one vehicle, and the ' +
-            `schedule is built from the standard crew — ${describeRoles(EMERGENCY_ROLES)}, ` +
-            'one person each. To vary any of that, use the full editor instead.'}
+          {t('emergencyDialog.description', { crew: describeRoles(EMERGENCY_ROLES) })}
         </DialogContentText>
 
         <Stack direction="row" spacing={2}>
           <TextField
             select
             size="small"
-            label="Month"
+            label={t('emergencyDialog.month')}
             value={month}
             onChange={(event) => setMonth(Number(event.target.value))}
-            SelectProps={{ native: true, inputProps: { 'aria-label': 'Month' } }}
+            SelectProps={{ native: true, inputProps: { 'aria-label': t('emergencyDialog.month') } }}
             sx={{ flex: 1 }}
             InputLabelProps={{ shrink: true }}
           >
@@ -171,10 +172,10 @@ export const EmergencyWindowDialog = ({
           <TextField
             select
             size="small"
-            label="Year"
+            label={t('emergencyDialog.year')}
             value={year}
             onChange={(event) => setYear(Number(event.target.value))}
-            SelectProps={{ native: true, inputProps: { 'aria-label': 'Year' } }}
+            SelectProps={{ native: true, inputProps: { 'aria-label': t('emergencyDialog.year') } }}
             sx={{ width: 120 }}
             InputLabelProps={{ shrink: true }}
           >
@@ -198,14 +199,13 @@ export const EmergencyWindowDialog = ({
 
         {openOverlaps.length > 0 && (
           <Alert severity="error" sx={{ mt: 2 }}>
-            An Emergency window is already open over this month. Close it before opening
-            another one.
+            {t('emergencyDialog.openOverlap')}
           </Alert>
         )}
 
         {needsAcknowledgement && (
           <Alert severity="warning" sx={{ mt: 2 }}>
-            A closed Emergency window already covers these dates.
+            {t('emergencyDialog.closedOverlap')}
             <FormControlLabel
               sx={{ display: 'block', mt: 1 }}
               control={
@@ -214,7 +214,7 @@ export const EmergencyWindowDialog = ({
                   onChange={(event) => setAcknowledged(event.target.checked)}
                 />
               }
-              label="Ask for this month again anyway"
+              label={t('emergencyDialog.acknowledgeAgain')}
             />
           </Alert>
         )}
@@ -227,7 +227,7 @@ export const EmergencyWindowDialog = ({
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} disabled={saving}>
-          Cancel
+          {t('action.cancel')}
         </Button>
         <Button
           variant="contained"
@@ -236,7 +236,7 @@ export const EmergencyWindowDialog = ({
             saving || openOverlaps.length > 0 || (needsAcknowledgement && !acknowledged)
           }
         >
-          {saving ? <CircularProgress size={18} /> : 'Open window'}
+          {saving ? <CircularProgress size={18} /> : t('windowForm.openWindow')}
         </Button>
       </DialogActions>
     </Dialog>

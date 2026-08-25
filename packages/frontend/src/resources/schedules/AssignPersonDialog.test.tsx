@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { AdminContext, testDataProvider } from 'react-admin';
+import polyglotI18nProvider from 'ra-i18n-polyglot';
+import { messages } from '../../i18n/i18nProvider';
 import { AssignPersonDialog, AssignTarget } from './AssignPersonDialog';
 import { apiFetch } from '../../api';
 import {
@@ -16,6 +19,9 @@ const mockApiFetch = apiFetch as unknown as Mock;
 
 const [DRIVER_ROLE, , MEMBER_ROLE] = EMERGENCY_ROLES;
 
+// This screen has not gone through #180 phase 3 yet — English by convention.
+const i18nProvider = polyglotI18nProvider(messages, 'en');
+
 const target = (overrides: Partial<AssignTarget> = {}): AssignTarget => ({
   date: '2026-10-03',
   slot: 1,
@@ -28,13 +34,15 @@ function renderDialog(props: Partial<Parameters<typeof AssignPersonDialog>[0]> =
   const onAssigned = vi.fn();
   const onClose = vi.fn();
   render(
-    <AssignPersonDialog
-      scheduleId={SCHEDULE_ID}
-      target={target()}
-      onClose={onClose}
-      onAssigned={onAssigned}
-      {...props}
-    />,
+    <AdminContext dataProvider={testDataProvider()} i18nProvider={i18nProvider}>
+      <AssignPersonDialog
+        scheduleId={SCHEDULE_ID}
+        target={target()}
+        onClose={onClose}
+        onAssigned={onAssigned}
+        {...props}
+      />
+    </AdminContext>,
   );
   return { onAssigned, onClose };
 }

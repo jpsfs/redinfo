@@ -36,6 +36,7 @@ import {
   ShiftDefinition,
 } from '@redinfo/shared';
 import { apiFetch } from '../api';
+import { useT } from '../i18n/useT';
 import { WindowCategoryChip } from '../resources/availability/WindowIdentity';
 import { useIsMobile } from '../hooks/useIsMobile';
 import {
@@ -83,25 +84,28 @@ function sameSelection(a: Selection, b: Selection): boolean {
  * Only the day-type colours: the shifts themselves are set per day when the
  * window is opened, so no fixed times can be spelled out here.
  */
-const CalendarLegend = () => (
-  <Stack direction="row" spacing={3} flexWrap="wrap" useFlexGap sx={{ mb: 1.5 }}>
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-      <Box sx={{ width: 10, height: 10, borderRadius: '3px', backgroundColor: 'grey.300' }} />
+const CalendarLegend = () => {
+  const t = useT();
+  return (
+    <Stack direction="row" spacing={3} flexWrap="wrap" useFlexGap sx={{ mb: 1.5 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Box sx={{ width: 10, height: 10, borderRadius: '3px', backgroundColor: 'grey.300' }} />
+        <Typography variant="caption" color="text.secondary">
+          {t('dayType.workday')}
+        </Typography>
+      </Box>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+        <Box sx={{ width: 10, height: 10, borderRadius: '3px', backgroundColor: 'warning.main' }} />
+        <Typography variant="caption" color="text.secondary">
+          {t('myAvailability.weekendHoliday')}
+        </Typography>
+      </Box>
       <Typography variant="caption" color="text.secondary">
-        Workday
+        {t('myAvailability.legendHint')}
       </Typography>
-    </Box>
-    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-      <Box sx={{ width: 10, height: 10, borderRadius: '3px', backgroundColor: 'warning.main' }} />
-      <Typography variant="caption" color="text.secondary">
-        Weekend / holiday
-      </Typography>
-    </Box>
-    <Typography variant="caption" color="text.secondary">
-      Each day shows the shifts your coordinator set for it.
-    </Typography>
-  </Stack>
-);
+    </Stack>
+  );
+};
 
 const ShiftToggle = ({
   shift,
@@ -200,6 +204,7 @@ const MonthCalendar = ({
   onToggle: (date: string, slot: number) => void;
   onMonthChange: (month: string) => void;
 }) => {
+  const t = useT();
   const cells = useMemo(() => monthGrid(month), [month]);
 
   return (
@@ -217,7 +222,7 @@ const MonthCalendar = ({
       >
         <IconButton
           size="small"
-          aria-label="Previous month"
+          aria-label={t('myAvailability.prevMonth')}
           onClick={() => onMonthChange(addMonths(month, -1))}
         >
           <ChevronLeftIcon />
@@ -227,7 +232,7 @@ const MonthCalendar = ({
         </Typography>
         <IconButton
           size="small"
-          aria-label="Next month"
+          aria-label={t('myAvailability.nextMonth')}
           onClick={() => onMonthChange(addMonths(month, 1))}
         >
           <ChevronRightIcon />
@@ -292,7 +297,7 @@ const MonthCalendar = ({
                   {dayOfMonth(date)}
                 </Typography>
                 {pattern?.isHoliday && (
-                  <FlagIcon sx={{ fontSize: 13, color: 'warning.main' }} titleAccess="Holiday" />
+                  <FlagIcon sx={{ fontSize: 13, color: 'warning.main' }} titleAccess={t('dayType.holiday')} />
                 )}
               </Box>
 
@@ -350,6 +355,7 @@ const DayAgenda = ({
   editable: boolean;
   onToggle: (date: string, slot: number) => void;
 }) => {
+  const t = useT();
   const [expanded, setExpanded] = useState<string | null>(days[0]?.date ?? null);
 
   return (
@@ -359,10 +365,10 @@ const DayAgenda = ({
         const isExpanded = expanded === day.date;
         const summary =
           selected.length === 0
-            ? 'Not selected'
+            ? t('myAvailability.notSelected')
             : selected.length === day.shifts.length
-              ? 'All shifts'
-              : `${selected.length} of ${day.shifts.length}`;
+              ? t('myAvailability.allShifts')
+              : t('myAvailability.selectedOfTotal', { selected: selected.length, total: day.shifts.length });
 
         return (
           <Card key={day.date} variant="outlined">
@@ -385,11 +391,11 @@ const DayAgenda = ({
                         size="small"
                         color="warning"
                         variant="outlined"
-                        label={day.holidayName ?? 'Holiday'}
+                        label={day.holidayName ?? t('dayType.holiday')}
                       />
                     )}
                     {day.isWeekend && !day.isHoliday && (
-                      <Chip size="small" variant="outlined" label="Weekend" />
+                      <Chip size="small" variant="outlined" label={t('dayType.weekend')} />
                     )}
                     {!isExpanded && (
                       <Chip
@@ -401,7 +407,7 @@ const DayAgenda = ({
                     )}
                   </Stack>
                 </Box>
-                <IconButton size="small" aria-label={isExpanded ? 'Collapse' : 'Expand'}>
+                <IconButton size="small" aria-label={isExpanded ? t('common.collapse') : t('common.expand')}>
                   {isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
                 </IconButton>
               </Box>
@@ -410,7 +416,7 @@ const DayAgenda = ({
                 <Stack sx={{ mt: 1 }} divider={<Divider flexItem />}>
                   {day.shifts.length === 0 && (
                     <Typography variant="body2" color="text.secondary" sx={{ py: 0.5 }}>
-                      No shifts on this day.
+                      {t('myAvailability.noShiftsOnDay')}
                     </Typography>
                   )}
                   {day.shifts.map((shift) => (
@@ -470,19 +476,20 @@ const WindowPicker = ({
   disabled?: boolean;
   onChange: (windowId: string) => void;
 }) => {
+  const t = useT();
   if (windows.length < 2) return null;
 
   return (
     <TextField
       select
       size="small"
-      label="Availability window"
+      label={t('myAvailability.windowPickerLabel')}
       value={value}
       disabled={disabled}
       onChange={(event) => onChange(event.target.value)}
       SelectProps={{
         native: true,
-        inputProps: { 'aria-label': 'Availability window' },
+        inputProps: { 'aria-label': t('myAvailability.windowPickerLabel') },
       }}
       InputLabelProps={{ shrink: true }}
       sx={{ mb: 2, minWidth: 280, maxWidth: '100%' }}
@@ -505,6 +512,7 @@ const WindowPicker = ({
  * window" outright.
  */
 export const MyAvailabilityPage = () => {
+  const t = useT();
   const isMobile = useIsMobile();
   const notify = useNotify();
 
@@ -536,12 +544,12 @@ export const MyAvailabilityPage = () => {
         const query = windowId ? `?windowId=${encodeURIComponent(windowId)}` : '';
         applyResponse(await apiFetch<MyAvailabilityResponse>(`/availability/me${query}`));
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Could not load your availability.');
+        setError(e instanceof Error ? e.message : t('myAvailability.loadFailedNotify'));
       } finally {
         setLoading(false);
       }
     },
-    [applyResponse],
+    [applyResponse, t],
   );
 
   useEffect(() => {
@@ -609,9 +617,9 @@ export const MyAvailabilityPage = () => {
           body: { windowId: selectedId, entries: selectionToEntries(selection) },
         }),
       );
-      notify('Availability saved', { type: 'success' });
+      notify(t('myAvailability.savedNotify'), { type: 'success' });
     } catch (e) {
-      notify(e instanceof Error ? e.message : 'Could not save your availability', {
+      notify(e instanceof Error ? e.message : t('myAvailability.saveFailedNotify'), {
         type: 'error',
       });
     } finally {
@@ -630,12 +638,12 @@ export const MyAvailabilityPage = () => {
       );
       notify(
         nextDeclined
-          ? 'Your coordinator has been told you are not available this window'
-          : 'You can select your shifts again',
+          ? t('myAvailability.declinedNotify')
+          : t('myAvailability.undeclinedNotify'),
         { type: 'info' },
       );
     } catch (e) {
-      notify(e instanceof Error ? e.message : 'Could not update your response', {
+      notify(e instanceof Error ? e.message : t('myAvailability.declineFailedNotify'), {
         type: 'error',
       });
     } finally {
@@ -646,7 +654,7 @@ export const MyAvailabilityPage = () => {
   if (loading) {
     return (
       <Box sx={{ p: 3 }}>
-        <Title title="My availability" />
+        <Title title={t('myAvailability.pageTitle')} />
         <CircularProgress size={24} />
       </Box>
     );
@@ -654,17 +662,17 @@ export const MyAvailabilityPage = () => {
 
   return (
     <Box sx={{ p: { xs: 2, sm: 3 } }}>
-      <Title title="My availability" />
+      <Title title={t('myAvailability.pageTitle')} />
 
       <Box sx={{ mb: 2 }}>
-        <Typography variant="h5">My availability</Typography>
+        <Typography variant="h5">{t('myAvailability.heading')}</Typography>
         {window && (
           <Stack direction="row" spacing={1} alignItems="center" sx={{ mt: 1 }} flexWrap="wrap" useFlexGap>
             <Chip
               size="small"
               variant="outlined"
               color={canSubmit ? 'success' : 'default'}
-              label={canSubmit ? 'Window open' : 'Window closed'}
+              label={canSubmit ? t('myAvailability.windowOpenChip') : t('myAvailability.windowClosedChip')}
             />
             <WindowCategoryChip category={window.category} />
             {window.name && (
@@ -697,12 +705,10 @@ export const MyAvailabilityPage = () => {
           <CardContent sx={{ textAlign: 'center', py: 6 }}>
             <EventBusyIcon sx={{ fontSize: 48, color: 'grey.400', mb: 2 }} />
             <Typography variant="h6" gutterBottom>
-              No availability window is currently open
+              {t('myAvailability.noWindowHeading')}
             </Typography>
             <Typography variant="body2" color="text.secondary">
-              A coordinator will open the next availability window here. Check back soon —
-              you&apos;ll be able to submit your availability for each day and shift once it
-              opens.
+              {t('myAvailability.noWindowBody')}
             </Typography>
           </CardContent>
         </Card>
@@ -722,12 +728,12 @@ export const MyAvailabilityPage = () => {
               label={
                 <Box>
                   <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    I have no availability this window
+                    {t('myAvailability.noAvailabilityLabel')}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    Let your coordinator know you can&apos;t take any shifts between{' '}
-                    {formatDateRange(window.startDate, window.endDate)}, instead of leaving
-                    every day unanswered.
+                    {t('myAvailability.noAvailabilityHint', {
+                      dates: formatDateRange(window.startDate, window.endDate),
+                    })}
                   </Typography>
                 </Box>
               }
@@ -739,27 +745,25 @@ export const MyAvailabilityPage = () => {
       {window && declined && (
         <Alert severity="info" sx={{ mb: 2 }}>
           <Typography variant="body2" sx={{ fontWeight: 600 }}>
-            You&apos;ve told us you&apos;re not available this window
+            {t('myAvailability.declinedHeading')}
           </Typography>
           <Typography variant="body2">
-            Your coordinator can see this. If that changes before the window closes, uncheck
-            the box above and select your available shifts.
+            {t('myAvailability.declinedBody')}
           </Typography>
         </Alert>
       )}
 
       {window && !declined && canSubmit && (
         <Alert severity="info" sx={{ mb: 2 }}>
-          Select the shifts you can cover. You can amend anytime before the window closes —
-          only days between {formatDateRange(window.startDate, window.endDate)} are open for
-          submission.
+          {t('myAvailability.canSubmitInfo', {
+            dates: formatDateRange(window.startDate, window.endDate),
+          })}
         </Alert>
       )}
 
       {window && !canSubmit && (
         <Alert severity="info" sx={{ mb: 2 }}>
-          This window is closed. Showing your final submissions for reference — no further
-          changes can be made.
+          {t('myAvailability.closedInfo')}
         </Alert>
       )}
 
@@ -800,7 +804,7 @@ export const MyAvailabilityPage = () => {
               }}
             >
               <Typography variant="body2" color="text.secondary" sx={{ mr: 'auto' }}>
-                Changes are saved for the whole window at once.
+                {t('myAvailability.saveHint')}
               </Typography>
               <Button
                 variant="contained"
@@ -808,7 +812,7 @@ export const MyAvailabilityPage = () => {
                 onClick={() => void handleSave()}
                 disabled={saving || !dirty}
               >
-                Save availability
+                {t('myAvailability.saveButton')}
               </Button>
             </Box>
           )}

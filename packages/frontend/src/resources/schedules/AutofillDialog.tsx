@@ -19,6 +19,7 @@ import {
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import { AutofillMode, AutofillReport, ScheduleFillStats } from '@redinfo/shared';
 import { apiFetch } from '../../api';
+import { useT } from '../../i18n/useT';
 
 /**
  * Generating a first draft.
@@ -41,6 +42,7 @@ export const AutofillDialog = ({
   onClose: () => void;
   onFilled: () => void;
 }) => {
+  const t = useT();
   const [mode, setMode] = useState<AutofillMode>('EMPTY');
   const [fairness, setFairness] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -58,7 +60,7 @@ export const AutofillDialog = ({
       setReport(result);
       onFilled();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not fill the draft.');
+      setError(e instanceof Error ? e.message : t('autofillDialog.failed'));
     } finally {
       setBusy(false);
     }
@@ -68,13 +70,12 @@ export const AutofillDialog = ({
     <Dialog open={open} onClose={busy ? undefined : onClose} fullWidth maxWidth="xs">
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, pb: 1 }}>
         <AutoFixHighIcon color="primary" />
-        Auto-fill draft
+        {t('autofillDialog.title')}
       </DialogTitle>
 
       <DialogContent>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Fills from submitted availability, drivers first for every vehicle a shift
-          needs. Nobody who did not submit is placed.
+          {t('autofillDialog.description')}
         </Typography>
 
         {error && (
@@ -84,8 +85,11 @@ export const AutofillDialog = ({
         )}
         {report && !error && (
           <Alert severity="success" sx={{ mb: 2 }}>
-            Placed {report.placed}. {report.unfilled} slots still open,{' '}
-            {report.shiftsWithoutDriver} shifts without a driver for every vehicle.
+            {t('autofillDialog.result', {
+              placed: report.placed,
+              unfilled: report.unfilled,
+              withoutDriver: report.shiftsWithoutDriver,
+            })}
           </Alert>
         )}
 
@@ -100,10 +104,10 @@ export const AutofillDialog = ({
               label={
                 <>
                   <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    Only empty slots
+                    {t('autofillDialog.modeEmptyTitle')}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    Keeps everyone you placed by hand, overrides included.
+                    {t('autofillDialog.modeEmptyHint')}
                   </Typography>
                 </>
               }
@@ -114,10 +118,10 @@ export const AutofillDialog = ({
               label={
                 <>
                   <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    Clear and refill everything
+                    {t('autofillDialog.modeReplaceTitle')}
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    Discards every current assignment on this schedule first.
+                    {t('autofillDialog.modeReplaceHint')}
                   </Typography>
                 </>
               }
@@ -133,10 +137,10 @@ export const AutofillDialog = ({
           label={
             <>
               <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                Spread duties evenly
+                {t('autofillDialog.fairnessTitle')}
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                Prefers whoever has fewest duties so far in this window.
+                {t('autofillDialog.fairnessHint')}
               </Typography>
             </>
           }
@@ -144,20 +148,22 @@ export const AutofillDialog = ({
 
         <Paper variant="outlined" sx={{ p: 1.5, mt: 2, backgroundColor: 'grey.50' }}>
           <Typography variant="body2">
-            <strong>{stats.filledSlots}</strong> of <strong>{stats.requiredSlots}</strong> slots
-            are filled right now.
+            {t('autofillDialog.currentFill', {
+              filled: stats.filledSlots,
+              required: stats.requiredSlots,
+            })}
           </Typography>
           <Typography variant="caption" color="text.secondary">
             {mode === 'REPLACE'
-              ? 'Everything currently on this schedule will be discarded first.'
-              : 'Only the empty slots will be touched.'}
+              ? t('autofillDialog.replaceWarning')
+              : t('autofillDialog.emptyOnlyNote')}
           </Typography>
         </Paper>
       </DialogContent>
 
       <DialogActions>
         <Button onClick={onClose} disabled={busy}>
-          Cancel
+          {t('action.cancel')}
         </Button>
         <Button
           variant="contained"
@@ -165,7 +171,7 @@ export const AutofillDialog = ({
           disabled={busy}
           startIcon={busy ? <CircularProgress size={16} color="inherit" /> : undefined}
         >
-          Fill draft
+          {t('autofillDialog.fillButton')}
         </Button>
       </DialogActions>
     </Dialog>

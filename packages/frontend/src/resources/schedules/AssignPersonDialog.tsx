@@ -22,13 +22,15 @@ import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import {
   AvailabilityWindowRole,
-  CERTIFICATION_LABEL,
+  CertificationType,
   formatRoleCapacity,
   holdsCertification,
   ScheduleCandidate,
   ScheduleCandidatesResponse,
 } from '@redinfo/shared';
 import { apiFetch } from '../../api';
+import { certificationLabel, Translate } from '../../i18n/labels';
+import { useT } from '../../i18n/useT';
 import { formatDayLabel, toIsoDate } from '../../utils/dates';
 
 export interface AssignTarget {
@@ -50,19 +52,21 @@ const meetsRequirement = (person: ScheduleCandidate, role: AvailabilityWindowRol
   holdsCertification(person.certifications, role.requiredCertification, toIsoDate(new Date()));
 
 /** Why this person is not the obvious pick, in one line, or nothing. */
-const candidateNote = (person: ScheduleCandidate): string | null => {
+const candidateNote = (t: Translate, person: ScheduleCandidate): string | null => {
   if (person.alreadyOnShift) {
     return person.currentRoleName
-      ? `Already on ${person.currentRoleName} for this shift — one person cannot hold two places`
-      : 'Already on this shift';
+      ? t('assignDialog.alreadyOnRole', { role: person.currentRoleName })
+      : t('assignDialog.alreadyOnShift');
   }
   if (person.conflictLabel) return person.conflictLabel;
   if (person.availability === 'declined') {
-    return 'Declared no availability this window — agree it with them before assigning';
+    return t('assignDialog.declinedNote');
   }
-  if (person.availability === 'pending') return 'Has not responded to this window';
+  if (person.availability === 'pending') return t('assignDialog.pendingNote');
   return person.dutyCount > 0
-    ? `${person.dutyCount} ${person.dutyCount === 1 ? 'duty' : 'duties'} already this window`
+    ? t(person.dutyCount === 1 ? 'assignDialog.dutyCountOne' : 'assignDialog.dutyCountMany', {
+        count: person.dutyCount,
+      })
     : null;
 };
 
@@ -79,7 +83,8 @@ const CandidateRow = ({
   onAssign: () => void;
   busy: boolean;
 }) => {
-  const note = candidateNote(person);
+  const t = useT();
+  const note = candidateNote(t, person);
   const needsException = !meetsRequirement(person, role);
   return (
     <Box
@@ -104,11 +109,11 @@ const CandidateRow = ({
               variant="outlined"
               color="success"
               icon={<DirectionsCarIcon fontSize="small" />}
-              label="Driver"
+              label={certificationLabel(t, CertificationType.DRIVER)}
             />
           )}
           {person.availability === 'declined' && (
-            <Chip size="small" variant="outlined" color="warning" label="Declined" />
+            <Chip size="small" variant="outlined" color="warning" label={t('assignDialog.declinedChip')} />
           )}
           {needsException && role?.requiredCertification && (
             <Chip
@@ -116,7 +121,9 @@ const CandidateRow = ({
               variant="outlined"
               color="warning"
               icon={<WarningAmberIcon fontSize="small" />}
-              label={`No ${CERTIFICATION_LABEL[role.requiredCertification]}`}
+              label={t('assignDialog.missingCertChip', {
+                certification: certificationLabel(t, role.requiredCertification),
+              })}
             />
           )}
         </Stack>
@@ -135,12 +142,12 @@ const CandidateRow = ({
         onClick={onAssign}
       >
         {person.alreadyOnShift
-          ? 'Assigned'
+          ? t('assignDialog.assigned')
           : needsException
-            ? 'Assign by exception'
+            ? t('assignDialog.assignByException')
             : override
-              ? 'Assign as override'
-              : 'Assign'}
+              ? t('assignDialog.assignAsOverride')
+              : t('scheduleBoard.assign')}
       </Button>
     </Box>
   );
@@ -170,6 +177,7 @@ export const AssignPersonDialog = ({
   onClose: () => void;
   onAssigned: () => void;
 }) => {
+  const t = useT();
   const [candidates, setCandidates] = useState<ScheduleCandidatesResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -195,11 +203,11 @@ export const AssignPersonDialog = ({
         ),
       );
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not load who is available.');
+      setError(e instanceof Error ? e.message : t('assignDialog.loadFailed'));
     } finally {
       setLoading(false);
     }
-  }, [scheduleId, target]);
+  }, [scheduleId, target, t]);
 
   useEffect(() => {
     setSearch('');
@@ -229,7 +237,7 @@ export const AssignPersonDialog = ({
       setOverrideReason('');
       onAssigned();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not assign that person.');
+      setError(e instanceof Error ? e.message : t('assignDialog.assignFailed'));
     } finally {
       setBusy(false);
     }
@@ -261,7 +269,7 @@ export const AssignPersonDialog = ({
       <Dialog open onClose={onClose} fullWidth maxWidth="sm">
         <DialogTitle sx={{ pb: 1 }}>
           <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-            <span>Assign · {target.role?.name ?? 'Crew'}</span>
+            <span>{t('assignDialog.title', { role: target.role?.name ?? t('scheduleBoard.crewColumn') })}</span>
             {target.role && (
               <Chip size="small" variant="outlined" label={formatRoleCapacity(target.role.maxPeople)} />
             )}
@@ -270,7 +278,9 @@ export const AssignPersonDialog = ({
                 size="small"
                 variant="outlined"
                 color="warning"
-                label={`Requires ${CERTIFICATION_LABEL[target.role.requiredCertification]}`}
+                label={t('assignDialog.requiresChip', {
+                  certification: certificationLabel(t, target.role.requiredCertification),
+                })}
               />
             )}
           </Stack>
@@ -289,7 +299,7 @@ export const AssignPersonDialog = ({
           <TextField
             fullWidth
             size="small"
-            label="Search personnel"
+            label={t('assignDialog.searchLabel')}
             value={search}
             onChange={(event) => setSearch(event.target.value)}
             sx={{ mb: 2 }}
@@ -300,12 +310,12 @@ export const AssignPersonDialog = ({
           ) : (
             <>
               <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
-                <Typography variant="subtitle2">Available for this shift</Typography>
+                <Typography variant="subtitle2">{t('assignDialog.availableHeading')}</Typography>
                 <Chip size="small" variant="outlined" color="success" label={available.length} />
               </Stack>
               {available.length === 0 ? (
                 <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                  Nobody submitted availability for this shift.
+                  {t('assignDialog.nobodySubmitted')}
                 </Typography>
               ) : (
                 <Box sx={{ mb: 2 }}>
@@ -330,13 +340,14 @@ export const AssignPersonDialog = ({
                 startIcon={showOthers ? <ExpandLessIcon /> : <ExpandMoreIcon />}
                 sx={{ px: 0 }}
               >
-                {showOthers ? 'Hide everyone else' : `Show everyone else (${others.length})`}
+                {showOthers
+                  ? t('assignDialog.hideOthers')
+                  : t('assignDialog.showOthers', { count: others.length })}
               </Button>
 
               <Collapse in={showOthers} unmountOnExit>
                 <Alert severity="warning" sx={{ my: 1 }}>
-                  Nobody here submitted availability for this shift. Assigning them is
-                  recorded as an override, stamped with your name and the time.
+                  {t('assignDialog.overrideWarning')}
                 </Alert>
                 {others.map((person) => (
                   <CandidateRow
@@ -354,9 +365,9 @@ export const AssignPersonDialog = ({
                 <Stack direction="row" spacing={0.75} sx={{ mt: 2 }} alignItems="flex-start">
                   <WarningAmberIcon fontSize="small" sx={{ color: 'warning.dark' }} />
                   <Typography variant="caption" color="text.secondary">
-                    People who do not hold the {CERTIFICATION_LABEL[target.role.requiredCertification]}{' '}
-                    certification are listed rather than hidden — assigning one of them needs a reason,
-                    recorded against the assignment.
+                    {t('assignDialog.certRequirementNote', {
+                      certification: certificationLabel(t, target.role.requiredCertification),
+                    })}
                   </Typography>
                 </Stack>
               )}
@@ -365,23 +376,25 @@ export const AssignPersonDialog = ({
         </DialogContent>
 
         <DialogActions>
-          <Button onClick={onClose}>Close</Button>
+          <Button onClick={onClose}>{t('assignDialog.closeButton')}</Button>
         </DialogActions>
       </Dialog>
 
       <Dialog open={pendingOverride !== null} onClose={() => setPendingOverride(null)} maxWidth="xs" fullWidth>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <WarningAmberIcon color="warning" />
-          Assign without the required certification?
+          {t('assignDialog.confirmTitle')}
         </DialogTitle>
         <DialogContent>
           {pendingOverride && target.role?.requiredCertification && (
             <Alert severity="warning" sx={{ mb: 2 }}>
               <strong>
-                {target.role.name} requires {CERTIFICATION_LABEL[target.role.requiredCertification]}.
+                {t('assignDialog.requiresCertBold', {
+                  role: target.role.name,
+                  certification: certificationLabel(t, target.role.requiredCertification),
+                })}
               </strong>{' '}
-              {fullName(pendingOverride)} does not hold it. Assigning them is recorded as an exception
-              against this shift, stamped with your name and the time.
+              {t('assignDialog.exceptionNote', { person: fullName(pendingOverride) })}
             </Alert>
           )}
           <TextField
@@ -390,21 +403,21 @@ export const AssignPersonDialog = ({
             multiline
             minRows={3}
             required
-            label="Reason"
+            label={t('assignDialog.reasonLabel')}
             value={overrideReason}
             onChange={(event) => setOverrideReason(event.target.value)}
-            helperText="Shown on the board and on the published schedule."
+            helperText={t('assignDialog.reasonHelp')}
           />
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setPendingOverride(null)}>Cancel</Button>
+          <Button onClick={() => setPendingOverride(null)}>{t('action.cancel')}</Button>
           <Button
             variant="contained"
             color="warning"
             disabled={!overrideReason.trim() || busy}
             onClick={() => pendingOverride && void assign(pendingOverride, overrideReason.trim())}
           >
-            Assign by exception
+            {t('assignDialog.assignByException')}
           </Button>
         </DialogActions>
       </Dialog>

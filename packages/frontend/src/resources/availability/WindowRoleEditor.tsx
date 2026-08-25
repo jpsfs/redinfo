@@ -11,7 +11,6 @@ import {
 import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import {
-  CERTIFICATION_LABEL,
   CERTIFICATION_TYPES,
   CertificationType,
   formatRoleCapacity,
@@ -23,6 +22,8 @@ import {
   validateWindowRoles,
   WindowRoleSpec,
 } from '@redinfo/shared';
+import { certificationLabel } from '../../i18n/labels';
+import { useT } from '../../i18n/useT';
 
 /** The select's own value space: unset (suggestion), explicitly none, or a type. */
 const NONE = 'NONE' as const;
@@ -57,6 +58,7 @@ export const WindowRoleEditor = ({
   onChange: (roles: WindowRoleSpec[]) => void;
   disabled?: boolean;
 }) => {
+  const t = useT();
   const error = validateWindowRoles(roles);
 
   const updateRole = (index: number, changes: Partial<WindowRoleSpec>) => {
@@ -71,7 +73,7 @@ export const WindowRoleEditor = ({
     <Box>
       {roles.length === 0 ? (
         <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-          No roles — people will be scheduled onto this window without one.
+          {t('windowRole.editorNone')}
         </Typography>
       ) : (
         <Stack spacing={1} sx={{ mb: 1 }}>
@@ -96,12 +98,12 @@ export const WindowRoleEditor = ({
                 >
                   <TextField
                     size="small"
-                    label={`Role ${index + 1}`}
+                    label={t('windowRole.roleName', { index: index + 1 })}
                     value={role.name}
                     disabled={disabled}
                     onChange={(event) => updateRole(index, { name: event.target.value })}
                     inputProps={{
-                      'aria-label': `Role ${index + 1} name`,
+                      'aria-label': t('windowRole.roleNameAria', { index: index + 1 }),
                       maxLength: MAX_ROLE_NAME_LENGTH,
                     }}
                     sx={{ flex: 1, minWidth: 180 }}
@@ -109,7 +111,7 @@ export const WindowRoleEditor = ({
                   <TextField
                     type="number"
                     size="small"
-                    label="People"
+                    label={t('windowRole.peopleLabel')}
                     value={role.maxPeople}
                     disabled={disabled}
                     onChange={(event) => {
@@ -123,7 +125,7 @@ export const WindowRoleEditor = ({
                       });
                     }}
                     inputProps={{
-                      'aria-label': `Role ${index + 1} people`,
+                      'aria-label': t('windowRole.rolePeopleAria', { index: index + 1 }),
                       min: 0,
                       max: MAX_ROLE_PEOPLE,
                       step: 1,
@@ -134,36 +136,40 @@ export const WindowRoleEditor = ({
                   <TextField
                     select
                     size="small"
-                    label="Requires"
+                    label={t('windowRole.requiresLabel')}
                     value={toSelectValue(role.requiredCertification)}
                     disabled={disabled}
                     onChange={(event) =>
                       updateRole(index, { requiredCertification: fromSelectValue(event.target.value) })
                     }
-                    inputProps={{ 'aria-label': `Role ${index + 1} required certification` }}
+                    inputProps={{ 'aria-label': t('windowRole.roleCertAria', { index: index + 1 }) }}
                     helperText={
                       role.requiredCertification === undefined
                         ? suggested
-                          ? `Suggested from the name: ${CERTIFICATION_LABEL[suggested]}`
-                          : 'No suggestion'
-                        : "Coordinator's choice"
+                          ? t('windowRole.suggestedFromName', { certification: certificationLabel(t, suggested) })
+                          : t('windowRole.noSuggestion')
+                        : t('windowRole.coordinatorChoice')
                     }
                     sx={{ width: 200 }}
                   >
                     <MenuItem value="">
-                      <em>{suggested ? `Suggested: ${CERTIFICATION_LABEL[suggested]}` : 'Unset'}</em>
+                      <em>
+                        {suggested
+                          ? t('windowRole.suggestedShort', { certification: certificationLabel(t, suggested) })
+                          : t('windowRole.unset')}
+                      </em>
                     </MenuItem>
-                    <MenuItem value={NONE}>No requirement</MenuItem>
+                    <MenuItem value={NONE}>{t('windowRole.noRequirement')}</MenuItem>
                     {CERTIFICATION_TYPES.map((type) => (
                       <MenuItem key={type} value={type}>
-                        {CERTIFICATION_LABEL[type]}
+                        {certificationLabel(t, type)}
                       </MenuItem>
                     ))}
                   </TextField>
                   <IconButton
                     size="small"
                     disabled={disabled}
-                    aria-label={`Remove role ${index + 1}`}
+                    aria-label={t('windowRole.removeAria', { index: index + 1 })}
                     onClick={() =>
                       onChange(roles.filter((_, position) => position !== index))
                     }
@@ -187,13 +193,10 @@ export const WindowRoleEditor = ({
             onChange([...roles, { name: '', maxPeople: 1, requiredCertification: undefined }])
           }
         >
-          Add role
+          {t('windowRole.addRole')}
         </Button>
         <Typography variant="caption" color="text.secondary">
-          {`People is the most the schedule may put in a role on one shift; ` +
-            `${UNLIMITED_ROLE_PEOPLE} means unlimited. A required certification is ` +
-            `enforceable but not absolute — a coordinator may still assign someone ` +
-            `who lacks it, with a reason.`}
+          {t('windowRole.capacityHint', { unlimited: UNLIMITED_ROLE_PEOPLE })}
         </Typography>
       </Stack>
 

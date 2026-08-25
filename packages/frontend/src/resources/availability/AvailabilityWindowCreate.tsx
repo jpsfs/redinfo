@@ -106,14 +106,14 @@ export const AvailabilityWindowCreate = () => {
   const [calendarError, setCalendarError] = useState<string | null>(null);
 
   const rangeError = useMemo(() => {
-    if (!startDate || !endDate) return 'Pick a start and an end date.';
-    if (endDate < startDate) return 'End date must be on or after the start date.';
+    if (!startDate || !endDate) return t('windowCreate.pickDates');
+    if (endDate < startDate) return t('windowCreate.endBeforeStart');
     const length = isoDateRange(startDate, endDate).length;
     if (length > MAX_WINDOW_DAYS) {
-      return `A window may span at most ${MAX_WINDOW_DAYS} days (this one spans ${length}).`;
+      return t('windowCreate.rangeTooLong', { max: MAX_WINDOW_DAYS, length });
     }
     return null;
-  }, [startDate, endDate]);
+  }, [startDate, endDate, t]);
 
   // Warn before saving rather than only on the rejected request: which windows
   // already cover these dates is exactly what decides whether to go ahead.
@@ -137,7 +137,7 @@ export const AvailabilityWindowCreate = () => {
       .catch(() => {
         if (!cancelled) {
           setOverlaps(null);
-          notify('Could not check for windows over these dates', { type: 'warning' });
+          notify(t('windowCreate.overlapCheckFailed'), { type: 'warning' });
         }
       })
       .finally(() => {
@@ -170,7 +170,7 @@ export const AvailabilityWindowCreate = () => {
         if (cancelled) return;
         setDays([]);
         setCalendarError(
-          error instanceof Error ? error.message : 'Could not load the calendar.',
+          error instanceof Error ? error.message : t('windowCreate.calendarLoadFailed'),
         );
       })
       .finally(() => {
@@ -179,7 +179,7 @@ export const AvailabilityWindowCreate = () => {
     return () => {
       cancelled = true;
     };
-  }, [startDate, endDate, rangeError]);
+  }, [startDate, endDate, rangeError, t]);
 
   const roleError = useMemo(() => validateWindowRoles(roles), [roles]);
 
@@ -232,12 +232,12 @@ export const AvailabilityWindowCreate = () => {
       },
       {
         onSuccess: () => {
-          notify('Availability window opened', { type: 'success' });
+          notify(t('windowCreate.saved'), { type: 'success' });
           redirect('list', 'availability-windows');
         },
         onError: (error) =>
           notify(
-            error instanceof Error ? error.message : 'Could not open the window',
+            error instanceof Error ? error.message : t('windowCreate.saveFailed'),
             { type: 'error' },
           ),
       },
@@ -253,34 +253,34 @@ export const AvailabilityWindowCreate = () => {
     redirect,
     roles,
     startDate,
+    t,
   ]);
 
   return (
     <Box sx={{ p: { xs: 1, sm: 2 } }}>
-      <Title title="Open availability window" />
+      <Title title={t('windowCreate.pageTitle')} />
 
       <Card variant="outlined">
         <CardContent>
           <Alert severity="info" sx={{ mb: 2 }}>
-            Volunteers will be able to submit availability for every shift below. Days
-            start on the default grid — one 20:00–24:00 shift on working days, and
-            08:00–16:00 plus 16:00–24:00 on weekends and holidays, each needing one
-            vehicle — and you can change any of it. Vehicles matter for coverage: a
-            shift counts as covered only once every vehicle has a driver.
+            {t('windowCreate.info')}
           </Alert>
 
           <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2} sx={{ mb: 2 }}>
             <TextField
               select
               size="small"
-              label="Category"
+              label={t('resources.availability-windows.fields.category')}
               value={category}
               onChange={(event) => {
                 const next = event.target.value as AvailabilityWindowCategory;
                 setCategory(next);
                 if (!rolesEdited) setRoles(defaultRolesForCategory(next));
               }}
-              SelectProps={{ native: true, inputProps: { 'aria-label': 'Category' } }}
+              SelectProps={{
+                native: true,
+                inputProps: { 'aria-label': t('resources.availability-windows.fields.category') },
+              }}
               helperText={windowCategoryDescription(t, category)}
               InputLabelProps={{ shrink: true }}
               sx={{ minWidth: 200 }}
@@ -293,11 +293,11 @@ export const AvailabilityWindowCreate = () => {
             </TextField>
             <TextField
               size="small"
-              label="Name (optional)"
+              label={t('windowCreate.nameOptional')}
               value={name}
               onChange={(event) => setName(event.target.value)}
               placeholder={`${categoryLabel} - November`}
-              helperText="Shown to volunteers alongside the dates. Need not be unique."
+              helperText={t('windowCreate.nameHelp')}
               inputProps={{ maxLength: MAX_WINDOW_NAME_LENGTH }}
               sx={{ flex: 1 }}
             />
@@ -307,7 +307,7 @@ export const AvailabilityWindowCreate = () => {
             <TextField
               type="date"
               size="small"
-              label="Start date"
+              label={t('windowCreate.startDate')}
               value={startDate}
               onChange={(event) =>
                 setRange((current) => ({ ...current, startDate: event.target.value }))
@@ -317,7 +317,7 @@ export const AvailabilityWindowCreate = () => {
             <TextField
               type="date"
               size="small"
-              label="End date"
+              label={t('windowCreate.endDate')}
               value={endDate}
               onChange={(event) =>
                 setRange((current) => ({ ...current, endDate: event.target.value }))
@@ -334,17 +334,19 @@ export const AvailabilityWindowCreate = () => {
 
           {openOverlaps.length > 0 && (
             <Alert severity="error" sx={{ mb: 2 }}>
-              {`An availability window for ${categoryLabel} is already open over these ` +
-                `dates (${describeWindows(openOverlaps)}). Close it first, or pick dates ` +
-                'it does not cover. Windows of a different category may overlap freely.'}
+              {t('windowCreate.openOverlapError', {
+                category: categoryLabel,
+                windows: describeWindows(openOverlaps),
+              })}
             </Alert>
           )}
 
           {needsAcknowledgement && (
             <Alert severity="warning" sx={{ mb: 2 }}>
-              {`A closed availability window for ${categoryLabel} already covers these ` +
-                `dates (${describeWindows(closedOverlaps)}). You can still open this ` +
-                'one — check below if you meant to ask for the same dates again.'}
+              {t('windowCreate.closedOverlapWarning', {
+                category: categoryLabel,
+                windows: describeWindows(closedOverlaps),
+              })}
               <FormControlLabel
                 sx={{ display: 'block', mt: 1 }}
                 control={
@@ -353,7 +355,7 @@ export const AvailabilityWindowCreate = () => {
                     onChange={(event) => setAcknowledged(event.target.checked)}
                   />
                 }
-                label={`Open another ${categoryLabel} window over these dates`}
+                label={t('windowCreate.acknowledgeOverlap', { category: categoryLabel })}
               />
             </Alert>
           )}
@@ -365,15 +367,13 @@ export const AvailabilityWindowCreate = () => {
           )}
 
           <Box sx={{ mb: 2 }}>
-            <Typography variant="subtitle2">Roles for the schedule</Typography>
+            <Typography variant="subtitle2">{t('windowShow.rolesHeading')}</Typography>
             <Typography
               variant="caption"
               color="text.secondary"
               sx={{ display: 'block', mb: 1 }}
             >
-              Volunteers are never asked which role they want — they say only when
-              they can be there. These are the roles you will assign them to when
-              building the schedule for this window.
+              {t('windowCreate.rolesHint')}
             </Typography>
             <WindowRoleEditor
               roles={roles}
@@ -390,15 +390,15 @@ export const AvailabilityWindowCreate = () => {
           {!rangeError && days.length > 0 && (
             <>
               <Typography variant="subtitle2" sx={{ mb: 1 }}>
-                Shifts per day
+                {t('windowCreate.shiftsPerDayHeading')}
               </Typography>
               <DayShiftEditor days={days} onChange={setDays} disabled={saving} />
 
               {dayErrors > 0 && (
                 <Alert severity="error" sx={{ mt: 2 }}>
                   {dayErrors === 1
-                    ? 'One day has shifts that cannot be saved — see the message on that row.'
-                    : `${dayErrors} days have shifts that cannot be saved — see the messages on those rows.`}
+                    ? t('windowCreate.dayErrorsOne')
+                    : t('windowCreate.dayErrorsMany', { count: dayErrors })}
                 </Alert>
               )}
 
@@ -412,7 +412,7 @@ export const AvailabilityWindowCreate = () => {
                 }}
               >
                 <Typography variant="body2" color="text.secondary" sx={{ mr: 'auto' }}>
-                  {days.length} days · {shiftCount} shifts in total
+                  {t('windowCreate.daysShiftsSummary', { days: days.length, shifts: shiftCount })}
                 </Typography>
                 <Button
                   variant="contained"
@@ -420,7 +420,7 @@ export const AvailabilityWindowCreate = () => {
                   disabled={blocked || saving}
                   onClick={handleSave}
                 >
-                  Open window
+                  {t('windowForm.openWindow')}
                 </Button>
               </Box>
             </>

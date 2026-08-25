@@ -7,7 +7,9 @@ import {
   ResourceDefinitionContextProvider,
   testDataProvider,
 } from 'react-admin';
+import polyglotI18nProvider from 'ra-i18n-polyglot';
 import { MemoryRouter } from 'react-router-dom';
+import { messages } from '../../i18n/i18nProvider';
 import { WindowListActions } from './AvailabilityWindowList';
 import { apiFetch } from '../../api';
 
@@ -18,11 +20,14 @@ vi.mock('../../api', () => ({
 
 const mockApiFetch = apiFetch as unknown as Mock;
 
+// This screen has not gone through #180 phase 3 yet — English by convention.
+const i18nProvider = polyglotI18nProvider(messages, 'en');
+
 /** The toolbar needs the resource to exist for its Create button. */
 function renderActions() {
   render(
     <MemoryRouter>
-      <AdminContext dataProvider={testDataProvider()}>
+      <AdminContext dataProvider={testDataProvider()} i18nProvider={i18nProvider}>
         <ResourceDefinitionContextProvider
           definitions={{
             'availability-windows': {

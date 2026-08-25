@@ -35,6 +35,7 @@ import {
   toTimeInputValue,
   validateDayShifts,
 } from '@redinfo/shared';
+import { useT } from '../../i18n/useT';
 import { formatDayLabel } from '../../utils/dates';
 
 /** One day of the window being built. */
@@ -49,12 +50,6 @@ export interface WindowDayDraft {
 
 /** Which days a "copy to…" action writes to. */
 export type CopyTarget = 'workdays' | 'nonWorkdays' | 'all';
-
-const COPY_TARGETS: Array<{ target: CopyTarget; label: string }> = [
-  { target: 'workdays', label: 'All working days' },
-  { target: 'nonWorkdays', label: 'All weekends & holidays' },
-  { target: 'all', label: 'All days' },
-];
 
 export const isWorkday = (day: WindowDayDraft) => !day.isWeekend && !day.isHoliday;
 
@@ -183,18 +178,23 @@ const VehiclesField = ({
 );
 
 const DayTypeChip = ({ day }: { day: WindowDayDraft }) => {
+  const t = useT();
   if (day.isHoliday) {
     return (
       <Chip
         size="small"
         color="warning"
         variant="outlined"
-        label={day.holidayName ? `Holiday · ${day.holidayName}` : 'Holiday'}
+        label={
+          day.holidayName
+            ? t('dayType.holidayNamed', { name: day.holidayName })
+            : t('dayType.holiday')
+        }
       />
     );
   }
-  if (day.isWeekend) return <Chip size="small" variant="outlined" label="Weekend" />;
-  return <Chip size="small" variant="outlined" label="Workday" />;
+  if (day.isWeekend) return <Chip size="small" variant="outlined" label={t('dayType.weekend')} />;
+  return <Chip size="small" variant="outlined" label={t('dayType.workday')} />;
 };
 
 /**
@@ -214,6 +214,12 @@ export const DayShiftEditor = ({
   onChange: (days: WindowDayDraft[]) => void;
   disabled?: boolean;
 }) => {
+  const t = useT();
+  const COPY_TARGETS: Array<{ target: CopyTarget; label: string }> = [
+    { target: 'workdays', label: t('dayShift.copyWorkdays') },
+    { target: 'nonWorkdays', label: t('dayShift.copyNonWorkdays') },
+    { target: 'all', label: t('dayShift.copyAll') },
+  ];
   const [copyFrom, setCopyFrom] = useState<{ date: string; anchor: HTMLElement } | null>(
     null,
   );
@@ -248,12 +254,12 @@ export const DayShiftEditor = ({
           <TableHead>
             <TableRow>
               <TableCell sx={{ minWidth: 210 }}>
-                <strong>Day</strong>
+                <strong>{t('dayShift.colDay')}</strong>
               </TableCell>
               <TableCell>
-                <strong>Shifts</strong>
+                <strong>{t('dayShift.colShifts')}</strong>
                 <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-                  start, end and vehicles needed
+                  {t('dayShift.colShiftsHint')}
                 </Typography>
               </TableCell>
               <TableCell align="right" sx={{ minWidth: 190 }} />
@@ -287,7 +293,7 @@ export const DayShiftEditor = ({
                   <TableCell>
                     {day.shifts.length === 0 ? (
                       <Typography variant="body2" color="text.secondary">
-                        No shifts — nobody is asked to cover this day.
+                        {t('dayShift.noShifts')}
                       </Typography>
                     ) : (
                       <Stack spacing={0.75}>
@@ -303,7 +309,7 @@ export const DayShiftEditor = ({
                             useFlexGap
                           >
                             <TimeField
-                              ariaLabel={`${label} shift ${index + 1} start`}
+                              ariaLabel={t('dayShift.startAria', { day: label, index: index + 1 })}
                               value={shift.startMinute}
                               disabled={disabled}
                               onChange={(startMinute) =>
@@ -321,7 +327,7 @@ export const DayShiftEditor = ({
                               –
                             </Typography>
                             <TimeField
-                              ariaLabel={`${label} shift ${index + 1} end`}
+                              ariaLabel={t('dayShift.endAria', { day: label, index: index + 1 })}
                               value={shift.endMinute}
                               isEnd
                               disabled={disabled}
@@ -337,7 +343,7 @@ export const DayShiftEditor = ({
                               }
                             />
                             <VehiclesField
-                              ariaLabel={`${label} shift ${index + 1} vehicles`}
+                              ariaLabel={t('dayShift.vehiclesAria', { day: label, index: index + 1 })}
                               value={shift.vehiclesNeeded}
                               disabled={disabled}
                               onChange={(vehiclesNeeded) =>
@@ -354,7 +360,7 @@ export const DayShiftEditor = ({
                             <IconButton
                               size="small"
                               disabled={disabled}
-                              aria-label={`Remove ${label} shift ${index + 1}`}
+                              aria-label={t('dayShift.removeAria', { day: label, index: index + 1 })}
                               onClick={() =>
                                 updateDay(
                                   day.date,
@@ -386,21 +392,21 @@ export const DayShiftEditor = ({
                         size="small"
                         startIcon={<AddIcon />}
                         disabled={disabled || day.shifts.length >= MAX_SHIFTS_PER_DAY}
-                        aria-label={`Add a shift to ${label}`}
+                        aria-label={t('dayShift.addShiftAria', { day: label })}
                         onClick={() => addShift(day)}
                       >
-                        Add shift
+                        {t('dayShift.addShift')}
                       </Button>
                       <Button
                         size="small"
                         startIcon={<ContentCopyIcon />}
                         disabled={disabled}
-                        aria-label={`Copy ${label} shifts to other days`}
+                        aria-label={t('dayShift.copyToAria', { day: label })}
                         onClick={(event) =>
                           setCopyFrom({ date: day.date, anchor: event.currentTarget })
                         }
                       >
-                        Copy to…
+                        {t('dayShift.copyToButton')}
                       </Button>
                     </Stack>
                   </TableCell>

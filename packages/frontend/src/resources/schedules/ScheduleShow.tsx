@@ -1,6 +1,7 @@
 import { Show, useRecordContext } from 'react-admin';
 import { Box } from '@mui/material';
 import { Schedule } from '@redinfo/shared';
+import { useT } from '../../i18n/useT';
 import { ScheduleBoard } from './ScheduleBoard';
 
 const BoardForRecord = () => {
@@ -17,12 +18,15 @@ const BoardForRecord = () => {
  * `GET /schedules/:id/board`, so the coverage rules are computed in one place
  * rather than reassembled here.
  */
-export const ScheduleShow = () => (
-  // `Show` already wraps its children in the page Card, so this adds padding
-  // rather than a second surface.
-  <Show actions={false} title="Schedule">
-    <Box sx={{ p: 2 }}>
-      <BoardForRecord />
-    </Box>
-  </Show>
-);
+export const ScheduleShow = () => {
+  const t = useT();
+  return (
+    // `Show` already wraps its children in the page Card, so this adds padding
+    // rather than a second surface.
+    <Show actions={false} title={t('scheduleShow.pageTitle')}>
+      <Box sx={{ p: 2 }}>
+        <BoardForRecord />
+      </Box>
+    </Show>
+  );
+};

@@ -1,17 +1,27 @@
 import { describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { AdminContext, testDataProvider } from 'react-admin';
+import polyglotI18nProvider from 'ra-i18n-polyglot';
 import {
   MAX_ROLE_PEOPLE,
   MAX_ROLES_PER_WINDOW,
   WindowRoleSpec,
 } from '@redinfo/shared';
+import { messages } from '../../i18n/i18nProvider';
 import { WindowRoleEditor } from './WindowRoleEditor';
 
+// This screen has not gone through #180 phase 3 yet — English by convention.
+const i18nProvider = polyglotI18nProvider(messages, 'en');
+
 /** Renders the editor and reports what it asked to change it to. */
-function renderEditor(roles: WindowRoleSpec[]) {
+function renderEditor(roles: WindowRoleSpec[], props: { disabled?: boolean } = {}) {
   const onChange = vi.fn();
-  render(<WindowRoleEditor roles={roles} onChange={onChange} />);
+  render(
+    <AdminContext dataProvider={testDataProvider()} i18nProvider={i18nProvider}>
+      <WindowRoleEditor roles={roles} onChange={onChange} {...props} />
+    </AdminContext>,
+  );
   return { onChange };
 }
 
@@ -138,7 +148,7 @@ describe('WindowRoleEditor', () => {
   });
 
   it('edits nothing while disabled', () => {
-    render(<WindowRoleEditor roles={CREW} onChange={vi.fn()} disabled />);
+    renderEditor(CREW, { disabled: true });
 
     expect(screen.getByLabelText('Role 1 name')).toBeDisabled();
     expect(screen.getByLabelText('Role 1 people')).toBeDisabled();

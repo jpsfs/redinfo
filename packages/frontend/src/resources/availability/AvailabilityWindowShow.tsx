@@ -32,6 +32,7 @@ import {
   Schedule,
 } from '@redinfo/shared';
 import { apiFetch } from '../../api';
+import { useT } from '../../i18n/useT';
 import { formatDateRange } from '../../utils/dates';
 import { AvailabilityMatrix } from './AvailabilityMatrix';
 import { WindowStatusChip } from './AvailabilityWindowList';
@@ -43,6 +44,7 @@ import { WindowIdentity, WindowRoleChips } from './WindowIdentity';
  * actually decides on.
  */
 const CloseWindowButton = () => {
+  const t = useT();
   const record = useRecordContext<AvailabilityWindow>();
   const notify = useNotify();
   const refresh = useRefresh();
@@ -73,11 +75,11 @@ const CloseWindowButton = () => {
     setClosing(true);
     try {
       await apiFetch(`/availability-windows/${record.id}/close`, { method: 'POST' });
-      notify('Availability window closed', { type: 'success' });
+      notify(t('windowShow.closed'), { type: 'success' });
       setOpen(false);
       refresh();
     } catch (e) {
-      notify(e instanceof Error ? e.message : 'Could not close the window', { type: 'error' });
+      notify(e instanceof Error ? e.message : t('windowShow.closeFailed'), { type: 'error' });
     } finally {
       setClosing(false);
     }
@@ -91,31 +93,35 @@ const CloseWindowButton = () => {
         startIcon={<LockIcon />}
         onClick={() => setOpen(true)}
       >
-        Close window
+        {t('windowShow.closeButton')}
       </Button>
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="xs" fullWidth>
-        <DialogTitle>Close availability window?</DialogTitle>
+        <DialogTitle>{t('windowShow.closeConfirmTitle')}</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Submissions will no longer be accepted for {availabilityWindowLabel(record)} (
-            {formatDateRange(record.startDate, record.endDate)}) once this window is
-            closed. This cannot be undone.
+            {t('windowShow.closeConfirmBody', {
+              window: availabilityWindowLabel(record),
+              dates: formatDateRange(record.startDate, record.endDate),
+            })}
           </DialogContentText>
           {stats && (
             <Alert severity="warning" sx={{ mt: 2 }}>
-              {stats.submitted} of {stats.total} personnel have submitted availability.{' '}
-              {stats.declined} {stats.declined === 1 ? 'has' : 'have'} declined and{' '}
-              {stats.pending} {stats.pending === 1 ? 'has' : 'have'} not yet responded.
+              {t('windowShow.closeStatsSummary', {
+                submitted: stats.submitted,
+                total: stats.total,
+                declined: stats.declined,
+                pending: stats.pending,
+              })}
             </Alert>
           )}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpen(false)} disabled={closing}>
-            Cancel
+            {t('action.cancel')}
           </Button>
           <Button color="error" onClick={handleClose} disabled={closing}>
-            {closing ? <CircularProgress size={18} /> : 'Close window'}
+            {closing ? <CircularProgress size={18} /> : t('windowShow.closeButton')}
           </Button>
         </DialogActions>
       </Dialog>
@@ -163,6 +169,7 @@ const WindowHeader = () => {
  * says plainly that availability may still change.
  */
 const ScheduleButton = () => {
+  const t = useT();
   const record = useRecordContext<AvailabilityWindow>();
   const notify = useNotify();
   const navigate = useNavigate();
@@ -203,7 +210,7 @@ const ScheduleButton = () => {
       });
       navigate(`/schedules/${created.id}/show`);
     } catch (e) {
-      notify(e instanceof Error ? e.message : 'Could not start the schedule', {
+      notify(e instanceof Error ? e.message : t('windowShow.startScheduleFailed'), {
         type: 'error',
       });
     } finally {
@@ -218,7 +225,7 @@ const ScheduleButton = () => {
       disabled={busy}
       onClick={() => void open()}
     >
-      {schedule ? 'Open schedule' : 'Build schedule'}
+      {schedule ? t('windowShow.openSchedule') : t('windowShow.buildSchedule')}
     </Button>
   );
 };
@@ -229,34 +236,37 @@ const EmbeddedMatrix = () => {
   return <AvailabilityMatrix windowId={String(record.id)} />;
 };
 
-export const AvailabilityWindowShow = () => (
-  <Show title="Availability window">
-    <SimpleShowLayout>
-      <WindowHeader />
+export const AvailabilityWindowShow = () => {
+  const t = useT();
+  return (
+    <Show title={t('windowShow.pageTitle')}>
+      <SimpleShowLayout>
+        <WindowHeader />
 
-      <FunctionField
-        label="Roles for the schedule"
-        render={(record: AvailabilityWindow) => <WindowRoleChips roles={record.roles} />}
-      />
+        <FunctionField
+          label={t('windowShow.rolesHeading')}
+          render={(record: AvailabilityWindow) => <WindowRoleChips roles={record.roles} />}
+        />
 
-      <FunctionField
-        label="Opened by"
-        render={(record: AvailabilityWindow) =>
-          record.openedBy ? `${record.openedBy.firstName} ${record.openedBy.lastName}` : '—'
-        }
-      />
-      <DateField source="openedAt" label="Opened at" showTime />
-      <FunctionField
-        label="Closed by"
-        render={(record: AvailabilityWindow) =>
-          record.closedBy ? `${record.closedBy.firstName} ${record.closedBy.lastName}` : '—'
-        }
-      />
-      <DateField source="closedAt" label="Closed at" showTime emptyText="—" />
+        <FunctionField
+          source="openedBy"
+          render={(record: AvailabilityWindow) =>
+            record.openedBy ? `${record.openedBy.firstName} ${record.openedBy.lastName}` : '—'
+          }
+        />
+        <DateField source="openedAt" showTime />
+        <FunctionField
+          source="closedBy"
+          render={(record: AvailabilityWindow) =>
+            record.closedBy ? `${record.closedBy.firstName} ${record.closedBy.lastName}` : '—'
+          }
+        />
+        <DateField source="closedAt" showTime emptyText="—" />
 
-      <Divider sx={{ my: 2 }} />
+        <Divider sx={{ my: 2 }} />
 
-      <EmbeddedMatrix />
-    </SimpleShowLayout>
-  </Show>
-);
+        <EmbeddedMatrix />
+      </SimpleShowLayout>
+    </Show>
+  );
+};

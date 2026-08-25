@@ -21,6 +21,7 @@ import {
   availabilityWindowLabel,
 } from '@redinfo/shared';
 import { apiFetch } from '../../api';
+import { useT } from '../../i18n/useT';
 import { formatDateRange } from '../../utils/dates';
 import { WindowCategoryChip } from '../availability/WindowIdentity';
 
@@ -38,6 +39,7 @@ export const CreateScheduleDialog = ({
   open: boolean;
   onClose: () => void;
 }) => {
+  const t = useT();
   const navigate = useNavigate();
   const [windows, setWindows] = useState<AvailabilityWindow[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -53,10 +55,10 @@ export const CreateScheduleDialog = ({
       const scheduled = new Set(schedules.data.map((schedule) => schedule.windowId));
       setWindows(allWindows.data.filter((window) => !scheduled.has(window.id)));
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not load the availability windows.');
+      setError(e instanceof Error ? e.message : t('createScheduleDialog.loadFailed'));
       setWindows([]);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (open) void load();
@@ -73,7 +75,7 @@ export const CreateScheduleDialog = ({
       onClose();
       navigate(`/schedules/${schedule.id}/show`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not start that schedule.');
+      setError(e instanceof Error ? e.message : t('createScheduleDialog.startFailed'));
     } finally {
       setBusy(false);
     }
@@ -81,7 +83,7 @@ export const CreateScheduleDialog = ({
 
   return (
     <Dialog open={open} onClose={busy ? undefined : onClose} fullWidth maxWidth="sm">
-      <DialogTitle>Build a schedule</DialogTitle>
+      <DialogTitle>{t('createScheduleDialog.title')}</DialogTitle>
       <DialogContent>
         {error && (
           <Alert severity="warning" sx={{ mb: 2 }}>
@@ -93,7 +95,7 @@ export const CreateScheduleDialog = ({
           <CircularProgress size={24} />
         ) : windows.length === 0 ? (
           <Typography variant="body2" color="text.secondary">
-            Every availability window already has a schedule. Open a new window first.
+            {t('createScheduleDialog.noneAvailable')}
           </Typography>
         ) : (
           <List disablePadding>
@@ -113,7 +115,7 @@ export const CreateScheduleDialog = ({
                       </Typography>
                       {window.status === AvailabilityWindowStatus.OPEN && (
                         <Typography variant="caption" color="text.secondary">
-                          still open
+                          {t('createScheduleDialog.stillOpen')}
                         </Typography>
                       )}
                     </Stack>
@@ -127,7 +129,7 @@ export const CreateScheduleDialog = ({
       </DialogContent>
       <DialogActions>
         <Button onClick={onClose} disabled={busy}>
-          Cancel
+          {t('action.cancel')}
         </Button>
       </DialogActions>
     </Dialog>

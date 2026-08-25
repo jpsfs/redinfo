@@ -3,11 +3,10 @@ import BadgeIcon from '@mui/icons-material/Badge';
 import {
   AvailabilityWindowCategory,
   AvailabilityWindowRole,
-  CERTIFICATION_LABEL,
   formatRoleCapacity,
 } from '@redinfo/shared';
 import { CategoryChip } from '../../components/CategoryChip';
-import { windowCategoryLabel } from '../../i18n/labels';
+import { certificationLabel, windowCategoryLabel } from '../../i18n/labels';
 import { useT } from '../../i18n/useT';
 
 /**
@@ -50,10 +49,11 @@ export const WindowRoleChips = ({
 }: {
   roles?: AvailabilityWindowRole[] | null;
 }) => {
+  const t = useT();
   if (!roles || roles.length === 0) {
     return (
       <Typography variant="body2" color="text.secondary">
-        No roles — people are scheduled onto this window without one.
+        {t('windowRole.none')}
       </Typography>
     );
   }
@@ -61,17 +61,20 @@ export const WindowRoleChips = ({
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
       {roles.map((role) => {
         const label = `${role.name} · ${formatRoleCapacity(role.maxPeople)}`;
+        const certLabel = role.requiredCertification
+          ? certificationLabel(t, role.requiredCertification)
+          : null;
         return role.requiredCertification ? (
           <Tooltip
             key={role.id}
-            title={`Requires the ${CERTIFICATION_LABEL[role.requiredCertification]} certification — overridable with a reason.`}
+            title={t('windowRole.requiresTooltip', { certification: certLabel })}
           >
             <Chip
               size="small"
               variant="outlined"
               color="warning"
               icon={<BadgeIcon />}
-              label={`${label} · ${CERTIFICATION_LABEL[role.requiredCertification]}`}
+              label={`${label} · ${certLabel}`}
             />
           </Tooltip>
         ) : (

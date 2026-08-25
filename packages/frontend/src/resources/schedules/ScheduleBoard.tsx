@@ -33,7 +33,6 @@ import {
   Action,
   AvailabilityWindowRole,
   AvailabilityWindowStatus,
-  CERTIFICATION_LABEL,
   CertificationType,
   formatGap,
   formatRoleCapacity,
@@ -54,6 +53,8 @@ import {
 } from '@redinfo/shared';
 import { apiDownload, apiFetch } from '../../api';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { certificationLabel } from '../../i18n/labels';
+import { useT } from '../../i18n/useT';
 import { formatDateRange, formatDayLabel } from '../../utils/dates';
 import { WindowIdentity } from '../availability/WindowIdentity';
 import { AssignPersonDialog, AssignTarget } from './AssignPersonDialog';
@@ -63,9 +64,9 @@ import { SignUpDialog } from './SignUpDialog';
 
 /**
  * A window with no roles still schedules people — it just has one unnamed
- * column instead of one per post.
+ * column instead of one per post. Not displayed: see `t('scheduleBoard.crewColumn')`.
  */
-const CREW_COLUMN = 'Crew';
+const CREW_COLUMN_KEY = 'CREW';
 
 const shiftId = (date: string, slot: number) => `${date}#${slot}`;
 
@@ -132,30 +133,35 @@ const AssignmentChip = ({
   isSelf?: boolean;
   onRemove?: () => void;
 }) => {
+  const t = useT();
   const name = personName(assignment);
   // Someone who put themselves forward is not someone a coordinator overrode,
   // so it is never read as one however the availability lines up.
   const signedUp = assignment.selfAssigned;
   const issue = certificationIssue(assignment, role);
-  const certLabel = role?.requiredCertification ? CERTIFICATION_LABEL[role.requiredCertification] : '';
+  const certLabel = role?.requiredCertification ? certificationLabel(t, role.requiredCertification) : '';
 
   const title = conflict
-    ? `Double-booked: also on ${conflict.otherWindowLabel}, ${conflict.otherLabel}`
+    ? t('scheduleBoard.doubleBookedTooltip', { window: conflict.otherWindowLabel, label: conflict.otherLabel })
     : issue === 'lapsed'
-      ? `${certLabel} lapsed since this shift was built — kept on purpose, but worth reviewing.`
+      ? t('scheduleBoard.lapsedTooltip', { certification: certLabel })
       : issue === 'exception'
-        ? `Assigned by exception — does not hold ${certLabel}. ${assignment.certificationOverrideReason}`
+        ? t('scheduleBoard.exceptionTooltip', {
+            certification: certLabel,
+            reason: assignment.certificationOverrideReason,
+          })
         : signedUp
-          ? `Signed up on ${new Date(assignment.assignedAt).toLocaleString()}`
+          ? t('scheduleBoard.signedUpTooltip', { date: new Date(assignment.assignedAt).toLocaleString() })
           : assignment.isOverride
-            ? `Override — did not submit for this shift. Assigned by ${
-                assignment.assignedBy
+            ? t('scheduleBoard.overrideTooltip', {
+                assigner: assignment.assignedBy
                   ? `${assignment.assignedBy.firstName} ${assignment.assignedBy.lastName}`
-                  : 'a coordinator'
-              } on ${new Date(assignment.assignedAt).toLocaleString()}`
+                  : t('scheduleBoard.aCoordinator'),
+                date: new Date(assignment.assignedAt).toLocaleString(),
+              })
             : assignment.availability === 'submitted'
-              ? 'Submitted availability for this shift'
-              : 'No longer available for this shift';
+              ? t('scheduleBoard.submittedTooltip')
+              : t('scheduleBoard.noLongerAvailableTooltip');
 
   const color = conflict
     ? 'error'
@@ -193,11 +199,15 @@ const AssignmentChip = ({
         // every chip says nothing the board is not already saying.
         label={name}
         {...(onRemove ? { onDelete: onRemove } : {})}
-        aria-label={`${name}${signedUp ? ', signed up' : ''}${
-          !signedUp && assignment.isOverride ? ', override' : ''
-        }${conflict ? ', double-booked' : ''}${issue ? `, certification ${issue}` : ''}${
-          isSelf ? ', you' : ''
-        }`}
+        aria-label={`${name}${signedUp ? t('scheduleBoard.suffixSignedUp') : ''}${
+          !signedUp && assignment.isOverride ? t('scheduleBoard.suffixOverride') : ''
+        }${conflict ? t('scheduleBoard.suffixDoubleBooked') : ''}${
+          issue
+            ? t('scheduleBoard.suffixCertification', {
+                issue: t(issue === 'exception' ? 'scheduleBoard.issueException' : 'scheduleBoard.issueLapsed'),
+              })
+            : ''
+        }${isSelf ? t('scheduleBoard.suffixYou') : ''}`}
       />
     </Tooltip>
   );
@@ -236,6 +246,7 @@ const OpenSlotButton = ({
   mode: 'assign' | 'signUp';
   blockedReason?: string | null;
 }) => {
+  const t = useT();
   const button = (
     <Button
       size="small"
@@ -251,7 +262,7 @@ const OpenSlotButton = ({
         borderColor: 'grey.400',
       }}
     >
-      {mode === 'signUp' ? 'Add me' : 'Assign'}
+      {mode === 'signUp' ? t('scheduleBoard.addMe') : t('scheduleBoard.assign')}
     </Button>
   );
 
@@ -283,18 +294,20 @@ const StatTile = ({
   </Paper>
 );
 
-const BoardLegend = () => (
+const BoardLegend = () => {
+  const t = useT();
+  return (
   <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap sx={{ mb: 1.5 }}>
     {(
       [
-        [undefined, 'Assigned from submitted availability'],
-        ['signUp', 'Signed up by the person themselves'],
-        ['override', 'Override — did not submit for this shift'],
-        ['exception', 'Assigned without the post’s required certification, with a reason'],
-        ['lapsed', 'Certification lapsed since this shift was built'],
-        ['open', 'An open place, one per person the role still wants'],
-        ['gap', 'No driver for the vehicles this shift crews'],
-        ['conflict', 'Double-booked'],
+        [undefined, t('scheduleBoard.legendAssigned')],
+        ['signUp', t('scheduleBoard.legendSignedUp')],
+        ['override', t('scheduleBoard.legendOverride')],
+        ['exception', t('scheduleBoard.legendException')],
+        ['lapsed', t('scheduleBoard.legendLapsed')],
+        ['open', t('scheduleBoard.legendOpen')],
+        ['gap', t('scheduleBoard.legendGap')],
+        ['conflict', t('scheduleBoard.legendConflict')],
       ] as const
     ).map(([kind, label]) => (
       <Box key={label} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
@@ -318,7 +331,7 @@ const BoardLegend = () => (
           <ErrorOutlineIcon sx={{ fontSize: 16, color: 'error.dark' }} />
         )}
         {kind === undefined && (
-          <Chip size="small" variant="outlined" label="Name" sx={{ height: 18 }} />
+          <Chip size="small" variant="outlined" label={t('scheduleBoard.legendNameChip')} sx={{ height: 18 }} />
         )}
         <Typography variant="caption" color="text.secondary">
           {label}
@@ -326,7 +339,8 @@ const BoardLegend = () => (
       </Box>
     ))}
   </Stack>
-);
+  );
+};
 
 // ─── Cells ─────────────────────────────────────────────────────────────────────
 
@@ -359,6 +373,7 @@ const RoleCell = ({
   date: string;
   dayLabel: string;
 }) => {
+  const t = useT();
   const people = shift.assignments.filter(
     (assignment) => (assignment.roleId ?? null) === (role?.id ?? null),
   );
@@ -397,12 +412,12 @@ const RoleCell = ({
       : 1;
 
   const placeLabel = (index: number) => {
-    const verb = mode === 'signUp' ? 'Add me to' : 'Assign to';
-    const where = `${role?.name ?? CREW_COLUMN} on ${dayLabel}, ${shift.label}`;
+    const verb = mode === 'signUp' ? t('scheduleBoard.addMeToVerb') : t('scheduleBoard.assignToVerb');
+    const where = `${role?.name ?? t('scheduleBoard.crewColumn')} on ${dayLabel}, ${shift.label}`;
     // Several identical buttons in one cell need telling apart by name.
     return openPlaces > 1
-      ? `${verb} ${where} — place ${index + 1} of ${openPlaces}`
-      : `${verb} ${where}`;
+      ? t('scheduleBoard.placeLabelWithIndex', { verb, where, index: index + 1, total: openPlaces })
+      : t('scheduleBoard.placeLabel', { verb, where });
   };
 
   return (
@@ -449,23 +464,29 @@ const DesktopBoard = ({
   onAssign: (target: AssignTarget) => void;
   onRemove: (assignment: ScheduleAssignment) => void;
   viewer: Viewer;
-}) => (
+}) => {
+  const t = useT();
+  return (
   <TableContainer component={Paper} variant="outlined">
     <Table size="small">
       <TableHead>
         <TableRow sx={{ backgroundColor: 'grey.100' }}>
           <TableCell sx={{ minWidth: 150 }}>
-            <strong>Date</strong>
+            <strong>{t('scheduleBoard.colDate')}</strong>
           </TableCell>
           <TableCell sx={{ minWidth: 140 }}>
-            <strong>Shift</strong>
+            <strong>{t('scheduleBoard.colShift')}</strong>
           </TableCell>
           {columns.map((role) => (
-            <TableCell key={role?.id ?? CREW_COLUMN}>
-              <strong>{role?.name ?? CREW_COLUMN}</strong>
+            <TableCell key={role?.id ?? CREW_COLUMN_KEY}>
+              <strong>{role?.name ?? t('scheduleBoard.crewColumn')}</strong>
               <Typography variant="caption" color="text.secondary" display="block">
-                {role ? formatRoleCapacity(role.maxPeople) : 'no roles on this window'}
-                {role?.requiredCertification ? ` · ${CERTIFICATION_LABEL[role.requiredCertification]} required` : ''}
+                {role ? formatRoleCapacity(role.maxPeople) : t('scheduleBoard.noRolesOnWindow')}
+                {role?.requiredCertification
+                  ? t('scheduleBoard.certRequiredSuffix', {
+                      certification: certificationLabel(t, role.requiredCertification),
+                    })
+                  : ''}
               </Typography>
             </TableCell>
           ))}
@@ -496,11 +517,15 @@ const DesktopBoard = ({
                           size="small"
                           color="warning"
                           variant="outlined"
-                          label={day.holidayName ? `Holiday · ${day.holidayName}` : 'Holiday'}
+                          label={
+                            day.holidayName
+                              ? t('dayType.holidayNamed', { name: day.holidayName })
+                              : t('dayType.holiday')
+                          }
                         />
                       )}
                       {day.isWeekend && !day.isHoliday && (
-                        <Chip size="small" variant="outlined" label="Weekend" />
+                        <Chip size="small" variant="outlined" label={t('dayType.weekend')} />
                       )}
                     </Stack>
                   </>
@@ -512,7 +537,7 @@ const DesktopBoard = ({
                 </Typography>
               </TableCell>
               {columns.map((role) => (
-                <TableCell key={role?.id ?? CREW_COLUMN} sx={{ verticalAlign: 'top' }}>
+                <TableCell key={role?.id ?? CREW_COLUMN_KEY} sx={{ verticalAlign: 'top' }}>
                   <RoleCell
                     role={role}
                     shift={shift}
@@ -534,7 +559,8 @@ const DesktopBoard = ({
       </TableBody>
     </Table>
   </TableContainer>
-);
+  );
+};
 
 /**
  * Which gaps are worth writing out under a column.
@@ -581,7 +607,9 @@ const MobileBoard = ({
   onAssign: (target: AssignTarget) => void;
   onRemove: (assignment: ScheduleAssignment) => void;
   viewer: Viewer;
-}) => (
+}) => {
+  const t = useT();
+  return (
   <Stack spacing={1}>
     {board.days.map((day: ScheduleDayBoard) => (
       <Card key={day.date} variant="outlined">
@@ -595,9 +623,9 @@ const MobileBoard = ({
                 </Typography>
                 <Stack spacing={1} sx={{ mt: 1 }}>
                   {columns.map((role) => (
-                    <Box key={role?.id ?? CREW_COLUMN}>
+                    <Box key={role?.id ?? CREW_COLUMN_KEY}>
                       <Typography variant="caption" color="text.secondary">
-                        {role?.name ?? CREW_COLUMN}
+                        {role?.name ?? t('scheduleBoard.crewColumn')}
                       </Typography>
                       <RoleCell
                         role={role}
@@ -627,7 +655,8 @@ const MobileBoard = ({
       </Card>
     ))}
   </Stack>
-);
+  );
+};
 
 // ─── Board ─────────────────────────────────────────────────────────────────────
 
@@ -640,6 +669,7 @@ const MobileBoard = ({
  * override rather than quietly equated with one.
  */
 export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
+  const t = useT();
   const isMobile = useIsMobile();
   const { permissions } = usePermissions<UserRole>();
   const { identity } = useGetIdentity();
@@ -658,11 +688,11 @@ export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
     try {
       setBoard(await apiFetch<ScheduleBoardResponse>(`/schedules/${scheduleId}/board`));
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not load the schedule.');
+      setError(e instanceof Error ? e.message : t('scheduleBoard.loadFailed'));
     } finally {
       setLoading(false);
     }
-  }, [scheduleId]);
+  }, [scheduleId, t]);
 
   useEffect(() => {
     void load();
@@ -675,7 +705,7 @@ export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
       });
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not remove that assignment.');
+      setError(e instanceof Error ? e.message : t('scheduleBoard.removeFailed'));
     }
   };
 
@@ -684,7 +714,7 @@ export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
     try {
       await apiDownload(`/schedules/${scheduleId}/csv`, `schedule-${scheduleId}.csv`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not export the schedule.');
+      setError(e instanceof Error ? e.message : t('scheduleBoard.exportFailed'));
     } finally {
       setExporting(false);
     }
@@ -766,12 +796,12 @@ export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
       >
         <Box>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-            <Typography variant="h6">Schedule</Typography>
+            <Typography variant="h6">{t('scheduleBoard.heading')}</Typography>
             <Chip
               size="small"
               variant="outlined"
               color={isPublished ? 'success' : 'default'}
-              label={isPublished ? 'Published' : 'Draft'}
+              label={isPublished ? t('schedule.statusPublished') : t('schedule.statusDraft')}
             />
           </Box>
           <Typography variant="body2" color="text.secondary">
@@ -789,7 +819,7 @@ export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
               startIcon={<AutoFixHighIcon />}
               onClick={() => setAutofillOpen(true)}
             >
-              Auto-fill draft
+              {t('scheduleBoard.autofillButton')}
             </Button>
           )}
           <Button
@@ -800,7 +830,7 @@ export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
             disabled={exporting}
             onClick={() => void handleExport()}
           >
-            Export CSV
+            {t('common.exportCsv')}
           </Button>
           {viewer.isCoordinator && !isPublished && (
             <Button
@@ -809,7 +839,7 @@ export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
               startIcon={<PublishIcon />}
               onClick={() => setPublishOpen(true)}
             >
-              Publish schedule
+              {t('scheduleBoard.publishButton')}
             </Button>
           )}
         </Stack>
@@ -823,35 +853,31 @@ export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
 
       {windowIsOpen && (
         <Alert severity="info" sx={{ mb: 2 }}>
-          This window is still open — availability may still change. You can keep
-          building; anyone who submits later shows up in the assign list.
+          {t('scheduleBoard.windowOpenInfo')}
         </Alert>
       )}
 
       {isPublished && viewer.isCoordinator && (
         <Alert severity="success" sx={{ mb: 2 }}>
-          Published — everyone can see this rota, and members can add themselves to
-          an open place. Changes you make now are live straight away.
+          {t('scheduleBoard.publishedCoordinatorInfo')}
         </Alert>
       )}
 
       {isPublished && !viewer.isCoordinator && (
         <Alert severity="info" sx={{ mb: 2 }}>
-          You can add yourself to any open place you are able to cover. Once you are
-          on a shift you cannot take yourself off — ask a coordinator, who can arrange
-          cover at the same time.
+          {t('scheduleBoard.publishedMemberInfo')}
         </Alert>
       )}
 
       <Stack direction="row" spacing={1.5} flexWrap="wrap" useFlexGap sx={{ mb: 2 }}>
         <StatTile
           value={`${stats.filledSlots} / ${stats.requiredSlots}`}
-          label="Slots filled"
+          label={t('scheduleBoard.statSlotsFilled')}
           color="#2E7D32"
         />
-        <StatTile value={stats.shiftsWithGaps} label="Shifts with gaps" color="#C62828" />
-        <StatTile value={stats.overrideCount} label="Overrides" color="#616161" />
-        <StatTile value={board.conflicts.length} label="Double-booked" color="#C62828" />
+        <StatTile value={stats.shiftsWithGaps} label={t('scheduleBoard.statShiftsWithGaps')} color="#C62828" />
+        <StatTile value={stats.overrideCount} label={t('scheduleBoard.statOverrides')} color="#616161" />
+        <StatTile value={board.conflicts.length} label={t('scheduleBoard.doubleBooked')} color="#C62828" />
       </Stack>
 
       <BoardLegend />
@@ -859,15 +885,19 @@ export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
       {board.conflicts.length > 0 && (
         <Alert severity="error" sx={{ mb: 2 }}>
           <Typography variant="body2" sx={{ fontWeight: 600 }}>
-            Double-booked
+            {t('scheduleBoard.doubleBooked')}
           </Typography>
           {board.conflicts.map((conflict) => (
             <Typography
               key={`${conflict.userId}-${conflict.date}-${conflict.slot}-${conflict.otherWindowId}`}
               variant="body2"
             >
-              {conflict.userName}, {formatDayLabel(conflict.date)} — also on{' '}
-              {conflict.otherWindowLabel}, {conflict.otherLabel}
+              {t('scheduleBoard.conflictLine', {
+                user: conflict.userName,
+                day: formatDayLabel(conflict.date),
+                window: conflict.otherWindowLabel,
+                label: conflict.otherLabel,
+              })}
             </Typography>
           ))}
         </Alert>
@@ -896,7 +926,7 @@ export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
       {board.days.length === 0 && (
         <Paper variant="outlined" sx={{ p: 2, mt: 1 }}>
           <Typography variant="body2" color="text.secondary">
-            This window has no shifts, so there is nothing to schedule.
+            {t('scheduleBoard.noShifts')}
           </Typography>
         </Paper>
       )}
@@ -904,8 +934,8 @@ export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
       <Divider sx={{ my: 2 }} />
       <Typography variant="caption" color="text.secondary">
         {viewer.isCoordinator
-          ? 'People who submitted availability for a shift are offered first. Anyone else can still be assigned — cover is often agreed by phone — and is recorded as an override.'
-          : 'Only places you are able to cover are offered: the driver posts need the driver certification, and a role that is already full cannot take another person.'}
+          ? t('scheduleBoard.footerCoordinator')
+          : t('scheduleBoard.footerMember')}
       </Typography>
 
       <SignUpDialog

@@ -26,12 +26,14 @@ import { formatDateRange } from '../../utils/dates';
 import { WindowCategoryChip } from '../availability/WindowIdentity';
 import { CreateScheduleDialog } from './CreateScheduleDialog';
 
-export const ScheduleStatusChip = ({ status }: { status?: string }) =>
-  status === ScheduleStatus.PUBLISHED ? (
-    <Chip size="small" label="Published" color="success" />
+export const ScheduleStatusChip = ({ status }: { status?: string }) => {
+  const t = useT();
+  return status === ScheduleStatus.PUBLISHED ? (
+    <Chip size="small" label={t('schedule.statusPublished')} color="success" />
   ) : (
-    <Chip size="small" label="Draft" variant="outlined" />
+    <Chip size="small" label={t('schedule.statusDraft')} variant="outlined" />
   );
+};
 
 /**
  * Only a coordinator starts a schedule. Everyone else reaches this list to read
@@ -42,12 +44,13 @@ const ScheduleListActions = () => {
   const { permissions } = usePermissions<UserRole>();
   const [open, setOpen] = useState(false);
 
+  const t = useT();
   if (!permissions || !hasPermission(permissions, Action.MANAGE_SCHEDULES)) return null;
 
   return (
     <TopToolbar>
       <Button size="small" startIcon={<AddIcon />} onClick={() => setOpen(true)}>
-        Build schedule for a window…
+        {t('scheduleList.buildSchedulePrompt')}
       </Button>
       <CreateScheduleDialog open={open} onClose={() => setOpen(false)} />
     </TopToolbar>
@@ -84,6 +87,7 @@ const FillBar = ({ schedule }: { schedule: Schedule }) => {
 
 /** Gaps and overrides as counts, so a coordinator can triage the list. */
 const ScheduleFlags = ({ schedule }: { schedule: Schedule }) => {
+  const t = useT();
   const stats = schedule.stats;
   if (!stats || (stats.shiftsWithGaps === 0 && stats.overrideCount === 0)) {
     return (
@@ -95,7 +99,7 @@ const ScheduleFlags = ({ schedule }: { schedule: Schedule }) => {
   return (
     <Stack direction="row" spacing={1.5} alignItems="center">
       {stats.shiftsWithGaps > 0 && (
-        <Tooltip title={`${stats.shiftsWithGaps} shifts are not fully crewed`}>
+        <Tooltip title={t('scheduleList.gapsTooltip', { count: stats.shiftsWithGaps })}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'error.dark' }}>
             <WarningAmberIcon sx={{ fontSize: 16 }} />
             <Typography variant="caption" sx={{ fontWeight: 600 }}>
@@ -105,7 +109,7 @@ const ScheduleFlags = ({ schedule }: { schedule: Schedule }) => {
         </Tooltip>
       )}
       {stats.overrideCount > 0 && (
-        <Tooltip title={`${stats.overrideCount} assignments were agreed off-platform`}>
+        <Tooltip title={t('scheduleList.overridesTooltip', { count: stats.overrideCount })}>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'warning.dark' }}>
             <SwapHorizIcon sx={{ fontSize: 16 }} />
             <Typography variant="caption" sx={{ fontWeight: 600 }}>
@@ -132,7 +136,6 @@ export const ScheduleList = () => {
     <SelectInput
       key="category"
       source="category"
-      label="Category"
       alwaysOn
       choices={AVAILABILITY_WINDOW_CATEGORIES.map((category) => ({
         id: category,
@@ -142,10 +145,9 @@ export const ScheduleList = () => {
     <SelectInput
       key="status"
       source="status"
-      label="Status"
       choices={[
-        { id: ScheduleStatus.DRAFT, name: 'Draft' },
-        { id: ScheduleStatus.PUBLISHED, name: 'Published' },
+        { id: ScheduleStatus.DRAFT, name: t('schedule.statusDraft') },
+        { id: ScheduleStatus.PUBLISHED, name: t('schedule.statusPublished') },
       ]}
     />,
   ];
@@ -159,13 +161,11 @@ export const ScheduleList = () => {
   >
     <>
       <Alert severity="info" sx={{ mb: 2 }}>
-        A schedule is built for one availability window, over that window&apos;s dates
-        and against its own shifts and roles. Windows of different categories are
-        scheduled independently, even when their dates overlap.
+        {t('scheduleList.overlapRuleInfo')}
       </Alert>
       <Datagrid rowClick="show" bulkActionButtons={false}>
         <FunctionField
-          label="Window"
+          label={t('scheduleList.colWindow')}
           render={(record: Schedule) => (
             <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
               <WindowCategoryChip category={record.window?.category} />
@@ -176,7 +176,7 @@ export const ScheduleList = () => {
           )}
         />
         <FunctionField
-          label="Dates"
+          label={t('scheduleList.colDates')}
           render={(record: Schedule) =>
             record.window
               ? formatDateRange(record.window.startDate, record.window.endDate)
@@ -184,24 +184,24 @@ export const ScheduleList = () => {
           }
         />
         <FunctionField
-          label="Slots filled"
+          label={t('scheduleList.colSlotsFilled')}
           render={(record: Schedule) => <FillBar schedule={record} />}
         />
         <FunctionField
-          label="Flags"
+          label={t('scheduleList.colFlags')}
           render={(record: Schedule) => <ScheduleFlags schedule={record} />}
         />
         <FunctionField
-          label="Status"
+          source="status"
           render={(record: Schedule) => <ScheduleStatusChip status={record.status} />}
         />
         <FunctionField
-          label="Published by"
+          source="publishedBy"
           render={(record: Schedule) =>
             record.publishedAt ? actorName(record.publishedBy) : '—'
           }
         />
-        <DateField source="publishedAt" label="Published at" showTime emptyText="—" />
+        <DateField source="publishedAt" showTime emptyText="—" />
       </Datagrid>
     </>
   </List>

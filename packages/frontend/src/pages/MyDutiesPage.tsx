@@ -21,6 +21,7 @@ import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import { MyDutiesResponse, MyDuty } from '@redinfo/shared';
 import { apiFetch } from '../api';
+import { useT } from '../i18n/useT';
 import { WindowCategoryChip } from '../resources/availability/WindowIdentity';
 import { formatDayLabel, parseIsoDate } from '../utils/dates';
 
@@ -69,42 +70,48 @@ const DutyDate = ({ date }: { date: string }) => {
   );
 };
 
-const DutyCard = ({ duty }: { duty: MyDuty }) => (
-  <Paper variant="outlined" sx={{ display: 'flex', alignItems: 'center', gap: 2.5, p: 2 }}>
-    <DutyDate date={duty.date} />
-    <Box sx={{ flex: 1, minWidth: 0 }}>
-      <Stack direction="row" spacing={1} alignItems="center">
-        <AccessTimeIcon fontSize="small" sx={{ color: 'text.secondary' }} />
-        <Typography variant="h5" sx={{ fontWeight: 600 }}>
-          {duty.label}
-        </Typography>
-      </Stack>
-      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap sx={{ mt: 0.75 }}>
-        {duty.roleName && (
-          <Chip
-            size="small"
-            variant="outlined"
-            color="warning"
-            icon={<BadgeIcon fontSize="small" />}
-            label={duty.roleName}
-          />
-        )}
-        <WindowCategoryChip category={duty.windowCategory} />
-        <Typography variant="body2" color="text.secondary">
-          {duty.windowLabel}
-        </Typography>
-      </Stack>
-    </Box>
-    {duty.vehiclesNeeded > 0 && (
-      <Chip
-        size="small"
-        variant="outlined"
-        icon={<DirectionsCarIcon fontSize="small" />}
-        label={`${duty.vehiclesNeeded} vehicle${duty.vehiclesNeeded === 1 ? '' : 's'}`}
-      />
-    )}
-  </Paper>
-);
+const DutyCard = ({ duty }: { duty: MyDuty }) => {
+  const t = useT();
+  return (
+    <Paper variant="outlined" sx={{ display: 'flex', alignItems: 'center', gap: 2.5, p: 2 }}>
+      <DutyDate date={duty.date} />
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Stack direction="row" spacing={1} alignItems="center">
+          <AccessTimeIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+          <Typography variant="h5" sx={{ fontWeight: 600 }}>
+            {duty.label}
+          </Typography>
+        </Stack>
+        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap sx={{ mt: 0.75 }}>
+          {duty.roleName && (
+            <Chip
+              size="small"
+              variant="outlined"
+              color="warning"
+              icon={<BadgeIcon fontSize="small" />}
+              label={duty.roleName}
+            />
+          )}
+          <WindowCategoryChip category={duty.windowCategory} />
+          <Typography variant="body2" color="text.secondary">
+            {duty.windowLabel}
+          </Typography>
+        </Stack>
+      </Box>
+      {duty.vehiclesNeeded > 0 && (
+        <Chip
+          size="small"
+          variant="outlined"
+          icon={<DirectionsCarIcon fontSize="small" />}
+          label={t(
+            duty.vehiclesNeeded === 1 ? 'myDuties.vehicleCountOne' : 'myDuties.vehicleCountMany',
+            { count: duty.vehiclesNeeded },
+          )}
+        />
+      )}
+    </Paper>
+  );
+};
 
 /**
  * Someone's own duties, across every rota they are on.
@@ -115,6 +122,7 @@ const DutyCard = ({ duty }: { duty: MyDuty }) => (
  * schedules appear; a draft is a coordinator's working copy, not a promise.
  */
 export const MyDutiesPage = () => {
+  const t = useT();
   const [duties, setDuties] = useState<MyDutiesResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -126,11 +134,11 @@ export const MyDutiesPage = () => {
     try {
       setDuties(await apiFetch<MyDutiesResponse>('/schedules/me'));
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not load your duties.');
+      setError(e instanceof Error ? e.message : t('myDuties.loadFailed'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void load();
@@ -138,12 +146,11 @@ export const MyDutiesPage = () => {
 
   return (
     <Card sx={{ mt: 2 }}>
-      <Title title="My Duties" />
+      <Title title={t('myDuties.pageTitle')} />
       <CardContent>
-        <Typography variant="h6">My Duties</Typography>
+        <Typography variant="h6">{t('myDuties.heading')}</Typography>
         <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-          Shifts you are scheduled for on published rotas. What you told the
-          coordinator you were free for lives on My Availability.
+          {t('myDuties.subheading')}
         </Typography>
 
         {loading && <CircularProgress size={24} />}
@@ -157,13 +164,13 @@ export const MyDutiesPage = () => {
         {duties && (
           <>
             <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
-              <Typography variant="subtitle2">Upcoming</Typography>
+              <Typography variant="subtitle2">{t('myDuties.upcoming')}</Typography>
               <Chip size="small" variant="outlined" label={duties.upcoming.length} />
             </Stack>
 
             {duties.upcoming.length === 0 ? (
               <Typography variant="body2" color="text.secondary">
-                No duties scheduled yet. A coordinator will publish the next rota here.
+                {t('myDuties.noneScheduled')}
               </Typography>
             ) : (
               <Stack spacing={1.5}>
@@ -185,7 +192,7 @@ export const MyDutiesPage = () => {
                   sx={{ justifyContent: 'space-between' }}
                 >
                   <Stack direction="row" spacing={1} alignItems="center">
-                    <Typography variant="subtitle2">Past duties</Typography>
+                    <Typography variant="subtitle2">{t('myDuties.pastDuties')}</Typography>
                     <Chip size="small" variant="outlined" label={duties.past.length} />
                   </Stack>
                 </Button>

@@ -1,13 +1,29 @@
+import { ReactElement } from 'react';
 import { describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render as rtlRender, RenderOptions, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { AdminContext, testDataProvider } from 'react-admin';
+import polyglotI18nProvider from 'ra-i18n-polyglot';
 import { MAX_SHIFTS_PER_DAY, MINUTES_PER_DAY, toMinuteOfDay } from '@redinfo/shared';
+import { messages } from '../../i18n/i18nProvider';
 import {
   copyShiftsTo,
   countCopyTargets,
   DayShiftEditor,
   WindowDayDraft,
 } from './DayShiftEditor';
+
+// This screen has not gone through #180 phase 3 yet — English by convention.
+const i18nProvider = polyglotI18nProvider(messages, 'en');
+const render = (ui: ReactElement, options?: Omit<RenderOptions, 'wrapper'>) =>
+  rtlRender(ui, {
+    wrapper: ({ children }) => (
+      <AdminContext dataProvider={testDataProvider()} i18nProvider={i18nProvider}>
+        {children}
+      </AdminContext>
+    ),
+    ...options,
+  });
 
 /** Minutes from midnight, so the expectations read in wall-clock time. */
 const at = (hour: number, minute = 0) => toMinuteOfDay(hour, minute);
