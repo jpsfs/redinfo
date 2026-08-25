@@ -1,9 +1,16 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { AdminContext, ResourceContextProvider, testDataProvider } from 'react-admin';
+import polyglotI18nProvider from 'ra-i18n-polyglot';
 import { MemoryRouter } from 'react-router-dom';
 import { CertificationType, User, UserRole } from '@redinfo/shared';
+import { messages } from '../../i18n/i18nProvider';
 import { UserList } from './UserList';
+
+// This screen has not gone through #180 phase 3's Portuguese rollout yet —
+// its tests still read in English, so a real i18nProvider is pinned to 'en'
+// rather than left unset (see `MyDutiesPage.test.tsx` for the same pattern).
+const i18nProvider = polyglotI18nProvider(messages, 'en');
 
 const person = (overrides: Partial<User> = {}): User =>
   ({
@@ -49,7 +56,7 @@ function renderList(data: User[], role: UserRole = UserRole.SYSTEM_ADMIN) {
 
   render(
     <MemoryRouter>
-      <AdminContext dataProvider={dataProvider} authProvider={authProvider}>
+      <AdminContext dataProvider={dataProvider} authProvider={authProvider} i18nProvider={i18nProvider}>
         <ResourceContextProvider value="users">
           <UserList />
         </ResourceContextProvider>

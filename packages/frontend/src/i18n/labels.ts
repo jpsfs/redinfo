@@ -468,6 +468,256 @@ const MESSAGES = {
   'resources.municipalities.name': { pt: 'Concelhos', en: 'Municipalities' },
   'resources.localities.name': { pt: 'Localidades', en: 'Localities' },
   'resources.holidays.name': { pt: 'Feriados', en: 'Holidays' },
+
+  // ── Personnel registry (#180 phase 3 — users) ──
+  'resources.users.fields.firstName': { pt: 'Nome próprio', en: 'First Name' },
+  'resources.users.fields.lastName': { pt: 'Apelido', en: 'Last Name' },
+  'resources.users.fields.email': { pt: 'E-mail', en: 'Email' },
+  'resources.users.fields.role': { pt: 'Função', en: 'Role' },
+  'resources.users.fields.password': { pt: 'Palavra-passe', en: 'Password' },
+  'resources.users.fields.isActive': { pt: 'Ativo', en: 'Active' },
+  'resources.users.fields.readiness': { pt: 'Operacionalidade', en: 'Readiness' },
+  'resources.users.fields.certification': { pt: 'Tem certificação', en: 'Holds certification' },
+  'resources.users.fields.certificationStatus': {
+    pt: 'Estado da certificação',
+    en: 'Certification status',
+  },
+  'resources.users.fields.certifications': { pt: 'Certificações', en: 'Certifications' },
+  'resources.users.fields.phone': { pt: 'Telefone', en: 'Phone' },
+  'resources.users.fields.birthDate': { pt: 'Data de nascimento', en: 'Date of birth' },
+  'resources.users.fields.joinedOn': { pt: 'Data de admissão', en: 'Joined on' },
+  'resources.users.fields.addressLine': { pt: 'Morada', en: 'Address' },
+  'resources.users.fields.postalCode': { pt: 'Código postal', en: 'Postal code' },
+  'resources.users.fields.redCrossNumber': {
+    pt: 'Nº Nacional CVP',
+    en: 'Red Cross national no.',
+  },
+  'resources.users.fields.volunteerNumber': { pt: 'Nº de Voluntário', en: 'Volunteer no.' },
+  'resources.users.fields.nif': { pt: 'NIF', en: 'NIF' },
+  'resources.users.fields.citizenCardNumber': { pt: 'Cartão de cidadão', en: 'Citizen card' },
+  'resources.users.fields.bloodType': { pt: 'Grupo sanguíneo', en: 'Blood type' },
+  'resources.users.fields.emergencyContactName': {
+    pt: 'Nome do contacto de emergência',
+    en: 'Emergency contact name',
+  },
+  'resources.users.fields.emergencyContactPhone': {
+    pt: 'Telefone do contacto de emergência',
+    en: 'Emergency contact phone',
+  },
+
+  'userForm.accountSection': { pt: 'Conta', en: 'Account' },
+  'userForm.personnelSection': { pt: 'Pessoal', en: 'Personnel' },
+  'userForm.personnelSectionOptional': {
+    pt: 'Pessoal (opcional — pode ser preenchido depois)',
+    en: 'Personnel (optional — can be filled in later)',
+  },
+  'userForm.adminOnlyFields': {
+    pt: 'O email, a função e a palavra-passe são só de administrador. Pede a um administrador para os alterar.',
+    en: 'Email, role and password are administrator-only. Ask an admin to change them.',
+  },
+  'userForm.newPasswordHint': {
+    pt: 'Nova palavra-passe (deixa em branco para manter a atual).',
+    en: 'New password (leave blank to keep the current one).',
+  },
+  'userForm.volunteerNumberHint': {
+    pt: 'Opcional, atribuído manualmente.',
+    en: 'Optional, manually assigned.',
+  },
+
+  'personnelList.nameColumn': { pt: 'Nome', en: 'Name' },
+  'personnelList.searchPlaceholder': {
+    pt: 'Procurar nome ou número',
+    en: 'Search name or number',
+  },
+  'personnelList.active': { pt: 'Ativo', en: 'Active' },
+  'personnelList.inactive': { pt: 'Inativo', en: 'Inactive' },
+  'personnelList.certStatusExpiring': {
+    pt: 'A expirar nos próximos 6 meses',
+    en: 'Expiring within 6 months',
+  },
+  'personnelList.certStatusExpired': { pt: 'Expirada', en: 'Expired' },
+
+  'userShow.documentSaved': { pt: 'Documento guardado', en: 'Document saved' },
+  'userShow.documentUploadFailed': {
+    pt: 'Não foi possível carregar o documento.',
+    en: 'Could not upload the document.',
+  },
+  'userShow.documentRemoved': { pt: 'Documento removido', en: 'Document removed' },
+  'userShow.documentRemoveFailed': {
+    pt: 'Não foi possível remover o documento.',
+    en: 'Could not remove the document.',
+  },
+  'userShow.removeDocument': { pt: 'Remover documento', en: 'Remove document' },
+  'userShow.attachDocument': { pt: 'Anexar documento', en: 'Attach document' },
+  'userShow.removePhotoButton': { pt: 'Remover foto', en: 'Remove photo' },
+  'userShow.certificationsHeading': { pt: 'Certificações', en: 'Certifications' },
+  'userShow.certificationsHint': {
+    pt: 'Só as certificações realmente atribuídas ficam aqui registadas. O TAS concede o TAT e o SBV, e o TAT concede o SBV — esses aparecem abaixo como concedidos, não guardados.',
+    en: 'Only certifications actually awarded are recorded here. TAS grants TAT and SBV, and TAT grants SBV — those are shown below as granted, not stored.',
+  },
+  'userShow.noCertifications': { pt: 'Sem certificações registadas.', en: 'No certifications on file.' },
+  'userShow.alsoGrantedByAbove': {
+    pt: 'Também concedido pelas anteriores',
+    en: 'Also granted by the above',
+  },
+  'userShow.certificationSaved': { pt: 'Certificação guardada', en: 'Certification saved' },
+  'userShow.certificationRemoved': { pt: 'Certificação removida', en: 'Certification removed' },
+  'userShow.certificationRemoveFailed': {
+    pt: 'Não foi possível remover essa certificação.',
+    en: 'Could not remove that certification.',
+  },
+  'userShow.removeCertConfirmPrefix': { pt: 'Remover a certificação ', en: 'Remove the ' },
+  'userShow.removeCertConfirmSuffix': { pt: '?', en: ' certification?' },
+  'userShow.contactHeading': { pt: 'Contacto', en: 'Contact' },
+  'userShow.personalHeading': { pt: 'Pessoal', en: 'Personal' },
+  'userShow.recordHeading': { pt: 'Registo', en: 'Record' },
+  'userShow.createdLabel': { pt: 'Criado', en: 'Created' },
+  'userShow.updatedLabel': { pt: 'Atualizado', en: 'Updated' },
+
+  'certificationDialog.add': { pt: 'Adicionar certificação', en: 'Add certification' },
+  'certificationDialog.edit': { pt: 'Editar certificação', en: 'Edit certification' },
+  'certificationDialog.certificationLabel': { pt: 'Certificação', en: 'Certification' },
+  'certificationDialog.issuedOn': { pt: 'Emitida em', en: 'Issued on' },
+  'certificationDialog.validUntil': { pt: 'Válida até', en: 'Valid until' },
+  'certificationDialog.noExpiry': {
+    pt: 'O certificado não tem data de validade',
+    en: 'The certificate carries no expiry date',
+  },
+  'certificationDialog.notes': { pt: 'Notas (opcional)', en: 'Notes (optional)' },
+  'certificationDialog.save': { pt: 'Guardar certificação', en: 'Save certification' },
+  'certificationDialog.chooseType': {
+    pt: 'Escolhe a certificação.',
+    en: 'Choose which certification this is.',
+  },
+  'certificationDialog.saveFailed': {
+    pt: 'Não foi possível guardar esta certificação.',
+    en: 'Could not save this certification.',
+  },
+
+  // ── Vehicles & fleet (#180 phase 3) ──
+  'vehicleType.EMERGENCY': { pt: 'Emergência', en: 'Emergency' },
+  'vehicleType.TRANSPORT': { pt: 'Transporte', en: 'Transport' },
+
+  'resources.vehicles.fields.licensePlate': { pt: 'Matrícula', en: 'Licence Plate' },
+  'resources.vehicles.fields.numeroCauda': { pt: 'Nº de Cauda', en: 'Fleet ID' },
+  'resources.vehicles.fields.vehicleType': { pt: 'Tipo de viatura', en: 'Vehicle Type' },
+  'resources.vehicles.fields.insuranceRenewalDate': {
+    pt: 'Validade do seguro',
+    en: 'Insurance Renewal Date',
+  },
+  'resources.vehicles.fields.nextImtInspectionDate': {
+    pt: 'Próxima inspeção IMT',
+    en: 'Next IMT Inspection Date',
+  },
+  'resources.vehicles.fields.manufacturer': { pt: 'Fabricante', en: 'Manufacturer' },
+  'resources.vehicles.fields.model': { pt: 'Modelo', en: 'Model' },
+  'resources.vehicles.fields.notes': { pt: 'Notas', en: 'Notes' },
+  'resources.vehicles.fields.createdAt': { pt: 'Criado', en: 'Created' },
+  'resources.vehicles.fields.updatedAt': { pt: 'Última atualização', en: 'Last Updated' },
+
+  'vehicleForm.licensePlateInvalid': {
+    pt: 'Tem de ser uma matrícula portuguesa válida: AA-99-99, 99-99-AA, 99-AA-99 ou AA-99-AA',
+    en: 'Must be a valid Portuguese plate: AA-99-99, 99-99-AA, 99-AA-99 or AA-99-AA',
+  },
+  'vehicleForm.licensePlateHelp': {
+    pt: 'Formato português, por exemplo 55-AA-12 ou AB-12-CD',
+    en: 'Portuguese format, e.g. 55-AA-12 or AB-12-CD',
+  },
+  'vehicleForm.numeroCaudaHelp': {
+    pt: 'Identificador de frota único, atribuído pela organização',
+    en: 'Unique fleet identifier assigned by the organisation',
+  },
+
+  'vehicleList.overdue': { pt: 'Atrasado!', en: 'Overdue!' },
+  'vehicleList.expiringSoon': { pt: 'A expirar em breve', en: 'Expiring soon' },
+
+  'vehicleShow.overdueSuffix': { pt: ' ⚠ ATRASADO', en: ' ⚠ OVERDUE' },
+  'vehicleShow.soonSuffix': { pt: ' ⚠ Em breve', en: ' ⚠ Soon' },
+  'vehicleShow.totalMaintenanceCost': { pt: 'Custo total de manutenção:', en: 'Total maintenance cost:' },
+  'vehicleShow.addMaintenanceEntry': { pt: 'Adicionar manutenção', en: 'Add Maintenance Entry' },
+  'vehicleShow.maintenanceRegistryHeading': {
+    pt: 'Registo de manutenção',
+    en: 'Maintenance Registry',
+  },
+
+  'resources.maintenance.fields.vehicleId': { pt: 'Viatura', en: 'Vehicle' },
+  'resources.maintenance.fields.date': { pt: 'Data', en: 'Date' },
+  'resources.maintenance.fields.description': { pt: 'Descrição', en: 'Description' },
+  'resources.maintenance.fields.serviceProvider': { pt: 'Fornecedor', en: 'Service Provider' },
+  'resources.maintenance.fields.cost': { pt: 'Custo (€)', en: 'Cost (€)' },
+  'resources.maintenance.fields.vatAmount': { pt: 'IVA (€)', en: 'VAT (€)' },
+  'resources.maintenance.fields.notes': { pt: 'Notas', en: 'Notes' },
+
+  // ── Inventory templates & items (#180 phase 3) ──
+  'itemType.COUNTABLE': { pt: 'Contável (quantidade inteira)', en: 'Countable (integer quantity)' },
+  'itemType.UNLIMITED': {
+    pt: 'Ilimitado (presente/ausente)',
+    en: 'Unlimited (present/absent only)',
+  },
+
+  'resources.inventory-template-items.fields.templateId': { pt: 'ID do modelo', en: 'Template ID' },
+  'resources.inventory-template-items.fields.name': { pt: 'Nome do item', en: 'Item Name' },
+  'resources.inventory-template-items.fields.type': { pt: 'Tipo', en: 'Type' },
+  'resources.inventory-template-items.fields.recommendedQuantity': {
+    pt: 'Quantidade recomendada',
+    en: 'Recommended Quantity',
+  },
+  'resources.inventory-template-items.fields.unit': { pt: 'Unidade', en: 'Unit' },
+  'resources.inventory-template-items.fields.order': { pt: 'Ordem de exibição', en: 'Display Order' },
+  'resources.inventory-template-items.fields.notes': { pt: 'Notas', en: 'Notes' },
+
+  'inventoryItemForm.unitHelp': { pt: 'Por exemplo, un, litros, kit', en: 'E.g. pcs, liters, kit' },
+
+  'resources.inventory-templates.fields.vehicleType': { pt: 'Tipo de viatura', en: 'Vehicle Type' },
+  'resources.inventory-templates.fields.version': { pt: 'Versão', en: 'Version' },
+  'resources.inventory-templates.fields.notes': { pt: 'Notas', en: 'Notes' },
+  'resources.inventory-templates.fields.items': { pt: 'Itens', en: 'Items' },
+
+  'inventoryTemplateShow.addItem': { pt: 'Adicionar item', en: 'Add Item' },
+  'inventoryTemplateShow.exportCsv': { pt: 'Exportar CSV', en: 'Export CSV' },
+  'inventoryTemplateShow.itemsHeading': { pt: 'Itens de inventário', en: 'Inventory Items' },
+  'inventoryTemplateShow.unlimited': { pt: 'Ilimitado', en: 'Unlimited' },
+  'inventoryTemplateShow.countable': { pt: 'Contável', en: 'Countable' },
+
+  // ── Vehicle inventory board (#180 phase 3) ──
+  'vehicleInventory.heading': { pt: 'Inventário da viatura', en: 'Vehicle Inventory' },
+  'vehicleInventory.loadFailed': {
+    pt: 'Não foi possível carregar o inventário.',
+    en: 'Could not load inventory data.',
+  },
+  'vehicleInventory.invalidQuantity': {
+    pt: 'Introduz uma quantidade inteira válida',
+    en: 'Please enter a valid integer quantity',
+  },
+  'vehicleInventory.updated': { pt: 'Inventário atualizado', en: 'Inventory updated' },
+  'vehicleInventory.updateFailed': {
+    pt: 'Não foi possível atualizar o inventário',
+    en: 'Failed to update inventory',
+  },
+  'vehicleInventory.noTemplate': {
+    pt: 'Não há modelo de inventário definido para %{type}. Um coordenador pode criar um em Modelos de Inventário.',
+    en: 'No inventory template defined for %{type}. A coordinator can create one in Inventory Templates.',
+  },
+  'vehicleInventory.thisVehicleType': { pt: 'este tipo de viatura', en: 'this vehicle type' },
+  'vehicleInventory.lowStock': { pt: '⚠ Stock baixo', en: '⚠ Low Stock' },
+  'vehicleInventory.templateVersion': { pt: 'Modelo v%{version}', en: 'Template v%{version}' },
+  'vehicleInventory.noItems': {
+    pt: 'Não há itens de inventário definidos no modelo.',
+    en: 'No inventory items defined in the template.',
+  },
+  'vehicleInventory.colItem': { pt: 'Item', en: 'Item' },
+  'vehicleInventory.colType': { pt: 'Tipo', en: 'Type' },
+  'vehicleInventory.colRecommended': { pt: 'Recomendado', en: 'Recommended' },
+  'vehicleInventory.colActual': { pt: 'Real', en: 'Actual' },
+  'vehicleInventory.colUnit': { pt: 'Unidade', en: 'Unit' },
+  'vehicleInventory.colStatus': { pt: 'Estado', en: 'Status' },
+  'vehicleInventory.colAction': { pt: 'Ação', en: 'Action' },
+  'vehicleInventory.infinity': { pt: '∞', en: '∞' },
+  'vehicleInventory.presentPlaceholder': { pt: 'presente', en: 'present' },
+  'vehicleInventory.statusLow': { pt: 'Baixo', en: 'Low' },
+  'vehicleInventory.statusOk': { pt: 'OK', en: 'OK' },
+  'vehicleInventory.statusAboveRec': { pt: 'Acima do Rec.', en: 'Above Rec.' },
+  'vehicleInventory.saveQuantityTooltip': { pt: 'Guardar quantidade', en: 'Save quantity' },
 } as const;
 
 export type MessageKey = keyof typeof MESSAGES;

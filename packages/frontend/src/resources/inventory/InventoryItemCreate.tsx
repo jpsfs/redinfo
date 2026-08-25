@@ -8,35 +8,24 @@ import {
   FormDataConsumer,
 } from 'react-admin';
 import { useLocation } from 'react-router-dom';
-
-const itemTypeChoices = [
-  { id: 'COUNTABLE', name: 'Countable (integer quantity)' },
-  { id: 'UNLIMITED', name: 'Unlimited (present/absent only)' },
-];
+import { useT } from '../../i18n/useT';
 
 export const InventoryItemCreate = () => {
+  const t = useT();
   const location = useLocation();
   const defaultValues = (location.state as { record?: { templateId?: string } })?.record ?? {};
+  const itemTypeChoices = [
+    { id: 'COUNTABLE', name: t('itemType.COUNTABLE') },
+    { id: 'UNLIMITED', name: t('itemType.UNLIMITED') },
+  ];
 
   return (
     <Create redirect="show">
       <SimpleForm defaultValues={defaultValues}>
-        <TextInput
-          source="templateId"
-          label="Template ID"
-          required
-          disabled
-          fullWidth
-        />
-        <TextInput
-          source="name"
-          label="Item Name"
-          validate={required()}
-          fullWidth
-        />
+        <TextInput source="templateId" required disabled fullWidth />
+        <TextInput source="name" validate={required()} fullWidth />
         <SelectInput
           source="type"
-          label="Type"
           choices={itemTypeChoices}
           validate={required()}
           defaultValue="COUNTABLE"
@@ -45,31 +34,19 @@ export const InventoryItemCreate = () => {
         <FormDataConsumer>
           {({ formData }) =>
             formData.type !== 'UNLIMITED' && (
-              <NumberInput
-                source="recommendedQuantity"
-                label="Recommended Quantity"
-                min={0}
-                validate={required()}
-                fullWidth
-              />
+              <NumberInput source="recommendedQuantity" min={0} validate={required()} fullWidth />
             )
           }
         </FormDataConsumer>
         <TextInput
           source="unit"
-          label="Unit (e.g. pcs, liters, kit)"
           validate={required()}
           defaultValue="pcs"
+          helperText={t('inventoryItemForm.unitHelp')}
           fullWidth
         />
-        <NumberInput
-          source="order"
-          label="Display Order"
-          min={0}
-          defaultValue={0}
-          fullWidth
-        />
-        <TextInput source="notes" label="Notes (optional)" multiline fullWidth />
+        <NumberInput source="order" min={0} defaultValue={0} fullWidth />
+        <TextInput source="notes" multiline fullWidth />
       </SimpleForm>
     </Create>
   );

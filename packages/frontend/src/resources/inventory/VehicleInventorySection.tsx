@@ -20,6 +20,7 @@ import {
 } from '@mui/material';
 import SaveIcon from '@mui/icons-material/Save';
 import DownloadIcon from '@mui/icons-material/Download';
+import { useT } from '../../i18n/useT';
 
 const API_URL = import.meta.env.VITE_API_URL ?? '';
 
@@ -68,6 +69,7 @@ function statusBorderColor(status: string): string {
 }
 
 export const VehicleInventorySection = () => {
+  const t = useT();
   const record = useRecordContext<{ id: string; vehicleType: string }>();
   const notify = useNotify();
 
@@ -93,7 +95,7 @@ export const VehicleInventorySection = () => {
       const data = await res.json();
       setInventory(data);
     } catch {
-      setError('Could not load inventory data.');
+      setError(t('vehicleInventory.loadFailed'));
     } finally {
       setLoading(false);
     }
@@ -111,7 +113,7 @@ export const VehicleInventorySection = () => {
 
     const actualQuantity = rawValue === '' ? null : parseInt(rawValue, 10);
     if (rawValue !== '' && isNaN(actualQuantity as number)) {
-      notify('Please enter a valid integer quantity', { type: 'error' });
+      notify(t('vehicleInventory.invalidQuantity'), { type: 'error' });
       return;
     }
 
@@ -137,7 +139,7 @@ export const VehicleInventorySection = () => {
         });
       }
 
-      notify('Inventory updated', { type: 'success' });
+      notify(t('vehicleInventory.updated'), { type: 'success' });
       setEditValues((prev) => {
         const next = { ...prev };
         delete next[templateItemId];
@@ -145,7 +147,7 @@ export const VehicleInventorySection = () => {
       });
       await fetchInventory();
     } catch {
-      notify('Failed to update inventory', { type: 'error' });
+      notify(t('vehicleInventory.updateFailed'), { type: 'error' });
     } finally {
       setSavingIds((prev) => {
         const next = new Set(prev);
@@ -158,10 +160,12 @@ export const VehicleInventorySection = () => {
   if (loading) return <CircularProgress size={24} sx={{ my: 2 }} />;
   if (error) return <Alert severity="warning" sx={{ my: 1 }}>{error}</Alert>;
   if (!inventory?.template) {
+    const vehicleTypeText = record?.vehicleType
+      ? t(`vehicleType.${record.vehicleType}` as 'vehicleType.EMERGENCY' | 'vehicleType.TRANSPORT')
+      : t('vehicleInventory.thisVehicleType');
     return (
       <Alert severity="info" sx={{ my: 1 }}>
-        No inventory template defined for {record?.vehicleType ?? 'this vehicle type'}.
-        A coordinator can create one in Inventory Templates.
+        {t('vehicleInventory.noTemplate', { type: vehicleTypeText })}
       </Alert>
     );
   }
@@ -170,12 +174,12 @@ export const VehicleInventorySection = () => {
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <Typography variant="h6">Vehicle Inventory</Typography>
+          <Typography variant="h6">{t('vehicleInventory.heading')}</Typography>
           {inventory.hasLowStock && (
-            <Chip label="⚠ Low Stock" color="error" size="small" />
+            <Chip label={t('vehicleInventory.lowStock')} color="error" size="small" />
           )}
           <Chip
-            label={`Template v${inventory.template.version}`}
+            label={t('vehicleInventory.templateVersion', { version: inventory.template.version })}
             size="small"
             variant="outlined"
           />
@@ -188,24 +192,24 @@ export const VehicleInventorySection = () => {
           target="_blank"
           rel="noopener noreferrer"
         >
-          Export CSV
+          {t('inventoryTemplateShow.exportCsv')}
         </Button>
       </Box>
 
       {inventory.rows.length === 0 ? (
-        <Alert severity="info">No inventory items defined in the template.</Alert>
+        <Alert severity="info">{t('vehicleInventory.noItems')}</Alert>
       ) : (
         <TableContainer component={Paper} variant="outlined">
           <Table size="small">
             <TableHead>
               <TableRow sx={{ backgroundColor: 'grey.100' }}>
-                <TableCell><strong>Item</strong></TableCell>
-                <TableCell><strong>Type</strong></TableCell>
-                <TableCell align="right"><strong>Recommended</strong></TableCell>
-                <TableCell align="right"><strong>Actual</strong></TableCell>
-                <TableCell><strong>Unit</strong></TableCell>
-                <TableCell><strong>Status</strong></TableCell>
-                <TableCell><strong>Action</strong></TableCell>
+                <TableCell><strong>{t('vehicleInventory.colItem')}</strong></TableCell>
+                <TableCell><strong>{t('vehicleInventory.colType')}</strong></TableCell>
+                <TableCell align="right"><strong>{t('vehicleInventory.colRecommended')}</strong></TableCell>
+                <TableCell align="right"><strong>{t('vehicleInventory.colActual')}</strong></TableCell>
+                <TableCell><strong>{t('vehicleInventory.colUnit')}</strong></TableCell>
+                <TableCell><strong>{t('vehicleInventory.colStatus')}</strong></TableCell>
+                <TableCell><strong>{t('vehicleInventory.colAction')}</strong></TableCell>
               </TableRow>
             </TableHead>
             <TableBody>
@@ -239,14 +243,24 @@ export const VehicleInventorySection = () => {
                     </TableCell>
                     <TableCell>
                       {row.templateItem.type === 'UNLIMITED' ? (
-                        <Chip size="small" label="Unlimited" color="secondary" variant="outlined" />
+                        <Chip
+                          size="small"
+                          label={t('inventoryTemplateShow.unlimited')}
+                          color="secondary"
+                          variant="outlined"
+                        />
                       ) : (
-                        <Chip size="small" label="Countable" variant="outlined" />
+                        <Chip size="small" label={t('inventoryTemplateShow.countable')} variant="outlined" />
                       )}
                     </TableCell>
                     <TableCell align="right">
                       {row.templateItem.type === 'UNLIMITED' ? (
-                        <Chip size="small" label="∞" color="secondary" variant="outlined" />
+                        <Chip
+                          size="small"
+                          label={t('vehicleInventory.infinity')}
+                          color="secondary"
+                          variant="outlined"
+                        />
                       ) : (
                         <Typography variant="body2">
                           {row.templateItem.recommendedQuantity ?? 0}
@@ -258,7 +272,7 @@ export const VehicleInventorySection = () => {
                         <TextField
                           size="small"
                           type="text"
-                          placeholder="present"
+                          placeholder={t('vehicleInventory.presentPlaceholder')}
                           value={editValue}
                           onChange={(e) =>
                             setEditValues((prev) => ({
@@ -290,21 +304,31 @@ export const VehicleInventorySection = () => {
                     </TableCell>
                     <TableCell>
                       {row.status === 'low' && (
-                        <Chip size="small" label="Low" color="error" />
+                        <Chip size="small" label={t('vehicleInventory.statusLow')} color="error" />
                       )}
                       {row.status === 'ok' && (
-                        <Chip size="small" label="OK" color="success" />
+                        <Chip size="small" label={t('vehicleInventory.statusOk')} color="success" />
                       )}
                       {row.status === 'over' && (
-                        <Chip size="small" label="Above Rec." color="success" variant="outlined" />
+                        <Chip
+                          size="small"
+                          label={t('vehicleInventory.statusAboveRec')}
+                          color="success"
+                          variant="outlined"
+                        />
                       )}
                       {row.status === 'unlimited' && (
-                        <Chip size="small" label="Unlimited" color="secondary" variant="outlined" />
+                        <Chip
+                          size="small"
+                          label={t('inventoryTemplateShow.unlimited')}
+                          color="secondary"
+                          variant="outlined"
+                        />
                       )}
                     </TableCell>
                     <TableCell>
                       {isEditing && (
-                        <Tooltip title="Save quantity">
+                        <Tooltip title={t('vehicleInventory.saveQuantityTooltip')}>
                           <IconButton
                             size="small"
                             color="primary"

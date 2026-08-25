@@ -12,13 +12,10 @@ import {
   Stack,
   TextField,
 } from '@mui/material';
-import {
-  CERTIFICATION_LABEL,
-  CERTIFICATION_TYPES,
-  CertificationType,
-  UserCertification,
-} from '@redinfo/shared';
+import { CERTIFICATION_TYPES, CertificationType, UserCertification } from '@redinfo/shared';
 import { apiFetch } from '../../api';
+import { certificationLabel } from '../../i18n/labels';
+import { useT } from '../../i18n/useT';
 
 export interface CertificationDialogProps {
   open: boolean;
@@ -46,6 +43,7 @@ export const CertificationDialog = ({
   onClose,
   onSaved,
 }: CertificationDialogProps) => {
+  const t = useT();
   const isEdit = Boolean(certification);
   const [type, setType] = useState<CertificationType | ''>(certification?.type ?? '');
   const [validUntil, setValidUntil] = useState(certification?.validUntil ?? '');
@@ -71,7 +69,7 @@ export const CertificationDialog = ({
 
   const save = async () => {
     if (!type) {
-      setError('Choose which certification this is.');
+      setError(t('certificationDialog.chooseType'));
       return;
     }
     setBusy(true);
@@ -94,7 +92,7 @@ export const CertificationDialog = ({
       onSaved();
       handleClose();
     } catch (e) {
-      setError(e instanceof Error ? e.message : 'Could not save this certification.');
+      setError(e instanceof Error ? e.message : t('certificationDialog.saveFailed'));
     } finally {
       setBusy(false);
     }
@@ -102,30 +100,30 @@ export const CertificationDialog = ({
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="xs" fullWidth>
-      <DialogTitle>{isEdit ? 'Edit certification' : 'Add certification'}</DialogTitle>
+      <DialogTitle>{isEdit ? t('certificationDialog.edit') : t('certificationDialog.add')}</DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 1 }}>
           {error && <Alert severity="warning">{error}</Alert>}
 
           <TextField
             select
-            label="Certification"
+            label={t('certificationDialog.certificationLabel')}
             value={type}
             disabled={isEdit}
             onChange={(event) => setType(event.target.value as CertificationType)}
             fullWidth
             required
           >
-            {(isEdit ? CERTIFICATION_TYPES : availableTypes).map((t) => (
-              <MenuItem key={t} value={t}>
-                {CERTIFICATION_LABEL[t]}
+            {(isEdit ? CERTIFICATION_TYPES : availableTypes).map((certType) => (
+              <MenuItem key={certType} value={certType}>
+                {certificationLabel(t, certType)}
               </MenuItem>
             ))}
           </TextField>
 
           <Stack direction="row" spacing={2}>
             <TextField
-              label="Issued on"
+              label={t('certificationDialog.issuedOn')}
               type="date"
               value={issuedOn}
               onChange={(event) => setIssuedOn(event.target.value)}
@@ -133,7 +131,7 @@ export const CertificationDialog = ({
               fullWidth
             />
             <TextField
-              label="Valid until"
+              label={t('certificationDialog.validUntil')}
               type="date"
               value={validUntil}
               disabled={noExpiry}
@@ -150,11 +148,11 @@ export const CertificationDialog = ({
                 onChange={(event) => setNoExpiry(event.target.checked)}
               />
             }
-            label="The certificate carries no expiry date"
+            label={t('certificationDialog.noExpiry')}
           />
 
           <TextField
-            label="Notes (optional)"
+            label={t('certificationDialog.notes')}
             value={notes}
             onChange={(event) => setNotes(event.target.value)}
             multiline
@@ -165,10 +163,10 @@ export const CertificationDialog = ({
       </DialogContent>
       <DialogActions>
         <Button onClick={handleClose} disabled={busy}>
-          Cancel
+          {t('action.cancel')}
         </Button>
         <Button variant="contained" onClick={() => void save()} disabled={busy}>
-          Save certification
+          {t('certificationDialog.save')}
         </Button>
       </DialogActions>
     </Dialog>

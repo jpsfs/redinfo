@@ -5,23 +5,21 @@ import {
   TextInput,
   required,
 } from 'react-admin';
+import { useT } from '../../i18n/useT';
 
-const vehicleTypeChoices = [
-  { id: 'EMERGENCY', name: 'Emergency' },
-  { id: 'TRANSPORT', name: 'Transport' },
-];
+export const InventoryTemplateCreate = () => {
+  const t = useT();
+  const vehicleTypeChoices = [
+    { id: 'EMERGENCY', name: t('vehicleType.EMERGENCY') },
+    { id: 'TRANSPORT', name: t('vehicleType.TRANSPORT') },
+  ];
 
-export const InventoryTemplateCreate = () => (
-  <Create redirect="show">
-    <SimpleForm>
-      <SelectInput
-        source="vehicleType"
-        label="Vehicle Type"
-        choices={vehicleTypeChoices}
-        validate={required()}
-        fullWidth
-      />
-      <TextInput source="notes" label="Notes (optional)" multiline fullWidth />
-    </SimpleForm>
-  </Create>
-);
+  return (
+    <Create redirect="show">
+      <SimpleForm>
+        <SelectInput source="vehicleType" choices={vehicleTypeChoices} validate={required()} fullWidth />
+        <TextInput source="notes" multiline fullWidth />
+      </SimpleForm>
+    </Create>
+  );
+};

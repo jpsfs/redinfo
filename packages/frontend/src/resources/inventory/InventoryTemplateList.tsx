@@ -10,29 +10,33 @@ import {
 import { Chip } from '@mui/material';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
+import { useT } from '../../i18n/useT';
 
-const VehicleTypeField = () => (
-  <FunctionField
-    label="Vehicle Type"
-    render={(record: { vehicleType?: string }) =>
-      record.vehicleType === 'EMERGENCY' ? (
-        <Chip
-          size="small"
-          label="Emergency"
-          color="error"
-          icon={<DirectionsCarIcon fontSize="small" />}
-        />
-      ) : (
-        <Chip
-          size="small"
-          label="Transport"
-          color="primary"
-          icon={<LocalShippingIcon fontSize="small" />}
-        />
-      )
-    }
-  />
-);
+const VehicleTypeField = () => {
+  const t = useT();
+  return (
+    <FunctionField
+      source="vehicleType"
+      render={(record: { vehicleType?: string }) =>
+        record.vehicleType === 'EMERGENCY' ? (
+          <Chip
+            size="small"
+            label={t('vehicleType.EMERGENCY')}
+            color="error"
+            icon={<DirectionsCarIcon fontSize="small" />}
+          />
+        ) : (
+          <Chip
+            size="small"
+            label={t('vehicleType.TRANSPORT')}
+            color="primary"
+            icon={<LocalShippingIcon fontSize="small" />}
+          />
+        )
+      }
+    />
+  );
+};
 
 const ListActions = () => (
   <TopToolbar>
@@ -48,13 +52,11 @@ export const InventoryTemplateList = () => (
   >
     <Datagrid rowClick="show" bulkActionButtons={false}>
       <VehicleTypeField />
-      <NumberField source="version" label="Version" />
-      <TextField source="notes" label="Notes" emptyText="—" />
+      <NumberField source="version" />
+      <TextField source="notes" emptyText="—" />
       <FunctionField
-        label="Items"
-        render={(record: { items?: unknown[] }) =>
-          record.items?.length ?? 0
-        }
+        source="items"
+        render={(record: { items?: unknown[] }) => record.items?.length ?? 0}
       />
     </Datagrid>
   </List>

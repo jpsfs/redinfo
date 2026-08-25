@@ -32,35 +32,16 @@ const MaintenanceCreateForm = () => {
           optionText={(v: { licensePlate: string; numeroCauda: string }) =>
             `${v.licensePlate} – ${v.numeroCauda}`
           }
-          label="Vehicle"
           validate={required()}
           fullWidth
         />
       </ReferenceInput>
-      <DateInput source="date" label="Date" validate={required()} fullWidth />
-      <TextInput source="description" label="Description" validate={required()} fullWidth />
-      <TextInput
-        source="serviceProvider"
-        label="Service Provider"
-        validate={required()}
-        fullWidth
-      />
-      <NumberInput
-        source="cost"
-        label="Cost (€)"
-        validate={required()}
-        min={0}
-        step={0.01}
-        fullWidth
-      />
-      <NumberInput
-        source="vatAmount"
-        label="VAT Amount (€) — optional"
-        min={0}
-        step={0.01}
-        fullWidth
-      />
-      <TextInput source="notes" label="Notes (optional)" multiline rows={3} fullWidth />
+      <DateInput source="date" validate={required()} fullWidth />
+      <TextInput source="description" validate={required()} fullWidth />
+      <TextInput source="serviceProvider" validate={required()} fullWidth />
+      <NumberInput source="cost" validate={required()} min={0} step={0.01} fullWidth />
+      <NumberInput source="vatAmount" min={0} step={0.01} fullWidth />
+      <TextInput source="notes" multiline rows={3} fullWidth />
     </SimpleForm>
   );
 };

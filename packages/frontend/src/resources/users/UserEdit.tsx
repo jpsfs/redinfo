@@ -14,11 +14,6 @@ import { Action, BLOOD_TYPE_LABEL, BloodType, UserRole, hasPermission } from '@r
 import { accountRoleLabel } from '../../i18n/labels';
 import { useT } from '../../i18n/useT';
 
-const bloodTypeChoices = Object.values(BloodType).map((type) => ({
-  id: type,
-  name: BLOOD_TYPE_LABEL[type],
-}));
-
 /**
  * One PATCH endpoint serves both an admin and a coordinator — the API enforces
  * which fields each may change (`MANAGE_USERS` for account fields,
@@ -36,46 +31,46 @@ export const UserEdit = () => {
     id: role,
     name: accountRoleLabel(t, role),
   }));
+  const bloodTypeChoices = Object.values(BloodType).map((type) => ({
+    id: type,
+    name: BLOOD_TYPE_LABEL[type],
+  }));
 
   return (
     <Edit>
       <SimpleForm>
-        <Typography variant="subtitle2">Account</Typography>
-        <TextInput source="firstName" label="First Name" validate={required()} />
-        <TextInput source="lastName" label="Last Name" validate={required()} />
+        <Typography variant="subtitle2">{t('userForm.accountSection')}</Typography>
+        <TextInput source="firstName" validate={required()} />
+        <TextInput source="lastName" validate={required()} />
         {canManageAccount ? (
           <>
             <TextInput source="email" validate={[required(), email()]} />
             <SelectInput source="role" choices={roleChoices} validate={required()} />
-            <PasswordInput source="password" label="New Password (leave blank to keep)" />
+            <PasswordInput source="password" helperText={t('userForm.newPasswordHint')} />
           </>
         ) : (
           <Typography variant="caption" color="text.secondary">
-            Email, role and password are administrator-only. Ask an admin to change them.
+            {t('userForm.adminOnlyFields')}
           </Typography>
         )}
 
         {canManagePersonnel && (
           <>
             <Divider sx={{ width: '100%', my: 2 }} />
-            <Typography variant="subtitle2">Personnel</Typography>
-            <BooleanInput source="isActive" label="Active" />
-            <TextInput source="phone" label="Phone" />
-            <TextInput source="birthDate" label="Date of birth" type="date" InputLabelProps={{ shrink: true }} />
-            <TextInput source="joinedOn" label="Joined on" type="date" InputLabelProps={{ shrink: true }} />
-            <TextInput source="addressLine" label="Address" />
-            <TextInput source="postalCode" label="Postal code" />
-            <TextInput source="redCrossNumber" label="Red Cross national no." />
-            <TextInput
-              source="volunteerNumber"
-              label="Volunteer no."
-              helperText="Optional, manually assigned."
-            />
-            <TextInput source="nif" label="NIF" />
-            <TextInput source="citizenCardNumber" label="Citizen card" />
-            <SelectInput source="bloodType" choices={bloodTypeChoices} label="Blood type" />
-            <TextInput source="emergencyContactName" label="Emergency contact name" />
-            <TextInput source="emergencyContactPhone" label="Emergency contact phone" />
+            <Typography variant="subtitle2">{t('userForm.personnelSection')}</Typography>
+            <BooleanInput source="isActive" />
+            <TextInput source="phone" />
+            <TextInput source="birthDate" type="date" InputLabelProps={{ shrink: true }} />
+            <TextInput source="joinedOn" type="date" InputLabelProps={{ shrink: true }} />
+            <TextInput source="addressLine" />
+            <TextInput source="postalCode" />
+            <TextInput source="redCrossNumber" />
+            <TextInput source="volunteerNumber" helperText={t('userForm.volunteerNumberHint')} />
+            <TextInput source="nif" />
+            <TextInput source="citizenCardNumber" />
+            <SelectInput source="bloodType" choices={bloodTypeChoices} />
+            <TextInput source="emergencyContactName" />
+            <TextInput source="emergencyContactPhone" />
           </>
         )}
       </SimpleForm>

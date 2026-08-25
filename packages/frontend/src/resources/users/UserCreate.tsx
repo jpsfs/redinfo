@@ -13,11 +13,6 @@ import { BLOOD_TYPE_LABEL, BloodType, UserRole } from '@redinfo/shared';
 import { accountRoleLabel } from '../../i18n/labels';
 import { useT } from '../../i18n/useT';
 
-const bloodTypeChoices = Object.values(BloodType).map((type) => ({
-  id: type,
-  name: BLOOD_TYPE_LABEL[type],
-}));
-
 /**
  * Account creation is administrator-only (`Action.MANAGE_USERS`) — the route
  * is gated the same way, so unlike `UserEdit` this form does not need to hide
@@ -30,37 +25,41 @@ export const UserCreate = () => {
     id: role,
     name: accountRoleLabel(t, role),
   }));
+  const bloodTypeChoices = Object.values(BloodType).map((type) => ({
+    id: type,
+    name: BLOOD_TYPE_LABEL[type],
+  }));
 
   return (
-  <Create>
-    <SimpleForm>
-      <Typography variant="subtitle2">Account</Typography>
-      <TextInput source="firstName" label="First Name" validate={required()} />
-      <TextInput source="lastName" label="Last Name" validate={required()} />
-      <TextInput source="email" validate={[required(), email()]} />
-      <PasswordInput source="password" validate={[required(), minLength(8)]} />
-      <SelectInput
-        source="role"
-        choices={roleChoices}
-        defaultValue="EMERGENCY_OPERATIONAL"
-        validate={required()}
-      />
+    <Create>
+      <SimpleForm>
+        <Typography variant="subtitle2">{t('userForm.accountSection')}</Typography>
+        <TextInput source="firstName" validate={required()} />
+        <TextInput source="lastName" validate={required()} />
+        <TextInput source="email" validate={[required(), email()]} />
+        <PasswordInput source="password" validate={[required(), minLength(8)]} />
+        <SelectInput
+          source="role"
+          choices={roleChoices}
+          defaultValue="EMERGENCY_OPERATIONAL"
+          validate={required()}
+        />
 
-      <Divider sx={{ width: '100%', my: 2 }} />
-      <Typography variant="subtitle2">Personnel (optional — can be filled in later)</Typography>
-      <TextInput source="phone" label="Phone" />
-      <TextInput source="birthDate" label="Date of birth" type="date" InputLabelProps={{ shrink: true }} />
-      <TextInput source="joinedOn" label="Joined on" type="date" InputLabelProps={{ shrink: true }} />
-      <TextInput source="addressLine" label="Address" />
-      <TextInput source="postalCode" label="Postal code" />
-      <TextInput source="redCrossNumber" label="Red Cross national no." />
-      <TextInput source="volunteerNumber" label="Volunteer no." helperText="Optional, manually assigned." />
-      <TextInput source="nif" label="NIF" />
-      <TextInput source="citizenCardNumber" label="Citizen card" />
-      <SelectInput source="bloodType" choices={bloodTypeChoices} label="Blood type" />
-      <TextInput source="emergencyContactName" label="Emergency contact name" />
-      <TextInput source="emergencyContactPhone" label="Emergency contact phone" />
-    </SimpleForm>
-  </Create>
+        <Divider sx={{ width: '100%', my: 2 }} />
+        <Typography variant="subtitle2">{t('userForm.personnelSectionOptional')}</Typography>
+        <TextInput source="phone" />
+        <TextInput source="birthDate" type="date" InputLabelProps={{ shrink: true }} />
+        <TextInput source="joinedOn" type="date" InputLabelProps={{ shrink: true }} />
+        <TextInput source="addressLine" />
+        <TextInput source="postalCode" />
+        <TextInput source="redCrossNumber" />
+        <TextInput source="volunteerNumber" helperText={t('userForm.volunteerNumberHint')} />
+        <TextInput source="nif" />
+        <TextInput source="citizenCardNumber" />
+        <SelectInput source="bloodType" choices={bloodTypeChoices} />
+        <TextInput source="emergencyContactName" />
+        <TextInput source="emergencyContactPhone" />
+      </SimpleForm>
+    </Create>
   );
 };

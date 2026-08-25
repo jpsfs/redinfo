@@ -14,6 +14,7 @@ import { Chip, Tooltip } from '@mui/material';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
+import { useT } from '../../i18n/useT';
 
 const DAYS_WARN = 30;
 
@@ -30,18 +31,6 @@ function isOverdue(dateStr: string | null | undefined): boolean {
   return new Date(dateStr) < new Date();
 }
 
-const vehicleFilters = [
-  <SearchInput source="q" alwaysOn key="q" />,
-  <SelectInput
-    source="vehicleType"
-    key="vehicleType"
-    choices={[
-      { id: 'EMERGENCY', name: 'Emergency' },
-      { id: 'TRANSPORT', name: 'Transport' },
-    ]}
-  />,
-];
-
 const ListActions = () => (
   <TopToolbar>
     <CreateButton />
@@ -49,73 +38,88 @@ const ListActions = () => (
   </TopToolbar>
 );
 
-const DateAlertField = ({
-  source,
-  label,
-}: {
-  source: string;
-  label: string;
-}) => (
-  <FunctionField
-    label={label}
-    render={(record: Record<string, string>) => {
-      const val = record[source];
-      const overdue = isOverdue(val);
-      const soon = isExpiringSoon(val);
-      const color = overdue ? 'error' : soon ? 'warning' : 'default';
-      const icon =
-        overdue || soon ? (
-          <Tooltip title={overdue ? 'Overdue!' : 'Expiring soon'}>
-            <WarningAmberIcon fontSize="small" />
-          </Tooltip>
-        ) : undefined;
-      return (
-        <Chip
-          size="small"
-          label={val ? new Date(val).toLocaleDateString('pt-PT') : '—'}
-          color={color as 'error' | 'warning' | 'default'}
-          icon={icon}
-          variant="outlined"
-        />
-      );
-    }}
-  />
-);
+const DateAlertField = ({ source }: { source: string }) => {
+  const t = useT();
+  return (
+    <FunctionField
+      source={source}
+      render={(record: Record<string, string>) => {
+        const val = record[source];
+        const overdue = isOverdue(val);
+        const soon = isExpiringSoon(val);
+        const color = overdue ? 'error' : soon ? 'warning' : 'default';
+        const icon =
+          overdue || soon ? (
+            <Tooltip title={overdue ? t('vehicleList.overdue') : t('vehicleList.expiringSoon')}>
+              <WarningAmberIcon fontSize="small" />
+            </Tooltip>
+          ) : undefined;
+        return (
+          <Chip
+            size="small"
+            label={val ? new Date(val).toLocaleDateString('pt-PT') : '—'}
+            color={color as 'error' | 'warning' | 'default'}
+            icon={icon}
+            variant="outlined"
+          />
+        );
+      }}
+    />
+  );
+};
 
-const VehicleTypeField = () => (
-  <FunctionField
-    label="Type"
-    render={(record: { vehicleType?: string }) =>
-      record.vehicleType === 'EMERGENCY' ? (
-        <Chip
-          size="small"
-          label="Emergency"
-          color="error"
-          icon={<DirectionsCarIcon fontSize="small" />}
-        />
-      ) : (
-        <Chip
-          size="small"
-          label="Transport"
-          color="primary"
-          icon={<LocalShippingIcon fontSize="small" />}
-        />
-      )
-    }
-  />
-);
+const VehicleTypeField = () => {
+  const t = useT();
+  return (
+    <FunctionField
+      source="vehicleType"
+      render={(record: { vehicleType?: string }) =>
+        record.vehicleType === 'EMERGENCY' ? (
+          <Chip
+            size="small"
+            label={t('vehicleType.EMERGENCY')}
+            color="error"
+            icon={<DirectionsCarIcon fontSize="small" />}
+          />
+        ) : (
+          <Chip
+            size="small"
+            label={t('vehicleType.TRANSPORT')}
+            color="primary"
+            icon={<LocalShippingIcon fontSize="small" />}
+          />
+        )
+      }
+    />
+  );
+};
 
-export const VehicleList = () => (
-  <List filters={vehicleFilters} actions={<ListActions />} sort={{ field: 'createdAt', order: 'DESC' }}>
-    <Datagrid rowClick="show" bulkActionButtons={false}>
-      <TextField source="licensePlate" label="Licence Plate" />
-      <TextField source="numeroCauda" label="Nº de Cauda" />
-      <VehicleTypeField />
-      <TextField source="manufacturer" label="Make" emptyText="—" />
-      <TextField source="model" label="Model" emptyText="—" />
-      <DateAlertField source="insuranceRenewalDate" label="Insurance Renewal" />
-      <DateAlertField source="nextImtInspectionDate" label="Next IMT Inspection" />
-      <DateField source="createdAt" label="Created" showTime />
-    </Datagrid>
-  </List>
-);
+export const VehicleList = () => {
+  const t = useT();
+  const vehicleFilters = [
+    <SearchInput source="q" alwaysOn key="q" />,
+    <SelectInput
+      source="vehicleType"
+      key="vehicleType"
+      choices={[
+        { id: 'EMERGENCY', name: t('vehicleType.EMERGENCY') },
+        { id: 'TRANSPORT', name: t('vehicleType.TRANSPORT') },
+      ]}
+    />,
+  ];
+
+  return (
+    <List filters={vehicleFilters} actions={<ListActions />} sort={{ field: 'createdAt', order: 'DESC' }}>
+      <Datagrid rowClick="show" bulkActionButtons={false}>
+        <TextField source="licensePlate" />
+        <TextField source="numeroCauda" />
+        <VehicleTypeField />
+        <TextField source="manufacturer" emptyText="—" />
+        <TextField source="model" emptyText="—" />
+        <DateAlertField source="insuranceRenewalDate" />
+        <DateAlertField source="nextImtInspectionDate" />
+        <DateField source="createdAt" showTime />
+      </Datagrid>
+    </List>
+  );
+};

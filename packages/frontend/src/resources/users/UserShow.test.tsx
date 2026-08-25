@@ -2,12 +2,19 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AdminContext, ResourceContextProvider, testDataProvider } from 'react-admin';
+import polyglotI18nProvider from 'ra-i18n-polyglot';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { CertificationType, User, UserRole } from '@redinfo/shared';
 import { UserShow } from './UserShow';
 import { apiDownload, apiFetch, apiUpload } from '../../api';
+import { messages } from '../../i18n/i18nProvider';
 
 vi.mock('../../api', () => ({ apiFetch: vi.fn(), apiDownload: vi.fn(), apiUpload: vi.fn() }));
+
+// This screen has not gone through #180 phase 3's Portuguese rollout yet —
+// its tests still read in English, so a real i18nProvider is pinned to 'en'
+// rather than left unset (see `MyDutiesPage.test.tsx` for the same pattern).
+const i18nProvider = polyglotI18nProvider(messages, 'en');
 
 const mockApiFetch = apiFetch as unknown as Mock;
 const mockApiUpload = apiUpload as unknown as Mock;
@@ -57,7 +64,7 @@ function renderShow(record: User, role: UserRole = UserRole.EMERGENCY_COORDINATO
 
   render(
     <MemoryRouter initialEntries={[`/users/${record.id}/show`]}>
-      <AdminContext dataProvider={dataProvider} authProvider={authProvider}>
+      <AdminContext dataProvider={dataProvider} authProvider={authProvider} i18nProvider={i18nProvider}>
         <ResourceContextProvider value="users">
           <Routes>
             <Route path="/users/:id/show" element={<UserShow />} />
