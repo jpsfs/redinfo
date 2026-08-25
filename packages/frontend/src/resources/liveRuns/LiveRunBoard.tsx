@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { ReactNode, useEffect, useState } from 'react';
 import {
   Box,
   Card,
@@ -29,7 +29,17 @@ export const BOARD_REFRESH_MS = 20_000;
  * victim name to render even by accident. What a coordinator needs is the shape
  * of the call and how long it has been running.
  */
-export const LiveRunBoard = () => {
+export interface LiveRunBoardProps {
+  /**
+   * Rendered instead of the card when there is nothing to show — no open runs,
+   * or the reader lacks `VIEW_LIVE_RUNS`. Left `undefined` on the Dashboard,
+   * where "nothing to show" means "render nothing at all"; `LiveRunsPage` is
+   * the one screen that needs a standalone screen to not go blank.
+   */
+  emptyState?: ReactNode;
+}
+
+export const LiveRunBoard = ({ emptyState }: LiveRunBoardProps = {}) => {
   const [runs, setRuns] = useState<LiveRunBoardEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -58,7 +68,12 @@ export const LiveRunBoard = () => {
     };
   }, []);
 
-  if (error || !runs || runs.length === 0) return null;
+  // Still loading — unchanged for the Dashboard, which renders nothing until
+  // there is something to show.
+  if (runs === null && !error) return null;
+  // Nothing to show: no runs, or the reader lacks `VIEW_LIVE_RUNS` (the fetch
+  // above swallows that as `error`, on purpose — see the comment there).
+  if (error || runs === null || runs.length === 0) return <>{emptyState ?? null}</>;
 
   return (
     <Card variant="outlined">

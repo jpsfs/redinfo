@@ -45,6 +45,7 @@ import { MyAvailabilityPage } from './pages/MyAvailabilityPage';
 import { MyDutiesPage } from './pages/MyDutiesPage';
 import { MyReportsPage } from './pages/MyReportsPage';
 import { MyProfilePage } from './pages/MyProfilePage';
+import { LiveRunsPage } from './pages/LiveRunsPage';
 import PeopleIcon from '@mui/icons-material/People';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import BuildIcon from '@mui/icons-material/Build';
@@ -119,8 +120,13 @@ export default function App() {
         <Route path="/my-reports" element={<MyReportsPage />} />
         {/* Everyone's own record — certifications (read-only, coordinator-
             maintained) and the contact details they keep current themselves.
-            Placement here is provisional pending #181's navigation review. */}
+            Reached from the app-bar avatar menu (`RedInfoUserMenu`), not the
+            drawer — settled by #181's navigation design. */}
         <Route path="/my-profile" element={<MyProfilePage />} />
+        {/* The live-runs oversight board as its own screen, gated by
+            VIEW_LIVE_RUNS in the drawer manifest (layout/navigation.tsx). It
+            also still appears on the Dashboard — unrelated to this route. */}
+        <Route path="/live-runs" element={<LiveRunsPage />} />
       </CustomRoutes>
 
       <Resource

@@ -1,113 +1,112 @@
 import { describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import {
-  AdminContext,
-  ResourceDefinitionContextProvider,
-  ResourceDefinition,
-  testDataProvider,
-} from 'react-admin';
+import { cleanup, render, screen } from '@testing-library/react';
+import { AdminContext, testDataProvider } from 'react-admin';
+import { UserRole } from '@redinfo/shared';
 import { RedInfoMenu } from './AppLayout';
 
 /**
- * The resources App.tsx registers, in registration order.
+ * `usePermissions` is async, so a synchronous `getAllByRole` would see the
+ * `isPending` `null` render and fail — every case here awaits
+ * `findAllByRole` for that reason.
  *
- * Assertions are on the menu links rather than the labels: outside a full
- * `<Admin>` the labels resolve to raw i18n keys, while the set of links is
- * exactly what this menu decides.
+ * Cleans up before rendering, not only after: a case that renders more than
+ * once (`never puts My Profile...` below) would otherwise query across every
+ * menu it has mounted so far, not just the latest one.
  */
-const DEFINITIONS: Record<string, ResourceDefinition> = {
-  users: { name: 'users', hasList: true, options: { label: 'Users' } },
-  vehicles: { name: 'vehicles', hasList: true, options: { label: 'Vehicles' } },
-  maintenance: { name: 'maintenance', hasList: false, options: { label: 'Maintenance' } },
-  'inventory-templates': {
-    name: 'inventory-templates',
-    hasList: true,
-    options: { label: 'Inventory Templates' },
-  },
-  'availability-windows': {
-    name: 'availability-windows',
-    hasList: true,
-    options: { label: 'Availability Windows' },
-  },
-  schedules: { name: 'schedules', hasList: true, options: { label: 'Schedules' } },
-  'event-reports': {
-    name: 'event-reports',
-    hasList: true,
-    options: { label: 'Reports' },
-  },
-  hospitals: { name: 'hospitals', hasList: true, options: { label: 'Hospitals' } },
-  // Reference data the pickers read; no list screen, so no menu entry.
-  municipalities: {
-    name: 'municipalities',
-    hasList: false,
-    options: { label: 'Municipalities' },
-  },
-  localities: { name: 'localities', hasList: false, options: { label: 'Localities' } },
-  holidays: { name: 'holidays', hasList: true, options: { label: 'Holidays' } },
-};
+async function renderMenuAs(role: UserRole | null): Promise<string[]> {
+  cleanup();
+  const authProvider = {
+    login: () => Promise.resolve(),
+    logout: () => Promise.resolve(),
+    checkAuth: () => Promise.resolve(),
+    checkError: () => Promise.resolve(),
+    getPermissions: () => Promise.resolve(role),
+  };
 
-function renderMenu(): string[] {
   render(
-    <AdminContext dataProvider={testDataProvider()}>
-      <ResourceDefinitionContextProvider definitions={DEFINITIONS}>
-        <RedInfoMenu />
-      </ResourceDefinitionContextProvider>
+    <AdminContext dataProvider={testDataProvider()} authProvider={authProvider}>
+      <RedInfoMenu />
     </AdminContext>,
   );
-  return screen
-    .getAllByRole('menuitem')
-    .map((item) => item.getAttribute('href') ?? '')
-    .map((href) => href.replace(/^#/, ''));
+
+  const items = await screen.findAllByRole('menuitem');
+  return items.map((item) => (item.getAttribute('href') ?? '').replace(/^#/, ''));
 }
 
 describe('RedInfoMenu', () => {
-  it('lists the resources that have a list screen', () => {
-    expect(renderMenu()).toEqual(
-      expect.arrayContaining([
-        '/users',
-        '/vehicles',
-        '/inventory-templates',
-        '/availability-windows',
-        '/schedules',
-        '/event-reports',
-        '/hospitals',
-      ]),
-    );
-  });
-
-  it('omits resources with no list screen', () => {
-    const links = renderMenu();
-    expect(links).not.toContain('/maintenance');
-    // Geography is reference data the pickers fetch, not somewhere to go.
-    expect(links).not.toContain('/municipalities');
-    expect(links).not.toContain('/localities');
-  });
-
-  it('omits Holidays — it is managed from Availability Windows', () => {
-    expect(renderMenu()).not.toContain('/holidays');
-  });
-
-  it('adds the personal pages, which are custom routes rather than resources', () => {
-    const links = renderMenu();
-    expect(links).toContain('/my-availability');
-    expect(links).toContain('/my-duties');
-    expect(links).toContain('/my-reports');
-  });
-
-  it('keeps the dashboard first and the personal pages last', () => {
-    const links = renderMenu();
-
-    expect(links[0]).toBe('/');
-    // What someone was asked for, then what they were given, then what they
-    // wrote up afterwards: availability, duties, reports — the order the parts
-    // of the cycle actually happen in. Reports is a personal page because
-    // reading the whole archive needs VIEW_EVENT_REPORTS, which an operational
-    // does not have.
-    expect(links.slice(-4)).toEqual([
+  it('gives an Emergency Operational exactly the field-crew entries, live mode first', async () => {
+    const links = await renderMenuAs(UserRole.EMERGENCY_OPERATIONAL);
+    expect(links).toEqual([
+      '/live',
+      '/',
       '/my-availability',
       '/my-duties',
       '/my-reports',
-      '/my-profile',
+      '/vehicles',
     ]);
+  });
+
+  it('gives a Logistics Coordinator exactly four entries and no live mode', async () => {
+    const links = await renderMenuAs(UserRole.LOGISTICS_COORDINATOR);
+    expect(links).toEqual(['/', '/my-duties', '/vehicles', '/inventory-templates']);
+  });
+
+  it('gives an Emergency Coordinator every operational and configuration entry, including Holidays', async () => {
+    const links = await renderMenuAs(UserRole.EMERGENCY_COORDINATOR);
+    expect(links).toEqual([
+      '/live',
+      '/',
+      '/my-availability',
+      '/my-duties',
+      '/my-reports',
+      '/live-runs',
+      '/event-reports',
+      '/schedules',
+      '/availability-windows',
+      '/users',
+      '/vehicles',
+      // Not '/inventory-templates': ROLE_PERMISSIONS does not give this role
+      // MANAGE_LOGISTICS. See navigation.test.tsx for the note on this gap
+      // against the approved design's entry-count table.
+      '/hospitals',
+      '/holidays',
+    ]);
+  });
+
+  it('gives a System Admin every entry in the manifest', async () => {
+    const links = await renderMenuAs(UserRole.SYSTEM_ADMIN);
+    expect(links).toEqual([
+      '/live',
+      '/',
+      '/my-availability',
+      '/my-duties',
+      '/my-reports',
+      '/live-runs',
+      '/event-reports',
+      '/schedules',
+      '/availability-windows',
+      '/users',
+      '/vehicles',
+      '/inventory-templates',
+      '/hospitals',
+      '/holidays',
+    ]);
+  });
+
+  it('never puts My Profile in the drawer, for any role', async () => {
+    const linksByRole = [];
+    for (const role of Object.values(UserRole)) {
+      linksByRole.push(await renderMenuAs(role));
+    }
+    linksByRole.forEach((links) => expect(links).not.toContain('/my-profile'));
+  });
+
+  it('draws no subheader for a section left with zero visible entries', async () => {
+    await renderMenuAs(UserRole.EMERGENCY_OPERATIONAL);
+    expect(screen.queryByText('Operations')).not.toBeInTheDocument();
+    expect(screen.queryByText('People')).not.toBeInTheDocument();
+    expect(screen.queryByText('Configuration')).not.toBeInTheDocument();
+    // Sections the role does have entries in still get their subheader.
+    expect(screen.getByText('My work')).toBeInTheDocument();
   });
 });

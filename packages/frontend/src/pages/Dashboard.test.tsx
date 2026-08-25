@@ -1,9 +1,9 @@
-import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { AdminContext, testDataProvider } from 'react-admin';
 import { MemoryRouter } from 'react-router-dom';
 import { UserRole } from '@redinfo/shared';
-import { CertificationAlertsTile } from './Dashboard';
+import { CertificationAlertsTile, Dashboard } from './Dashboard';
 import { apiFetch } from '../api';
 
 vi.mock('../api', () => ({ apiFetch: vi.fn(), apiDownload: vi.fn(), apiUpload: vi.fn() }));
@@ -70,5 +70,50 @@ describe('CertificationAlertsTile', () => {
       'href',
       `/users?filter=${encodeURIComponent(JSON.stringify({ certificationStatus: 'EXPIRED' }))}`,
     );
+  });
+});
+
+describe('Dashboard', () => {
+  beforeEach(() => {
+    mockApiFetch.mockReset();
+    mockApiFetch.mockImplementation((url: string) => {
+      if (url === '/live-runs') return Promise.resolve([]);
+      if (url === '/users/certification-alerts') return Promise.resolve({ expiring: 0, expired: 0 });
+      return Promise.reject(new Error(`unexpected apiFetch(${url})`));
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue({ json: () => Promise.resolve({ grouped: {}, total: 0 }) }),
+    );
+  });
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  // Guards #181's step 4a: `LiveRunBoard` gained an `emptyState` prop for the
+  // standalone `/live-runs` screen, and the Dashboard's own copy (which passes
+  // none) must keep rendering nothing at all when there are no open runs.
+  it("renders nothing for the live-runs board when there are no open runs", async () => {
+    const authProvider = {
+      login: () => Promise.resolve(),
+      logout: () => Promise.resolve(),
+      checkAuth: () => Promise.resolve(),
+      checkError: () => Promise.resolve(),
+      getPermissions: () => Promise.resolve(UserRole.EMERGENCY_COORDINATOR),
+    };
+
+    render(
+      <MemoryRouter>
+        <AdminContext
+          dataProvider={testDataProvider({ getList: async () => ({ data: [], total: 0 }) })}
+          authProvider={authProvider}
+        >
+          <Dashboard />
+        </AdminContext>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Bem-vindo ao RedInfo')).toBeInTheDocument();
+    await waitFor(() => expect(mockApiFetch).toHaveBeenCalledWith('/live-runs'));
+    expect(screen.queryByTestId('BoltIcon')).not.toBeInTheDocument();
   });
 });
