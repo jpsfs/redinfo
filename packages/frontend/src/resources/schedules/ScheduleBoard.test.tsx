@@ -326,7 +326,7 @@ describe('ScheduleBoard', () => {
 
     await user.click(await screen.findByRole('button', { name: /print schedule/i }));
 
-    expect(openSpy).toHaveBeenCalledWith(`/schedules/${SCHEDULE_ID}/print`, '_blank', 'noopener');
+    expect(openSpy).toHaveBeenCalledWith(`/#/schedules/${SCHEDULE_ID}/print`, '_blank', 'noopener');
   });
 
   it('offers Publish on a draft and not on a published schedule', async () => {

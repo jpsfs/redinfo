@@ -843,7 +843,10 @@ export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
             aria-label={t('scheduleBoard.printButton')}
             // A new tab keeps the board's own state (dialogs, scroll position)
             // intact — printing is a side trip, not a navigation away from it.
-            onClick={() => window.open(`/schedules/${scheduleId}/print`, '_blank', 'noopener')}
+            // The app uses hash-based routing (react-admin's <Admin>), so the
+            // URL must include the `/#/` segment or the tab won't land on
+            // SchedulePrintPage.
+            onClick={() => window.open(`/#/schedules/${scheduleId}/print`, '_blank', 'noopener')}
           >
             {t('action.print')}
           </Button>
