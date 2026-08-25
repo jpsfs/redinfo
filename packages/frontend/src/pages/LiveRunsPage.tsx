@@ -1,5 +1,6 @@
 import { Box, Typography } from '@mui/material';
 import { Title } from 'react-admin';
+import { useT } from '../i18n/useT';
 import { LiveRunBoard } from '../resources/liveRuns';
 
 /**
@@ -11,18 +12,21 @@ import { LiveRunBoard } from '../resources/liveRuns';
  * `LiveRunBoard` renders its own `Card`, so this page wraps it in a `Box`
  * rather than a second card.
  */
-export const LiveRunsPage = () => (
-  <Box sx={{ mt: 2 }}>
-    <Title title="Live Emergencies" />
-    <Typography variant="h6" sx={{ mb: 2 }}>
-      Live Emergencies
-    </Typography>
-    <LiveRunBoard
-      emptyState={
-        <Typography variant="body2" color="text.secondary">
-          No emergency is being run right now.
-        </Typography>
-      }
-    />
-  </Box>
-);
+export const LiveRunsPage = () => {
+  const t = useT();
+  return (
+    <Box sx={{ mt: 2 }}>
+      <Title title={t('nav.liveEmergencies')} />
+      <Typography variant="h6" sx={{ mb: 2 }}>
+        {t('nav.liveEmergencies')}
+      </Typography>
+      <LiveRunBoard
+        emptyState={
+          <Typography variant="body2" color="text.secondary">
+            {t('liveRunsPage.noRunsRightNow')}
+          </Typography>
+        }
+      />
+    </Box>
+  );
+};

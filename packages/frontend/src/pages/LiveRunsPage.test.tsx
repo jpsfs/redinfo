@@ -1,5 +1,9 @@
+import { ReactElement } from 'react';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render as rtlRender, RenderOptions, screen, waitFor } from '@testing-library/react';
+import { AdminContext, testDataProvider } from 'react-admin';
+import polyglotI18nProvider from 'ra-i18n-polyglot';
+import { messages } from '../i18n/i18nProvider';
 import { LiveRunsPage } from './LiveRunsPage';
 import { apiFetch } from '../api';
 import { LIVE_RUN_BOARD_ENTRY } from '../test/fixtures';
@@ -11,6 +15,18 @@ vi.mock('react-admin', async (importOriginal) => ({
 }));
 
 const mockApiFetch = apiFetch as unknown as Mock;
+
+// English, matching this file's existing assertions.
+const i18nProvider = polyglotI18nProvider(messages, 'en');
+const render = (ui: ReactElement, options?: Omit<RenderOptions, 'wrapper'>) =>
+  rtlRender(ui, {
+    wrapper: ({ children }) => (
+      <AdminContext dataProvider={testDataProvider()} i18nProvider={i18nProvider}>
+        {children}
+      </AdminContext>
+    ),
+    ...options,
+  });
 
 describe('LiveRunsPage', () => {
   beforeEach(() => mockApiFetch.mockReset());

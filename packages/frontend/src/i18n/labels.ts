@@ -1328,6 +1328,86 @@ const MESSAGES = {
   'myAvailability.undeclinedNotify': { pt: 'Podes voltar a selecionar os teus turnos', en: 'You can select your shifts again' },
   'myAvailability.declineFailedNotify': { pt: 'Não foi possível atualizar a tua resposta', en: 'Could not update your response' },
   'myAvailability.loadFailedNotify': { pt: 'Não foi possível carregar a tua disponibilidade.', en: 'Could not load your availability.' },
+
+  // ── Login page (#180 phase 3) ──
+  'login.orSignInWith': { pt: 'ou entrar com', en: 'or sign in with' },
+  'login.signInWithGoogle': { pt: 'Entrar com Google', en: 'Sign in with Google' },
+  'login.signInWithMicrosoft': { pt: 'Entrar com Microsoft', en: 'Sign in with Microsoft' },
+  'login.orgName': {
+    pt: 'Cruz Vermelha Portuguesa — Delegação de Campo',
+    en: 'Portuguese Red Cross — Field Delegation',
+  },
+
+  // ── Dashboard (#180 phase 3) ──
+  'dashboard.welcomeTitle': { pt: 'Bem-vindo ao RedInfo', en: 'Welcome to RedInfo' },
+  'dashboard.welcomeSubtitle': {
+    pt: 'Sistema de informação da Cruz Vermelha Portuguesa – Delegação de Campo.',
+    en: 'Information system for the Portuguese Red Cross – Field Delegation.',
+  },
+  'dashboard.warningPrefix': {
+    pt: 'As viaturas com seguro ou inspeção IMT a vencer nos próximos',
+    en: 'Vehicles with insurance or IMT inspection dates within',
+  },
+  'dashboard.daysUnit': { pt: 'dias', en: 'days' },
+  'dashboard.warningSuffix': {
+    pt: 'aparecem assinaladas acima.',
+    en: 'are flagged above.',
+  },
+  'dashboard.lowStockTitle': { pt: 'Viaturas com stock baixo (%{count})', en: 'Low Stock Vehicles (%{count})' },
+  'dashboard.moreItems': { pt: '+%{count} mais', en: '+%{count} more' },
+  'dashboard.certificationsTitle': { pt: 'Certificações do pessoal', en: 'Personnel Certifications' },
+  'dashboard.certExpiredCount': {
+    pt: '%{smart_count} expirada |||| %{smart_count} expiradas',
+    en: '%{smart_count} expired',
+  },
+  'dashboard.certExpiringCount': {
+    pt: '%{smart_count} a expirar nos próximos 6 meses',
+    en: '%{smart_count} expiring within 6 months',
+  },
+  'dashboard.renewalsTitle': {
+    pt: 'Renovações e inspeções a aproximar-se (%{count})',
+    en: 'Upcoming Renewals & Inspections (%{count})',
+  },
+  'dashboard.insuranceLabel': { pt: 'Seguro', en: 'Insurance' },
+
+  // ── Live Runs page (#180 phase 3) — the drawer's own key, reused here ──
+  'liveRunsPage.noRunsRightNow': {
+    pt: 'Não há nenhuma emergência em curso.',
+    en: 'No emergency is being run right now.',
+  },
+
+  // ── Hospitals (#180 phase 3) ──
+  'resources.hospitals.fields.name': { pt: 'Hospital', en: 'Hospital' },
+  'resources.hospitals.fields.municipalityId': { pt: 'Concelho', en: 'Municipality' },
+  'resources.hospitals.fields.isActive': { pt: 'Estado', en: 'Status' },
+  'hospitalList.addHospital': { pt: 'Adicionar hospital', en: 'Add hospital' },
+  'hospitalList.colMunicipality': { pt: 'Concelho', en: 'Municipality' },
+  'hospitalList.colDistrict': { pt: 'Distrito', en: 'District' },
+  'hospitalList.colCoordinates': { pt: 'Coordenadas', en: 'Coordinates' },
+  'hospitalList.municipalityCentreFallback': { pt: 'centro do concelho', en: 'municipality centre' },
+  'hospitalList.active': { pt: 'Ativo', en: 'Active' },
+  'hospitalList.retired': { pt: 'Retirado', en: 'Retired' },
+  'hospitalList.retiredHiddenFromNewReports': {
+    pt: 'Retirado — oculto em novos relatórios',
+    en: 'Retired — hidden from new reports',
+  },
+  'hospitalList.helpText': {
+    pt: 'Esta lista preenche o campo "transportado para" num relatório. As coordenadas ordenam os hospitais por distância à localidade do relatório — um hospital sem coordenadas usa como aproximação o centro do seu concelho, por isso a ordenação funciona sempre e preenchê-las só a torna mais precisa. Retirar um hospital remove-o dos novos relatórios sem alterar os já entregues.',
+    en: 'This list fills the "taken to" field on a report. Coordinates order the ' +
+      'hospitals by distance from the report\'s locality — a hospital without them ' +
+      'falls back to the centre of its municipality, so the ordering always works ' +
+      'and filling them in only sharpens it. Retiring a hospital removes it from ' +
+      'new reports without changing the ones already filed.',
+  },
+  'hospitalList.nameField': { pt: 'Nome do hospital', en: 'Hospital name' },
+  'hospitalList.latitude': { pt: 'Latitude (opcional)', en: 'Latitude (optional)' },
+  'hospitalList.longitude': { pt: 'Longitude (opcional)', en: 'Longitude (optional)' },
+
+  // ── Rich text editor (#180 phase 3) — shared by crew and coordinator forms ──
+  'richText.bold': { pt: 'Negrito', en: 'Bold' },
+  'richText.italic': { pt: 'Itálico', en: 'Italic' },
+  'richText.bulletedList': { pt: 'Lista com marcadores', en: 'Bulleted list' },
+  'richText.numberedList': { pt: 'Lista numerada', en: 'Numbered list' },
 } as const;
 
 export type MessageKey = keyof typeof MESSAGES;

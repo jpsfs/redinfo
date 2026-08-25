@@ -6,6 +6,7 @@ import FormatBoldIcon from '@mui/icons-material/FormatBold';
 import FormatItalicIcon from '@mui/icons-material/FormatItalic';
 import FormatListBulletedIcon from '@mui/icons-material/FormatListBulleted';
 import FormatListNumberedIcon from '@mui/icons-material/FormatListNumbered';
+import { useT } from '../i18n/useT';
 
 /**
  * A minimal rich-text field for narrative reports — the first use of rich
@@ -28,6 +29,7 @@ export const RichTextEditor = ({
   onChange: (html: string) => void;
   disabled?: boolean;
 }) => {
+  const t = useT();
   const editor = useEditor({
     extensions: [StarterKit],
     content: value,
@@ -84,14 +86,14 @@ export const RichTextEditor = ({
       >
         <ToolbarButton
           active={editor.isActive('bold')}
-          label="Bold"
+          label={t('richText.bold')}
           onClick={() => editor.chain().focus().toggleBold().run()}
         >
           <FormatBoldIcon fontSize="small" />
         </ToolbarButton>
         <ToolbarButton
           active={editor.isActive('italic')}
-          label="Italic"
+          label={t('richText.italic')}
           onClick={() => editor.chain().focus().toggleItalic().run()}
         >
           <FormatItalicIcon fontSize="small" />
@@ -99,14 +101,14 @@ export const RichTextEditor = ({
         <Divider orientation="vertical" flexItem />
         <ToolbarButton
           active={editor.isActive('bulletList')}
-          label="Bulleted list"
+          label={t('richText.bulletedList')}
           onClick={() => editor.chain().focus().toggleBulletList().run()}
         >
           <FormatListBulletedIcon fontSize="small" />
         </ToolbarButton>
         <ToolbarButton
           active={editor.isActive('orderedList')}
-          label="Numbered list"
+          label={t('richText.numberedList')}
           onClick={() => editor.chain().focus().toggleOrderedList().run()}
         >
           <FormatListNumberedIcon fontSize="small" />

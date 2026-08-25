@@ -1,14 +1,21 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { AdminContext, testDataProvider } from 'react-admin';
+import polyglotI18nProvider from 'ra-i18n-polyglot';
 import { MemoryRouter } from 'react-router-dom';
 import { UserRole } from '@redinfo/shared';
+import { messages } from '../i18n/i18nProvider';
 import { CertificationAlertsTile, Dashboard } from './Dashboard';
 import { apiFetch } from '../api';
 
 vi.mock('../api', () => ({ apiFetch: vi.fn(), apiDownload: vi.fn(), apiUpload: vi.fn() }));
 
 const mockApiFetch = apiFetch as unknown as Mock;
+
+// English, matching this file's existing assertions — the Dashboard reads
+// through a real i18nProvider now, rather than a mix of a hardcoded
+// Portuguese welcome card and hardcoded English tiles.
+const i18nProvider = polyglotI18nProvider(messages, 'en');
 
 function renderTile(role: UserRole) {
   const authProvider = {
@@ -21,7 +28,7 @@ function renderTile(role: UserRole) {
 
   render(
     <MemoryRouter>
-      <AdminContext dataProvider={testDataProvider()} authProvider={authProvider}>
+      <AdminContext dataProvider={testDataProvider()} authProvider={authProvider} i18nProvider={i18nProvider}>
         <CertificationAlertsTile />
       </AdminContext>
     </MemoryRouter>,
@@ -101,13 +108,14 @@ describe('Dashboard', () => {
         <AdminContext
           dataProvider={testDataProvider({ getList: async () => ({ data: [], total: 0 }) })}
           authProvider={authProvider}
+          i18nProvider={i18nProvider}
         >
           <Dashboard />
         </AdminContext>
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText('Bem-vindo ao RedInfo')).toBeInTheDocument();
+    expect(await screen.findByText('Welcome to RedInfo')).toBeInTheDocument();
     await waitFor(() => expect(mockApiFetch).toHaveBeenCalledWith('/live-runs'));
     expect(screen.queryByTestId('BoltIcon')).not.toBeInTheDocument();
   });
@@ -138,16 +146,17 @@ describe('Dashboard', () => {
         <AdminContext
           dataProvider={testDataProvider({ getList: async () => ({ data: [], total: 0 }) })}
           authProvider={authProvider}
+          i18nProvider={i18nProvider}
         >
           <Dashboard />
         </AdminContext>
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText('Bem-vindo ao RedInfo')).toBeInTheDocument();
+    expect(await screen.findByText('Welcome to RedInfo')).toBeInTheDocument();
     await waitFor(() => expect(mockApiFetch).toHaveBeenCalledWith('/vehicles/low-stock'));
     expect(screen.queryByText(/Low Stock Vehicles/)).not.toBeInTheDocument();
     // Still there afterwards — proves the panel's own error didn't unmount the tree.
-    expect(screen.getByText('Bem-vindo ao RedInfo')).toBeInTheDocument();
+    expect(screen.getByText('Welcome to RedInfo')).toBeInTheDocument();
   });
 });

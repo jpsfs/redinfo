@@ -19,6 +19,7 @@ import InventoryIcon from '@mui/icons-material/Inventory';
 import AssignmentLateIcon from '@mui/icons-material/AssignmentLate';
 import { Action, hasPermission, UserRole } from '@redinfo/shared';
 import { apiFetch } from '../api';
+import { useT } from '../i18n/useT';
 import { LiveRunBoard } from '../resources/liveRuns';
 
 const DAYS_WARN = 30;
@@ -65,6 +66,7 @@ interface LowStockResponse {
 }
 
 const LowStockPanel = () => {
+  const t = useT();
   const [data, setData] = useState<LowStockResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -90,7 +92,7 @@ const LowStockPanel = () => {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
           <InventoryIcon color="error" />
           <Typography variant="h6" fontWeight={700} color="error">
-            Low Stock Vehicles ({data.total})
+            {t('dashboard.lowStockTitle', { count: data.total })}
           </Typography>
         </Box>
         <Stack spacing={1.5} divider={<Divider flexItem />}>
@@ -121,7 +123,11 @@ const LowStockPanel = () => {
                     />
                   ))}
                   {item.lowStockItems.length > 3 && (
-                    <Chip size="small" label={`+${item.lowStockItems.length - 3} more`} variant="outlined" />
+                    <Chip
+                      size="small"
+                      label={t('dashboard.moreItems', { count: item.lowStockItems.length - 3 })}
+                      variant="outlined"
+                    />
                   )}
                 </Box>
               </Box>
@@ -150,6 +156,7 @@ const certificationFilterLink = (status: 'EXPIRING' | 'EXPIRED') =>
  * clicking through actually lists.
  */
 export const CertificationAlertsTile = () => {
+  const t = useT();
   const { permissions, isLoading } = usePermissions<UserRole>();
   const [alerts, setAlerts] = useState<CertificationAlerts | null>(null);
   const canView = Boolean(permissions && hasPermission(permissions, Action.MANAGE_PERSONNEL));
@@ -169,18 +176,26 @@ export const CertificationAlertsTile = () => {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
           <AssignmentLateIcon color="warning" />
           <Typography variant="h6" fontWeight={700}>
-            Personnel Certifications
+            {t('dashboard.certificationsTitle')}
           </Typography>
         </Box>
         <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
           {alerts.expired > 0 && (
             <Box component={Link} to={certificationFilterLink('EXPIRED')} sx={{ textDecoration: 'none' }}>
-              <Chip color="error" label={`${alerts.expired} expired`} clickable />
+              <Chip
+                color="error"
+                label={t('dashboard.certExpiredCount', { smart_count: alerts.expired })}
+                clickable
+              />
             </Box>
           )}
           {alerts.expiring > 0 && (
             <Box component={Link} to={certificationFilterLink('EXPIRING')} sx={{ textDecoration: 'none' }}>
-              <Chip color="warning" label={`${alerts.expiring} expiring within 6 months`} clickable />
+              <Chip
+                color="warning"
+                label={t('dashboard.certExpiringCount', { smart_count: alerts.expiring })}
+                clickable
+              />
             </Box>
           )}
         </Stack>
@@ -190,6 +205,7 @@ export const CertificationAlertsTile = () => {
 };
 
 const UpcomingAlertsPanel = () => {
+  const t = useT();
   const { data: vehicles, isLoading } = useGetList<VehicleRecord>('vehicles', {
     pagination: { page: 1, perPage: 100 },
     sort: { field: 'insuranceRenewalDate', order: 'ASC' },
@@ -213,7 +229,7 @@ const UpcomingAlertsPanel = () => {
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
           <WarningAmberIcon color="warning" />
           <Typography variant="h6" fontWeight={700}>
-            Upcoming Renewals & Inspections ({flagged.length})
+            {t('dashboard.renewalsTitle', { count: flagged.length })}
           </Typography>
         </Box>
         <Stack spacing={1.5} divider={<Divider flexItem />}>
@@ -238,7 +254,7 @@ const UpcomingAlertsPanel = () => {
                   <Chip
                     size="small"
                     color={isOverdue(v.insuranceRenewalDate) ? 'error' : 'warning'}
-                    label={`Insurance: ${new Date(v.insuranceRenewalDate).toLocaleDateString('pt-PT')}${isOverdue(v.insuranceRenewalDate) ? ' ⚠ OVERDUE' : ''}`}
+                    label={`${t('dashboard.insuranceLabel')}: ${new Date(v.insuranceRenewalDate).toLocaleDateString('pt-PT')}${isOverdue(v.insuranceRenewalDate) ? t('vehicleShow.overdueSuffix') : ''}`}
                     variant="outlined"
                   />
                 )}
@@ -247,7 +263,7 @@ const UpcomingAlertsPanel = () => {
                   <Chip
                     size="small"
                     color={isOverdue(v.nextImtInspectionDate) ? 'error' : 'warning'}
-                    label={`IMT: ${new Date(v.nextImtInspectionDate).toLocaleDateString('pt-PT')}${isOverdue(v.nextImtInspectionDate) ? ' ⚠ OVERDUE' : ''}`}
+                    label={`IMT: ${new Date(v.nextImtInspectionDate).toLocaleDateString('pt-PT')}${isOverdue(v.nextImtInspectionDate) ? t('vehicleShow.overdueSuffix') : ''}`}
                     variant="outlined"
                   />
                 )}
@@ -260,7 +276,9 @@ const UpcomingAlertsPanel = () => {
   );
 };
 
-export const Dashboard = () => (
+export const Dashboard = () => {
+  const t = useT();
+  return (
   <Box sx={{ mt: 2 }}>
     <Card>
       <CardContent sx={{ textAlign: 'center', py: 6 }}>
@@ -273,10 +291,10 @@ export const Dashboard = () => (
           }}
         />
         <Typography variant="h4" gutterBottom fontWeight={700}>
-          Bem-vindo ao RedInfo
+          {t('dashboard.welcomeTitle')}
         </Typography>
         <Typography variant="body1" color="text.secondary">
-          Sistema de informação da Cruz Vermelha Portuguesa – Delegação de Campo.
+          {t('dashboard.welcomeSubtitle')}
         </Typography>
       </CardContent>
     </Card>
@@ -290,8 +308,12 @@ export const Dashboard = () => (
     <UpcomingAlertsPanel />
     <LowStockPanel />
     <Alert severity="info" sx={{ mt: 2 }}>
-      Vehicles with insurance or IMT inspection dates within{' '}
-      <strong>{DAYS_WARN} days</strong> are flagged above.
+      {t('dashboard.warningPrefix')}{' '}
+      <strong>
+        {DAYS_WARN} {t('dashboard.daysUnit')}
+      </strong>{' '}
+      {t('dashboard.warningSuffix')}
     </Alert>
   </Box>
-);
+  );
+};

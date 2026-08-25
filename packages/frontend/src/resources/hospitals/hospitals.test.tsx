@@ -1,9 +1,17 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { AdminContext, ResourceContextProvider, testDataProvider } from 'react-admin';
+import polyglotI18nProvider from 'ra-i18n-polyglot';
 import { MemoryRouter } from 'react-router-dom';
 import { Hospital } from '@redinfo/shared';
+import { messages } from '../../i18n/i18nProvider';
 import { HospitalList } from './index';
+
+// This is a desk/configuration screen, exercised here in English — the
+// assertions below are unchanged from before #180's conversion; a real
+// i18nProvider is required now that labels resolve through useT() rather
+// than being typed inline.
+const i18nProvider = polyglotI18nProvider(messages, 'en');
 
 const COIMBRA = {
   id: 'mun-coimbra',
@@ -35,7 +43,7 @@ function renderList(data: Hospital[]) {
 
   render(
     <MemoryRouter>
-      <AdminContext dataProvider={dataProvider}>
+      <AdminContext dataProvider={dataProvider} i18nProvider={i18nProvider}>
         <ResourceContextProvider value="hospitals">
           <HospitalList />
         </ResourceContextProvider>
