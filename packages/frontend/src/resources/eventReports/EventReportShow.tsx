@@ -46,6 +46,7 @@ import {
   roleLabel,
   vitalLabel,
 } from '../../i18n/labels';
+import { useIntlLocale } from '../../i18n/useIntlLocale';
 import { useT } from '../../i18n/useT';
 import { VITAL_FIELDS, formatVital } from '../liveRuns/vitalsFields';
 import { minutesBetween, timeOfDay } from './reportDraft';
@@ -143,6 +144,7 @@ const Chronology = ({ report }: { report: EventReport }) => {
  */
 export const EventReportShow = () => {
   const t = useT();
+  const intlLocale = useIntlLocale();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { permissions } = usePermissions<UserRole>();
@@ -407,7 +409,7 @@ export const EventReportShow = () => {
           {report.createdBy
             ? `${report.createdBy.firstName} ${report.createdBy.lastName} · `
             : ''}
-          {new Date(report.createdAt).toLocaleString()}
+          {new Date(report.createdAt).toLocaleString(intlLocale)}
         </Typography>
       </Stack>
     </Container>

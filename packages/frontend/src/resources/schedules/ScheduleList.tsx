@@ -179,7 +179,7 @@ export const ScheduleList = () => {
           label={t('scheduleList.colDates')}
           render={(record: Schedule) =>
             record.window
-              ? formatDateRange(record.window.startDate, record.window.endDate)
+              ? formatDateRange(t, record.window.startDate, record.window.endDate)
               : '—'
           }
         />

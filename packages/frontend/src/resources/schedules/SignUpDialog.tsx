@@ -88,7 +88,7 @@ export const SignUpDialog = ({
         )}
 
         <Typography variant="body1" sx={{ fontWeight: 600 }}>
-          {formatDayLabel(target.date)} · {target.shiftLabel}
+          {formatDayLabel(t, target.date)} · {target.shiftLabel}
         </Typography>
 
         <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap sx={{ mt: 1 }}>

@@ -267,7 +267,7 @@ export const DayShiftEditor = ({
           </TableHead>
           <TableBody>
             {days.map((day) => {
-              const label = formatDayLabel(day.date);
+              const label = formatDayLabel(t, day.date);
               const error = validateDayShifts(day.shifts);
 
               return (

@@ -54,6 +54,7 @@ import {
 import { apiDownload, apiFetch } from '../../api';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { certificationLabel } from '../../i18n/labels';
+import { useIntlLocale } from '../../i18n/useIntlLocale';
 import { useT } from '../../i18n/useT';
 import { formatDateRange, formatDayLabel } from '../../utils/dates';
 import { WindowIdentity } from '../availability/WindowIdentity';
@@ -134,6 +135,7 @@ const AssignmentChip = ({
   onRemove?: () => void;
 }) => {
   const t = useT();
+  const intlLocale = useIntlLocale();
   const name = personName(assignment);
   // Someone who put themselves forward is not someone a coordinator overrode,
   // so it is never read as one however the availability lines up.
@@ -151,13 +153,13 @@ const AssignmentChip = ({
             reason: assignment.certificationOverrideReason,
           })
         : signedUp
-          ? t('scheduleBoard.signedUpTooltip', { date: new Date(assignment.assignedAt).toLocaleString() })
+          ? t('scheduleBoard.signedUpTooltip', { date: new Date(assignment.assignedAt).toLocaleString(intlLocale) })
           : assignment.isOverride
             ? t('scheduleBoard.overrideTooltip', {
                 assigner: assignment.assignedBy
                   ? `${assignment.assignedBy.firstName} ${assignment.assignedBy.lastName}`
                   : t('scheduleBoard.aCoordinator'),
-                date: new Date(assignment.assignedAt).toLocaleString(),
+                date: new Date(assignment.assignedAt).toLocaleString(intlLocale),
               })
             : assignment.availability === 'submitted'
               ? t('scheduleBoard.submittedTooltip')
@@ -509,7 +511,7 @@ const DesktopBoard = ({
                 {index === 0 && (
                   <>
                     <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                      {formatDayLabel(day.date)}
+                      {formatDayLabel(t, day.date)}
                     </Typography>
                     <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }} flexWrap="wrap" useFlexGap>
                       {day.isHoliday && (
@@ -549,7 +551,7 @@ const DesktopBoard = ({
                     onRemove={onRemove}
                     viewer={viewer}
                     date={day.date}
-                    dayLabel={formatDayLabel(day.date)}
+                    dayLabel={formatDayLabel(t, day.date)}
                   />
                 </TableCell>
               ))}
@@ -614,7 +616,7 @@ const MobileBoard = ({
     {board.days.map((day: ScheduleDayBoard) => (
       <Card key={day.date} variant="outlined">
         <CardContent>
-          <Typography variant="subtitle2">{formatDayLabel(day.date)}</Typography>
+          <Typography variant="subtitle2">{formatDayLabel(t, day.date)}</Typography>
           <Stack spacing={2} sx={{ mt: 1.5 }}>
             {day.shifts.map((shift) => (
               <Box key={shift.slot}>
@@ -643,7 +645,7 @@ const MobileBoard = ({
                         onRemove={onRemove}
                         viewer={viewer}
                         date={day.date}
-                        dayLabel={formatDayLabel(day.date)}
+                        dayLabel={formatDayLabel(t, day.date)}
                       />
                     </Box>
                   ))}
@@ -805,7 +807,7 @@ export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
             />
           </Box>
           <Typography variant="body2" color="text.secondary">
-            {formatDateRange(board.window.startDate, board.window.endDate)}
+            {formatDateRange(t, board.window.startDate, board.window.endDate)}
           </Typography>
           <Box sx={{ mt: 0.5 }}>
             <WindowIdentity category={board.window.category} name={board.window.name} />
@@ -894,7 +896,7 @@ export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
             >
               {t('scheduleBoard.conflictLine', {
                 user: conflict.userName,
-                day: formatDayLabel(conflict.date),
+                day: formatDayLabel(t, conflict.date),
                 window: conflict.otherWindowLabel,
                 label: conflict.otherLabel,
               })}

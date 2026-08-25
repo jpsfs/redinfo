@@ -27,7 +27,7 @@ import {
   WindowRoleSpec,
 } from '@redinfo/shared';
 import { apiFetch } from '../../api';
-import { windowCategoryDescription, windowCategoryLabel } from '../../i18n/labels';
+import { Translate, windowCategoryDescription, windowCategoryLabel } from '../../i18n/labels';
 import { useT } from '../../i18n/useT';
 import { addIsoDays, formatDateRange, isoDateRange, toIsoDate } from '../../utils/dates';
 import { DayShiftEditor, WindowDayDraft } from './DayShiftEditor';
@@ -62,11 +62,12 @@ function draftsFromCalendar(
 }
 
 const describeWindows = (
+  t: Translate,
   windows: AvailabilityWindowOverlapsResponse['open'],
 ): string =>
   windows
     .map((window) =>
-      [window.name, formatDateRange(window.startDate, window.endDate)]
+      [window.name, formatDateRange(t, window.startDate, window.endDate)]
         .filter(Boolean)
         .join(', '),
     )
@@ -336,7 +337,7 @@ export const AvailabilityWindowCreate = () => {
             <Alert severity="error" sx={{ mb: 2 }}>
               {t('windowCreate.openOverlapError', {
                 category: categoryLabel,
-                windows: describeWindows(openOverlaps),
+                windows: describeWindows(t, openOverlaps),
               })}
             </Alert>
           )}
@@ -345,7 +346,7 @@ export const AvailabilityWindowCreate = () => {
             <Alert severity="warning" sx={{ mb: 2 }}>
               {t('windowCreate.closedOverlapWarning', {
                 category: categoryLabel,
-                windows: describeWindows(closedOverlaps),
+                windows: describeWindows(t, closedOverlaps),
               })}
               <FormControlLabel
                 sx={{ display: 'block', mt: 1 }}

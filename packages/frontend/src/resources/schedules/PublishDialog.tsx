@@ -109,7 +109,7 @@ export const PublishDialog = ({
           <WindowIdentity category={board.window.category} name={board.window.name} />
         </Box>
         <Typography variant="body2" color="text.secondary">
-          {formatDateRange(board.window.startDate, board.window.endDate)}
+          {formatDateRange(t, board.window.startDate, board.window.endDate)}
         </Typography>
       </DialogTitle>
 

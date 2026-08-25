@@ -23,27 +23,13 @@ import { MyDutiesResponse, MyDuty } from '@redinfo/shared';
 import { apiFetch } from '../api';
 import { useT } from '../i18n/useT';
 import { WindowCategoryChip } from '../resources/availability/WindowIdentity';
-import { formatDayLabel, parseIsoDate } from '../utils/dates';
-
-const MONTH_ABBREVIATIONS = [
-  'Jan',
-  'Feb',
-  'Mar',
-  'Apr',
-  'May',
-  'Jun',
-  'Jul',
-  'Aug',
-  'Sep',
-  'Oct',
-  'Nov',
-  'Dec',
-];
+import { formatDayLabel, monthAbbreviation, parseIsoDate } from '../utils/dates';
 
 /** The date block down the left of a duty card: weekday, day, month + year. */
 const DutyDate = ({ date }: { date: string }) => {
+  const t = useT();
   const parsed = parseIsoDate(date);
-  const weekday = formatDayLabel(date).split(',')[0];
+  const weekday = formatDayLabel(t, date).split(',')[0];
   return (
     <Box
       sx={{
@@ -64,7 +50,7 @@ const DutyDate = ({ date }: { date: string }) => {
         {parsed.getUTCDate()}
       </Typography>
       <Typography variant="body2" color="text.secondary">
-        {MONTH_ABBREVIATIONS[parsed.getUTCMonth()]} {parsed.getUTCFullYear()}
+        {monthAbbreviation(t, parsed.getUTCMonth())} {parsed.getUTCFullYear()}
       </Typography>
     </Box>
   );

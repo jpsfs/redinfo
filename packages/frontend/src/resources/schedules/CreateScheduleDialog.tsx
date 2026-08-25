@@ -127,7 +127,7 @@ export const CreateScheduleDialog = ({
                       )}
                     </Stack>
                   }
-                  secondary={formatDateRange(window.startDate, window.endDate)}
+                  secondary={formatDateRange(t, window.startDate, window.endDate)}
                 />
               </ListItemButton>
             ))}

@@ -27,6 +27,7 @@ import {
 import { apiFetch } from '../api';
 import { CategoryChip } from '../components/CategoryChip';
 import { destinationLabel, reportTypeLabel } from '../i18n/labels';
+import { useIntlLocale } from '../i18n/useIntlLocale';
 import { useT } from '../i18n/useT';
 import { StoredDraft, loadDraft } from '../resources/eventReports/reportDraft';
 import { timeOfDay } from '../resources/eventReports/reportDraft';
@@ -100,6 +101,7 @@ const ReportCard = ({
  */
 export const MyReportsPage = () => {
   const t = useT();
+  const intlLocale = useIntlLocale();
   const navigate = useNavigate();
   const { permissions } = usePermissions<UserRole>();
   const [reports, setReports] = useState<EventReport[] | null>(null);
@@ -155,7 +157,7 @@ export const MyReportsPage = () => {
           >
             <strong>{t('status.draftUnfinished')}</strong>{' '}
             {reportTypeLabel(t, draft.draft.type)} ·{' '}
-            {new Date(draft.savedAt).toLocaleString()}
+            {new Date(draft.savedAt).toLocaleString(intlLocale)}
           </Alert>
         )}
 

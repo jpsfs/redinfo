@@ -1,12 +1,9 @@
 import { Chip, ChipProps, Tooltip } from '@mui/material';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
-import {
-  CERTIFICATION_LABEL,
-  CertificationStatus,
-  CertificationType,
-  certificationStatus,
-} from '@redinfo/shared';
+import { CertificationStatus, CertificationType, certificationStatus } from '@redinfo/shared';
+import { certificationLabel, Translate } from '../i18n/labels';
+import { useT } from '../i18n/useT';
 import { formatDate, toIsoDate } from '../utils/dates';
 
 /**
@@ -22,12 +19,17 @@ const STATUS_COLOR: Record<CertificationStatus, 'success' | 'warning' | 'error'>
 };
 
 /** e.g. "TAS · válido até 14 mar 2029" / "TAS · sem data de validade registada". */
-function statusText(type: CertificationType, validUntil: string | null, status: CertificationStatus): string {
-  const label = CERTIFICATION_LABEL[type];
-  if (!validUntil) return `${label} — no expiry on file`;
-  const date = formatDate(validUntil);
-  if (status === 'EXPIRED') return `${label} — expired ${date}`;
-  return `${label} — valid until ${date}`;
+function statusText(
+  t: Translate,
+  type: CertificationType,
+  validUntil: string | null,
+  status: CertificationStatus,
+): string {
+  const label = certificationLabel(t, type);
+  if (!validUntil) return t('certBadge.noExpiryOnFile', { label });
+  const date = formatDate(t, validUntil);
+  if (status === 'EXPIRED') return t('certBadge.expiredOn', { label, date });
+  return t('certBadge.validUntilDate', { label, date });
 }
 
 export interface CertificationBadgeProps extends Omit<ChipProps, 'color' | 'label'> {
@@ -57,15 +59,19 @@ export const CertificationBadge = ({
   size = 'small',
   ...rest
 }: CertificationBadgeProps) => {
+  const t = useT();
   const status = certificationStatus(validUntil, today);
   const color = STATUS_COLOR[status];
   const noExpiryOnFile = validUntil === null;
   const label = grantedBy
-    ? `${CERTIFICATION_LABEL[type]} · via ${CERTIFICATION_LABEL[grantedBy]}`
-    : CERTIFICATION_LABEL[type];
+    ? t('certBadge.viaGrantedBy', {
+        type: certificationLabel(t, type),
+        grantedBy: certificationLabel(t, grantedBy),
+      })
+    : certificationLabel(t, type);
 
   return (
-    <Tooltip title={statusText(type, validUntil, status)}>
+    <Tooltip title={statusText(t, type, validUntil, status)}>
       <Chip
         size={size}
         variant="outlined"

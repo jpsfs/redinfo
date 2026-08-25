@@ -127,7 +127,7 @@ export const EmergencyWindowDialog = ({
       notify(
         t('emergencyDialog.opened', {
           window: windowName,
-          dates: formatDateRange(bounds.startDate, bounds.endDate),
+          dates: formatDateRange(t, bounds.startDate, bounds.endDate),
         }),
         { type: 'success' },
       );
@@ -194,7 +194,7 @@ export const EmergencyWindowDialog = ({
           </Typography>
         </Stack>
         <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-          {formatDateRange(bounds.startDate, bounds.endDate)} · {dayCount} days
+          {formatDateRange(t, bounds.startDate, bounds.endDate)} · {dayCount} days
         </Typography>
 
         {openOverlaps.length > 0 && (

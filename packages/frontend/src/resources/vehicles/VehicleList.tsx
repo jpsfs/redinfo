@@ -14,6 +14,7 @@ import { Chip, Tooltip } from '@mui/material';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
+import { useIntlLocale } from '../../i18n/useIntlLocale';
 import { useT } from '../../i18n/useT';
 
 const DAYS_WARN = 30;
@@ -40,6 +41,7 @@ const ListActions = () => (
 
 const DateAlertField = ({ source }: { source: string }) => {
   const t = useT();
+  const intlLocale = useIntlLocale();
   return (
     <FunctionField
       source={source}
@@ -57,7 +59,7 @@ const DateAlertField = ({ source }: { source: string }) => {
         return (
           <Chip
             size="small"
-            label={val ? new Date(val).toLocaleDateString('pt-PT') : '—'}
+            label={val ? new Date(val).toLocaleDateString(intlLocale) : '—'}
             color={color as 'error' | 'warning' | 'default'}
             icon={icon}
             variant="outlined"

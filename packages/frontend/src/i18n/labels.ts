@@ -1484,6 +1484,55 @@ const MESSAGES = {
     pt: 'Já estás em %{shift} nesse dia, o que se sobrepõe a este turno.',
     en: 'You are already on %{shift} that day, which overlaps this shift.',
   },
+
+  // ── Calendar headers (#180 phase 5) ──
+  // Hand-spelled rather than delegated to `Intl`/`toLocaleDateString`: ICU
+  // abbreviations drift between browsers and Node versions ("Sep" vs
+  // "Sept"), which would move the calendar header between environments —
+  // see `utils/dates.ts`'s doc comment. NOT the same list as
+  // `@redinfo/shared`'s `MONTH_NAMES`: that one is canonical English because
+  // the backend names an emergency window from it, and translating it would
+  // show "Outubro" for a window still named "... - October" — see
+  // `monthNames()`'s doc comment for why it stays untranslated.
+  'date.weekday.MON': { pt: 'Seg', en: 'Mon' },
+  'date.weekday.TUE': { pt: 'Ter', en: 'Tue' },
+  'date.weekday.WED': { pt: 'Qua', en: 'Wed' },
+  'date.weekday.THU': { pt: 'Qui', en: 'Thu' },
+  'date.weekday.FRI': { pt: 'Sex', en: 'Fri' },
+  'date.weekday.SAT': { pt: 'Sáb', en: 'Sat' },
+  'date.weekday.SUN': { pt: 'Dom', en: 'Sun' },
+  'date.monthAbbr.JAN': { pt: 'Jan', en: 'Jan' },
+  'date.monthAbbr.FEB': { pt: 'Fev', en: 'Feb' },
+  'date.monthAbbr.MAR': { pt: 'Mar', en: 'Mar' },
+  'date.monthAbbr.APR': { pt: 'Abr', en: 'Apr' },
+  'date.monthAbbr.MAY': { pt: 'Mai', en: 'May' },
+  'date.monthAbbr.JUN': { pt: 'Jun', en: 'Jun' },
+  'date.monthAbbr.JUL': { pt: 'Jul', en: 'Jul' },
+  'date.monthAbbr.AUG': { pt: 'Ago', en: 'Aug' },
+  'date.monthAbbr.SEP': { pt: 'Set', en: 'Sep' },
+  'date.monthAbbr.OCT': { pt: 'Out', en: 'Oct' },
+  'date.monthAbbr.NOV': { pt: 'Nov', en: 'Nov' },
+  'date.monthAbbr.DEC': { pt: 'Dez', en: 'Dec' },
+  'date.monthFull.JAN': { pt: 'Janeiro', en: 'January' },
+  'date.monthFull.FEB': { pt: 'Fevereiro', en: 'February' },
+  'date.monthFull.MAR': { pt: 'Março', en: 'March' },
+  'date.monthFull.APR': { pt: 'Abril', en: 'April' },
+  'date.monthFull.MAY': { pt: 'Maio', en: 'May' },
+  'date.monthFull.JUN': { pt: 'Junho', en: 'June' },
+  'date.monthFull.JUL': { pt: 'Julho', en: 'July' },
+  'date.monthFull.AUG': { pt: 'Agosto', en: 'August' },
+  'date.monthFull.SEP': { pt: 'Setembro', en: 'September' },
+  'date.monthFull.OCT': { pt: 'Outubro', en: 'October' },
+  'date.monthFull.NOV': { pt: 'Novembro', en: 'November' },
+  'date.monthFull.DEC': { pt: 'Dezembro', en: 'December' },
+
+  // ── Certification badge (missed by #180 phase 3's slice list — it lives
+  // in components/, not a resources/ directory — caught while touching this
+  // file for phase 5's date formatting) ──
+  'certBadge.noExpiryOnFile': { pt: '%{label} — sem data de validade registada', en: '%{label} — no expiry on file' },
+  'certBadge.expiredOn': { pt: '%{label} — expirado a %{date}', en: '%{label} — expired %{date}' },
+  'certBadge.validUntilDate': { pt: '%{label} — válido até %{date}', en: '%{label} — valid until %{date}' },
+  'certBadge.viaGrantedBy': { pt: '%{type} · via %{grantedBy}', en: '%{type} · via %{grantedBy}' },
 } as const;
 
 export type MessageKey = keyof typeof MESSAGES;

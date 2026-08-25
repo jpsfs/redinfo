@@ -29,8 +29,7 @@ import {
   ScheduleCandidatesResponse,
 } from '@redinfo/shared';
 import { apiFetch, ApiError } from '../../api';
-import { apiErrorLabel } from '../../i18n/labels';
-import { certificationLabel, Translate } from '../../i18n/labels';
+import { apiErrorLabel, certificationLabel, Translate } from '../../i18n/labels';
 import { useT } from '../../i18n/useT';
 import { formatDayLabel, toIsoDate } from '../../utils/dates';
 
@@ -298,7 +297,7 @@ export const AssignPersonDialog = ({
             )}
           </Stack>
           <Typography variant="body2" color="text.secondary">
-            {formatDayLabel(target.date)} · {target.shiftLabel}
+            {formatDayLabel(t, target.date)} · {target.shiftLabel}
           </Typography>
         </DialogTitle>
 

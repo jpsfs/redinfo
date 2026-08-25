@@ -356,7 +356,7 @@ const DesktopMatrix = ({
           >
             <TableCell>
               <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                {formatDayLabel(day.date)}
+                {formatDayLabel(t, day.date)}
               </Typography>
               <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }} flexWrap="wrap" useFlexGap>
                 <DayBadges day={day} />
@@ -430,7 +430,7 @@ const MobileMatrix = ({
                 }}
               >
                 <Box>
-                  <Typography variant="subtitle2">{formatDayLabel(day.date)}</Typography>
+                  <Typography variant="subtitle2">{formatDayLabel(t, day.date)}</Typography>
                   <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }} flexWrap="wrap" useFlexGap>
                     <DayBadges day={day} />
                     {!isExpanded &&
@@ -603,7 +603,7 @@ export const AvailabilityMatrix = ({ windowId }: { windowId?: string }) => {
         <Box>
           <Typography variant="h6">{t('matrix.heading')}</Typography>
           <Typography variant="body2" color="text.secondary">
-            {formatDateRange(matrix.window.startDate, matrix.window.endDate)} ·{' '}
+            {formatDateRange(t, matrix.window.startDate, matrix.window.endDate)} ·{' '}
             {t('matrix.eligiblePersonnel', { count: matrix.responseStats.total })}
           </Typography>
           <Box sx={{ mt: 0.5 }}>
@@ -687,7 +687,7 @@ export const AvailabilityMatrix = ({ windowId }: { windowId?: string }) => {
             <Paper variant="outlined" sx={{ mt: 1, p: 2, backgroundColor: 'grey.50' }}>
               <Typography variant="subtitle2" gutterBottom>
                 {t('matrix.drillDownHeading', {
-                  day: formatDayLabel(selectedCell.day.date),
+                  day: formatDayLabel(t, selectedCell.day.date),
                   shift: selectedCell.shift.label,
                   count: selectedCell.shift.availableCount,
                 })}

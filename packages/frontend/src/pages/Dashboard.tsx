@@ -19,6 +19,7 @@ import InventoryIcon from '@mui/icons-material/Inventory';
 import AssignmentLateIcon from '@mui/icons-material/AssignmentLate';
 import { Action, hasPermission, UserRole } from '@redinfo/shared';
 import { apiFetch } from '../api';
+import { useIntlLocale } from '../i18n/useIntlLocale';
 import { useT } from '../i18n/useT';
 import { LiveRunBoard } from '../resources/liveRuns';
 
@@ -206,6 +207,7 @@ export const CertificationAlertsTile = () => {
 
 const UpcomingAlertsPanel = () => {
   const t = useT();
+  const intlLocale = useIntlLocale();
   const { data: vehicles, isLoading } = useGetList<VehicleRecord>('vehicles', {
     pagination: { page: 1, perPage: 100 },
     sort: { field: 'insuranceRenewalDate', order: 'ASC' },
@@ -254,7 +256,7 @@ const UpcomingAlertsPanel = () => {
                   <Chip
                     size="small"
                     color={isOverdue(v.insuranceRenewalDate) ? 'error' : 'warning'}
-                    label={`${t('dashboard.insuranceLabel')}: ${new Date(v.insuranceRenewalDate).toLocaleDateString('pt-PT')}${isOverdue(v.insuranceRenewalDate) ? t('vehicleShow.overdueSuffix') : ''}`}
+                    label={`${t('dashboard.insuranceLabel')}: ${new Date(v.insuranceRenewalDate).toLocaleDateString(intlLocale)}${isOverdue(v.insuranceRenewalDate) ? t('vehicleShow.overdueSuffix') : ''}`}
                     variant="outlined"
                   />
                 )}
@@ -263,7 +265,7 @@ const UpcomingAlertsPanel = () => {
                   <Chip
                     size="small"
                     color={isOverdue(v.nextImtInspectionDate) ? 'error' : 'warning'}
-                    label={`IMT: ${new Date(v.nextImtInspectionDate).toLocaleDateString('pt-PT')}${isOverdue(v.nextImtInspectionDate) ? t('vehicleShow.overdueSuffix') : ''}`}
+                    label={`IMT: ${new Date(v.nextImtInspectionDate).toLocaleDateString(intlLocale)}${isOverdue(v.nextImtInspectionDate) ? t('vehicleShow.overdueSuffix') : ''}`}
                     variant="outlined"
                   />
                 )}

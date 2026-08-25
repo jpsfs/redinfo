@@ -16,6 +16,7 @@ import DescriptionIcon from '@mui/icons-material/Description';
 import { EVENT_REPORT_TYPES, EventReportType, eventReportRules } from '@redinfo/shared';
 import { categoryColor } from '../../components/CategoryChip';
 import { reportTypeHint, reportTypeLabel } from '../../i18n/labels';
+import { useIntlLocale } from '../../i18n/useIntlLocale';
 import { useT } from '../../i18n/useT';
 import { readCurrentRunId } from '../liveRuns';
 import { StoredDraft, clearDraft, loadDraft } from './reportDraft';
@@ -46,6 +47,7 @@ const TypeChooser = ({
   onGoLive: () => void;
 }) => {
   const t = useT();
+  const intlLocale = useIntlLocale();
   return (
   <Container maxWidth="sm" sx={{ py: 3 }}>
     <Stack spacing={2}>
@@ -144,7 +146,7 @@ const TypeChooser = ({
         >
           <strong>{t('status.draftUnfinished')}</strong>{' '}
           {reportTypeLabel(t, resumable.draft.type)} ·{' '}
-          {new Date(resumable.savedAt).toLocaleString()}
+          {new Date(resumable.savedAt).toLocaleString(intlLocale)}
         </Alert>
       )}
     </Stack>

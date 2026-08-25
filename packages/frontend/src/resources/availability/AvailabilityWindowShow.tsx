@@ -110,7 +110,7 @@ const CloseWindowButton = () => {
           <DialogContentText>
             {t('windowShow.closeConfirmBody', {
               window: availabilityWindowLabel(record),
-              dates: formatDateRange(record.startDate, record.endDate),
+              dates: formatDateRange(t, record.startDate, record.endDate),
             })}
           </DialogContentText>
           {stats && (
@@ -138,6 +138,7 @@ const CloseWindowButton = () => {
 };
 
 const WindowHeader = () => {
+  const t = useT();
   const record = useRecordContext<AvailabilityWindow>();
   if (!record) return null;
   return (
@@ -153,7 +154,7 @@ const WindowHeader = () => {
       <Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
           <Typography variant="h6">
-            {formatDateRange(record.startDate, record.endDate)}
+            {formatDateRange(t, record.startDate, record.endDate)}
           </Typography>
           <WindowStatusChip status={record.status} />
         </Box>

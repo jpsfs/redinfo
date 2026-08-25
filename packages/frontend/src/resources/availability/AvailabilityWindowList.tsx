@@ -120,7 +120,7 @@ const UpcomingHolidays = () => {
               sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}
             >
               <Typography variant="body2" color="text.secondary">
-                {formatDate(holiday.date)}
+                {formatDate(t, holiday.date)}
               </Typography>
               <Typography variant="body2">{holiday.name}</Typography>
             </Box>
@@ -174,7 +174,7 @@ export const AvailabilityWindowList = () => {
         <FunctionField
           label={t('windowList.colWindow')}
           render={(record: AvailabilityWindow) =>
-            formatDateRange(record.startDate, record.endDate)
+            formatDateRange(t, record.startDate, record.endDate)
           }
         />
         <FunctionField

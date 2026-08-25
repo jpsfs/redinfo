@@ -117,49 +117,52 @@ const ShiftToggle = ({
   date: string;
   checked: boolean;
   onToggle: () => void;
-}) => (
-  <Box
-    component="button"
-    type="button"
-    onClick={onToggle}
-    aria-pressed={checked}
-    // The date belongs in the accessible name: a month of cells otherwise
-    // exposes a dozen controls all called "20:00–24:00".
-    aria-label={`${formatDayLabel(date)} ${shift.label}`}
-    sx={{
-      display: 'flex',
-      alignItems: 'center',
-      gap: 0.5,
-      px: 0.75,
-      py: 0.4,
-      borderRadius: 1,
-      fontSize: 11,
-      fontWeight: 600,
-      cursor: 'pointer',
-      textAlign: 'left',
-      border: '1.5px solid',
-      borderColor: checked ? 'primary.main' : 'grey.400',
-      backgroundColor: checked ? 'primary.main' : 'background.paper',
-      color: checked ? 'primary.contrastText' : 'text.secondary',
-    }}
-  >
+}) => {
+  const t = useT();
+  return (
     <Box
+      component="button"
+      type="button"
+      onClick={onToggle}
+      aria-pressed={checked}
+      // The date belongs in the accessible name: a month of cells otherwise
+      // exposes a dozen controls all called "20:00–24:00".
+      aria-label={`${formatDayLabel(t, date)} ${shift.label}`}
       sx={{
-        width: 14,
-        height: 14,
-        borderRadius: '3px',
-        border: '1.5px solid currentColor',
-        display: 'inline-flex',
+        display: 'flex',
         alignItems: 'center',
-        justifyContent: 'center',
-        flexShrink: 0,
+        gap: 0.5,
+        px: 0.75,
+        py: 0.4,
+        borderRadius: 1,
+        fontSize: 11,
+        fontWeight: 600,
+        cursor: 'pointer',
+        textAlign: 'left',
+        border: '1.5px solid',
+        borderColor: checked ? 'primary.main' : 'grey.400',
+        backgroundColor: checked ? 'primary.main' : 'background.paper',
+        color: checked ? 'primary.contrastText' : 'text.secondary',
       }}
     >
-      {checked && <CheckIcon sx={{ fontSize: 10 }} />}
+      <Box
+        sx={{
+          width: 14,
+          height: 14,
+          borderRadius: '3px',
+          border: '1.5px solid currentColor',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          flexShrink: 0,
+        }}
+      >
+        {checked && <CheckIcon sx={{ fontSize: 10 }} />}
+      </Box>
+      {formatShiftShortLabel(shift)}
     </Box>
-    {formatShiftShortLabel(shift)}
-  </Box>
-);
+  );
+};
 
 const ReadOnlyShift = ({
   shift,
@@ -228,7 +231,7 @@ const MonthCalendar = ({
           <ChevronLeftIcon />
         </IconButton>
         <Typography variant="subtitle1" sx={{ minWidth: 170, textAlign: 'center' }}>
-          {formatMonthLabel(month)}
+          {formatMonthLabel(t, month)}
         </Typography>
         <IconButton
           size="small"
@@ -248,7 +251,7 @@ const MonthCalendar = ({
           borderColor: 'divider',
         }}
       >
-        {weekdayLabels().map((label) => (
+        {weekdayLabels(t).map((label) => (
           <Typography
             key={label}
             variant="caption"
@@ -384,7 +387,7 @@ const DayAgenda = ({
                 }}
               >
                 <Box>
-                  <Typography variant="subtitle2">{formatDayLabel(day.date)}</Typography>
+                  <Typography variant="subtitle2">{formatDayLabel(t, day.date)}</Typography>
                   <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }} flexWrap="wrap" useFlexGap>
                     {day.isHoliday && (
                       <Chip
@@ -435,7 +438,7 @@ const DayAgenda = ({
                           checked={selected.includes(shift.slot)}
                           onChange={() => onToggle(day.date, shift.slot)}
                           inputProps={{
-                            'aria-label': `${formatDayLabel(day.date)} ${shift.label}`,
+                            'aria-label': `${formatDayLabel(t, day.date)} ${shift.label}`,
                           }}
                         />
                       ) : (
@@ -497,7 +500,7 @@ const WindowPicker = ({
       {windows.map((window) => (
         <option key={window.id} value={window.id}>
           {availabilityWindowLabel(window)} ·{' '}
-          {formatDateRange(window.startDate, window.endDate)}
+          {formatDateRange(t, window.startDate, window.endDate)}
         </option>
       ))}
     </TextField>
@@ -681,7 +684,7 @@ export const MyAvailabilityPage = () => {
               </Typography>
             )}
             <Typography variant="body2" color="text.secondary">
-              {formatDateRange(window.startDate, window.endDate)}
+              {formatDateRange(t, window.startDate, window.endDate)}
             </Typography>
           </Stack>
         )}
@@ -732,7 +735,7 @@ export const MyAvailabilityPage = () => {
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
                     {t('myAvailability.noAvailabilityHint', {
-                      dates: formatDateRange(window.startDate, window.endDate),
+                      dates: formatDateRange(t, window.startDate, window.endDate),
                     })}
                   </Typography>
                 </Box>
@@ -756,7 +759,7 @@ export const MyAvailabilityPage = () => {
       {window && !declined && canSubmit && (
         <Alert severity="info" sx={{ mb: 2 }}>
           {t('myAvailability.canSubmitInfo', {
-            dates: formatDateRange(window.startDate, window.endDate),
+            dates: formatDateRange(t, window.startDate, window.endDate),
           })}
         </Alert>
       )}

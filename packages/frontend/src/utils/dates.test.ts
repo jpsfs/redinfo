@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { messagesFor } from '../i18n/labels';
 import {
   addIsoDays,
   addMonths,
@@ -14,6 +15,9 @@ import {
   monthStart,
   weekdayLabels,
 } from './dates';
+
+/** A plain key lookup — no %{…} interpolation, none of these keys need it. */
+const t = (key: string) => messagesFor('en')[key] ?? key;
 
 describe('isoDateRange', () => {
   it('is inclusive of both ends', () => {
@@ -90,14 +94,21 @@ describe('monthGrid', () => {
 
 describe('labels', () => {
   it('lists weekdays Monday-first, matching the calendar grid', () => {
-    expect(weekdayLabels()).toEqual(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
+    expect(weekdayLabels(t)).toEqual(['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']);
   });
 
   it('formats a month, a day, a date and a range', () => {
-    expect(formatMonthLabel('2026-10')).toBe('October 2026');
-    expect(formatDayLabel('2026-09-28')).toBe('Mon, 28 Sep');
-    expect(formatDate('2026-10-05')).toBe('5 Oct 2026');
-    expect(formatDateRange('2026-09-28', '2026-10-05')).toBe('28 Sep 2026 – 5 Oct 2026');
+    expect(formatMonthLabel(t, '2026-10')).toBe('October 2026');
+    expect(formatDayLabel(t, '2026-09-28')).toBe('Mon, 28 Sep');
+    expect(formatDate(t, '2026-10-05')).toBe('5 Oct 2026');
+    expect(formatDateRange(t, '2026-09-28', '2026-10-05')).toBe('28 Sep 2026 – 5 Oct 2026');
+  });
+
+  it('turns over with locale, the same labels a real translate would give', () => {
+    const tPt = (key: string) => messagesFor('pt')[key] ?? key;
+    expect(weekdayLabels(tPt)).toEqual(['Seg', 'Ter', 'Qua', 'Qui', 'Sex', 'Sáb', 'Dom']);
+    expect(formatMonthLabel(tPt, '2026-10')).toBe('Outubro 2026');
+    expect(formatDayLabel(tPt, '2026-09-28')).toBe('Seg, 28 Set');
   });
 
   it('reads the day of month in UTC, so late-evening dates do not slip', () => {

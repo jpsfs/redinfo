@@ -20,6 +20,7 @@ import {
 } from '@mui/material';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
+import { useIntlLocale } from '../../i18n/useIntlLocale';
 import { useT } from '../../i18n/useT';
 import { VehicleInventorySection } from '../inventory';
 
@@ -37,6 +38,7 @@ function dateStatus(dateStr: string | null | undefined): 'overdue' | 'soon' | 'o
 
 const StatusDateField = ({ source }: { source: string }) => {
   const t = useT();
+  const intlLocale = useIntlLocale();
   return (
     <FunctionField
       source={source}
@@ -53,7 +55,7 @@ const StatusDateField = ({ source }: { source: string }) => {
               : '';
         return (
           <Chip
-            label={`${val ? new Date(val).toLocaleDateString('pt-PT') : '—'}${suffix}`}
+            label={`${val ? new Date(val).toLocaleDateString(intlLocale) : '—'}${suffix}`}
             color={color}
             size="small"
             variant="outlined"
@@ -66,6 +68,7 @@ const StatusDateField = ({ source }: { source: string }) => {
 
 const MaintenanceTotalField = () => {
   const t = useT();
+  const intlLocale = useIntlLocale();
   const record = useRecordContext<{ maintenanceEntries?: { cost: number | string }[] }>();
   if (!record?.maintenanceEntries) return null;
   const total = record.maintenanceEntries.reduce(
@@ -76,7 +79,10 @@ const MaintenanceTotalField = () => {
     <Typography variant="subtitle2" sx={{ mt: 1 }}>
       {t('vehicleShow.totalMaintenanceCost')}{' '}
       <strong>
-        {total.toLocaleString('pt-PT', { style: 'currency', currency: 'EUR' })}
+        {/* Currency stays EUR regardless of locale — it's a Portuguese
+            delegation's money; only the number formatting (grouping,
+            decimal separator) follows the locale. */}
+        {total.toLocaleString(intlLocale, { style: 'currency', currency: 'EUR' })}
       </strong>
     </Typography>
   );

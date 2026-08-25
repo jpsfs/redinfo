@@ -59,7 +59,7 @@ export const MonthFilter = () => {
           color: month ? 'text.primary' : 'text.secondary',
         }}
       >
-        {month ? formatMonthLabel(month) : t('filter.allDates')}
+        {month ? formatMonthLabel(t, month) : t('filter.allDates')}
       </Box>
       <IconButton size="small" aria-label={t('filter.nextMonth')} onClick={() => step(1)}>
         <ChevronRightIcon fontSize="small" />
