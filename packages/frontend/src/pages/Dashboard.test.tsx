@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { AdminContext, testDataProvider } from 'react-admin';
 import { MemoryRouter } from 'react-router-dom';
@@ -79,15 +79,10 @@ describe('Dashboard', () => {
     mockApiFetch.mockImplementation((url: string) => {
       if (url === '/live-runs') return Promise.resolve([]);
       if (url === '/users/certification-alerts') return Promise.resolve({ expiring: 0, expired: 0 });
+      if (url === '/vehicles/low-stock') return Promise.resolve({ grouped: {}, total: 0 });
       return Promise.reject(new Error(`unexpected apiFetch(${url})`));
     });
-    vi.stubGlobal(
-      'fetch',
-      vi.fn().mockResolvedValue({ json: () => Promise.resolve({ grouped: {}, total: 0 }) }),
-    );
   });
-
-  afterEach(() => vi.unstubAllGlobals());
 
   // Guards #181's step 4a: `LiveRunBoard` gained an `emptyState` prop for the
   // standalone `/live-runs` screen, and the Dashboard's own copy (which passes
@@ -115,5 +110,44 @@ describe('Dashboard', () => {
     expect(await screen.findByText('Bem-vindo ao RedInfo')).toBeInTheDocument();
     await waitFor(() => expect(mockApiFetch).toHaveBeenCalledWith('/live-runs'));
     expect(screen.queryByTestId('BoltIcon')).not.toBeInTheDocument();
+  });
+
+  // Regression: the low-stock panel used to read its bearer token from a
+  // `localStorage['auth']` key that never existed, so `/vehicles/low-stock`
+  // always 401'd and the panel then crashed reading `.grouped` off the error
+  // body — taking the whole Dashboard down for every signed-in user. It now
+  // goes through `apiFetch`, which rejects cleanly on a non-2xx.
+  it('does not crash the Dashboard when the low-stock endpoint is unauthorized', async () => {
+    mockApiFetch.mockImplementation((url: string) => {
+      if (url === '/live-runs') return Promise.resolve([]);
+      if (url === '/users/certification-alerts') return Promise.resolve({ expiring: 0, expired: 0 });
+      if (url === '/vehicles/low-stock') return Promise.reject(new Error('Unauthorized'));
+      return Promise.reject(new Error(`unexpected apiFetch(${url})`));
+    });
+
+    const authProvider = {
+      login: () => Promise.resolve(),
+      logout: () => Promise.resolve(),
+      checkAuth: () => Promise.resolve(),
+      checkError: () => Promise.resolve(),
+      getPermissions: () => Promise.resolve(UserRole.EMERGENCY_COORDINATOR),
+    };
+
+    render(
+      <MemoryRouter>
+        <AdminContext
+          dataProvider={testDataProvider({ getList: async () => ({ data: [], total: 0 }) })}
+          authProvider={authProvider}
+        >
+          <Dashboard />
+        </AdminContext>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText('Bem-vindo ao RedInfo')).toBeInTheDocument();
+    await waitFor(() => expect(mockApiFetch).toHaveBeenCalledWith('/vehicles/low-stock'));
+    expect(screen.queryByText(/Low Stock Vehicles/)).not.toBeInTheDocument();
+    // Still there afterwards — proves the panel's own error didn't unmount the tree.
+    expect(screen.getByText('Bem-vindo ao RedInfo')).toBeInTheDocument();
   });
 });

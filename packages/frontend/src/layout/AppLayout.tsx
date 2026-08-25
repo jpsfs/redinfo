@@ -16,10 +16,10 @@ import {
 } from 'react-admin';
 import { Box, Divider, ListSubheader } from '@mui/material';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
+import { ROLE_METADATA, UserRole } from '@redinfo/shared';
 import { useCapabilities } from '../hooks/useCapabilities';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { PersonAvatar } from '../components/PersonAvatar';
-import { roleLabel } from '../i18n/labels';
 import { NAV_SECTIONS, NavEntry } from './navigation';
 import {
   borderRadiusMedium,
@@ -28,6 +28,16 @@ import {
   logoRedCrossEmblemPath,
   touchTargetSize,
 } from './design-tokens';
+
+/**
+ * `identity.role` is a `UserRole` account role (`SYSTEM_ADMIN`,
+ * `EMERGENCY_COORDINATOR`, …) — a different vocabulary from `i18n/labels.ts`'s
+ * `roleLabel`, which names a *shift* role ("Driver", "Team Leader"). Reuses
+ * `ROLE_METADATA`, the same lookup `UserList`/`UserEdit`/`UserCreate` already
+ * use for it, so this doesn't invent a second display name for the same enum.
+ */
+const identityRoleLabel = (role?: string | null): string =>
+  (role && ROLE_METADATA[role as UserRole]?.displayName) || role || '';
 
 const RedInfoAppBar = () => (
   <AppBar userMenu={<RedInfoUserMenu />}>
@@ -62,39 +72,67 @@ const LiveEntryLabel = ({ label, subtitle }: { label: string; subtitle?: string 
   </Box>
 );
 
-const NavMenuItem = ({ entry }: { entry: NavEntry }) => (
-  <MenuItemLink
-    to={entry.to}
-    primaryText={
-      entry.variant === 'live' ? (
-        <LiveEntryLabel label={entry.label} subtitle={entry.subtitle} />
-      ) : (
-        entry.label
-      )
-    }
-    leftIcon={entry.icon}
-    sx={[
-      { minHeight: touchTargetSize },
-      entry.variant === 'live'
-        ? {
-            backgroundColor: colorRedCrossRedDark,
-            color: 'common.white',
-            borderRadius: `${borderRadiusMedium}px`,
-            mx: 1,
-            minHeight: 52,
-            [`& .${MenuItemLinkClasses.icon}`]: { color: 'common.white' },
-            '&:hover': { backgroundColor: colorRedCrossRedDark, opacity: 0.9 },
-          }
-        : {
-            [`&.${MenuItemLinkClasses.active}`]: {
-              backgroundColor: 'rgba(237,27,36,0.08)',
-              color: colorRedCrossRedDark,
-              [`& .${MenuItemLinkClasses.icon}`]: { color: colorRedCrossRedDark },
-            },
-          },
-    ]}
-  />
+/**
+ * The live entry's icon, collapsed-rail version: a contained circular red
+ * badge instead of the full-width pill. The pill's `mx` margin plus its
+ * background color don't survive the 55px rail — `MenuItemLink`'s label
+ * `Typography` keeps its full (invisible, `noWrap`-clipped) content width in
+ * the layout even though no text is visible, so a background spanning the
+ * whole row rides past the rail's edge and gets clipped square, losing the
+ * rounding and the margin both. Coloring only the icon sidesteps that: it
+ * sits inside `ListItemIcon`'s fixed-width slot, which never overflows.
+ */
+const LiveEntryIcon = ({ icon }: { icon: NavEntry['icon'] }) => (
+  <Box
+    sx={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      width: 32,
+      height: 32,
+      borderRadius: '50%',
+      backgroundColor: colorRedCrossRedDark,
+      color: 'common.white',
+    }}
+  >
+    {icon}
+  </Box>
 );
+
+const NavMenuItem = ({ entry }: { entry: NavEntry }) => {
+  const [sidebarOpen] = useSidebarState();
+  const isLive = entry.variant === 'live';
+
+  return (
+    <MenuItemLink
+      to={entry.to}
+      primaryText={isLive ? <LiveEntryLabel label={entry.label} subtitle={entry.subtitle} /> : entry.label}
+      leftIcon={isLive && !sidebarOpen ? <LiveEntryIcon icon={entry.icon} /> : entry.icon}
+      sx={[
+        { minHeight: touchTargetSize },
+        isLive && sidebarOpen
+          ? {
+              backgroundColor: colorRedCrossRedDark,
+              color: 'common.white',
+              borderRadius: `${borderRadiusMedium}px`,
+              mx: 1,
+              minHeight: 52,
+              [`& .${MenuItemLinkClasses.icon}`]: { color: 'common.white' },
+              '&:hover': { backgroundColor: colorRedCrossRedDark, opacity: 0.9 },
+            }
+          : isLive
+            ? { justifyContent: 'center' }
+            : {
+                [`&.${MenuItemLinkClasses.active}`]: {
+                  backgroundColor: 'rgba(237,27,36,0.08)',
+                  color: colorRedCrossRedDark,
+                  [`& .${MenuItemLinkClasses.icon}`]: { color: colorRedCrossRedDark },
+                },
+              },
+      ]}
+    />
+  );
+};
 
 /** Uppercase, non-collapsible section label. Never sticky — this is a short drawer, not a long list. */
 const SectionSubheader = ({ label }: { label: string }) => (
@@ -146,7 +184,7 @@ const MobileIdentityHeader = () => {
         <Box sx={{ fontWeight: 700, fontSize: '0.9375rem', lineHeight: 1.3 }}>
           {identity.fullName}
         </Box>
-        <Box sx={{ fontSize: fontSizeXSmall, opacity: 0.85 }}>{roleLabel(identity.role)}</Box>
+        <Box sx={{ fontSize: fontSizeXSmall, opacity: 0.85 }}>{identityRoleLabel(identity.role)}</Box>
       </Box>
     </Box>
   );
@@ -220,12 +258,21 @@ const RedInfoUserMenu = () => {
   return (
     <UserMenu
       icon={
-        <PersonAvatar
-          userId={identity ? String(identity.id) : ''}
-          hasPhoto={Boolean(identity?.hasPhoto)}
-          initials={initials}
-          size={32}
-        />
+        // MUI's Button styles its `startIcon` slot with
+        // `.MuiButton-startIcon > *:nth-of-type(1) { font-size: <n> }` —
+        // aimed at sizing a plain SvgIcon, but it matches *any* direct
+        // child, including our Avatar, and its specificity beats a plain
+        // sx class, so it was overriding PersonAvatar's own font-size and
+        // rendering the initials oversized. Wrapping in a span keeps the
+        // Avatar one level deeper, out of that selector's reach.
+        <Box component="span" sx={{ display: 'inline-flex' }}>
+          <PersonAvatar
+            userId={identity ? String(identity.id) : ''}
+            hasPhoto={Boolean(identity?.hasPhoto)}
+            initials={initials}
+            size={32}
+          />
+        </Box>
       }
     >
       {identity && (
@@ -240,7 +287,7 @@ const RedInfoUserMenu = () => {
             <Box sx={{ minWidth: 0 }}>
               <Box sx={{ fontWeight: 600, fontSize: '0.9375rem' }}>{identity.fullName}</Box>
               <Box sx={{ fontSize: fontSizeXSmall, color: 'text.secondary' }}>
-                {roleLabel(identity.role)}
+                {identityRoleLabel(identity.role)}
               </Box>
             </Box>
           </Box>

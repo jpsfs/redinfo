@@ -21,8 +21,6 @@ import { Action, hasPermission, UserRole } from '@redinfo/shared';
 import { apiFetch } from '../api';
 import { LiveRunBoard } from '../resources/liveRuns';
 
-const API_URL = import.meta.env.VITE_API_URL ?? '';
-
 const DAYS_WARN = 30;
 
 function isExpiringSoon(dateStr: string | null | undefined): boolean {
@@ -61,19 +59,23 @@ interface LowStockVehicle {
   }>;
 }
 
+interface LowStockResponse {
+  grouped: Record<string, LowStockVehicle[]>;
+  total: number;
+}
+
 const LowStockPanel = () => {
-  const [data, setData] = useState<{ grouped: Record<string, LowStockVehicle[]>; total: number } | null>(null);
+  const [data, setData] = useState<LowStockResponse | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem('auth')
-      ? JSON.parse(localStorage.getItem('auth') ?? '{}').accessToken
-      : null;
-    const headers: HeadersInit = { 'Content-Type': 'application/json' };
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-
-    fetch(`${API_URL}/vehicles/low-stock`, { headers })
-      .then((r) => r.json())
+    // Was reading the bearer token out of a `localStorage['auth']` key that
+    // has never existed in this app (the token lives under the key
+    // `authProvider.ts` uses) — every request 401'd, and the panel then threw
+    // trying to read `.grouped` off the error body, taking the whole
+    // Dashboard down. `apiFetch` is the one place that knows where the token
+    // actually is, and rejects on a non-2xx instead of resolving to it.
+    apiFetch<LowStockResponse>('/vehicles/low-stock')
       .then(setData)
       .catch(() => setData(null))
       .finally(() => setLoading(false));
