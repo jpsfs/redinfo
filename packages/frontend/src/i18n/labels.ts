@@ -1118,6 +1118,29 @@ const MESSAGES = {
   'scheduleBoard.issueException': { pt: 'em excepção', en: 'exception' },
   'scheduleBoard.issueLapsed': { pt: 'caducada', en: 'lapsed' },
   'scheduleBoard.suffixYou': { pt: ', tu', en: ', you' },
+  'scheduleBoard.printButton': { pt: 'Imprimir escala', en: 'Print schedule' },
+
+  // ── Schedule print (#191) ──
+  'schedulePrint.title': { pt: 'Escala para impressão', en: 'Printable schedule' },
+  'schedulePrint.organisation': {
+    pt: 'Cruz Vermelha Portuguesa – Delegação de Campo',
+    en: 'Portuguese Red Cross – Campo Delegation',
+  },
+  'schedulePrint.crewColumn': { pt: 'Equipa', en: 'Crew' },
+  'schedulePrint.dateColumn': { pt: 'Data', en: 'Date' },
+  'schedulePrint.shiftColumn': { pt: 'Turno', en: 'Shift' },
+  'schedulePrint.unfilled': { pt: 'Por preencher', en: 'Unfilled' },
+  'schedulePrint.legendDriver': { pt: 'Negrito — condutor', en: 'Bold — driver' },
+  'schedulePrint.legendUnfilled': { pt: '— — lugar por preencher', en: '— — unfilled place' },
+  'schedulePrint.holiday': { pt: 'Feriado', en: 'Holiday' },
+  'schedulePrint.weekend': { pt: 'Fim de semana', en: 'Weekend' },
+  'schedulePrint.draftNotice': {
+    pt: 'RASCUNHO — ainda não publicada, sujeita a alterações',
+    en: 'DRAFT — not yet published, subject to change',
+  },
+  'schedulePrint.printButton': { pt: 'Imprimir', en: 'Print' },
+  'schedulePrint.close': { pt: 'Fechar', en: 'Close' },
+  'schedulePrint.loadFailed': { pt: 'Não foi possível carregar a escala.', en: 'Could not load the schedule.' },
 
   // ── Assign / autofill / create schedule / publish / sign-up dialogs ──
   'assignDialog.alreadyOnRole': {

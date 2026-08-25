@@ -7,3 +7,4 @@ export { AutofillDialog } from './AutofillDialog';
 export { PublishDialog } from './PublishDialog';
 export { CreateScheduleDialog } from './CreateScheduleDialog';
 export { SignUpDialog } from './SignUpDialog';
+export { SchedulePrintPage } from './print/SchedulePrintPage';

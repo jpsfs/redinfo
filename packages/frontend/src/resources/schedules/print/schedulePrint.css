@@ -1,0 +1,134 @@
+/**
+ * Print stylesheet for SchedulePrintPage.
+ *
+ * Portrait A4 is the default per the legacy platform this replaces —
+ * `choosePrintLayout`'s landscape case overrides `@page` with an injected
+ * `<style>` tag instead (a class cannot switch `@page`; it is a top-level
+ * at-rule, not something scoped to an element).
+ */
+@page {
+  size: A4 portrait;
+  margin: 10mm;
+}
+
+.schedule-print {
+  font-family: 'Inter', 'Roboto', 'Helvetica Neue', 'Arial', sans-serif;
+  color: #212121;
+}
+
+/* Screen-only controls — never printed, never eaten into the page budget. */
+@media print {
+  .print-toolbar {
+    display: none;
+  }
+}
+
+.letterhead {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 4px 12px;
+  border-bottom: 2px solid #ed1b24;
+  margin-bottom: 6px;
+}
+
+.draft-notice {
+  color: #b01218;
+  font-weight: 700;
+}
+
+.schedule-print-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.schedule-print-table th,
+.schedule-print-table td {
+  border: 1px solid #9e9e9e;
+  padding: 3px 6px;
+  text-align: left;
+  vertical-align: top;
+}
+
+/* Repeats the header row on every printed page of a multi-page board. */
+.schedule-print-table thead {
+  display: table-header-group;
+}
+
+/* A row never splits across a page break — a shift half on one page and
+   half on the next is unreadable on paper. */
+.schedule-print-table tbody tr {
+  break-inside: avoid;
+}
+
+/*
+ * `background-color` alone is invisible on a mono laser printer, and most
+ * browsers strip it from the printed page by default unless told not to —
+ * that is what `print-color-adjust` is for. Both the tint below and the
+ * `.day-marker` text it sits beside are needed for the "readable in black &
+ * white" acceptance criterion; neither carries it alone.
+ */
+.day-holiday,
+.day-weekend {
+  print-color-adjust: exact;
+  -webkit-print-color-adjust: exact;
+}
+
+.day-holiday {
+  background-color: #fdecea;
+}
+
+.day-weekend {
+  background-color: #f5f5f5;
+}
+
+.day-marker {
+  font-size: 0.85em;
+  font-style: italic;
+  color: #424242;
+}
+
+/* Driver marker: bold survives a mono laser printer where a colour chip or
+   an icon glyph font may not render at all — see the AC on B&W safety. */
+.crew-name.is-driver {
+  font-weight: 700;
+}
+
+.crew-name.is-unfilled {
+  color: #616161;
+}
+
+.stacked-role-name {
+  font-weight: 600;
+}
+
+.legend {
+  margin-top: 10px;
+  display: flex;
+  gap: 24px;
+  font-size: 0.8em;
+  color: #616161;
+}
+
+/*
+ * Density tiers, matched to `printLayout.ts`'s row-height budget
+ * (comfortable 7.5mm, compact 6.0mm, dense 4.8mm). Chosen by the loosest
+ * tier the board's row count fits inside one page's ~236mm of body height.
+ */
+.density-comfortable .schedule-print-table th,
+.density-comfortable .schedule-print-table td {
+  padding: 5px 6px;
+  font-size: 11px;
+}
+
+.density-compact .schedule-print-table th,
+.density-compact .schedule-print-table td {
+  padding: 3px 6px;
+  font-size: 10px;
+}
+
+.density-dense .schedule-print-table th,
+.density-dense .schedule-print-table td {
+  padding: 1.5px 4px;
+  font-size: 9px;
+}

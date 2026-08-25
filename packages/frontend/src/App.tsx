@@ -33,7 +33,7 @@ import {
   HolidayCreate,
   HolidayEdit,
 } from './resources/availability';
-import { ScheduleList, ScheduleShow } from './resources/schedules';
+import { ScheduleList, ScheduleShow, SchedulePrintPage } from './resources/schedules';
 import {
   EventReportList,
   EventReportCreate,
@@ -108,6 +108,14 @@ export default function App() {
             </LiveRunGate>
           }
         />
+
+        {/* Print-optimised schedule board (AB#189/#191) — its own screen so the
+            browser's print dialog sees only the rota, not react-admin's app bar
+            and drawer. `noLayout` puts it outside the auth gate, so the page
+            calls `useAuthenticated()` itself, same as `LiveRunGate` above.
+            Ungated otherwise, matching the Export CSV button it sits beside on
+            `ScheduleBoard`. */}
+        <Route path="/schedules/:id/print" element={<SchedulePrintPage />} />
       </CustomRoutes>
 
       {/* Personal action page rather than a resource: it only ever shows the
