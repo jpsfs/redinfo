@@ -7,10 +7,17 @@ export default defineConfig({
   server: {
     host: '0.0.0.0',
     port: 5173,
+    // Dev server is reached via docker-compose port mapping from other machines
+    // (e.g. http://myvm:5173) — Vite's DNS-rebind protection would otherwise
+    // reject requests whose Host header isn't localhost/127.0.0.1.
+    allowedHosts: true,
     proxy: {
+      // Mirrors nginx's prod behaviour (nginx/nginx.conf): /api/* is stripped
+      // to / before reaching the backend, which mounts its routes at the root.
       '/api': {
         target: 'http://backend:3000',
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, ''),
       },
       '/auth': {
         target: 'http://backend:3000',
