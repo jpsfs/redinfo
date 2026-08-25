@@ -1,0 +1,163 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    body { margin: 0; font-family: "Inter", "Roboto", "Helvetica Neue", Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #B01218; } a:hover { color: #8b0e13; }
+    .ico { width: 20px; height: 20px; flex: none; stroke: currentColor; fill: none; stroke-width: 1.75; stroke-linecap: round; stroke-linejoin: round; }
+  </style>
+</helmet>
+
+<div style="width: 1440px; height: 940px; display: flex; flex-direction: column; background: #F5F5F5; overflow: hidden;">
+
+  <!-- ── App bar ─────────────────────────────────────────────────────────── -->
+  <div style="height: 64px; flex: none; background: #ED1B24; color: #FFFFFF; display: flex; align-items: center; gap: 12px; padding: 0 8px 0 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.14); position: relative; z-index: 5;">
+    <div style="width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; border-radius: 4px;">
+      <svg class="ico" viewBox="0 0 24 24" style="width: 24px; height: 24px; stroke-width: 2;"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+    </div>
+    <div style="width: 32px; height: 32px; flex: none; background: #FFFFFF; border-radius: 2px; display: flex; align-items: center; justify-content: center;">
+      <svg viewBox="0 0 24 24" style="width: 26px; height: 26px;"><path d="M9 3h6v6h6v6h-6v6H9v-6H3V9h6z" fill="#ED1B24"/></svg>
+    </div>
+    <div style="font-size: 1.25rem; font-weight: 600; line-height: 1.25;">RedInfo</div>
+    <div style="flex-grow: 1;"></div>
+
+    <!-- Avatar + open user menu -->
+    <div style="position: relative; display: flex; align-items: center;">
+      <div style="height: 44px; display: flex; align-items: center; gap: 8px; padding: 0 8px; border-radius: 22px; background: rgba(255,255,255,0.16);">
+        <div style="width: 32px; height: 32px; border-radius: 16px; background: #B01218; color: #FFFFFF; font-size: 0.75rem; font-weight: 600; display: flex; align-items: center; justify-content: center;">JS</div>
+        <div style="font-size: 0.875rem; font-weight: 500;">José Silva</div>
+        <svg class="ico" viewBox="0 0 24 24" style="width: 16px; height: 16px;"><path d="M6 9l6 6 6-6"/></svg>
+      </div>
+
+      <div style="position: absolute; top: 52px; right: 0; width: 260px; background: #FFFFFF; color: #212121; border-radius: 8px; box-shadow: 0 6px 24px rgba(0,0,0,0.22); padding: 8px 0; z-index: 20;">
+        <div style="display: flex; align-items: center; gap: 12px; padding: 8px 16px 12px;">
+          <div style="width: 40px; height: 40px; border-radius: 20px; background: #E0E0E0; color: #616161; font-size: 0.875rem; font-weight: 600; display: flex; align-items: center; justify-content: center;">JS</div>
+          <div style="display: flex; flex-direction: column; gap: 2px;">
+            <div style="font-size: 0.875rem; font-weight: 600; line-height: 1.25;">José Silva</div>
+            <div style="font-size: 0.75rem; color: #616161; line-height: 1.5;">System Administrator</div>
+          </div>
+        </div>
+        <div style="height: 1px; background: #E0E0E0; margin: 0 0 8px;"></div>
+        <div style="display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 16px; font-size: 0.875rem;">
+          <svg class="ico" viewBox="0 0 24 24" style="color: #616161;"><circle cx="12" cy="8" r="3.5"/><path d="M5 20c0-3.3 3.1-5.5 7-5.5s7 2.2 7 5.5"/></svg>
+          <span>My Profile</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 16px; font-size: 0.875rem;">
+          <svg class="ico" viewBox="0 0 24 24" style="color: #616161;"><circle cx="12" cy="12" r="9"/><path d="M12 8v8M8.5 10.5L12 8l3.5 2.5"/></svg>
+          <span>Language · Português</span>
+        </div>
+        <div style="height: 1px; background: #E0E0E0; margin: 8px 0;"></div>
+        <div style="display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 16px; font-size: 0.875rem;">
+          <svg class="ico" viewBox="0 0 24 24" style="color: #616161;"><path d="M15 4h3a2 2 0 012 2v12a2 2 0 01-2 2h-3M10 8l-4 4 4 4M6 12h9"/></svg>
+          <span>Log out</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Body: drawer + content ──────────────────────────────────────────── -->
+  <div style="flex-grow: 1; display: flex; min-height: 0;">
+
+    <!-- Drawer (240px, react-admin sidebar width) -->
+    <div style="width: 240px; flex: none; background: #FFFFFF; border-right: 1px solid #E0E0E0; display: flex; flex-direction: column; padding: 8px 0 8px;">
+
+      <!-- Pinned: live emergency -->
+      <div style="margin: 0 8px 4px; height: 52px; border-radius: 8px; background: #B01218; color: #FFFFFF; display: flex; align-items: center; gap: 12px; padding: 0 12px;">
+        <svg class="ico" viewBox="0 0 24 24" style="width: 22px; height: 22px; stroke-width: 2;"><path d="M12 3v3M5.6 5.6l2.1 2.1M18.4 5.6l-2.1 2.1"/><path d="M6 20v-4a6 6 0 0112 0v4z"/><path d="M4 20h16"/></svg>
+        <div style="display: flex; flex-direction: column;">
+          <span style="font-size: 0.9375rem; font-weight: 700; line-height: 1.25; letter-spacing: 0.01em;">Emergência</span>
+          <span style="font-size: 0.6875rem; font-weight: 500; line-height: 1.25; opacity: 0.85;">Modo em campo</span>
+        </div>
+      </div>
+
+      <!-- Home (active) -->
+      <div style="margin: 0 8px; height: 48px; border-radius: 8px; background: rgba(237,27,36,0.08); color: #B01218; display: flex; align-items: center; gap: 12px; padding: 0 12px;">
+        <svg class="ico" viewBox="0 0 24 24"><path d="M4 11l8-6 8 6v8a1 1 0 01-1 1h-4v-6h-6v6H5a1 1 0 01-1-1z"/></svg>
+        <span style="font-size: 0.9375rem; font-weight: 600;">Home</span>
+      </div>
+
+      <!-- MY WORK -->
+      <div style="height: 32px; display: flex; align-items: flex-end; padding: 0 20px 4px; font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #616161;">My work</div>
+      <div style="margin: 0 8px; height: 48px; border-radius: 8px; display: flex; align-items: center; gap: 12px; padding: 0 12px; color: #212121;">
+        <svg class="ico" viewBox="0 0 24 24" style="color: #616161;"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17M8 3.5v3M16 3.5v3M9.5 14.5l2 2 3.5-4"/></svg>
+        <span style="font-size: 0.9375rem;">My Availability</span>
+      </div>
+      <div style="margin: 0 8px; height: 48px; border-radius: 8px; display: flex; align-items: center; gap: 12px; padding: 0 12px; color: #212121;">
+        <svg class="ico" viewBox="0 0 24 24" style="color: #616161;"><rect x="4.5" y="4" width="15" height="16" rx="2"/><path d="M9 4V2.5h6V4"/><path d="M8.5 10.5h7M8.5 14.5h4"/></svg>
+        <span style="font-size: 0.9375rem;">My Duties</span>
+      </div>
+      <div style="margin: 0 8px; height: 48px; border-radius: 8px; display: flex; align-items: center; gap: 12px; padding: 0 12px; color: #212121;">
+        <svg class="ico" viewBox="0 0 24 24" style="color: #616161;"><path d="M6 3h8l4 4v14H6z"/><path d="M14 3v4h4M9 12h6M9 16h4"/></svg>
+        <span style="font-size: 0.9375rem;">My Reports</span>
+      </div>
+
+      <!-- OPERATIONS -->
+      <div style="height: 32px; display: flex; align-items: flex-end; padding: 0 20px 4px; font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #616161;">Operations</div>
+      <div style="margin: 0 8px; height: 48px; border-radius: 8px; display: flex; align-items: center; gap: 12px; padding: 0 12px; color: #212121;">
+        <svg class="ico" viewBox="0 0 24 24" style="color: #616161;"><path d="M3 12h3.5l1.5-3.5 2.5 7 2-5 1.5 3h3"/><path d="M18 5.5a3 3 0 013 3c0 3.5-4.5 6-6 7.5"/></svg>
+        <span style="font-size: 0.9375rem;">Live Emergencies</span>
+      </div>
+      <div style="margin: 0 8px; height: 48px; border-radius: 8px; display: flex; align-items: center; gap: 12px; padding: 0 12px; color: #212121;">
+        <svg class="ico" viewBox="0 0 24 24" style="color: #616161;"><path d="M8 2.5h6l4 4v12H8z"/><path d="M14 2.5v4h4M5.5 6v15.5H16"/></svg>
+        <span style="font-size: 0.9375rem;">Event Reports</span>
+        <div style="flex-grow: 1;"></div>
+        <span style="font-size: 0.6875rem; font-weight: 600; color: #FFFFFF; background: #9E9E9E; border-radius: 10px; padding: 2px 7px;">12</span>
+      </div>
+      <div style="margin: 0 8px; height: 48px; border-radius: 8px; display: flex; align-items: center; gap: 12px; padding: 0 12px; color: #212121;">
+        <svg class="ico" viewBox="0 0 24 24" style="color: #616161;"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17M8 3.5v3M16 3.5v3M7.5 13h4M7.5 16.5h9"/></svg>
+        <span style="font-size: 0.9375rem;">Schedules</span>
+      </div>
+      <div style="margin: 0 8px; height: 48px; border-radius: 8px; display: flex; align-items: center; gap: 12px; padding: 0 12px; color: #212121;">
+        <svg class="ico" viewBox="0 0 24 24" style="color: #616161;"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17M8 3.5v3M16 3.5v3"/><path d="M7 14h10"/></svg>
+        <span style="font-size: 0.9375rem;">Availability Windows</span>
+      </div>
+
+      <!-- PEOPLE -->
+      <div style="height: 32px; display: flex; align-items: flex-end; padding: 0 20px 4px; font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #616161;">People</div>
+      <div style="margin: 0 8px; height: 48px; border-radius: 8px; display: flex; align-items: center; gap: 12px; padding: 0 12px; color: #212121;">
+        <svg class="ico" viewBox="0 0 24 24" style="color: #616161;"><circle cx="9" cy="8" r="3.2"/><path d="M3 19c0-3 2.7-5 6-5s6 2 6 5"/><path d="M16 6.2a3.2 3.2 0 010 6M17.5 19c0-2.4-.9-3.9-2-4.6"/></svg>
+        <span style="font-size: 0.9375rem;">Personnel</span>
+        <div style="flex-grow: 1;"></div>
+        <span style="font-size: 0.6875rem; font-weight: 600; color: #FFFFFF; background: #F57C00; border-radius: 10px; padding: 2px 7px;">3</span>
+      </div>
+
+      <!-- FLEET -->
+      <div style="height: 32px; display: flex; align-items: flex-end; padding: 0 20px 4px; font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #616161;">Fleet</div>
+      <div style="margin: 0 8px; height: 48px; border-radius: 8px; display: flex; align-items: center; gap: 12px; padding: 0 12px; color: #212121;">
+        <svg class="ico" viewBox="0 0 24 24" style="color: #616161;"><path d="M2.5 15v-3.5l2-4.5h10v8"/><path d="M14.5 9H19l2.5 3.5V15"/><circle cx="7" cy="17" r="2"/><circle cx="17" cy="17" r="2"/><path d="M9 17h6M2.5 15h2M21.5 15v2h-2.5"/></svg>
+        <span style="font-size: 0.9375rem;">Vehicles</span>
+      </div>
+      <div style="margin: 0 8px; height: 48px; border-radius: 8px; display: flex; align-items: center; gap: 12px; padding: 0 12px; color: #212121;">
+        <svg class="ico" viewBox="0 0 24 24" style="color: #616161;"><path d="M3.5 8.5L12 4l8.5 4.5v7L12 20l-8.5-4.5z"/><path d="M3.5 8.5L12 13l8.5-4.5M12 13v7"/></svg>
+        <span style="font-size: 0.9375rem;">Inventory Templates</span>
+      </div>
+
+      <!-- CONFIGURATION -->
+      <div style="height: 32px; display: flex; align-items: flex-end; padding: 0 20px 4px; font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #616161;">Configuration</div>
+      <div style="margin: 0 8px; height: 48px; border-radius: 8px; display: flex; align-items: center; gap: 12px; padding: 0 12px; color: #212121;">
+        <svg class="ico" viewBox="0 0 24 24" style="color: #616161;"><path d="M4 20V8l8-4 8 4v12"/><path d="M10 12h4M12 10v4M9 20v-4h6v4"/></svg>
+        <span style="font-size: 0.9375rem;">Hospitals</span>
+      </div>
+      <div style="margin: 0 8px; height: 48px; border-radius: 8px; display: flex; align-items: center; gap: 12px; padding: 0 12px; color: #212121;">
+        <svg class="ico" viewBox="0 0 24 24" style="color: #616161;"><rect x="3.5" y="5" width="17" height="15" rx="2"/><path d="M3.5 9.5h17M8 3.5v3M16 3.5v3M10 13l4 4M14 13l-4 4"/></svg>
+        <span style="font-size: 0.9375rem;">Holidays</span>
+      </div>
+    </div>
+
+    <!-- Content region (wireframe placeholder — the chrome is what is under review) -->
+    <div style="flex-grow: 1; padding: 24px; display: flex; flex-direction: column; gap: 16px; min-width: 0;">
+      <div style="font-size: 1.5rem; font-weight: 600; color: #212121;">Dashboard</div>
+      <div style="flex-grow: 1; border: 1px dashed #BDBDBD; border-radius: 8px; display: flex; align-items: center; justify-content: center; color: #9E9E9E; font-size: 0.875rem;">page content</div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

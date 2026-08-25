@@ -1,0 +1,61 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html", "title": "Desktop — coordinator / admin", "x": 0, "y": 0, "w": 1440, "h": 940 },
+    { "file": "Collapsed.dc.html", "title": "Collapsed rail", "x": 1560, "y": 0, "w": 300, "h": 870 },
+    { "file": "Mobile.dc.html", "title": "Mobile — drawer open", "x": 0, "y": 1100, "w": 390, "h": 844 },
+    { "file": "Roles.dc.html", "title": "Permission filtering", "x": 510, "y": 1100, "w": 880, "h": 740 },
+    { "file": "Model.dc.html", "title": "The model, written down", "x": 1510, "y": 1100, "w": 860, "h": 1055 }
+  ],
+  "annotations": [
+    {
+      "id": "status",
+      "x": 0,
+      "y": 990,
+      "w": 400,
+      "text": "APPROVED 2026-08-25. The implementation plan lives in the Description of ADO #181, ready to hand to a new session.\n\nEverything below is a decision, not a question."
+    },
+    {
+      "id": "q-live-reach",
+      "x": 1560,
+      "y": 940,
+      "w": 300,
+      "text": "DECIDED — live mode is the pinned red item and nothing else.\n\nThe floating button, the app-bar button and the PWA home-screen shortcut were all considered and rejected. Two taps from anywhere (hamburger, then the red bar) is accepted."
+    },
+    {
+      "id": "q-logistics-gap",
+      "x": 510,
+      "y": 1880,
+      "w": 440,
+      "text": "OPEN, BUT NOT HERE — a Logistics Coordinator gets a 4-entry menu: no My Availability (no SUBMIT_AVAILABILITY) and no My Reports (no CREATE_EVENT_REPORT).\n\nThat is what ROLE_PERMISSIONS says today and the menu is right to reflect it. Whether every role should be able to declare availability is a permissions decision, not a navigation one — it needs its own work item. The plan explicitly forbids papering over it by making those entries unconditional."
+    },
+    {
+      "id": "q-personnel-naming",
+      "x": 2490,
+      "y": 1100,
+      "w": 340,
+      "text": "DECIDED — ONE entry, \"Personnel\", under PEOPLE, route /users, gated by VIEW_USERS.\n\nThe screen already varies its fields by capability, so an admin editing an email and a coordinator editing certifications share one list. The Personnel/User Accounts split was rejected. This settles #163's provisional placement."
+    },
+    {
+      "id": "q-live-board",
+      "x": 2490,
+      "y": 1450,
+      "w": 340,
+      "text": "DECIDED — the live-runs oversight board gets its own screen at /live-runs under OPERATIONS, gated by VIEW_LIVE_RUNS. It stays on the Dashboard as well.\n\nLiveRunBoard needs one new optional prop (emptyState) so the standalone screen is not a blank page when nothing is running; the Dashboard passes nothing and behaves exactly as it does today."
+    },
+    {
+      "id": "q-language",
+      "x": 2490,
+      "y": 1800,
+      "w": 340,
+      "text": "DEFERRED TO #180 — that story makes the whole app bilingual, so this one does not touch language.\n\nLabels stay English typed inline, per the convention in i18n/labels.ts, with \"Emergência\" the one exception. The manifest holds a plain label string so #180 can swap it for a key in one file."
+    },
+    {
+      "id": "note-badges",
+      "x": 0,
+      "y": 1960,
+      "w": 400,
+      "text": "OUT OF SCOPE — the two count badges (12 unreviewed reports, 3 certification alerts) are drawn to show where badges would sit. They are not part of #181 and need their own work item."
+    }
+  ],
+  "launch": { "view": "canvas" }
+}

@@ -1,0 +1,32 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(docker --version)",
+      "Bash(docker compose *)",
+      "Bash(pnpm --version)",
+      "Bash(docker info *)",
+      "Bash(corepack --version)",
+      "Bash(corepack pnpm *)",
+      "Bash(corepack enable *)",
+      "Bash(pnpm typecheck *)",
+      "Bash(pnpm build *)",
+      "Bash(node -p \"process.arch\")",
+      "Bash(pnpm install *)",
+      "Bash(node -e \"console.log\\(require\\('crypto'\\).randomBytes\\(48\\).toString\\('hex'\\)\\)\")",
+      "Bash(python3 -c ' *)",
+      "Bash(pnpm --filter frontend build)",
+      "Bash(pnpm --filter backend build)",
+      "Bash(pnpm prisma:generate)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(echo *)",
+      "Bash(pnpm --filter backend test)",
+      "Bash(git add *)",
+      "Bash(git commit -m 'fix\\(frontend\\): handle optional pagination in dataProvider.getList *)",
+      "Bash(git push *)",
+      "mcp__azure-devops__wit_work_item",
+      "mcp__azure-devops__search_workitem",
+      "mcp__azure-devops__wit_query"
+    ]
+  }
+}
