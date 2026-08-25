@@ -4042,3 +4042,48 @@ export interface LiveRunCloseResponse {
   run: LiveRun;
   report: EventReport;
 }
+
+// ─── API error codes (#180 phase 4) ───────────────────────────────────────────
+//
+// A machine code for the business-rule failures that are genuinely worth a
+// crew or coordinator reading in their own language — mirroring
+// `EventReportProblem`'s shape rather than inventing a second idea: the API's
+// response carries English (for the response itself and for a developer
+// reading a log) plus a code the client translates by, with the English
+// message as the fallback if a translation is ever missing.
+//
+// Deliberately not exhaustive. `NotFoundException`s and most `BadRequest`s
+// stay plain English — they are developer/URL-shape errors ("Holiday abc123
+// not found"), not business rules a person is meant to read and act on. This
+// list is the audited subset that is: the schedule-assignment and
+// schedule-publish flows (named explicitly in #180's plan), and the
+// availability-window overlap check (the plan's worked example). Extending
+// it to another module is a deliberate choice, not something to do in bulk —
+// see the plan's "do not blanket-code all 147" note.
+export type ApiErrorCode =
+  | 'WINDOW_OVERLAP_OPEN'
+  | 'WINDOW_OVERLAP_CLOSED'
+  | 'WINDOW_ALREADY_CLOSED'
+  | 'SCHEDULE_DRAFT_NOT_VISIBLE'
+  | 'SCHEDULE_ALREADY_EXISTS_FOR_WINDOW'
+  | 'SCHEDULE_PUBLISHED_CANNOT_DELETE'
+  | 'SCHEDULE_ALREADY_PUBLISHED'
+  | 'ASSIGNMENT_PERSON_INACTIVE'
+  | 'ASSIGNMENT_PERSON_NOT_FIELD_PERSONNEL'
+  | 'ASSIGNMENT_CERTIFICATION_REQUIRED'
+  | 'ASSIGNMENT_ALREADY_ON_SHIFT'
+  | 'ASSIGNMENT_ROLE_FULL'
+  | 'ASSIGNMENT_DATE_OUTSIDE_WINDOW'
+  | 'ASSIGNMENT_WINDOW_HAS_NO_ROLES'
+  | 'ASSIGNMENT_ROLE_ID_REQUIRED'
+  | 'ASSIGNMENT_ROLE_NOT_IN_WINDOW'
+  | 'SELF_ASSIGN_SCHEDULE_NOT_PUBLISHED'
+  | 'SELF_ASSIGN_OVERLAPPING_SHIFT';
+
+export interface ApiErrorBody {
+  code: ApiErrorCode;
+  /** English — the API response's own message, and what a developer reads in a log. */
+  message: string;
+  /** Polyglot interpolation values for the client's translated version, e.g. `{ role: 'Driver' }`. */
+  params?: Record<string, string | number>;
+}

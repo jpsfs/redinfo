@@ -14,7 +14,8 @@ import {
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import HowToRegIcon from '@mui/icons-material/HowToReg';
 import { formatRoleCapacity, ScheduleAssignment } from '@redinfo/shared';
-import { apiFetch } from '../../api';
+import { apiFetch, ApiError } from '../../api';
+import { apiErrorLabel } from '../../i18n/labels';
 import { useT } from '../../i18n/useT';
 import { formatDayLabel } from '../../utils/dates';
 import { AssignTarget } from './AssignPersonDialog';
@@ -58,7 +59,13 @@ export const SignUpDialog = ({
       });
       onSignedUp();
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('signUpDialog.failed'));
+      setError(
+        e instanceof ApiError
+          ? apiErrorLabel(t, e)
+          : e instanceof Error
+            ? e.message
+            : t('signUpDialog.failed'),
+      );
     } finally {
       setBusy(false);
     }

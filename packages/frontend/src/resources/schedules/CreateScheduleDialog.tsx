@@ -20,7 +20,8 @@ import {
   Schedule,
   availabilityWindowLabel,
 } from '@redinfo/shared';
-import { apiFetch } from '../../api';
+import { apiFetch, ApiError } from '../../api';
+import { apiErrorLabel } from '../../i18n/labels';
 import { useT } from '../../i18n/useT';
 import { formatDateRange } from '../../utils/dates';
 import { WindowCategoryChip } from '../availability/WindowIdentity';
@@ -75,7 +76,13 @@ export const CreateScheduleDialog = ({
       onClose();
       navigate(`/schedules/${schedule.id}/show`);
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('createScheduleDialog.startFailed'));
+      setError(
+        e instanceof ApiError
+          ? apiErrorLabel(t, e)
+          : e instanceof Error
+            ? e.message
+            : t('createScheduleDialog.startFailed'),
+      );
     } finally {
       setBusy(false);
     }

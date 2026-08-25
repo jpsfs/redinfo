@@ -31,7 +31,8 @@ import {
   AvailabilityWindowStatus,
   Schedule,
 } from '@redinfo/shared';
-import { apiFetch } from '../../api';
+import { apiFetch, ApiError } from '../../api';
+import { apiErrorLabel } from '../../i18n/labels';
 import { useT } from '../../i18n/useT';
 import { formatDateRange } from '../../utils/dates';
 import { AvailabilityMatrix } from './AvailabilityMatrix';
@@ -79,7 +80,14 @@ const CloseWindowButton = () => {
       setOpen(false);
       refresh();
     } catch (e) {
-      notify(e instanceof Error ? e.message : t('windowShow.closeFailed'), { type: 'error' });
+      notify(
+        e instanceof ApiError
+          ? apiErrorLabel(t, e)
+          : e instanceof Error
+            ? e.message
+            : t('windowShow.closeFailed'),
+        { type: 'error' },
+      );
     } finally {
       setClosing(false);
     }
@@ -210,9 +218,14 @@ const ScheduleButton = () => {
       });
       navigate(`/schedules/${created.id}/show`);
     } catch (e) {
-      notify(e instanceof Error ? e.message : t('windowShow.startScheduleFailed'), {
-        type: 'error',
-      });
+      notify(
+        e instanceof ApiError
+          ? apiErrorLabel(t, e)
+          : e instanceof Error
+            ? e.message
+            : t('windowShow.startScheduleFailed'),
+        { type: 'error' },
+      );
     } finally {
       setBusy(false);
     }

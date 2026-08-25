@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  ApiErrorCode,
   AvailabilityWindowCategory,
   BloodType,
   CertificationType,
@@ -16,6 +17,7 @@ import englishMessages from 'ra-language-english';
 import {
   accountRoleDescription,
   accountRoleLabel,
+  apiErrorLabel,
   bloodTypeLabel,
   certificationLabel,
   destinationLabel,
@@ -125,6 +127,75 @@ describe('every enum value has a label', () => {
       expect(windowCategoryLabel(tPt, category)).not.toContain('windowCategory.');
       expect(windowCategoryDescription(tPt, category)).not.toContain('windowCategoryDescription.');
     }
+  });
+
+  // #180 phase 4: the audited subset of ApiErrorCode that actually gets a
+  // translation — see @redinfo/shared's doc comment on ApiErrorCode for why
+  // this list is deliberately not exhaustive over the ~147 backend throws.
+  const ALL_API_ERROR_CODES = [
+    'WINDOW_OVERLAP_OPEN',
+    'WINDOW_OVERLAP_CLOSED',
+    'WINDOW_ALREADY_CLOSED',
+    'SCHEDULE_DRAFT_NOT_VISIBLE',
+    'SCHEDULE_ALREADY_EXISTS_FOR_WINDOW',
+    'SCHEDULE_PUBLISHED_CANNOT_DELETE',
+    'SCHEDULE_ALREADY_PUBLISHED',
+    'ASSIGNMENT_PERSON_INACTIVE',
+    'ASSIGNMENT_PERSON_NOT_FIELD_PERSONNEL',
+    'ASSIGNMENT_CERTIFICATION_REQUIRED',
+    'ASSIGNMENT_ALREADY_ON_SHIFT',
+    'ASSIGNMENT_ROLE_FULL',
+    'ASSIGNMENT_DATE_OUTSIDE_WINDOW',
+    'ASSIGNMENT_WINDOW_HAS_NO_ROLES',
+    'ASSIGNMENT_ROLE_ID_REQUIRED',
+    'ASSIGNMENT_ROLE_NOT_IN_WINDOW',
+    'SELF_ASSIGN_SCHEDULE_NOT_PUBLISHED',
+    'SELF_ASSIGN_OVERLAPPING_SHIFT',
+  ] as const satisfies readonly ApiErrorCode[];
+  // If ApiErrorCode ever grows a member not listed above, this fails to
+  // *compile* — the same trick as the EventReportProblemCode guard below.
+  type MissingApiErrorCodes = Exclude<ApiErrorCode, (typeof ALL_API_ERROR_CODES)[number]>;
+  const _apiErrorCodesAccountedFor: MissingApiErrorCodes extends never
+    ? true
+    : MissingApiErrorCodes = true;
+  void _apiErrorCodesAccountedFor;
+
+  it('translates every audited ApiErrorCode', () => {
+    for (const code of ALL_API_ERROR_CODES) {
+      const label = apiErrorLabel(tPt, { code, message: `fallback for ${code}` });
+      expect(label, code).not.toBe(`fallback for ${code}`);
+      expect(label.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('interpolates params into the translated message', async () => {
+    // `tPt` above is a plain key lookup with no %{…} substitution — real
+    // interpolation is polyglot's job, so this exercises the real thing via
+    // the same `messages()` assembly `i18nProvider.ts` uses.
+    const polyglotI18nProvider = (await import('ra-i18n-polyglot')).default;
+    const { messages } = await import('./i18nProvider');
+    const provider = polyglotI18nProvider(messages, 'pt');
+    const realTranslate = (key: string, options?: Record<string, unknown>) =>
+      provider.translate(key, options);
+
+    const label = apiErrorLabel(realTranslate, {
+      code: 'ASSIGNMENT_ROLE_FULL',
+      message: 'fallback',
+      params: { role: 'Condutor', capacity: '2/2' },
+    });
+    expect(label).toBe('Condutor está completo neste turno (2/2). Remove alguém primeiro, ou usa outra função.');
+  });
+
+  it('falls back to the English message for a code with no catalogue entry', () => {
+    expect(
+      apiErrorLabel(tPt, { code: 'NOT_A_REAL_CODE' as ApiErrorCode, message: 'This exact sentence.' }),
+    ).toBe('This exact sentence.');
+  });
+
+  it('falls back to the message when there is no code at all', () => {
+    expect(apiErrorLabel(tPt, { message: 'A plain validation message.' })).toBe(
+      'A plain validation message.',
+    );
   });
 
   // `EventReportProblemCode`/`EventReportWarningCode` are string unions, not

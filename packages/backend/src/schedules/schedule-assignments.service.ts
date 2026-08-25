@@ -1,10 +1,9 @@
+import { Injectable, NotFoundException } from '@nestjs/common';
 import {
-  BadRequestException,
-  ConflictException,
-  ForbiddenException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+  ApiBadRequestException,
+  ApiConflictException,
+  ApiForbiddenException,
+} from '../common/api-error.exception';
 import {
   AssignmentAvailability,
   AvailabilityWindowRole,
@@ -87,14 +86,19 @@ export class ScheduleAssignmentsService {
       select: { ...PERSON_SELECT, isActive: true, role: true },
     });
     if (!person) throw new NotFoundException(`User ${dto.userId} not found`);
+    const personName = `${person.firstName} ${person.lastName}`;
     if (!person.isActive) {
-      throw new BadRequestException(
-        `${person.firstName} ${person.lastName} is not an active member and cannot be scheduled.`,
+      throw new ApiBadRequestException(
+        'ASSIGNMENT_PERSON_INACTIVE',
+        `${personName} is not an active member and cannot be scheduled.`,
+        { person: personName },
       );
     }
     if (!availabilityEligibleRoles().includes(person.role as never)) {
-      throw new BadRequestException(
-        `${person.firstName} ${person.lastName} is not field personnel and cannot be scheduled.`,
+      throw new ApiBadRequestException(
+        'ASSIGNMENT_PERSON_NOT_FIELD_PERSONNEL',
+        `${personName} is not field personnel and cannot be scheduled.`,
+        { person: personName },
       );
     }
 
@@ -106,9 +110,12 @@ export class ScheduleAssignmentsService {
       !role?.requiredCertification ||
       holdsCertification(toHeldCertifications(person.certifications), role.requiredCertification, today());
     if (!meetsRequirement && !overrideReason) {
-      throw new BadRequestException(
-        `${role!.name} requires the ${CERTIFICATION_LABEL[role!.requiredCertification!]} certification, ` +
-          `which ${person.firstName} ${person.lastName} does not hold. Assigning them needs a reason.`,
+      const certification = CERTIFICATION_LABEL[role!.requiredCertification!];
+      throw new ApiBadRequestException(
+        'ASSIGNMENT_CERTIFICATION_REQUIRED',
+        `${role!.name} requires the ${certification} certification, ` +
+          `which ${personName} does not hold. Assigning them needs a reason.`,
+        { role: role!.name, certification, person: personName },
       );
     }
 
@@ -119,19 +126,23 @@ export class ScheduleAssignmentsService {
 
     const already = onShift.find((row) => row.userId === dto.userId);
     if (already) {
-      throw new ConflictException(
-        `${person.firstName} ${person.lastName} is already on this shift` +
+      throw new ApiConflictException(
+        'ASSIGNMENT_ALREADY_ON_SHIFT',
+        `${personName} is already on this shift` +
           (already.role ? ` as ${already.role.name}` : '') +
           ' — one person cannot hold two places on one shift.',
+        { person: personName, role: already.role?.name ?? '' },
       );
     }
 
     if (role) {
       const filled = onShift.filter((row) => row.roleId === role.id).length;
       if (!roleCanTakeMore(role, filled)) {
-        throw new ConflictException(
-          `${role.name} is full on this shift (${formatRoleCapacity(role.maxPeople)}). ` +
-            'Remove someone first, or use another role.',
+        const capacity = formatRoleCapacity(role.maxPeople);
+        throw new ApiConflictException(
+          'ASSIGNMENT_ROLE_FULL',
+          `${role.name} is full on this shift (${capacity}). Remove someone first, or use another role.`,
+          { role: role.name, capacity },
         );
       }
     }
@@ -193,7 +204,8 @@ export class ScheduleAssignmentsService {
   ): Promise<ScheduleAssignment> {
     const context = await this.schedules.loadContext(scheduleId);
     if (context.status !== ScheduleStatus.PUBLISHED) {
-      throw new ForbiddenException(
+      throw new ApiForbiddenException(
+        'SELF_ASSIGN_SCHEDULE_NOT_PUBLISHED',
         'This schedule has not been published yet, so it is not open to sign up to.',
       );
     }
@@ -212,8 +224,10 @@ export class ScheduleAssignmentsService {
       if (otherDate !== dto.date || other.slot === dto.slot) continue;
       const otherShift = context.shifts.get(shiftKey(otherDate, other.slot));
       if (otherShift && shiftsOverlap(shift, otherShift)) {
-        throw new ConflictException(
+        throw new ApiConflictException(
+          'SELF_ASSIGN_OVERLAPPING_SHIFT',
           `You are already on ${otherShift.label} that day, which overlaps this shift.`,
+          { shift: otherShift.label },
         );
       }
     }
@@ -364,9 +378,11 @@ export class ScheduleAssignmentsService {
   ): ShiftDefinition & { date: string } {
     const day = context.pattern.find((entry) => entry.date === date);
     if (!day) {
-      throw new BadRequestException(
-        `${date} is outside ${availabilityWindowLabel(context.window)} ` +
-          `(${context.window.startDate} – ${context.window.endDate})`,
+      const windowLabel = availabilityWindowLabel(context.window);
+      throw new ApiBadRequestException(
+        'ASSIGNMENT_DATE_OUTSIDE_WINDOW',
+        `${date} is outside ${windowLabel} (${context.window.startDate} – ${context.window.endDate})`,
+        { date, window: windowLabel, startDate: context.window.startDate, endDate: context.window.endDate },
       );
     }
     this.shiftSchedule.assertSlotValidForPattern(day, slot);
@@ -384,26 +400,32 @@ export class ScheduleAssignmentsService {
   ): AvailabilityWindowRole | null {
     if (context.roles.length === 0) {
       if (roleId) {
-        throw new BadRequestException(
-          `${availabilityWindowLabel(context.window)} defines no roles — people are ` +
-            'scheduled onto it without one.',
+        const windowLabel = availabilityWindowLabel(context.window);
+        throw new ApiBadRequestException(
+          'ASSIGNMENT_WINDOW_HAS_NO_ROLES',
+          `${windowLabel} defines no roles — people are scheduled onto it without one.`,
+          { window: windowLabel },
         );
       }
       return null;
     }
 
     if (!roleId) {
-      throw new BadRequestException(
-        `roleId is required: this window defines ${context.roles
-          .map((role) => role.name)
-          .join(', ')}.`,
+      const roleNames = context.roles.map((role) => role.name).join(', ');
+      throw new ApiBadRequestException(
+        'ASSIGNMENT_ROLE_ID_REQUIRED',
+        `roleId is required: this window defines ${roleNames}.`,
+        { roles: roleNames },
       );
     }
 
     const role = context.roles.find((entry) => entry.id === roleId);
     if (!role) {
-      throw new BadRequestException(
-        `Role ${roleId} does not belong to ${availabilityWindowLabel(context.window)}`,
+      const windowLabel = availabilityWindowLabel(context.window);
+      throw new ApiBadRequestException(
+        'ASSIGNMENT_ROLE_NOT_IN_WINDOW',
+        `Role ${roleId} does not belong to ${windowLabel}`,
+        { window: windowLabel },
       );
     }
     return role;

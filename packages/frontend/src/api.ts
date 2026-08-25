@@ -1,3 +1,4 @@
+import { ApiErrorCode } from '@redinfo/shared';
 import { getAccessToken } from './authProvider';
 
 const API_URL = import.meta.env.VITE_API_URL ?? '';
@@ -27,7 +28,8 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
   });
 
   if (!response.ok) {
-    throw new ApiError(await readErrorMessage(response), response.status);
+    const { message, code, params } = await readError(response);
+    throw new ApiError(message, response.status, code, params);
   }
 
   if (response.status === 204) return undefined as T;
@@ -48,7 +50,8 @@ export async function apiDownload(path: string, filename: string): Promise<void>
 
   const response = await fetch(`${API_URL}${path}`, { headers });
   if (!response.ok) {
-    throw new ApiError(await readErrorMessage(response), response.status);
+    const { message, code, params } = await readError(response);
+    throw new ApiError(message, response.status, code, params);
   }
 
   const blobUrl = URL.createObjectURL(await response.blob());
@@ -85,7 +88,8 @@ export async function apiUpload<T>(path: string, file: File | Blob): Promise<T> 
   });
 
   if (!response.ok) {
-    throw new ApiError(await readErrorMessage(response), response.status);
+    const { message, code, params } = await readError(response);
+    throw new ApiError(message, response.status, code, params);
   }
 
   const text = await response.text();
@@ -96,20 +100,33 @@ export class ApiError extends Error {
   constructor(
     message: string,
     readonly status: number,
+    /** Set when the API's response carries a machine code (#180 phase 4) — see `apiErrorLabel`. */
+    readonly code?: ApiErrorCode,
+    readonly params?: Record<string, string | number>,
   ) {
     super(message);
     this.name = 'ApiError';
   }
 }
 
-async function readErrorMessage(response: Response): Promise<string> {
+interface ReadErrorResult {
+  message: string;
+  code?: ApiErrorCode;
+  params?: Record<string, string | number>;
+}
+
+async function readError(response: Response): Promise<ReadErrorResult> {
   try {
     const body = await response.json();
-    const message = body?.message;
-    if (Array.isArray(message)) return message.join(', ');
-    if (typeof message === 'string') return message;
+    const rawMessage = body?.message;
+    const message = Array.isArray(rawMessage)
+      ? rawMessage.join(', ')
+      : typeof rawMessage === 'string'
+        ? rawMessage
+        : response.statusText || `Request failed with status ${response.status}`;
+    return { message, code: body?.code, params: body?.params };
   } catch {
     // Fall through to the status text below.
   }
-  return response.statusText || `Request failed with status ${response.status}`;
+  return { message: response.statusText || `Request failed with status ${response.status}` };
 }

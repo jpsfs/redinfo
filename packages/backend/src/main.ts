@@ -5,6 +5,7 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
+import { ApiErrorFilter } from './common/api-error.filter';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -27,6 +28,10 @@ async function bootstrap() {
       transform: true,
     }),
   );
+
+  // Adds `code`/`params` to the response body of the exceptions that carry
+  // them (#180 phase 4) — every other exception's body is unchanged.
+  app.useGlobalFilters(new ApiErrorFilter());
 
   // OpenAPI / Swagger
   const config = new DocumentBuilder()

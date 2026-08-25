@@ -19,7 +19,15 @@ import {
   scheduleCandidates,
 } from '../../test/fixtures';
 
-vi.mock('../../api', () => ({ apiFetch: vi.fn(), apiDownload: vi.fn() }));
+// Partial mock — the real `ApiError` comes through (needed by the
+// assign/publish/sign-up dialogs this board renders, which check
+// `instanceof ApiError` in their own catch blocks), only `apiFetch`/
+// `apiDownload` are replaced.
+vi.mock('../../api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api')>()),
+  apiFetch: vi.fn(),
+  apiDownload: vi.fn(),
+}));
 vi.mock('../../hooks/useIsMobile', () => ({ useIsMobile: vi.fn(() => false) }));
 
 const mockApiFetch = apiFetch as unknown as Mock;

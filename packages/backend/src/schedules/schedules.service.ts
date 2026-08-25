@@ -1,10 +1,12 @@
 import {
   BadRequestException,
-  ConflictException,
-  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import {
+  ApiConflictException,
+  ApiForbiddenException,
+} from '../common/api-error.exception';
 import {
   Action,
   AvailabilityWindow,
@@ -166,7 +168,8 @@ export class SchedulesService {
    */
   private assertVisible(status: ScheduleStatus, user: RequestUser): void {
     if (status === ScheduleStatus.PUBLISHED || canSeeDrafts(user)) return;
-    throw new ForbiddenException(
+    throw new ApiForbiddenException(
+      'SCHEDULE_DRAFT_NOT_VISIBLE',
       'This schedule has not been published yet — only coordinators can see a draft.',
     );
   }
@@ -184,8 +187,10 @@ export class SchedulesService {
       where: { windowId: dto.windowId },
     });
     if (existing) {
-      throw new ConflictException(
+      throw new ApiConflictException(
+        'SCHEDULE_ALREADY_EXISTS_FOR_WINDOW',
         `This window already has a schedule (${existing.id}); open that one instead of starting a second.`,
+        { scheduleId: existing.id },
       );
     }
 
@@ -203,7 +208,8 @@ export class SchedulesService {
   async remove(id: string): Promise<{ id: string }> {
     const row = await this.loadRow(id);
     if (row.status === ScheduleStatus.PUBLISHED) {
-      throw new ConflictException(
+      throw new ApiConflictException(
+        'SCHEDULE_PUBLISHED_CANNOT_DELETE',
         'A published schedule cannot be deleted — personnel have already been told their duties.',
       );
     }
@@ -219,7 +225,7 @@ export class SchedulesService {
   async publish(id: string, publishedById: string): Promise<Schedule> {
     const row = await this.loadRow(id);
     if (row.status === ScheduleStatus.PUBLISHED) {
-      throw new ConflictException(`Schedule ${id} is already published`);
+      throw new ApiConflictException('SCHEDULE_ALREADY_PUBLISHED', `Schedule ${id} is already published`);
     }
     const published = await this.prisma.schedule.update({
       where: { id },

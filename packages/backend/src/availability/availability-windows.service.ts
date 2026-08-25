@@ -1,9 +1,5 @@
-import {
-  BadRequestException,
-  ConflictException,
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { ApiConflictException } from '../common/api-error.exception';
 import { PrismaService } from '../prisma/prisma.service';
 import {
   AvailabilityWindowDayDto,
@@ -328,17 +324,21 @@ export class AvailabilityWindowsService {
     // "for <label>" rather than "a <label> window": the label is data, and
     // English articles do not survive it ("a Emergency window").
     if (open.length > 0) {
-      throw new ConflictException(
+      throw new ApiConflictException(
+        'WINDOW_OVERLAP_OPEN',
         `An availability window for ${label} is already open over these dates ` +
           `(${describeWindows(open)}). Close it before opening another one, or pick ` +
           'dates it does not cover.',
+        { category: label, windows: describeWindows(open) },
       );
     }
 
     if (closed.length > 0 && !acknowledged) {
-      throw new ConflictException(
+      throw new ApiConflictException(
+        'WINDOW_OVERLAP_CLOSED',
         `A closed availability window for ${label} already covers these dates ` +
           `(${describeWindows(closed)}). Confirm to open another one for the same dates.`,
+        { category: label, windows: describeWindows(closed) },
       );
     }
   }
@@ -418,7 +418,10 @@ export class AvailabilityWindowsService {
     const window = await this.prisma.availabilityWindow.findUnique({ where: { id } });
     if (!window) throw new NotFoundException(`Availability window ${id} not found`);
     if (window.status === AvailabilityWindowStatus.CLOSED) {
-      throw new ConflictException(`Availability window ${id} is already closed`);
+      throw new ApiConflictException(
+        'WINDOW_ALREADY_CLOSED',
+        `Availability window ${id} is already closed`,
+      );
     }
 
     const closed = await this.prisma.availabilityWindow.update({

@@ -17,7 +17,8 @@ import PublishIcon from '@mui/icons-material/Publish';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import { ScheduleBoardResponse } from '@redinfo/shared';
-import { apiFetch } from '../../api';
+import { apiFetch, ApiError } from '../../api';
+import { apiErrorLabel } from '../../i18n/labels';
 import { useT } from '../../i18n/useT';
 import { formatDateRange } from '../../utils/dates';
 import { WindowIdentity } from '../availability/WindowIdentity';
@@ -76,7 +77,13 @@ export const PublishDialog = ({
       await apiFetch(`/schedules/${scheduleId}/publish`, { method: 'POST' });
       onPublished();
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('publishDialog.failed'));
+      setError(
+        e instanceof ApiError
+          ? apiErrorLabel(t, e)
+          : e instanceof Error
+            ? e.message
+            : t('publishDialog.failed'),
+      );
     } finally {
       setBusy(false);
     }

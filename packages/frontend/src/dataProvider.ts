@@ -1,6 +1,7 @@
 import {
   DataProvider,
   fetchUtils,
+  HttpError,
   GetListParams,
   GetOneParams,
   GetManyParams,
@@ -11,15 +12,40 @@ import {
   DeleteParams,
   DeleteManyParams,
 } from 'react-admin';
+import { ApiErrorCode } from '@redinfo/shared';
 import { getAccessToken } from './authProvider';
+import { i18nProvider } from './i18n/i18nProvider';
+import { apiErrorLabel } from './i18n/labels';
 
 const API_URL = import.meta.env.VITE_API_URL ?? '';
+
+/**
+ * Translates a failed mutation's message by code before react-admin's own
+ * notification ever shows it (#180 phase 4) — `i18nProvider` is a plain
+ * object with a `translate` method, not a hook, so this works from a data
+ * provider (outside any component) the same way `apiErrorLabel` works
+ * inside one via `useT()`. `error.body` is `HttpError`'s third constructor
+ * argument: the whole parsed JSON response, `code`/`params` included when
+ * `ApiErrorFilter` put them there.
+ */
+const translateHttpError = (error: unknown): never => {
+  if (error instanceof HttpError) {
+    const body = error.body as { code?: ApiErrorCode; params?: Record<string, string | number> } | null;
+    const translated = apiErrorLabel(i18nProvider.translate, {
+      message: error.message,
+      code: body?.code,
+      params: body?.params,
+    });
+    throw new HttpError(translated, error.status, error.body);
+  }
+  throw error;
+};
 
 const httpClient = (url: string, options: fetchUtils.Options = {}) => {
   const token = getAccessToken();
   const headers = new Headers(options.headers);
   if (token) headers.set('Authorization', `Bearer ${token}`);
-  return fetchUtils.fetchJson(url, { ...options, headers });
+  return fetchUtils.fetchJson(url, { ...options, headers }).catch(translateHttpError);
 };
 
 export const dataProvider: DataProvider = {

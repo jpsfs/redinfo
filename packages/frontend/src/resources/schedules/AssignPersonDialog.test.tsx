@@ -13,7 +13,14 @@ import {
   scheduleCandidates,
 } from '../../test/fixtures';
 
-vi.mock('../../api', () => ({ apiFetch: vi.fn(), apiDownload: vi.fn() }));
+// Partial mock — the real `ApiError` comes through (needed for the
+// `instanceof ApiError` check in the component's own catch block), only
+// `apiFetch`/`apiDownload` are replaced.
+vi.mock('../../api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../api')>()),
+  apiFetch: vi.fn(),
+  apiDownload: vi.fn(),
+}));
 
 const mockApiFetch = apiFetch as unknown as Mock;
 

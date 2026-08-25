@@ -28,7 +28,8 @@ import {
   ScheduleCandidate,
   ScheduleCandidatesResponse,
 } from '@redinfo/shared';
-import { apiFetch } from '../../api';
+import { apiFetch, ApiError } from '../../api';
+import { apiErrorLabel } from '../../i18n/labels';
 import { certificationLabel, Translate } from '../../i18n/labels';
 import { useT } from '../../i18n/useT';
 import { formatDayLabel, toIsoDate } from '../../utils/dates';
@@ -203,7 +204,13 @@ export const AssignPersonDialog = ({
         ),
       );
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('assignDialog.loadFailed'));
+      setError(
+        e instanceof ApiError
+          ? apiErrorLabel(t, e)
+          : e instanceof Error
+            ? e.message
+            : t('assignDialog.loadFailed'),
+      );
     } finally {
       setLoading(false);
     }
@@ -237,7 +244,13 @@ export const AssignPersonDialog = ({
       setOverrideReason('');
       onAssigned();
     } catch (e) {
-      setError(e instanceof Error ? e.message : t('assignDialog.assignFailed'));
+      setError(
+        e instanceof ApiError
+          ? apiErrorLabel(t, e)
+          : e instanceof Error
+            ? e.message
+            : t('assignDialog.assignFailed'),
+      );
     } finally {
       setBusy(false);
     }

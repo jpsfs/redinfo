@@ -1,4 +1,4 @@
-import type { Locale } from '@redinfo/shared';
+import type { ApiErrorCode, Locale } from '@redinfo/shared';
 import {
   AVAILABILITY_WINDOW_CATEGORY_METADATA,
   AvailabilityWindowCategory,
@@ -1408,6 +1408,82 @@ const MESSAGES = {
   'richText.italic': { pt: 'Itálico', en: 'Italic' },
   'richText.bulletedList': { pt: 'Lista com marcadores', en: 'Bulleted list' },
   'richText.numberedList': { pt: 'Lista numerada', en: 'Numbered list' },
+
+  // ── API error codes (#180 phase 4) — see apiErrorLabel(), and
+  // @redinfo/shared's ApiErrorCode doc comment for which exceptions carry
+  // one and why the rest deliberately do not. ──
+  'apiError.WINDOW_OVERLAP_OPEN': {
+    pt: 'Já existe uma janela de disponibilidade aberta para %{category} nestas datas (%{windows}). Fecha-a antes de abrir outra, ou escolhe datas que não estejam cobertas.',
+    en: 'An availability window for %{category} is already open over these dates (%{windows}). Close it before opening another one, or pick dates it does not cover.',
+  },
+  'apiError.WINDOW_OVERLAP_CLOSED': {
+    pt: 'Já existe uma janela de disponibilidade fechada para %{category} que cobre estas datas (%{windows}). Confirma para abrir outra para as mesmas datas.',
+    en: 'A closed availability window for %{category} already covers these dates (%{windows}). Confirm to open another one for the same dates.',
+  },
+  'apiError.WINDOW_ALREADY_CLOSED': {
+    pt: 'Esta janela de disponibilidade já está fechada.',
+    en: 'This availability window is already closed.',
+  },
+  'apiError.SCHEDULE_DRAFT_NOT_VISIBLE': {
+    pt: 'Esta escala ainda não foi publicada — só os coordenadores podem ver um rascunho.',
+    en: 'This schedule has not been published yet — only coordinators can see a draft.',
+  },
+  'apiError.SCHEDULE_ALREADY_EXISTS_FOR_WINDOW': {
+    pt: 'Esta janela já tem uma escala; abre essa em vez de criar uma segunda.',
+    en: 'This window already has a schedule; open that one instead of starting a second.',
+  },
+  'apiError.SCHEDULE_PUBLISHED_CANNOT_DELETE': {
+    pt: 'Uma escala publicada não pode ser eliminada — o pessoal já foi informado das suas funções.',
+    en: 'A published schedule cannot be deleted — personnel have already been told their duties.',
+  },
+  'apiError.SCHEDULE_ALREADY_PUBLISHED': {
+    pt: 'Esta escala já está publicada.',
+    en: 'This schedule is already published.',
+  },
+  'apiError.ASSIGNMENT_PERSON_INACTIVE': {
+    pt: '%{person} não é um membro ativo e não pode ser escalado(a).',
+    en: '%{person} is not an active member and cannot be scheduled.',
+  },
+  'apiError.ASSIGNMENT_PERSON_NOT_FIELD_PERSONNEL': {
+    pt: '%{person} não é pessoal de campo e não pode ser escalado(a).',
+    en: '%{person} is not field personnel and cannot be scheduled.',
+  },
+  'apiError.ASSIGNMENT_CERTIFICATION_REQUIRED': {
+    pt: '%{role} exige a certificação %{certification}, que %{person} não possui. Escalá-lo(a) requer um motivo.',
+    en: '%{role} requires the %{certification} certification, which %{person} does not hold. Assigning them needs a reason.',
+  },
+  'apiError.ASSIGNMENT_ALREADY_ON_SHIFT': {
+    pt: '%{person} já está neste turno — uma pessoa não pode ocupar dois lugares no mesmo turno.',
+    en: '%{person} is already on this shift — one person cannot hold two places on one shift.',
+  },
+  'apiError.ASSIGNMENT_ROLE_FULL': {
+    pt: '%{role} está completo neste turno (%{capacity}). Remove alguém primeiro, ou usa outra função.',
+    en: '%{role} is full on this shift (%{capacity}). Remove someone first, or use another role.',
+  },
+  'apiError.ASSIGNMENT_DATE_OUTSIDE_WINDOW': {
+    pt: '%{date} está fora de %{window}.',
+    en: '%{date} is outside %{window}.',
+  },
+  'apiError.ASSIGNMENT_WINDOW_HAS_NO_ROLES': {
+    pt: '%{window} não define funções — as pessoas são escaladas sem uma.',
+    en: '%{window} defines no roles — people are scheduled onto it without one.',
+  },
+  'apiError.ASSIGNMENT_ROLE_ID_REQUIRED': {
+    pt: 'Escolhe uma função: esta janela define %{roles}.',
+    en: 'Choose a role: this window defines %{roles}.',
+  },
+  'apiError.ASSIGNMENT_ROLE_NOT_IN_WINDOW': {
+    pt: 'Essa função não pertence a %{window}.',
+    en: 'That role does not belong to %{window}.',
+  },
+  'apiError.SELF_ASSIGN_SCHEDULE_NOT_PUBLISHED': {
+    pt: 'Esta escala ainda não foi publicada, por isso não está aberta para inscrição.',
+    en: 'This schedule has not been published yet, so it is not open to sign up to.',
+  },
+  'apiError.SELF_ASSIGN_OVERLAPPING_SHIFT': {
+    pt: 'Já estás em %{shift} nesse dia, o que se sobrepõe a este turno.',
+    en: 'You are already on %{shift} that day, which overlaps this shift.',
+  },
 } as const;
 
 export type MessageKey = keyof typeof MESSAGES;
@@ -1945,4 +2021,23 @@ export const windowCategoryDescription = (
     AVAILABILITY_WINDOW_CATEGORY_METADATA[category as AvailabilityWindowCategory]?.description ??
     String(category)
   );
+};
+
+/**
+ * A backend `ApiErrorBody` (#180 phase 4), in the reader's language.
+ *
+ * Falls back to `error.message` — the English the API sent — whenever
+ * `error.code` is absent (most exceptions; see `@redinfo/shared`'s
+ * `ApiErrorCode` doc comment for which ones deliberately carry one) or the
+ * catalogue is missing an entry for a code that exists. That fallback is
+ * the same safety net every other translated-with-a-fallback helper in this
+ * file uses: a gap here degrades to true and readable, never to blank.
+ */
+export const apiErrorLabel = (
+  t: Translate,
+  error: { code?: ApiErrorCode; message: string; params?: Record<string, string | number> },
+): string => {
+  if (!error.code) return error.message;
+  const key = `apiError.${error.code}`;
+  return key in ALL_MESSAGES ? t(key, { _: error.message, ...error.params }) : error.message;
 };
