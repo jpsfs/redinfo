@@ -26,7 +26,8 @@ import {
 } from '@redinfo/shared';
 import { apiFetch } from '../../api';
 import { useIsMobile } from '../../hooks/useIsMobile';
-import { destinationLabel, t } from '../../i18n/labels';
+import { destinationLabel } from '../../i18n/labels';
+import { useT } from '../../i18n/useT';
 
 export interface DestinationChoice {
   destinationKind: VictimDestinationKind;
@@ -59,6 +60,7 @@ export const HospitalPicker = ({
   onClose: () => void;
   onPick: (choice: DestinationChoice) => void;
 }) => {
+  const t = useT();
   const isMobile = useIsMobile();
   const [hospitals, setHospitals] = useState<HospitalWithDistance[] | null>(null);
   const [query, setQuery] = useState('');
@@ -86,7 +88,7 @@ export const HospitalPicker = ({
     return () => {
       cancelled = true;
     };
-  }, [open, locality?.id]);
+  }, [open, locality?.id, t]);
 
   const visible = useMemo(() => {
     const folded = foldForSearch(query);
@@ -194,7 +196,7 @@ export const HospitalPicker = ({
               }
               sx={{ minHeight: 52 }}
             >
-              {destinationLabel(kind)}
+              {destinationLabel(t, kind)}
             </Button>
           ))}
         </Box>

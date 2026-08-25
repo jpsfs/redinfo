@@ -57,9 +57,9 @@ import {
   locationTypeLabel,
   occurrenceTimeLabel,
   roleLabel,
-  t,
   warningLabel,
 } from '../../i18n/labels';
+import { useT } from '../../i18n/useT';
 import { NowButton } from './NowButton';
 import { AbcdeStatusPicker, VitalControl } from '../liveRuns/VitalField';
 import { VITAL_FIELDS } from '../liveRuns/vitalsFields';
@@ -93,6 +93,7 @@ const SectionLabel = ({ children }: { children: React.ReactNode }) => (
 // ── When and where ────────────────────────────────────────────────────────────
 
 export const WhenWhereSection = ({ draft, patch, lookups }: SectionProps) => {
+  const t = useT();
   const [pickerOpen, setPickerOpen] = useState(false);
   const rules = eventReportRules(draft.type);
 
@@ -189,7 +190,7 @@ export const WhenWhereSection = ({ draft, patch, lookups }: SectionProps) => {
         >
           {EVENT_LOCATION_TYPES.map((value) => (
             <ToggleButton key={value} value={value} sx={{ minHeight: 60, flex: 1 }}>
-              {locationTypeLabel(value)}
+              {locationTypeLabel(t, value)}
             </ToggleButton>
           ))}
         </ToggleButtonGroup>
@@ -225,6 +226,7 @@ export const WhenWhereSection = ({ draft, patch, lookups }: SectionProps) => {
 // ── The emergency chronology ──────────────────────────────────────────────────
 
 export const TimesSection = ({ draft, patch }: SectionProps) => {
+  const t = useT();
   const stamp = (field: OccurrenceTimeField) => {
     patch({ [field]: new Date().toISOString() } as Partial<EventReportInput>);
   };
@@ -272,7 +274,7 @@ export const TimesSection = ({ draft, patch }: SectionProps) => {
               >
                 <Box sx={{ flex: 1, minWidth: 0 }}>
                   <Typography sx={{ fontWeight: 600, fontSize: '0.9375rem' }}>
-                    {occurrenceTimeLabel(field)}
+                    {occurrenceTimeLabel(t, field)}
                     {gap !== null && (
                       <Typography
                         component="span"
@@ -287,7 +289,7 @@ export const TimesSection = ({ draft, patch }: SectionProps) => {
                     size="small"
                     value={timeOfDay(value)}
                     onChange={(event) => setTime(field, event.target.value)}
-                    inputProps={{ 'aria-label': occurrenceTimeLabel(field) }}
+                    inputProps={{ 'aria-label': occurrenceTimeLabel(t, field) }}
                     sx={{ mt: 0.5, width: 140 }}
                   />
                 </Box>
@@ -342,6 +344,7 @@ const ShiftRow = ({
 );
 
 export const CrewSection = ({ draft, patch, lookups }: SectionProps) => {
+  const t = useT();
   const [showShifts, setShowShifts] = useState(false);
   const suggestion = lookups.crewSuggestion;
 
@@ -417,7 +420,7 @@ export const CrewSection = ({ draft, patch, lookups }: SectionProps) => {
             <Box sx={{ flex: 1, minWidth: 0 }}>
               {member.roleName && (
                 <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.disabled' }}>
-                  {roleLabel(member.roleName).toUpperCase()}
+                  {roleLabel(t, member.roleName).toUpperCase()}
                 </Typography>
               )}
               <Typography sx={{ fontWeight: 600 }}>
@@ -457,6 +460,7 @@ export const CrewSection = ({ draft, patch, lookups }: SectionProps) => {
 // ── Vehicles and kilometres ───────────────────────────────────────────────────
 
 export const VehiclesSection = ({ draft, patch, lookups }: SectionProps) => {
+  const t = useT();
   const rules = eventReportRules(draft.type);
   const single = rules.maxVehicles === 1;
 
@@ -559,12 +563,13 @@ const VictimEditor = ({
   onChange: (changes: Partial<EventReportInput['victims'][number]>) => void;
   onRemove?: () => void;
 }) => {
+  const t = useT();
   const [pickerOpen, setPickerOpen] = useState(false);
 
   const destinationText =
     victim.destinationKind === VictimDestinationKind.HOSPITAL
-      ? hospitalName ?? destinationLabel(victim.destinationKind)
-      : destinationLabel(victim.destinationKind);
+      ? hospitalName ?? destinationLabel(t, victim.destinationKind)
+      : destinationLabel(t, victim.destinationKind);
 
   return (
     <Paper variant="outlined" sx={{ p: 2 }}>
@@ -591,7 +596,7 @@ const VictimEditor = ({
           >
             {GENDERS.map((value) => (
               <ToggleButton key={value} value={value} sx={{ minHeight: 56, flex: 1 }}>
-                {genderLabel(value)}
+                {genderLabel(t, value)}
               </ToggleButton>
             ))}
           </ToggleButtonGroup>
@@ -683,6 +688,7 @@ const blankVictim = (): EventReportInput['victims'][number] => ({
 });
 
 export const VictimsSection = ({ draft, patch, lookups }: SectionProps) => {
+  const t = useT();
   const rules = eventReportRules(draft.type);
   const single = rules.maxVictims === 1;
 
@@ -807,6 +813,7 @@ export const NarrativeSection = ({
   onChooseVerbete,
   reportId = null,
 }: NarrativeSectionProps) => {
+  const t = useT();
   const cameraInput = useRef<HTMLInputElement>(null);
   const fileInput = useRef<HTMLInputElement>(null);
   const verbeteInput = useRef<HTMLInputElement>(null);
@@ -991,6 +998,7 @@ export const ReviewSection = ({
   onEditStep,
   pendingFileCount,
 }: ReviewSectionProps) => {
+  const t = useT();
   const rules = eventReportRules(draft.type);
 
   const rows: Array<{ step: StepId; label: string; value: string }> = [
@@ -1000,7 +1008,7 @@ export const ReviewSection = ({
       value: [
         draft.occurredOn,
         `${timeOfDay(draft.startedAt) || '--:--'} → ${timeOfDay(draft.endedAt) || '--:--'}`,
-        draft.locationType ? locationTypeLabel(draft.locationType) : '',
+        draft.locationType ? locationTypeLabel(t, draft.locationType) : '',
         lookups.locality?.name ?? '',
       ]
         .filter(Boolean)
@@ -1048,9 +1056,9 @@ export const ReviewSection = ({
                 const where =
                   victim.destinationKind === VictimDestinationKind.HOSPITAL
                     ? lookups.hospitalsById[victim.destinationHospitalId ?? '']?.name ??
-                      destinationLabel(victim.destinationKind)
-                    : destinationLabel(victim.destinationKind);
-                return `${genderLabel(victim.gender)}, ${victim.age} → ${where}`;
+                      destinationLabel(t, victim.destinationKind)
+                    : destinationLabel(t, victim.destinationKind);
+                return `${genderLabel(t, victim.gender)}, ${victim.age} → ${where}`;
               })
               .join(' | '),
     },
@@ -1067,7 +1075,7 @@ export const ReviewSection = ({
         <Alert severity="warning">
           <Stack spacing={0.25}>
             {warnings.map((warning) => (
-              <span key={warning}>{warningLabel(warning)}</span>
+              <span key={warning}>{warningLabel(t, warning)}</span>
             ))}
             <strong>{t('hint.canSaveIncomplete')}</strong>
           </Stack>
@@ -1119,6 +1127,7 @@ export const ReviewSection = ({
  * reaches this section, and `retypeDraft` clears it if the type changes.
  */
 export const ClinicalSection = ({ draft, patch }: SectionProps) => {
+  const t = useT();
   const [index, setIndex] = useState(0);
   const assessments = draft.assessments ?? [];
   const findings = (draft.abcde ?? {}) as AbcdeFindings;
@@ -1152,7 +1161,7 @@ export const ClinicalSection = ({ draft, patch }: SectionProps) => {
               fullWidth
               multiline
               minRows={2}
-              label={chamuLabel(field)}
+              label={chamuLabel(t, field)}
               value={draft[field] ?? ''}
               onChange={(event) =>
                 patch({ [field]: event.target.value } as Partial<EventReportInput>)
@@ -1169,7 +1178,7 @@ export const ClinicalSection = ({ draft, patch }: SectionProps) => {
         <Stack spacing={2.5}>
           {ABCDE_BANDS.map((band) => (
             <Box key={band}>
-              <Typography sx={{ fontWeight: 700, mb: 1 }}>{abcdeBandLabel(band)}</Typography>
+              <Typography sx={{ fontWeight: 700, mb: 1 }}>{abcdeBandLabel(t, band)}</Typography>
               <AbcdeStatusPicker
                 band={band}
                 findings={findings}

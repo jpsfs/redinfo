@@ -4,7 +4,7 @@ import { useParams } from 'react-router-dom';
 import { Alert, Box, CircularProgress } from '@mui/material';
 import { EventReport, formatEventReportCode } from '@redinfo/shared';
 import { apiFetch } from '../../api';
-import { t } from '../../i18n/labels';
+import { useT } from '../../i18n/useT';
 import { useEventReportDraft } from './useEventReportDraft';
 import { EventReportEditor } from './EventReportEditor';
 
@@ -64,6 +64,7 @@ export const EventReportEdit = () => {
  * a real record rather than from an empty one it would then have to replace.
  */
 const LoadedEditor = ({ report }: { report: EventReport }) => {
+  const t = useT();
   const form = useEventReportDraft({ report });
   return (
     <>

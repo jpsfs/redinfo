@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Title, useNotify } from 'react-admin';
+import { Title, useLocaleState, useNotify } from 'react-admin';
 import {
   Alert,
   Box,
@@ -12,11 +12,13 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import { effectiveCertifications, User } from '@redinfo/shared';
+import { effectiveCertifications, Locale, User } from '@redinfo/shared';
 import { apiFetch, apiUpload } from '../api';
 import { PersonAvatar } from '../components/PersonAvatar';
 import { PhotoUploadControl } from '../components/PhotoUploadControl';
-import { certificationLabel, bloodTypeLabel, t } from '../i18n/labels';
+import { certificationLabel, bloodTypeLabel } from '../i18n/labels';
+import { AVAILABLE_LOCALES } from '../i18n/i18nProvider';
+import { useT } from '../i18n/useT';
 import { toIsoDate } from '../utils/dates';
 
 /** Whole days between two ISO dates — local mirror of the shared server-side helper. */
@@ -35,18 +37,68 @@ const StatusPill = ({ label, ok }: { label: string; ok: boolean }) => (
   />
 );
 
-const ReadOnlyRow = ({ label, value }: { label: string; value?: string | null }) => (
-  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 1, minHeight: 44 }}>
-    <Box sx={{ flex: 1, minWidth: 0 }}>
-      <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-        {label}
-      </Typography>
-      <Typography variant="body2" sx={{ fontWeight: 500 }}>
-        {value || `— (${t('profile.notSet')})`}
-      </Typography>
+const ReadOnlyRow = ({ label, value }: { label: string; value?: string | null }) => {
+  const t = useT();
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, py: 1, minHeight: 44 }}>
+      <Box sx={{ flex: 1, minWidth: 0 }}>
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+          {label}
+        </Typography>
+        <Typography variant="body2" sx={{ fontWeight: 500 }}>
+          {value || `— (${t('profile.notSet')})`}
+        </Typography>
+      </Box>
     </Box>
-  </Box>
-);
+  );
+};
+
+/**
+ * The switcher, its own card, outside the Edit/Save block — #180's decision:
+ * changing language must not require entering edit mode. PATCHes first,
+ * *then* switches: `setLocale` remounts the whole tree (react-admin's
+ * `I18nContextProvider` re-keys on locale change), which would destroy this
+ * component before a `.then(notify)` chained off the switch ever fired. A
+ * failed PATCH still switches, for this session, with a warning.
+ */
+const LanguageCard = () => {
+  const t = useT();
+  const notify = useNotify();
+  const [locale, setLocale] = useLocaleState();
+
+  const choose = async (next: Locale) => {
+    if (next === locale) return;
+    try {
+      await apiFetch<User>('/users/me/profile', { method: 'PATCH', body: { locale: next } });
+    } catch {
+      notify(t('profile.languageSaveFailed'), { type: 'warning' });
+    }
+    setLocale(next);
+  };
+
+  return (
+    <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
+      <Typography variant="h6" sx={{ mb: 0.5 }}>
+        {t('profile.language')}
+      </Typography>
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1.5 }}>
+        {t('profile.languageHint')}
+      </Typography>
+      <Stack direction="row" spacing={1}>
+        {AVAILABLE_LOCALES.map((option) => (
+          <Button
+            key={option.locale}
+            variant={locale === option.locale ? 'contained' : 'outlined'}
+            size="small"
+            onClick={() => void choose(option.locale)}
+          >
+            {option.name}
+          </Button>
+        ))}
+      </Stack>
+    </Paper>
+  );
+};
 
 interface ProfileFormState {
   phone: string;
@@ -72,6 +124,7 @@ const toFormState = (profile: User): ProfileFormState => ({
  * Portuguese throughout, per the app's rule for crew-facing screens.
  */
 export const MyProfilePage = () => {
+  const t = useT();
   const notify = useNotify();
   const [profile, setProfile] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -170,6 +223,8 @@ export const MyProfilePage = () => {
     <Container maxWidth="sm" sx={{ py: 2, pb: 6 }}>
       <Title title={t('profile.title')} />
 
+      <LanguageCard />
+
       <Paper variant="outlined" sx={{ p: 2, mb: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
         <PersonAvatar userId={profile.id} hasPhoto={Boolean(profile.hasPhoto)} initials={initials} />
         <PhotoUploadControl
@@ -196,10 +251,10 @@ export const MyProfilePage = () => {
       {(expiredAlready || expiringSoon) && (
         <Alert severity={expiredAlready ? 'error' : 'warning'} sx={{ mb: 2 }}>
           {expiredAlready
-            ? `${certificationLabel(expiredAlready.type)} — ${t('profile.lapsedKeepsAccess')}`
+            ? `${certificationLabel(t, expiredAlready.type)} — ${t('profile.lapsedKeepsAccess')}`
             : expiringSoon &&
               expiringSoon.validUntil &&
-              `${certificationLabel(expiringSoon.type)} ${t('profile.expiresIn')} ${daysBetween(
+              `${certificationLabel(t, expiringSoon.type)} ${t('profile.expiresIn')} ${daysBetween(
                 today,
                 expiringSoon.validUntil,
               )} ${t('profile.days')}`}
@@ -228,7 +283,7 @@ export const MyProfilePage = () => {
             >
               <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
                 <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                  {certificationLabel(cert.type)}
+                  {certificationLabel(t, cert.type)}
                 </Typography>
                 <Chip
                   size="small"
@@ -239,7 +294,7 @@ export const MyProfilePage = () => {
               </Stack>
               {cert.grantedBy !== cert.type && (
                 <Typography variant="caption" color="text.disabled">
-                  {t('profile.grantedBy')} {certificationLabel(cert.grantedBy)}
+                  {t('profile.grantedBy')} {certificationLabel(t, cert.grantedBy)}
                 </Typography>
               )}
             </Box>
@@ -330,7 +385,7 @@ export const MyProfilePage = () => {
         <ReadOnlyRow label={t('profile.joinedOn')} value={profile.joinedOn} />
         <ReadOnlyRow
           label={t('profile.bloodType')}
-          value={profile.bloodType ? bloodTypeLabel(profile.bloodType) : null}
+          value={profile.bloodType ? bloodTypeLabel(t, profile.bloodType) : null}
         />
         <ReadOnlyRow label={t('profile.nif')} value={profile.nif} />
         <ReadOnlyRow label={t('profile.citizenCard')} value={profile.citizenCardNumber} />

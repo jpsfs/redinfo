@@ -2,6 +2,7 @@ import { Admin, Resource, CustomRoutes } from 'react-admin';
 import { Route } from 'react-router-dom';
 import { authProvider } from './authProvider';
 import { dataProvider } from './dataProvider';
+import { i18nProvider, store } from './i18n/i18nProvider';
 import { theme } from './layout/theme';
 import { AppLayout } from './layout/AppLayout';
 import { LoginPage } from './pages/auth/LoginPage';
@@ -62,6 +63,8 @@ export default function App() {
       title="RedInfo"
       authProvider={authProvider}
       dataProvider={dataProvider}
+      i18nProvider={i18nProvider}
+      store={store}
       theme={theme}
       layout={AppLayout}
       loginPage={LoginPage}
@@ -136,7 +139,6 @@ export default function App() {
         edit={UserEdit}
         create={UserCreate}
         show={UserShow}
-        options={{ label: 'Users' }}
       />
 
       <Resource
@@ -146,7 +148,6 @@ export default function App() {
         create={VehicleCreate}
         edit={VehicleEdit}
         show={VehicleShow}
-        options={{ label: 'Vehicles' }}
       />
 
       <Resource
@@ -154,7 +155,6 @@ export default function App() {
         icon={BuildIcon}
         create={MaintenanceCreate}
         edit={MaintenanceEdit}
-        options={{ label: 'Maintenance' }}
       />
 
       <Resource
@@ -164,20 +164,15 @@ export default function App() {
         show={InventoryTemplateShow}
         create={InventoryTemplateCreate}
         edit={InventoryTemplateEdit}
-        options={{ label: 'Inventory Templates' }}
       />
 
       <Resource
         name="inventory-template-items"
         create={InventoryItemCreate}
         edit={InventoryItemEdit}
-        options={{ label: 'Inventory Items' }}
       />
 
-      <Resource
-        name="vehicle-inventory"
-        options={{ label: 'Vehicle Inventory' }}
-      />
+      <Resource name="vehicle-inventory" />
 
       <Resource
         name="availability-windows"
@@ -185,7 +180,6 @@ export default function App() {
         list={AvailabilityWindowList}
         create={AvailabilityWindowCreate}
         show={AvailabilityWindowShow}
-        options={{ label: 'Availability Windows' }}
       />
 
       <Resource
@@ -193,7 +187,6 @@ export default function App() {
         icon={EventNoteIcon}
         list={ScheduleList}
         show={ScheduleShow}
-        options={{ label: 'Schedules' }}
       />
 
       <Resource
@@ -203,7 +196,6 @@ export default function App() {
         create={EventReportCreate}
         show={EventReportShow}
         edit={EventReportEdit}
-        options={{ label: 'Reports' }}
       />
 
       <Resource
@@ -212,13 +204,12 @@ export default function App() {
         list={HospitalList}
         create={HospitalCreate}
         edit={HospitalEdit}
-        options={{ label: 'Hospitals' }}
       />
 
       {/* Read-only reference data, reached only by the pickers that need it —
           no list, so it stays out of the menu. */}
-      <Resource name="municipalities" options={{ label: 'Municipalities' }} />
-      <Resource name="localities" options={{ label: 'Localities' }} />
+      <Resource name="municipalities" />
+      <Resource name="localities" />
 
       <Resource
         name="holidays"
@@ -226,7 +217,6 @@ export default function App() {
         list={HolidayList}
         create={HolidayCreate}
         edit={HolidayEdit}
-        options={{ label: 'Holidays' }}
       />
     </Admin>
   );

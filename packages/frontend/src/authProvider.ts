@@ -1,4 +1,6 @@
 import { AuthProvider } from 'react-admin';
+import type { Locale } from '@redinfo/shared';
+import { store } from './i18n/i18nProvider';
 
 const API_URL = import.meta.env.VITE_API_URL ?? '';
 
@@ -85,6 +87,18 @@ export const authProvider: AuthProvider = {
     if (!res.ok) throw new Error('Failed to fetch identity');
 
     const user = await res.json();
+
+    // Reconcile the account's chosen language with what the tree is
+    // currently showing — see #180's precedence note. `RaStore.locale`
+    // drives the *first* paint, before this call resolves; from here on the
+    // server wins. `user.locale === null` means "never chosen" — leave the
+    // store (browser-detected) alone, or the person who changes their
+    // phone's language would stop being followed by a locale we invented.
+    const serverLocale: Locale | null = user.locale ?? null;
+    if (serverLocale && serverLocale !== store.getItem<Locale>('locale')) {
+      store.setItem('locale', serverLocale);
+    }
+
     return {
       id: user.id,
       fullName: `${user.firstName} ${user.lastName}`,

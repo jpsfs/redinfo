@@ -1,3 +1,4 @@
+import type { Locale } from '@redinfo/shared';
 import {
   EventLocationType,
   EventReportProblem,
@@ -7,22 +8,25 @@ import {
   VictimDestinationKind,
 } from '@redinfo/shared';
 
+export type { Locale };
+
 /**
- * Labels for the report screens, in the crew's language.
+ * The app's own message catalogue — everything that is not one of
+ * react-admin's ~164 built-in strings (those live in `ra-pt.ts`, merged in by
+ * `i18nProvider.ts`).
  *
- * The rest of the app is in English because coordinators use it at a desk. The
- * report screens are the ones used at three in the morning with one thumb, so
- * they are in Portuguese — and every string goes through here rather than being
- * typed into a component, so switching the whole app later is a matter of
- * translating this file rather than hunting through JSX.
- *
- * Deliberately not `react-admin`'s i18n provider: that would mean translating
- * every existing English screen at the same time, which is a separate job. This
- * is a small, typed map with room for a second locale, and `MessageKey` makes a
- * typo a compile error instead of a blank label on a phone.
+ * The side-by-side `{ pt, en }` authoring shape predates #180 and is kept on
+ * purpose: a gap is obvious at a glance, and `MessageKey` makes a typo a
+ * compile error instead of a blank label on a phone. What #180 changed is the
+ * plumbing underneath — this file no longer holds any locale state of its
+ * own. `messagesFor()` flattens a locale's half of the map into what
+ * `ra-i18n-polyglot` wants; the actual lookup happens through react-admin's
+ * `useTranslate()` (see `useT.ts`), which re-renders when the locale changes.
+ * A bare, non-reactive `t()` could not do that — see #180's plan for why.
  */
 
-export type Locale = 'pt' | 'en';
+/** What every enum-label helper below takes as its first argument. */
+export type Translate = (key: string, options?: Record<string, unknown>) => string;
 
 /** Every message, with its translations side by side so a gap is obvious. */
 const MESSAGES = {
@@ -407,6 +411,59 @@ const MESSAGES = {
   'profile.photoUpdateFailed': { pt: 'Não foi possível carregar a foto.', en: 'Could not upload the photo.' },
   'profile.photoRemoved': { pt: 'Foto removida', en: 'Photo removed' },
   'profile.photoRemoveFailed': { pt: 'Não foi possível remover a foto.', en: 'Could not remove the photo.' },
+
+  // ── The language switcher, on this same page ──
+  'profile.language': { pt: 'Idioma', en: 'Language' },
+  'profile.languageHint': {
+    pt: 'Muda de imediato. As certificações e o resto do texto ficam neste idioma.',
+    en: 'Switches immediately. Certifications and the rest of the text follow.',
+  },
+  'profile.languageSaveFailed': {
+    pt: 'Não foi possível guardar a preferência, mas o idioma muda nesta sessão.',
+    en: 'Could not save the preference, but the language still switches for this session.',
+  },
+
+  // ── The drawer and app bar (layout/navigation.tsx, layout/AppLayout.tsx) ──
+  'nav.myWork': { pt: 'O meu trabalho', en: 'My work' },
+  'nav.operations': { pt: 'Operações', en: 'Operations' },
+  'nav.people': { pt: 'Pessoal', en: 'People' },
+  'nav.fleet': { pt: 'Frota', en: 'Fleet' },
+  'nav.configuration': { pt: 'Configuração', en: 'Configuration' },
+  'nav.live': { pt: 'Emergência', en: 'Live emergency' },
+  'nav.liveSubtitle': { pt: 'Modo em campo', en: 'Field mode' },
+  'nav.home': { pt: 'Início', en: 'Home' },
+  'nav.myAvailability': { pt: 'A minha disponibilidade', en: 'My Availability' },
+  'nav.myDuties': { pt: 'As minhas escalas', en: 'My Duties' },
+  'nav.myReports': { pt: 'Os meus relatórios', en: 'My Reports' },
+  'nav.liveEmergencies': { pt: 'Emergências em curso', en: 'Live Emergencies' },
+  'nav.eventReports': { pt: 'Relatórios de evento', en: 'Event Reports' },
+  'nav.schedules': { pt: 'Escalas', en: 'Schedules' },
+  'nav.availabilityWindows': { pt: 'Janelas de disponibilidade', en: 'Availability Windows' },
+  'nav.personnel': { pt: 'Pessoal', en: 'Personnel' },
+  'nav.vehicles': { pt: 'Viaturas', en: 'Vehicles' },
+  'nav.inventoryTemplates': { pt: 'Modelos de inventário', en: 'Inventory Templates' },
+  'nav.hospitals': { pt: 'Hospitais', en: 'Hospitals' },
+  'nav.holidays': { pt: 'Feriados', en: 'Holidays' },
+  'nav.myProfile': { pt: 'O meu perfil', en: 'My Profile' },
+
+  // ── Resource names — react-admin's `resources.<name>.name`, replacing the
+  // `options={{ label }}` prop removed from every `<Resource>` in App.tsx. ──
+  'resources.users.name': { pt: 'Pessoal', en: 'Users' },
+  'resources.vehicles.name': { pt: 'Viaturas', en: 'Vehicles' },
+  'resources.maintenance.name': { pt: 'Manutenção', en: 'Maintenance' },
+  'resources.inventory-templates.name': { pt: 'Modelos de inventário', en: 'Inventory Templates' },
+  'resources.inventory-template-items.name': { pt: 'Itens de inventário', en: 'Inventory Items' },
+  'resources.vehicle-inventory.name': { pt: 'Inventário da viatura', en: 'Vehicle Inventory' },
+  'resources.availability-windows.name': {
+    pt: 'Janelas de disponibilidade',
+    en: 'Availability Windows',
+  },
+  'resources.schedules.name': { pt: 'Escalas', en: 'Schedules' },
+  'resources.event-reports.name': { pt: 'Relatórios', en: 'Reports' },
+  'resources.hospitals.name': { pt: 'Hospitais', en: 'Hospitals' },
+  'resources.municipalities.name': { pt: 'Concelhos', en: 'Municipalities' },
+  'resources.localities.name': { pt: 'Localidades', en: 'Localities' },
+  'resources.holidays.name': { pt: 'Feriados', en: 'Holidays' },
 } as const;
 
 export type MessageKey = keyof typeof MESSAGES;
@@ -677,6 +734,10 @@ const ENUM_MESSAGES = {
     pt: 'O nº de utente tem nove dígitos.',
     en: 'An SNS number is nine digits.',
   },
+  'problem.LIVE_RUN_NOT_CLOSED': {
+    pt: 'A ocorrência ainda não foi fechada.',
+    en: 'The run has not been closed yet.',
+  },
 
   // ── What is unfinished on a run, and what actually blocks the close ──
   'liveWarning.NO_COMPLAINT': {
@@ -763,51 +824,37 @@ const ENUM_MESSAGES = {
   'bloodType.O_NEG': { pt: 'O-', en: 'O-' },
 } as const;
 
-type EnumMessageKey = keyof typeof ENUM_MESSAGES;
-
 const ALL_MESSAGES: Record<string, { pt: string; en: string }> = {
   ...MESSAGES,
   ...ENUM_MESSAGES,
 };
 
-let locale: Locale = 'pt';
-
-/** The locale every `t()` call reads. Portuguese unless something says otherwise. */
-export function setLocale(next: Locale): void {
-  locale = next;
-}
-
-export function getLocale(): Locale {
-  return locale;
-}
-
 /**
- * A label.
- *
- * Falls back to the key itself for a message that does not exist — visible in
- * development, and far better on a phone than a blank button.
+ * The catalogue polyglot wants: one locale, flat dotted keys. Fed to
+ * `ra-i18n-polyglot` by `i18nProvider.ts`, merged over the hand-written
+ * `ra.*` catalogue (`ra-pt.ts`) and `ra-language-english`.
  */
-export function t(key: MessageKey | EnumMessageKey): string {
-  return ALL_MESSAGES[key]?.[locale] ?? String(key);
+export function messagesFor(locale: Locale): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(ALL_MESSAGES).map(([key, value]) => [key, value[locale]]),
+  );
 }
 
-export const reportTypeLabel = (type: EventReportType | string): string =>
-  t(`reportType.${type}` as EnumMessageKey);
+export const reportTypeLabel = (t: Translate, type: EventReportType | string): string =>
+  t(`reportType.${type}`);
 
-export const reportTypeHint = (type: EventReportType | string): string =>
-  t(`reportTypeHint.${type}` as EnumMessageKey);
+export const reportTypeHint = (t: Translate, type: EventReportType | string): string =>
+  t(`reportTypeHint.${type}`);
 
-export const locationTypeLabel = (value: EventLocationType | string): string =>
-  t(`locationType.${value}` as EnumMessageKey);
+export const locationTypeLabel = (t: Translate, value: EventLocationType | string): string =>
+  t(`locationType.${value}`);
 
-export const genderLabel = (value: Gender | string): string =>
-  t(`gender.${value}` as EnumMessageKey);
+export const genderLabel = (t: Translate, value: Gender | string): string => t(`gender.${value}`);
 
-export const destinationLabel = (value: VictimDestinationKind | string): string =>
-  t(`destination.${value}` as EnumMessageKey);
+export const destinationLabel = (t: Translate, value: VictimDestinationKind | string): string =>
+  t(`destination.${value}`);
 
-export const occurrenceTimeLabel = (field: string): string =>
-  t(`time.${field}` as EnumMessageKey);
+export const occurrenceTimeLabel = (t: Translate, field: string): string => t(`time.${field}`);
 
 /**
  * Why a report cannot be saved, in the crew's language.
@@ -816,54 +863,49 @@ export const occurrenceTimeLabel = (field: string): string =>
  * `@redinfo/shared` without a translation still says something true rather than
  * showing a bare `problem.WHATEVER`.
  */
-export const problemLabel = (problem: EventReportProblem | null): string => {
+export const problemLabel = (t: Translate, problem: EventReportProblem | null): string => {
   if (!problem) return '';
   const key = `problem.${problem.code}`;
-  return key in ALL_MESSAGES ? t(key as EnumMessageKey) : problem.message;
+  return key in ALL_MESSAGES ? t(key) : problem.message;
 };
 
 /** What is still unfinished, in the crew's language. */
-export const warningLabel = (code: EventReportWarningCode): string =>
-  t(`warning.${code}` as EnumMessageKey);
+export const warningLabel = (t: Translate, code: EventReportWarningCode): string =>
+  t(`warning.${code}`);
 
 /** What is still unfinished on a live run, in the crew's language. */
-export const liveWarningLabel = (code: string): string =>
-  t(`liveWarning.${code}` as EnumMessageKey);
+export const liveWarningLabel = (t: Translate, code: string): string => t(`liveWarning.${code}`);
 
 /** What actually stops a run being closed. */
-export const liveBlockerLabel = (code: string): string =>
-  t(`liveBlocker.${code}` as EnumMessageKey);
+export const liveBlockerLabel = (t: Translate, code: string): string => t(`liveBlocker.${code}`);
 
 /** The label on the bottom bar's primary control, from the stamp it writes. */
-export const liveStampLabel = (field: string): string =>
-  t(`live.stamp.${field}` as EnumMessageKey);
+export const liveStampLabel = (t: Translate, field: string): string => t(`live.stamp.${field}`);
 
-export const liveScreenLabel = (screen: string): string =>
-  t(`live.screen.${screen}` as EnumMessageKey);
+export const liveScreenLabel = (t: Translate, screen: string): string => t(`live.screen.${screen}`);
 
-export const abcdeBandLabel = (band: string): string => t(`abcde.${band}` as EnumMessageKey);
+export const abcdeBandLabel = (t: Translate, band: string): string => t(`abcde.${band}`);
 
-export const abcdeStatusLabel = (status: string): string =>
-  t(`abcdeStatus.${status}` as EnumMessageKey);
+export const abcdeStatusLabel = (t: Translate, status: string): string => t(`abcdeStatus.${status}`);
 
-export const chamuLabel = (field: string): string => t(`chamu.${field}` as EnumMessageKey);
+export const chamuLabel = (t: Translate, field: string): string => t(`chamu.${field}`);
 
-export const vitalLabel = (key: string): string => t(`vital.${key}` as EnumMessageKey);
+export const vitalLabel = (t: Translate, key: string): string => t(`vital.${key}`);
 
-export const syncStateLabel = (state: string): string => t(`sync.${state}` as EnumMessageKey);
+export const syncStateLabel = (t: Translate, state: string): string => t(`sync.${state}`);
 
 /**
  * A crew post, translated when it is one of the standard three and left as
  * typed otherwise — a coordinator may name a role anything, and inventing a
  * translation for "Apoio Extra" would be worse than showing what they wrote.
  */
-export const roleLabel = (name?: string | null): string => {
+export const roleLabel = (t: Translate, name?: string | null): string => {
   if (!name) return '';
   const key = `role.${name}`;
-  return key in ALL_MESSAGES ? t(key as EnumMessageKey) : name;
+  return key in ALL_MESSAGES ? t(key) : name;
 };
 
-export const certificationLabel = (type: string): string =>
-  t(`certification.${type}` as EnumMessageKey);
+export const certificationLabel = (t: Translate, type: string): string =>
+  t(`certification.${type}`);
 
-export const bloodTypeLabel = (type: string): string => t(`bloodType.${type}` as EnumMessageKey);
+export const bloodTypeLabel = (t: Translate, type: string): string => t(`bloodType.${type}`);

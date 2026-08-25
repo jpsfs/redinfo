@@ -34,6 +34,7 @@ import { apiDownload, apiFetch } from '../../api';
 import { CategoryChip } from '../../components/CategoryChip';
 import { RichTextViewer } from '../../components/RichTextViewer';
 import {
+  Translate,
   abcdeBandLabel,
   abcdeStatusLabel,
   chamuLabel,
@@ -43,9 +44,9 @@ import {
   occurrenceTimeLabel,
   reportTypeLabel,
   roleLabel,
-  t,
   vitalLabel,
 } from '../../i18n/labels';
+import { useT } from '../../i18n/useT';
 import { VITAL_FIELDS, formatVital } from '../liveRuns/vitalsFields';
 import { minutesBetween, timeOfDay } from './reportDraft';
 
@@ -76,6 +77,7 @@ const Card = ({ title, children }: { title: string; children: React.ReactNode })
  * a blank in the middle does not read as zero.
  */
 const Chronology = ({ report }: { report: EventReport }) => {
+  const t = useT();
   const marked = OCCURRENCE_TIME_FIELDS.map((field) => ({
     field,
     at: report[field] ?? null,
@@ -113,7 +115,7 @@ const Chronology = ({ report }: { report: EventReport }) => {
               variant="caption"
               sx={{ fontWeight: 700, color: at ? 'text.secondary' : 'text.disabled' }}
             >
-              {occurrenceTimeLabel(field)}
+              {occurrenceTimeLabel(t, field)}
             </Typography>
             <Typography
               sx={{
@@ -140,6 +142,7 @@ const Chronology = ({ report }: { report: EventReport }) => {
  * field-list convention.
  */
 export const EventReportShow = () => {
+  const t = useT();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { permissions } = usePermissions<UserRole>();
@@ -206,7 +209,7 @@ export const EventReportShow = () => {
                 >
                   {code}
                 </Typography>
-                <CategoryChip category={report.type} label={reportTypeLabel(report.type)} size="small" />
+                <CategoryChip category={report.type} label={reportTypeLabel(t, report.type)} size="small" />
               </Stack>
               <Typography variant="body2" color="text.secondary">
                 {[
@@ -277,7 +280,7 @@ export const EventReportShow = () => {
               />
               <Fact
                 label={t('field.locationType')}
-                value={locationTypeLabel(report.locationType)}
+                value={locationTypeLabel(t, report.locationType)}
               />
               <Fact
                 label={t('field.locality')}
@@ -303,7 +306,7 @@ export const EventReportShow = () => {
               />
               <Fact
                 label={t('field.kilometres')}
-                value={kilometresText(report)}
+                value={kilometresText(t, report)}
               />
             </Box>
           </Card>
@@ -321,7 +324,7 @@ export const EventReportShow = () => {
                         : member.userId}
                     </Typography>
                     {member.roleName && (
-                      <Chip size="small" label={roleLabel(member.roleName)} />
+                      <Chip size="small" label={roleLabel(t, member.roleName)} />
                     )}
                   </Stack>
                 ))}
@@ -349,13 +352,13 @@ export const EventReportShow = () => {
                     {victim.position + 1}
                   </Typography>
                   <Typography sx={{ flex: 1, fontWeight: 600 }}>
-                    {genderLabel(victim.gender)}, {victim.age} {t('field.years')}
+                    {genderLabel(t, victim.gender)}, {victim.age} {t('field.years')}
                   </Typography>
                   <Stack direction="row" spacing={0.75} alignItems="center">
                     <LocalHospitalIcon fontSize="small" sx={{ color: 'text.disabled' }} />
                     <Typography variant="body2" color="text.secondary">
                       {victim.destinationHospital?.name ??
-                        destinationLabel(victim.destinationKind)}
+                        destinationLabel(t, victim.destinationKind)}
                     </Typography>
                   </Stack>
                 </Stack>
@@ -418,7 +421,7 @@ export const EventReportShow = () => {
  * measurement, and a report that claims an ambulance travelled no distance is
  * worse than one that admits nobody has worked it out yet.
  */
-function kilometresText(report: EventReport): string {
+function kilometresText(t: Translate, report: EventReport): string {
   const total = totalKilometres(report.vehicles);
   const computed = report.vehicles.some((line) => (line.routeLegs ?? []).length > 0);
   const overridden = report.vehicles.some((line) => line.isOverridden);
@@ -444,6 +447,7 @@ function kilometresText(report: EventReport): string {
  * handed over".
  */
 const ClinicalCard = ({ report }: { report: EventReport }) => {
+  const t = useT();
   const assessments = report.assessments ?? [];
   const findings = (report.abcde ?? {}) as AbcdeFindings;
   const chamu = CHAMU_FIELDS.filter((field) => (report[field] ?? '').trim() !== '');
@@ -489,7 +493,7 @@ const ClinicalCard = ({ report }: { report: EventReport }) => {
                 ).map((field) => (
                   <tr key={field.key}>
                     <th scope="row">
-                      {vitalLabel(field.key)}
+                      {vitalLabel(t, field.key)}
                       {field.unit ? ` (${field.unit})` : ''}
                     </th>
                     {assessments.map((assessment) => (
@@ -521,10 +525,10 @@ const ClinicalCard = ({ report }: { report: EventReport }) => {
               {bands.map((band) => (
                 <Stack key={band} direction="row" spacing={1.5} alignItems="baseline">
                   <Typography sx={{ fontWeight: 700, minWidth: 200 }}>
-                    {abcdeBandLabel(band)}
+                    {abcdeBandLabel(t, band)}
                   </Typography>
                   <Typography sx={{ flex: 1 }}>
-                    {abcdeStatusLabel(findings[band]!.status)}
+                    {abcdeStatusLabel(t, findings[band]!.status)}
                     {findings[band]!.note ? ` — ${findings[band]!.note}` : ''}
                   </Typography>
                 </Stack>
@@ -541,7 +545,7 @@ const ClinicalCard = ({ report }: { report: EventReport }) => {
             <Stack spacing={1} sx={{ mt: 0.75 }}>
               {chamu.map((field) => (
                 <Box key={field}>
-                  <Typography sx={{ fontWeight: 700 }}>{chamuLabel(field)}</Typography>
+                  <Typography sx={{ fontWeight: 700 }}>{chamuLabel(t, field)}</Typography>
                   <Typography sx={{ whiteSpace: 'pre-wrap' }}>{report[field]}</Typography>
                 </Box>
               ))}

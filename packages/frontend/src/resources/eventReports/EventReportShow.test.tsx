@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { AdminContext, testDataProvider } from 'react-admin';
+import polyglotI18nProvider from 'ra-i18n-polyglot';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import {
   EventLocationType,
@@ -12,6 +13,16 @@ import {
 import { EventReportShow } from './EventReportShow';
 import { crewSummary, vehicleSummary, victimSummary } from './EventReportList';
 import { apiFetch } from '../../api';
+import { messages } from '../../i18n/i18nProvider';
+
+// Pinned to 'pt' rather than the app's own locale-detecting singleton: jsdom
+// reports `en-US`, which would otherwise render this screen in English and
+// break every Portuguese assertion below.
+const i18nProvider = polyglotI18nProvider(messages, 'pt');
+
+/** The real Portuguese catalogue, so these pure functions are exercised the
+ * same way a mounted component would call them. */
+const t = i18nProvider.translate;
 
 vi.mock('../../api', () => ({ apiFetch: vi.fn(), apiDownload: vi.fn() }));
 
@@ -98,7 +109,7 @@ function renderShow(loaded: EventReport = report()) {
   mockApiFetch.mockResolvedValue(loaded);
   render(
     <MemoryRouter initialEntries={[`/event-reports/${loaded.id}/show`]}>
-      <AdminContext dataProvider={testDataProvider()}>
+      <AdminContext dataProvider={testDataProvider()} i18nProvider={i18nProvider}>
         <Routes>
           <Route path="/event-reports/:id/show" element={<EventReportShow />} />
         </Routes>
@@ -232,7 +243,7 @@ describe('when it cannot be loaded', () => {
     mockApiFetch.mockRejectedValue(new Error('Report not found'));
     render(
       <MemoryRouter initialEntries={['/event-reports/nope/show']}>
-        <AdminContext dataProvider={testDataProvider()}>
+        <AdminContext dataProvider={testDataProvider()} i18nProvider={i18nProvider}>
           <Routes>
             <Route path="/event-reports/:id/show" element={<EventReportShow />} />
           </Routes>
@@ -250,12 +261,13 @@ describe('when it cannot be loaded', () => {
 
 describe('victimSummary', () => {
   it('names the hospital when there was one victim', () => {
-    expect(victimSummary(report())).toBe('1 · CHUC — Hospital Geral');
+    expect(victimSummary(t, report())).toBe('1 · CHUC — Hospital Geral');
   });
 
   it('names the outcome when that victim was not transported', () => {
     expect(
       victimSummary(
+        t,
         report({
           victims: [
             {
@@ -276,6 +288,7 @@ describe('victimSummary', () => {
   it('counts how many were transported once there is more than one', () => {
     expect(
       victimSummary(
+        t,
         report({
           victims: [
             {
@@ -312,18 +325,19 @@ describe('victimSummary', () => {
   });
 
   it('is a dash when there was nobody', () => {
-    expect(victimSummary(report({ victims: [] }))).toBe('—');
+    expect(victimSummary(t, report({ victims: [] }))).toBe('—');
   });
 });
 
 describe('vehicleSummary', () => {
   it('names the plate and the kilometres for one vehicle', () => {
-    expect(vehicleSummary(report())).toBe('AA-12-BC · 42 km');
+    expect(vehicleSummary(t, report())).toBe('AA-12-BC · 42 km');
   });
 
   it('counts vehicles and totals the kilometres once there are several', () => {
     expect(
       vehicleSummary(
+        t,
         report({
           vehicles: [
             {
@@ -349,7 +363,7 @@ describe('vehicleSummary', () => {
   });
 
   it('is a dash when no vehicle went out', () => {
-    expect(vehicleSummary(report({ vehicles: [] }))).toBe('—');
+    expect(vehicleSummary(t, report({ vehicles: [] }))).toBe('—');
   });
 });
 
@@ -363,15 +377,16 @@ describe('crewSummary', () => {
   });
 
   it('lists surnames, which is how a coordinator scans a rota', () => {
-    expect(crewSummary(report({ crew: [member('a', 'Lourenço')] }))).toBe('Lourenço');
+    expect(crewSummary(t, report({ crew: [member('a', 'Lourenço')] }))).toBe('Lourenço');
     expect(
-      crewSummary(report({ crew: [member('a', 'Lourenço'), member('b', 'Ribeiro')] })),
+      crewSummary(t, report({ crew: [member('a', 'Lourenço'), member('b', 'Ribeiro')] })),
     ).toBe('Lourenço · Ribeiro');
   });
 
   it('abbreviates past two, so the column stays readable', () => {
     expect(
       crewSummary(
+        t,
         report({
           crew: [member('a', 'Lourenço'), member('b', 'Ribeiro'), member('c', 'Antunes')],
         }),
@@ -380,6 +395,6 @@ describe('crewSummary', () => {
   });
 
   it('is a dash when nobody is listed', () => {
-    expect(crewSummary(report({ crew: [] }))).toBe('—');
+    expect(crewSummary(t, report({ crew: [] }))).toBe('—');
   });
 });

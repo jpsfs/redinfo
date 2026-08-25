@@ -10,7 +10,10 @@ vi.mock('../api', () => ({ apiFetch: vi.fn(), apiDownload: vi.fn() }));
 
 // react-admin's <Title> needs no store here; it renders into a portal target
 // that does not exist in the test DOM, which is harmless.
-vi.mock('react-admin', () => ({ Title: () => null }));
+vi.mock('react-admin', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('react-admin')>()),
+  Title: () => null,
+}));
 
 const mockApiFetch = apiFetch as unknown as Mock;
 

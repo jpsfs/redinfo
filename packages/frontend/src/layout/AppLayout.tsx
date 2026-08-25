@@ -20,6 +20,7 @@ import { ROLE_METADATA, UserRole } from '@redinfo/shared';
 import { useCapabilities } from '../hooks/useCapabilities';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { PersonAvatar } from '../components/PersonAvatar';
+import { useT } from '../i18n/useT';
 import { NAV_SECTIONS, NavEntry } from './navigation';
 import {
   borderRadiusMedium,
@@ -101,12 +102,15 @@ const LiveEntryIcon = ({ icon }: { icon: NavEntry['icon'] }) => (
 
 const NavMenuItem = ({ entry }: { entry: NavEntry }) => {
   const [sidebarOpen] = useSidebarState();
+  const t = useT();
   const isLive = entry.variant === 'live';
+  const label = t(entry.label);
+  const subtitle = entry.subtitle && t(entry.subtitle);
 
   return (
     <MenuItemLink
       to={entry.to}
-      primaryText={isLive ? <LiveEntryLabel label={entry.label} subtitle={entry.subtitle} /> : entry.label}
+      primaryText={isLive ? <LiveEntryLabel label={label} subtitle={subtitle} /> : label}
       leftIcon={isLive && !sidebarOpen ? <LiveEntryIcon icon={entry.icon} /> : entry.icon}
       sx={[
         { minHeight: touchTargetSize },
@@ -208,6 +212,7 @@ export const RedInfoMenu = () => {
   const { can, isPending } = useCapabilities();
   const [sidebarOpen] = useSidebarState();
   const isMobile = useIsMobile();
+  const t = useT();
 
   if (isPending) return null;
 
@@ -226,7 +231,7 @@ export const RedInfoMenu = () => {
         <Fragment key={section.label ?? `pinned-${index}`}>
           {section.label &&
             (sidebarOpen ? (
-              <SectionSubheader label={section.label} />
+              <SectionSubheader label={t(section.label)} />
             ) : (
               <Divider sx={{ my: 1 }} />
             ))}
@@ -242,10 +247,11 @@ export const RedInfoMenu = () => {
 /** `MenuItemLink` doesn't know it's sitting inside a `UserMenu` popover, so it has to be told to close it. */
 const MyProfileMenuItem = () => {
   const userMenu = useUserMenu();
+  const t = useT();
   return (
     <MenuItemLink
       to="/my-profile"
-      primaryText="My Profile"
+      primaryText={t('nav.myProfile')}
       leftIcon={<AccountCircleIcon />}
       onClick={userMenu?.onClose}
     />

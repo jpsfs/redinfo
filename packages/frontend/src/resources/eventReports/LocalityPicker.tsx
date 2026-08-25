@@ -23,7 +23,7 @@ import PlaceIcon from '@mui/icons-material/Place';
 import { Locality } from '@redinfo/shared';
 import { apiFetch } from '../../api';
 import { useIsMobile } from '../../hooks/useIsMobile';
-import { t } from '../../i18n/labels';
+import { useT } from '../../i18n/useT';
 
 /** Localities the crew has picked before, most recent first. */
 const RECENT_KEY = 'redinfo.recentLocalities.v1';
@@ -75,6 +75,7 @@ export const LocalityPicker = ({
   onClose: () => void;
   onPick: (locality: Locality) => void;
 }) => {
+  const t = useT();
   const isMobile = useIsMobile();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Locality[] | null>(null);
@@ -99,7 +100,7 @@ export const LocalityPicker = ({
         setError(cause instanceof Error ? cause.message : t('hint.nothingFound'));
       }
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (!open) return undefined;
@@ -134,7 +135,7 @@ export const LocalityPicker = ({
       },
       { timeout: 10000 },
     );
-  }, []);
+  }, [t]);
 
   const pick = (locality: Locality) => {
     rememberLocality(locality);

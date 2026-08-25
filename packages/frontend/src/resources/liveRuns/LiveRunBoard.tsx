@@ -11,7 +11,8 @@ import {
 import BoltIcon from '@mui/icons-material/Bolt';
 import { LiveRunBoardEntry } from '@redinfo/shared';
 import { apiFetch } from '../../api';
-import { destinationLabel, genderLabel, liveScreenLabel, t } from '../../i18n/labels';
+import { destinationLabel, genderLabel, liveScreenLabel } from '../../i18n/labels';
+import { useT } from '../../i18n/useT';
 import { timeOfDay } from '../eventReports/reportDraft';
 import { screenForState } from './liveRun';
 
@@ -40,6 +41,7 @@ export interface LiveRunBoardProps {
 }
 
 export const LiveRunBoard = ({ emptyState }: LiveRunBoardProps = {}) => {
+  const t = useT();
   const [runs, setRuns] = useState<LiveRunBoardEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -98,7 +100,7 @@ export const LiveRunBoard = ({ emptyState }: LiveRunBoardProps = {}) => {
                 </Typography>
                 <Chip
                   size="small"
-                  label={liveScreenLabel(screenForState(run.state))}
+                  label={liveScreenLabel(t, screenForState(run.state))}
                   sx={{ fontWeight: 700 }}
                 />
               </Stack>
@@ -113,7 +115,7 @@ export const LiveRunBoard = ({ emptyState }: LiveRunBoardProps = {}) => {
                 </Typography>
                 {run.victimGender && (
                   <Typography variant="caption" color="text.secondary">
-                    {genderLabel(run.victimGender)}
+                    {genderLabel(t, run.victimGender)}
                     {run.victimAge !== null && run.victimAge !== undefined
                       ? ` · ${run.victimAge}`
                       : ''}
@@ -121,7 +123,7 @@ export const LiveRunBoard = ({ emptyState }: LiveRunBoardProps = {}) => {
                 )}
                 {run.destinationKind && (
                   <Typography variant="caption" color="text.secondary">
-                    {run.destinationHospital?.name ?? destinationLabel(run.destinationKind)}
+                    {run.destinationHospital?.name ?? destinationLabel(t, run.destinationKind)}
                   </Typography>
                 )}
                 {run.crew.length > 0 && (

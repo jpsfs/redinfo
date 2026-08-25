@@ -14,7 +14,8 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import BoltIcon from '@mui/icons-material/Bolt';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import { LiveRunState } from '@redinfo/shared';
-import { liveScreenLabel, t } from '../../i18n/labels';
+import { liveScreenLabel } from '../../i18n/labels';
+import { useT } from '../../i18n/useT';
 import { colorRedCrossRedDark } from '../../layout/design-tokens';
 import { timeOfDay } from '../eventReports/reportDraft';
 import { StoredRun, listRuns } from './liveRunDb';
@@ -31,6 +32,7 @@ import { saveRun } from './liveRunDb';
  */
 export const LiveEntryPage = () => {
   const navigate = useNavigate();
+  const t = useT();
   const [runs, setRuns] = useState<StoredRun[] | null>(null);
 
   useEffect(() => {
@@ -92,7 +94,7 @@ export const LiveEntryPage = () => {
                           {run.externalReference?.trim() || t('live.newRun')}
                         </Typography>
                         <Typography variant="body2" color="text.secondary">
-                          {liveScreenLabel(screenForRun(run))}
+                          {liveScreenLabel(t, screenForRun(run))}
                           {run.chiefComplaint ? ` · ${run.chiefComplaint}` : ''}
                         </Typography>
                         <Typography variant="caption" color="text.disabled">

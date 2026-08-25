@@ -2,7 +2,7 @@ import { ReactNode } from 'react';
 import { useAuthenticated, usePermissions } from 'react-admin';
 import { Alert, Box, Container, LinearProgress } from '@mui/material';
 import { Action, hasPermission } from '@redinfo/shared';
-import { t } from '../../i18n/labels';
+import { useT } from '../../i18n/useT';
 
 /**
  * The auth gate live mode has to bring with it.
@@ -19,6 +19,7 @@ import { t } from '../../i18n/labels';
 export const LiveRunGate = ({ children }: { children: ReactNode }) => {
   useAuthenticated();
   const { permissions, isLoading } = usePermissions();
+  const t = useT();
 
   if (isLoading) {
     return (

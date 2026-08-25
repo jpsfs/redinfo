@@ -84,6 +84,11 @@ model User {
   photoMimeType         String?
   photoByteSize         Int?
   photoStorageKey       String?    @unique
+  /// The language the person chose for the UI. NULL means never chosen — the
+  /// browser decides, falling back to Portuguese. Do not default this to 'pt':
+  /// a default is indistinguishable from a choice, and would break the
+  /// browser-language acceptance criterion for every existing row.
+  locale                String?    @db.VarChar(2)
 
   refreshTokens RefreshToken[]
 

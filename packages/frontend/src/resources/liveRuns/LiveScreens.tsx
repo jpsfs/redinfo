@@ -42,8 +42,8 @@ import {
   liveWarningLabel,
   locationTypeLabel,
   occurrenceTimeLabel,
-  t,
 } from '../../i18n/labels';
+import { useT } from '../../i18n/useT';
 import { ReportLookups, personName, vehicleLabel } from '../eventReports/useReportLookups';
 import { LocalityPicker, localityLabel, rememberLocality } from '../eventReports/LocalityPicker';
 import { DestinationChoice, HospitalPicker } from '../eventReports/HospitalPicker';
@@ -92,7 +92,7 @@ const Label = ({ children }: { children: React.ReactNode }) => (
 
 /** The locality control, shared by intake and scene — and, with its own label, by the victim's home. */
 const LocalityField = ({
-  label = t('field.locality'),
+  label,
   locality,
   onPick,
 }: {
@@ -100,11 +100,13 @@ const LocalityField = ({
   locality: Locality | null;
   onPick: (locality: Locality) => void;
 }) => {
+  const t = useT();
   const [open, setOpen] = useState(false);
+  const resolvedLabel = label ?? t('field.locality');
 
   return (
     <Box>
-      <Label>{label}</Label>
+      <Label>{resolvedLabel}</Label>
       <Button
         fullWidth
         variant="outlined"
@@ -138,6 +140,7 @@ const LocalityField = ({
  * Everything after this is captured in motion.
  */
 export const IntakeScreen = ({ form, lookups, locality, onPickLocality }: LiveScreenProps) => {
+  const t = useT();
   const { run } = form;
 
   return (
@@ -212,7 +215,7 @@ export const IntakeScreen = ({ form, lookups, locality, onPickLocality }: LiveSc
         >
           {GENDERS.map((gender) => (
             <ToggleButton key={gender} value={gender}>
-              {genderLabel(gender)}
+              {genderLabel(t, gender)}
             </ToggleButton>
           ))}
         </ToggleButtonGroup>
@@ -284,6 +287,7 @@ export const IntakeScreen = ({ form, lookups, locality, onPickLocality }: LiveSc
  * being thrown around — and one enormous button when they arrive.
  */
 export const EnRouteScreen = ({ form, locality }: LiveScreenProps) => {
+  const t = useT();
   const { run } = form;
   const address = run.identity?.occurrenceAddress?.trim();
 
@@ -318,7 +322,7 @@ export const EnRouteScreen = ({ form, locality }: LiveScreenProps) => {
       {(run.victimGender || run.victimAge !== null) && (
         <Stack direction="row" spacing={1}>
           {run.victimGender && (
-            <Chip label={genderLabel(run.victimGender)} sx={{ minHeight: 44, fontWeight: 700 }} />
+            <Chip label={genderLabel(t, run.victimGender)} sx={{ minHeight: 44, fontWeight: 700 }} />
           )}
           {run.victimAge !== null && run.victimAge !== undefined && (
             <Chip
@@ -354,6 +358,7 @@ export const SceneScreen = ({
   onOpenAssessment,
   onRefusedFiles,
 }: LiveScreenProps) => {
+  const t = useT();
   const { run } = form;
   const sns = run.identity?.victimSnsNumber ?? '';
   const snsInvalid = sns.trim() !== '' && !SNS_NUMBER_REGEX.test(sns.trim());
@@ -387,7 +392,7 @@ export const SceneScreen = ({
         >
           {EVENT_LOCATION_TYPES.map((type) => (
             <ToggleButton key={type} value={type}>
-              {locationTypeLabel(type)}
+              {locationTypeLabel(t, type)}
             </ToggleButton>
           ))}
         </ToggleButtonGroup>
@@ -502,6 +507,7 @@ export const AssessmentScreen = ({ form, dictation }: LiveScreenProps) => (
  * failure to answer.
  */
 export const TransportScreen = ({ form, lookups, locality }: LiveScreenProps) => {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const { run } = form;
 
@@ -531,14 +537,14 @@ export const TransportScreen = ({ form, lookups, locality }: LiveScreenProps) =>
         >
           <Box sx={{ flex: 1 }}>
             {run.destinationKind
-              ? hospitalName ?? destinationLabel(run.destinationKind)
+              ? hospitalName ?? destinationLabel(t, run.destinationKind)
               : t('action.search')}
           </Box>
         </Button>
       </Box>
 
       {run.destinationKind === VictimDestinationKind.HOSPITAL && hospitalName && (
-        <Typography color="text.secondary">{destinationLabel(run.destinationKind)}</Typography>
+        <Typography color="text.secondary">{destinationLabel(t, run.destinationKind)}</Typography>
       )}
 
       <HospitalPicker
@@ -562,6 +568,7 @@ export const TransportScreen = ({ form, lookups, locality }: LiveScreenProps) =>
  * "no vital signs" look like it stops an ambulance going back into service.
  */
 export const ClosingScreen = ({ form, photos, locality, dictation }: LiveScreenProps) => {
+  const t = useT();
   const { run } = form;
 
   return (
@@ -623,7 +630,7 @@ export const ClosingScreen = ({ form, photos, locality, dictation }: LiveScreenP
           {OCCURRENCE_TIME_FIELDS.map((field) => (
             <Stack key={field} direction="row" alignItems="baseline" spacing={1}>
               <Typography sx={{ flex: 1, color: 'text.secondary' }}>
-                {occurrenceTimeLabel(field)}
+                {occurrenceTimeLabel(t, field)}
               </Typography>
               <Typography
                 sx={{
@@ -644,7 +651,7 @@ export const ClosingScreen = ({ form, photos, locality, dictation }: LiveScreenP
           <Typography sx={{ fontWeight: 700, mb: 0.5 }}>{t('live.closeBlocked')}</Typography>
           <Stack spacing={0.25}>
             {form.blockers.map((code) => (
-              <span key={code}>{liveBlockerLabel(code)}</span>
+              <span key={code}>{liveBlockerLabel(t, code)}</span>
             ))}
           </Stack>
         </Alert>
@@ -655,7 +662,7 @@ export const ClosingScreen = ({ form, photos, locality, dictation }: LiveScreenP
           <Typography sx={{ fontWeight: 700, mb: 0.5 }}>{t('live.closeWarnings')}</Typography>
           <Stack spacing={0.25}>
             {form.warnings.map((code) => (
-              <span key={code}>{liveWarningLabel(code)}</span>
+              <span key={code}>{liveWarningLabel(t, code)}</span>
             ))}
           </Stack>
         </Alert>
@@ -691,7 +698,7 @@ export const ClosingScreen = ({ form, photos, locality, dictation }: LiveScreenP
               {t('field.destination')}
             </Typography>
             <Typography sx={{ fontWeight: 600 }}>
-              {run.destinationKind ? destinationLabel(run.destinationKind) : '—'}
+              {run.destinationKind ? destinationLabel(t, run.destinationKind) : '—'}
             </Typography>
           </Stack>
         </Stack>

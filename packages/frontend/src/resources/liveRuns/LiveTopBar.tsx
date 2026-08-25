@@ -23,7 +23,8 @@ import ScheduleIcon from '@mui/icons-material/Schedule';
 import SmartphoneIcon from '@mui/icons-material/Smartphone';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import { LiveRunInput, LiveScreen } from '@redinfo/shared';
-import { liveScreenLabel, syncStateLabel, t } from '../../i18n/labels';
+import { liveScreenLabel, syncStateLabel } from '../../i18n/labels';
+import { useT } from '../../i18n/useT';
 import { colorRedCrossRedDark } from '../../layout/design-tokens';
 import { elapsedLabel, previousStep, screenForState, visitedScreens } from './liveRun';
 import { SyncState } from './liveRunSync';
@@ -86,6 +87,7 @@ export const LiveTopBar = ({
   onCorrectTimes,
   onAbandon,
 }: LiveTopBarProps) => {
+  const t = useT();
   const [menu, setMenu] = useState<HTMLElement | null>(null);
   const [elapsed, setElapsed] = useState(() => elapsedLabel(run));
   const back = previousStep(run);
@@ -144,7 +146,7 @@ export const LiveTopBar = ({
             other thing on this bar tied to *this* occurrence.
           */}
           {SYNC_NEEDS_ATTENTION[sync] && (
-            <Tooltip title={syncStateLabel(sync)}>
+            <Tooltip title={syncStateLabel(t, sync)}>
               {/* Amber, not `colorWarning` (`#F57C00`, 2.64:1 on this red — under
                   the 3:1 floor for a graphical icon): `#FFD54F` measures 5.05:1
                   on `colorRedCrossRedDark` and is what actually reads as "look
@@ -184,7 +186,7 @@ export const LiveTopBar = ({
           whiteSpace: 'nowrap',
         }}
       >
-        {syncStateLabel(sync)}
+        {syncStateLabel(t, sync)}
       </Box>
 
       {/*
@@ -214,7 +216,7 @@ export const LiveTopBar = ({
               aria-selected={step === screen}
               clickable
               size="small"
-              label={liveScreenLabel(step)}
+              label={liveScreenLabel(t, step)}
               onClick={() => onJump(step)}
               sx={{
                 flexShrink: 0,
@@ -253,7 +255,7 @@ export const LiveTopBar = ({
             sx={{ minHeight: 48 }}
           >
             <ArrowBackIcon fontSize="small" sx={{ mr: 1.5 }} />
-            {`${t('live.back')} — ${liveScreenLabel(screenForState(back.state))}`}
+            {`${t('live.back')} — ${liveScreenLabel(t, screenForState(back.state))}`}
           </MenuItem>
         )}
         <MenuItem

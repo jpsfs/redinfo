@@ -25,7 +25,8 @@ import {
   ChamuField,
   MAX_ASSESSMENT_POSITION_LENGTH,
 } from '@redinfo/shared';
-import { abcdeBandLabel, chamuLabel, t } from '../../i18n/labels';
+import { abcdeBandLabel, chamuLabel } from '../../i18n/labels';
+import { useT } from '../../i18n/useT';
 import { timeOfDay } from '../eventReports/reportDraft';
 import { LiveRunHandle } from './useLiveRun';
 import { DictationControl } from './useDictation';
@@ -50,6 +51,7 @@ const DictationButton = ({
   onChange: (text: string) => void;
   dictation: DictationControl;
 }) => {
+  const t = useT();
   if (!dictation.available) return null;
   const active = dictation.listening && dictation.activeField === field;
 
@@ -85,6 +87,7 @@ export interface AssessmentEditorProps {
  * never is).
  */
 export const AssessmentEditor = ({ form, dictation }: AssessmentEditorProps) => {
+  const t = useT();
   const [index, setIndex] = useState(0);
   const [active, setActive] = useState<string>(AbcdeBand.A);
   const sections = useRef(new Map<string, HTMLElement>());
@@ -268,7 +271,7 @@ export const AssessmentEditor = ({ form, dictation }: AssessmentEditorProps) => 
               ref={(node: HTMLElement | null) => register(band, node)}
               sx={{ p: 2, scrollMarginTop: 152 }}
             >
-              <Typography sx={{ fontWeight: 800, mb: 1.5 }}>{abcdeBandLabel(band)}</Typography>
+              <Typography sx={{ fontWeight: 800, mb: 1.5 }}>{abcdeBandLabel(t, band)}</Typography>
               <Stack spacing={2}>
                 <AbcdeStatusPicker
                   band={band}
@@ -363,6 +366,7 @@ const ChamuInput = ({
   onChange: (text: string) => void;
   dictation: DictationControl;
 }) => {
+  const t = useT();
   const [text, setText] = useState(value);
   const lastValue = useRef(value);
 
@@ -383,7 +387,7 @@ const ChamuInput = ({
       fullWidth
       multiline
       minRows={2}
-      label={chamuLabel(field)}
+      label={chamuLabel(t, field)}
       value={text}
       onChange={(event) => write(event.target.value)}
       InputProps={{

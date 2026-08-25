@@ -2,7 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { Box, Button, Paper, Stack, Typography } from '@mui/material';
 import BoltIcon from '@mui/icons-material/Bolt';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
-import { t } from '../../i18n/labels';
+import { useT } from '../../i18n/useT';
 import { colorRedCrossRedDark } from '../../layout/design-tokens';
 import { readCurrentRunId } from './liveRun';
 
@@ -20,6 +20,7 @@ import { readCurrentRunId } from './liveRun';
  */
 export const LiveRunEntryCard = () => {
   const navigate = useNavigate();
+  const t = useT();
   const openRunId = readCurrentRunId();
 
   return (

@@ -1,5 +1,6 @@
-import { IsDateString, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsDateString, IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
 import { ApiPropertyOptional } from '@nestjs/swagger';
+import { LOCALES, Locale } from '@redinfo/shared';
 import {
   MAX_ADDRESS_LINE_LENGTH,
   MAX_EMERGENCY_CONTACT_NAME_LENGTH,
@@ -54,4 +55,14 @@ export class UpdateProfileDto {
   @IsString()
   @MaxLength(MAX_PHONE_LENGTH)
   emergencyContactPhone?: string;
+
+  /**
+   * The UI language, changed from the switcher on the profile page. Not a
+   * personnel detail, so it is excluded from the profile audit trail — see
+   * `SELF_AUDITED_FIELDS` in `user-profile.service.ts`.
+   */
+  @ApiPropertyOptional({ example: 'pt', enum: LOCALES })
+  @IsOptional()
+  @IsIn(LOCALES)
+  locale?: Locale;
 }

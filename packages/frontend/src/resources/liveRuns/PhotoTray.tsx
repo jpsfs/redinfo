@@ -14,7 +14,7 @@ import CloseIcon from '@mui/icons-material/Close';
 import DescriptionIcon from '@mui/icons-material/Description';
 import PhotoCameraIcon from '@mui/icons-material/PhotoCamera';
 import { EventReportAttachmentKind } from '@redinfo/shared';
-import { t } from '../../i18n/labels';
+import { useT } from '../../i18n/useT';
 import { StoredPhoto, photoBlob } from './liveRunDb';
 import { PhotoQueueHandle } from './usePhotoQueue';
 
@@ -48,6 +48,7 @@ const Thumbnail = ({
   photo: StoredPhoto;
   onRemove: () => void;
 }) => {
+  const t = useT();
   const url = useObjectUrl(photo);
 
   return (
@@ -132,6 +133,7 @@ export interface PhotoTrayProps {
  * a network to carry them.
  */
 export const PhotoTray = ({ queue, onRefused }: PhotoTrayProps) => {
+  const t = useT();
   const input = useRef<HTMLInputElement | null>(null);
 
   const photos = useMemo(

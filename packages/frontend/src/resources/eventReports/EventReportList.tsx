@@ -22,7 +22,8 @@ import {
 import { apiFetch } from '../../api';
 import { CategoryChip } from '../../components/CategoryChip';
 import { useIsMobile } from '../../hooks/useIsMobile';
-import { reportTypeLabel, t } from '../../i18n/labels';
+import { reportTypeLabel } from '../../i18n/labels';
+import { useT } from '../../i18n/useT';
 import { MonthFilter } from './MonthFilter';
 import { ReportListCard } from './ReportListCard';
 import { timeOfDay } from './reportDraft';
@@ -41,6 +42,7 @@ export { crewSummary, vehicleSummary, victimSummary };
  * the type filter, so clicking one tab does not renumber the others.
  */
 const TypeTabs = () => {
+  const t = useT();
   const { filterValues, setFilters, displayedFilters } = useListContext();
   const [counts, setCounts] = useState<EventReportCounts | null>(null);
 
@@ -79,7 +81,7 @@ const TypeTabs = () => {
         <CategoryChip
           key={type}
           category={type}
-          label={`${reportTypeLabel(type)}${counts ? ` · ${counts[type]}` : ''}`}
+          label={`${reportTypeLabel(t, type)}${counts ? ` · ${counts[type]}` : ''}`}
           selected={active === type}
           onClick={() => select(type)}
           sx={{ height: 40, fontWeight: 600, cursor: 'pointer' }}
@@ -90,6 +92,7 @@ const TypeTabs = () => {
 };
 
 const ListActions = () => {
+  const t = useT();
   const { permissions } = usePermissions<UserRole>();
   const navigate = useNavigate();
 
@@ -144,6 +147,7 @@ const MobileReportList = () => {
  * last week", and the type is a column and a filter rather than a place.
  */
 export const EventReportList = () => {
+  const t = useT();
   const isMobile = useIsMobile();
 
   return (
@@ -179,7 +183,7 @@ export const EventReportList = () => {
                 label={t('field.reportNumber')}
                 render={(record: EventReport) =>
                   // Rendered rather than stored: `(type, number, year)` is the truth.
-                  `${reportTypeLabel(record.type).slice(0, 3).toUpperCase()} ${String(
+                  `${reportTypeLabel(t, record.type).slice(0, 3).toUpperCase()} ${String(
                     record.number,
                   ).padStart(3, '0')}/${record.year}`
                 }
@@ -189,7 +193,7 @@ export const EventReportList = () => {
                 render={(record: EventReport) => (
                   <CategoryChip
                     category={record.type}
-                    label={reportTypeLabel(record.type)}
+                    label={reportTypeLabel(t, record.type)}
                     size="small"
                   />
                 )}
@@ -208,8 +212,14 @@ export const EventReportList = () => {
                 label={t('field.locality')}
                 render={(record: EventReport) => record.locality?.name ?? '—'}
               />
-              <FunctionField label={t('field.crew')} render={crewSummary} />
-              <FunctionField label={t('field.vehicle')} render={vehicleSummary} />
+              <FunctionField
+                label={t('field.crew')}
+                render={(record: EventReport) => crewSummary(t, record)}
+              />
+              <FunctionField
+                label={t('field.vehicle')}
+                render={(record: EventReport) => vehicleSummary(t, record)}
+              />
             </Datagrid>
           </Paper>
         )}

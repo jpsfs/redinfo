@@ -154,6 +154,15 @@ export const BLOOD_TYPE_LABEL: Record<BloodType, string> = {
   [BloodType.O_NEG]: 'O-',
 };
 
+/**
+ * The two languages the app ships. A primary-subtag match: `pt-PT`/`pt-BR` →
+ * `pt`, `en-US`/`en-GB` → `en`, anything else → `pt`. Content is European
+ * Portuguese; the code does not encode the region — see #180.
+ */
+export type Locale = 'pt' | 'en';
+
+export const LOCALES: readonly Locale[] = ['pt', 'en'];
+
 export interface User {
   id: string;
   email: string;
@@ -207,6 +216,12 @@ export interface User {
   hasPhoto?: boolean;
   /** Held certifications only — see `effectiveCertifications` for what they grant. */
   certifications?: UserCertification[];
+  /**
+   * The language chosen on the profile page. `null` means never chosen — the
+   * browser decides, falling back to Portuguese. Never write a detected
+   * locale back here; only an explicit choice belongs in this field.
+   */
+  locale?: Locale | null;
 }
 
 // ─── Certifications ──────────────────────────────────────────────────────────

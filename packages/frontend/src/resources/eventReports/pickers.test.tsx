@@ -1,11 +1,19 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { AdminContext, testDataProvider } from 'react-admin';
+import polyglotI18nProvider from 'ra-i18n-polyglot';
 import { VictimDestinationKind } from '@redinfo/shared';
 import { LocalityPicker, loadRecentLocalities, localityLabel } from './LocalityPicker';
 import { HospitalPicker } from './HospitalPicker';
 import { apiFetch } from '../../api';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { messages } from '../../i18n/i18nProvider';
+
+// Pinned to 'pt' rather than the app's own locale-detecting singleton: jsdom
+// reports `en-US`, which would otherwise render these dialogs in English and
+// break every Portuguese assertion below.
+const i18nProvider = polyglotI18nProvider(messages, 'pt');
 
 vi.mock('../../api', () => ({ apiFetch: vi.fn(), apiDownload: vi.fn() }));
 vi.mock('../../hooks/useIsMobile', () => ({ useIsMobile: vi.fn(() => true) }));
@@ -84,7 +92,11 @@ describe('the locality picker', () => {
   });
 
   const open = () =>
-    render(<LocalityPicker open onClose={() => undefined} onPick={onPick} />);
+    render(
+      <AdminContext dataProvider={testDataProvider()} i18nProvider={i18nProvider}>
+        <LocalityPicker open onClose={() => undefined} onPick={onPick} />
+      </AdminContext>,
+    );
 
   it('offers a starting list before anything is typed', async () => {
     open();
@@ -134,7 +146,11 @@ describe('the locality picker', () => {
     await user.click(await screen.findByText('Taveiro'));
 
     // Re-opened: the recent chip is there, above the search results.
-    render(<LocalityPicker open onClose={() => undefined} onPick={onPick} />);
+    render(
+      <AdminContext dataProvider={testDataProvider()} i18nProvider={i18nProvider}>
+        <LocalityPicker open onClose={() => undefined} onPick={onPick} />
+      </AdminContext>,
+    );
     expect(await screen.findByText('RECENTES')).toBeInTheDocument();
   });
 
@@ -168,12 +184,14 @@ describe('the hospital picker', () => {
 
   const open = (locality: typeof TAVEIRO | null = TAVEIRO) =>
     render(
-      <HospitalPicker
-        open
-        locality={locality}
-        onClose={() => undefined}
-        onPick={onPick}
-      />,
+      <AdminContext dataProvider={testDataProvider()} i18nProvider={i18nProvider}>
+        <HospitalPicker
+          open
+          locality={locality}
+          onClose={() => undefined}
+          onPick={onPick}
+        />
+      </AdminContext>,
     );
 
   it('asks for the list ordered from the report’s locality', async () => {

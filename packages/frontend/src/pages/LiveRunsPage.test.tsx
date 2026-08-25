@@ -5,7 +5,10 @@ import { apiFetch } from '../api';
 import { LIVE_RUN_BOARD_ENTRY } from '../test/fixtures';
 
 vi.mock('../api', () => ({ apiFetch: vi.fn(), apiDownload: vi.fn(), apiUpload: vi.fn() }));
-vi.mock('react-admin', () => ({ Title: () => null }));
+vi.mock('react-admin', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('react-admin')>()),
+  Title: () => null,
+}));
 
 const mockApiFetch = apiFetch as unknown as Mock;
 

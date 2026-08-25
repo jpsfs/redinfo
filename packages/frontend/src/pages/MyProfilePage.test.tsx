@@ -1,17 +1,27 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { CertificationType, User } from '@redinfo/shared';
+import { renderMobile } from '../test/renderMobile';
 import { MyProfilePage } from './MyProfilePage';
 import { apiFetch, apiUpload } from '../api';
 
 vi.mock('../api', () => ({ apiFetch: vi.fn(), apiDownload: vi.fn(), apiUpload: vi.fn() }));
 
-// react-admin's <Title> needs no store here; it renders into a portal target
-// that does not exist in the test DOM, which is harmless — same stub used by
-// the other personal pages' tests.
+// A partial mock — real `useTranslate`/`useLocaleState` come through
+// (`renderMobile` wires up a real i18nProvider, which the language-switcher
+// test below needs), just `Title` and `useNotify` are overridden. `<Title>`
+// needs no store here; it renders into a portal target that does not exist
+// in the test DOM, which is harmless — same stub used by the other personal
+// pages' tests. `useNotify` is a spy so tests can assert on it.
 const mockNotify = vi.fn();
-vi.mock('react-admin', () => ({ Title: () => null, useNotify: () => mockNotify }));
+vi.mock('react-admin', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('react-admin')>()),
+  Title: () => null,
+  useNotify: () => mockNotify,
+}));
+
+const render = (ui: Parameters<typeof renderMobile>[0]) => renderMobile(ui);
 
 const mockApiFetch = apiFetch as unknown as Mock;
 const mockApiUpload = apiUpload as unknown as Mock;
@@ -172,5 +182,48 @@ describe('MyProfilePage', () => {
       expect(mockApiFetch).toHaveBeenCalledWith('/users/me/photo', { method: 'DELETE' }),
     );
     expect(mockNotify).toHaveBeenCalledWith('Foto removida', { type: 'info' });
+  });
+
+  describe('the language switcher', () => {
+    it('PATCHes the choice and switches immediately, with no reload', async () => {
+      const user = userEvent.setup();
+      mockApiFetch.mockResolvedValueOnce(profile());
+      render(<MyProfilePage />);
+      await screen.findByText('As minhas certificações');
+
+      // The PATCH, then — because `setLocale` re-keys `I18nContextProvider`
+      // and remounts the whole tree — a second `load()` from the remounted
+      // page's own `useEffect`.
+      mockApiFetch.mockResolvedValueOnce(profile({ locale: 'en' }));
+      mockApiFetch.mockResolvedValueOnce(profile({ locale: 'en' }));
+      await user.click(screen.getByRole('button', { name: 'English' }));
+
+      await waitFor(() =>
+        expect(mockApiFetch).toHaveBeenCalledWith(
+          '/users/me/profile',
+          expect.objectContaining({ method: 'PATCH', body: { locale: 'en' } }),
+        ),
+      );
+      // The whole tree re-renders in the new language — not just the switcher.
+      expect(await screen.findByText('My certifications')).toBeInTheDocument();
+    });
+
+    it('still switches for this session when the PATCH fails, with a warning', async () => {
+      const user = userEvent.setup();
+      mockApiFetch.mockResolvedValueOnce(profile());
+      render(<MyProfilePage />);
+      await screen.findByText('As minhas certificações');
+
+      mockApiFetch.mockRejectedValueOnce(new Error('Network error'));
+      // The remount's own re-fetch, after the switch goes ahead anyway.
+      mockApiFetch.mockResolvedValueOnce(profile());
+      await user.click(screen.getByRole('button', { name: 'English' }));
+
+      expect(await screen.findByText('My certifications')).toBeInTheDocument();
+      expect(mockNotify).toHaveBeenCalledWith(
+        'Não foi possível guardar a preferência, mas o idioma muda nesta sessão.',
+        { type: 'warning' },
+      );
+    });
   });
 });

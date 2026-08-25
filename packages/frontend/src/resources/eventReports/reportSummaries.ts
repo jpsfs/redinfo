@@ -1,5 +1,5 @@
 import { EventReport, totalKilometres, transportedVictimCount } from '@redinfo/shared';
-import { destinationLabel, t } from '../../i18n/labels';
+import { Translate, destinationLabel } from '../../i18n/labels';
 
 /**
  * One-line summaries shared between the report list (table and mobile
@@ -9,12 +9,12 @@ import { destinationLabel, t } from '../../i18n/labels';
  */
 
 /** `1 · CHUC — Hospital Geral`, or `3 · 1 transportada`. */
-export function victimSummary(report: EventReport): string {
+export function victimSummary(t: Translate, report: EventReport): string {
   if (report.victims.length === 0) return '—';
   if (report.victims.length === 1) {
     const [victim] = report.victims;
     const where =
-      victim.destinationHospital?.name ?? destinationLabel(victim.destinationKind);
+      victim.destinationHospital?.name ?? destinationLabel(t, victim.destinationKind);
     return `1 · ${where}`;
   }
   const transported = transportedVictimCount(report.victims);
@@ -22,7 +22,7 @@ export function victimSummary(report: EventReport): string {
 }
 
 /** `AA-12-BC · 42 km`, or `2 · 87 km` once there is more than one. */
-export function vehicleSummary(report: EventReport): string {
+export function vehicleSummary(t: Translate, report: EventReport): string {
   if (report.vehicles.length === 0) return '—';
   const kilometres = `${totalKilometres(report.vehicles)} ${t('field.kilometresShort')}`;
   if (report.vehicles.length === 1) {
@@ -31,7 +31,7 @@ export function vehicleSummary(report: EventReport): string {
   return `${report.vehicles.length} · ${kilometres}`;
 }
 
-export const crewSummary = (report: EventReport): string => {
+export const crewSummary = (_t: Translate, report: EventReport): string => {
   const names = report.crew
     .map((member) => member.user?.lastName)
     .filter((name): name is string => Boolean(name));

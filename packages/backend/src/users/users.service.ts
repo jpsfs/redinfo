@@ -134,6 +134,7 @@ export const PERSON_SELECT = {
   photoMimeType: true,
   photoByteSize: true,
   photoStorageKey: true,
+  locale: true,
   certifications: { select: CERT_SELECT },
 } satisfies Prisma.UserSelect;
 
@@ -170,6 +171,7 @@ interface PersonRow {
   photoMimeType: string | null;
   photoByteSize: number | null;
   photoStorageKey: string | null;
+  locale: string | null;
   certifications: CertRow[];
 }
 
@@ -209,6 +211,7 @@ export function serializePerson(row: PersonRow, asOf: string = today()): SharedU
     photoMimeType: row.photoMimeType,
     photoByteSize: row.photoByteSize,
     hasPhoto: row.photoStorageKey !== null,
+    locale: row.locale as SharedUser['locale'],
     certifications: row.certifications.map(serializeCertification),
   };
 }

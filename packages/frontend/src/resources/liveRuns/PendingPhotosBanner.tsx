@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Alert, Button, CircularProgress } from '@mui/material';
-import { t } from '../../i18n/labels';
+import { useT } from '../../i18n/useT';
 import { StoredPhoto, listPendingPhotos } from './liveRunDb';
 import { usePhotoQueue } from './usePhotoQueue';
 
@@ -41,6 +41,7 @@ export const PendingPhotosBanner = ({
 };
 
 const Banner = ({ runId, reportId }: { runId: string; reportId: string }) => {
+  const t = useT();
   const queue = usePhotoQueue({ runId, reportId });
 
   if (queue.pending.length === 0) return null;

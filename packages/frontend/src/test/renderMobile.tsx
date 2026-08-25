@@ -1,8 +1,11 @@
 import { ReactElement } from 'react';
 import { render, RenderOptions, RenderResult } from '@testing-library/react';
 import { AdminContext, testDataProvider } from 'react-admin';
+import polyglotI18nProvider from 'ra-i18n-polyglot';
 import { MemoryRouter } from 'react-router-dom';
 import { ThemeProvider } from '@mui/material/styles';
+import type { Locale } from '@redinfo/shared';
+import { messages } from '../i18n/i18nProvider';
 import { theme } from '../layout/theme';
 
 /**
@@ -50,13 +53,20 @@ export interface RenderMobileOptions extends Omit<RenderOptions, 'wrapper'> {
   /** The initial URL. Live mode keeps its screen in the path, so tests set it. */
   route?: string;
   width?: number;
+  /**
+   * Defaults to `'pt'` — the production default for a browser with no
+   * English preference — so a screen that renders the wrong language is a
+   * real test failure rather than a harness artefact. See #180.
+   */
+  locale?: Locale;
 }
 
 /**
  * The wrappers every screen in this app needs: react-admin's context (for
- * `useNotify`, `usePermissions` and the data provider), a router, and the real
- * theme — because the theme is where the 44px touch-target floor lives, and a
- * test rendering without it would pass on targets a gloved thumb cannot hit.
+ * `useNotify`, `usePermissions`, `useTranslate` and the data provider), a
+ * router, and the real theme — because the theme is where the 44px
+ * touch-target floor lives, and a test rendering without it would pass on
+ * targets a gloved thumb cannot hit.
  *
  * `MemoryRouter` goes **outside** `AdminContext`: react-admin provides a router
  * of its own inside, and two nested routers is an error rather than a warning.
@@ -65,13 +75,14 @@ export function renderMobile(
   ui: ReactElement,
   options: RenderMobileOptions = {},
 ): RenderResult {
-  const { route = '/', width = MOBILE_WIDTH, ...rest } = options;
+  const { route = '/', width = MOBILE_WIDTH, locale = 'pt', ...rest } = options;
   stubMobileMatchMedia(width);
+  const i18nProvider = polyglotI18nProvider(messages, locale);
 
   return render(ui, {
     wrapper: ({ children }) => (
       <MemoryRouter initialEntries={[route]}>
-        <AdminContext dataProvider={testDataProvider()}>
+        <AdminContext dataProvider={testDataProvider()} i18nProvider={i18nProvider}>
           <ThemeProvider theme={theme}>{children}</ThemeProvider>
         </AdminContext>
       </MemoryRouter>

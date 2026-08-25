@@ -1,7 +1,8 @@
 import { Paper, Stack, Typography } from '@mui/material';
 import { EventReport, formatEventReportCode } from '@redinfo/shared';
 import { CategoryChip } from '../../components/CategoryChip';
-import { reportTypeLabel, t } from '../../i18n/labels';
+import { reportTypeLabel } from '../../i18n/labels';
+import { useT } from '../../i18n/useT';
 import { crewSummary, vehicleSummary } from './reportSummaries';
 import { timeOfDay } from './reportDraft';
 
@@ -17,28 +18,31 @@ export const ReportListCard = ({
 }: {
   report: EventReport;
   onOpen: () => void;
-}) => (
-  <Paper variant="outlined" onClick={onOpen} sx={{ p: 2, cursor: 'pointer' }}>
-    <Stack spacing={0.75}>
-      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-        <Typography
-          sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}
-        >
-          {formatEventReportCode(report) ?? t('report.noNumberYet')}
+}) => {
+  const t = useT();
+  return (
+    <Paper variant="outlined" onClick={onOpen} sx={{ p: 2, cursor: 'pointer' }}>
+      <Stack spacing={0.75}>
+        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+          <Typography
+            sx={{ fontWeight: 700, fontVariantNumeric: 'tabular-nums' }}
+          >
+            {formatEventReportCode(report) ?? t('report.noNumberYet')}
+          </Typography>
+          <CategoryChip category={report.type} label={reportTypeLabel(t, report.type)} size="small" />
+        </Stack>
+
+        <Typography variant="body2" color="text.secondary">
+          {report.occurredOn} · {timeOfDay(report.startedAt) || '--:--'}–
+          {timeOfDay(report.endedAt) || '--:--'}
+          {report.locality ? ` · ${report.locality.name}` : ''}
         </Typography>
-        <CategoryChip category={report.type} label={reportTypeLabel(report.type)} size="small" />
+
+        <Typography variant="body2">{crewSummary(t, report)}</Typography>
+        <Typography variant="caption" color="text.disabled">
+          {vehicleSummary(t, report)}
+        </Typography>
       </Stack>
-
-      <Typography variant="body2" color="text.secondary">
-        {report.occurredOn} · {timeOfDay(report.startedAt) || '--:--'}–
-        {timeOfDay(report.endedAt) || '--:--'}
-        {report.locality ? ` · ${report.locality.name}` : ''}
-      </Typography>
-
-      <Typography variant="body2">{crewSummary(report)}</Typography>
-      <Typography variant="caption" color="text.disabled">
-        {vehicleSummary(report)}
-      </Typography>
-    </Stack>
-  </Paper>
-);
+    </Paper>
+  );
+};

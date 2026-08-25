@@ -15,7 +15,8 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import DescriptionIcon from '@mui/icons-material/Description';
 import { EVENT_REPORT_TYPES, EventReportType, eventReportRules } from '@redinfo/shared';
 import { categoryColor } from '../../components/CategoryChip';
-import { reportTypeHint, reportTypeLabel, t } from '../../i18n/labels';
+import { reportTypeHint, reportTypeLabel } from '../../i18n/labels';
+import { useT } from '../../i18n/useT';
 import { readCurrentRunId } from '../liveRuns';
 import { StoredDraft, clearDraft, loadDraft } from './reportDraft';
 import { useEventReportDraft } from './useEventReportDraft';
@@ -43,7 +44,9 @@ const TypeChooser = ({
   onResume: () => void;
   onDiscard: () => void;
   onGoLive: () => void;
-}) => (
+}) => {
+  const t = useT();
+  return (
   <Container maxWidth="sm" sx={{ py: 3 }}>
     <Stack spacing={2}>
       <Box>
@@ -84,11 +87,11 @@ const TypeChooser = ({
                 }}
               />
               <Typography sx={{ fontWeight: 700, fontSize: '1.125rem' }}>
-                {reportTypeLabel(type)}
+                {reportTypeLabel(t, type)}
               </Typography>
             </Stack>
             <Typography variant="body2" color="text.secondary">
-              {reportTypeHint(type)}
+              {reportTypeHint(t, type)}
             </Typography>
             {suggested === type && (
               <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.5 }}>
@@ -140,13 +143,14 @@ const TypeChooser = ({
           }
         >
           <strong>{t('status.draftUnfinished')}</strong>{' '}
-          {reportTypeLabel(resumable.draft.type)} ·{' '}
+          {reportTypeLabel(t, resumable.draft.type)} ·{' '}
           {new Date(resumable.savedAt).toLocaleString()}
         </Alert>
       )}
     </Stack>
   </Container>
-);
+  );
+};
 
 /**
  * Filing a new report.
@@ -157,6 +161,7 @@ const TypeChooser = ({
  * quietly reopening yesterday's half-report would be worse than asking.
  */
 export const EventReportCreate = () => {
+  const t = useT();
   const navigate = useNavigate();
   // Read once on mount: a draft that gets saved while this screen is open
   // belongs to the form below, not to this offer.
@@ -206,6 +211,7 @@ const NewReportForm = ({
   type: EventReportType;
   resume: boolean;
 }) => {
+  const t = useT();
   const form = useEventReportDraft({ type, resume });
   return (
     <>

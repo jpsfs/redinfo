@@ -1,7 +1,8 @@
 import { Box, Button, CircularProgress, Paper, Stack, Typography } from '@mui/material';
 import NavigationIcon from '@mui/icons-material/Navigation';
 import { LiveRunInput, LiveScreen } from '@redinfo/shared';
-import { liveStampLabel, t } from '../../i18n/labels';
+import { liveStampLabel } from '../../i18n/labels';
+import { useT } from '../../i18n/useT';
 import { timeOfDay } from '../eventReports/reportDraft';
 import { nextStampForScreen } from './liveRun';
 
@@ -57,6 +58,7 @@ export const LiveBottomBar = ({
   finishing = false,
   blockedReason,
 }: LiveBottomBarProps) => {
+  const t = useT();
   const step = nextStampForScreen(run, screen);
 
   return (
@@ -104,14 +106,14 @@ export const LiveBottomBar = ({
             {step.done ? (
               <Box>
                 <Box sx={{ fontSize: '0.75rem', fontWeight: 700, opacity: 0.8 }}>
-                  {liveStampLabel(step.field)}
+                  {liveStampLabel(t, step.field)}
                 </Box>
                 <Box sx={{ fontVariantNumeric: 'tabular-nums' }}>
                   {timeOfDay(run[step.field])} · {t('live.stamp.change')}
                 </Box>
               </Box>
             ) : (
-              liveStampLabel(step.field)
+              liveStampLabel(t, step.field)
             )}
           </Button>
         )}

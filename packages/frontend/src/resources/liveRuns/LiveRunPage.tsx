@@ -27,7 +27,8 @@ import {
   OccurrenceTimeField,
 } from '@redinfo/shared';
 import { apiFetch } from '../../api';
-import { liveScreenLabel, occurrenceTimeLabel, t } from '../../i18n/labels';
+import { liveScreenLabel, occurrenceTimeLabel } from '../../i18n/labels';
+import { useT } from '../../i18n/useT';
 import { composeInstant, timeOfDay, todayIso } from '../eventReports/reportDraft';
 import { useReportLookups } from '../eventReports/useReportLookups';
 import { attachPhotosToReport, deleteRun, saveRun } from './liveRunDb';
@@ -79,6 +80,7 @@ export const LiveRunPage = () => {
   const photos = usePhotoQueue({ runId, reportId });
   const dictation = useDictation();
   const sync = useLiveRunSync({ onMerged: form.replace });
+  const t = useT();
 
   // The screen stays awake for the length of an open run and no longer: a phone
   // left on the closing screen in a pocket should be allowed to sleep.
@@ -227,14 +229,14 @@ export const LiveRunPage = () => {
     } finally {
       setClosing(false);
     }
-  }, [form, navigate, notify, runId]);
+  }, [form, navigate, notify, runId, t]);
 
   const abandon = useCallback(async () => {
     if (!window.confirm(t('live.abandonConfirm'))) return;
     await deleteRun(runId);
     writeCurrentRunId(null);
     navigate('/live', { replace: true });
-  }, [navigate, runId]);
+  }, [navigate, runId, t]);
 
   /**
    * Undoes the run's last stamp, after asking first.
@@ -247,7 +249,7 @@ export const LiveRunPage = () => {
   const goBack = useCallback(() => {
     if (!window.confirm(t('live.backConfirm'))) return;
     form.goBack();
-  }, [form]);
+  }, [form, t]);
 
   if (!form.ready) {
     return (
@@ -305,7 +307,7 @@ export const LiveRunPage = () => {
               // Distinct from the assessment pager's own chevrons, which share
               // `action.back` for "the set before this one" — this one leaves
               // the screen entirely, so it names where it goes.
-              aria-label={`${t('action.back')} — ${liveScreenLabel('scene')}`}
+              aria-label={`${t('action.back')} — ${liveScreenLabel(t, 'scene')}`}
               onClick={() => navigate(`/live/${runId}/scene`)}
               sx={{ ml: -1 }}
             >
@@ -313,7 +315,7 @@ export const LiveRunPage = () => {
             </IconButton>
           )}
           <Typography variant="h6" sx={{ fontWeight: 800 }}>
-            {liveScreenLabel(current)}
+            {liveScreenLabel(t, current)}
           </Typography>
         </Stack>
 
@@ -374,6 +376,7 @@ const CorrectTimesDialog = ({
   onClose: () => void;
   onCorrect: (field: OccurrenceTimeField, instant: string | null) => void;
 }) => {
+  const t = useT();
   const day = run.startedAt ? todayIso(new Date(run.startedAt)) : todayIso();
 
   return (
@@ -386,7 +389,7 @@ const CorrectTimesDialog = ({
               key={field}
               fullWidth
               type="time"
-              label={occurrenceTimeLabel(field)}
+              label={occurrenceTimeLabel(t, field)}
               value={timeOfDay(run[field])}
               onChange={(event) =>
                 onCorrect(
@@ -396,7 +399,7 @@ const CorrectTimesDialog = ({
                     : null,
                 )
               }
-              inputProps={{ 'aria-label': occurrenceTimeLabel(field) }}
+              inputProps={{ 'aria-label': occurrenceTimeLabel(t, field) }}
             />
           ))}
         </Stack>

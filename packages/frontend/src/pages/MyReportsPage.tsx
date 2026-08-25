@@ -26,7 +26,8 @@ import {
 } from '@redinfo/shared';
 import { apiFetch } from '../api';
 import { CategoryChip } from '../components/CategoryChip';
-import { destinationLabel, reportTypeLabel, t } from '../i18n/labels';
+import { destinationLabel, reportTypeLabel } from '../i18n/labels';
+import { useT } from '../i18n/useT';
 import { StoredDraft, loadDraft } from '../resources/eventReports/reportDraft';
 import { timeOfDay } from '../resources/eventReports/reportDraft';
 import { LiveRunEntryCard } from '../resources/liveRuns';
@@ -37,51 +38,54 @@ const ReportCard = ({
 }: {
   report: EventReport;
   onOpen: () => void;
-}) => (
-  <Paper variant="outlined" onClick={onOpen} sx={{ p: 2, cursor: 'pointer' }}>
-    <Stack spacing={0.75}>
-      <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-        <Typography
-          sx={{
-            fontWeight: 700,
-            fontVariantNumeric: 'tabular-nums',
-            // A draft has no code, so the slot says why rather than sitting
-            // empty — an unnumbered row reads as a rendering bug otherwise.
-            color: report.number === null ? 'text.disabled' : 'text.primary',
-          }}
-        >
-          {formatEventReportCode(report) ?? t('report.noNumberYet')}
+}) => {
+  const t = useT();
+  return (
+    <Paper variant="outlined" onClick={onOpen} sx={{ p: 2, cursor: 'pointer' }}>
+      <Stack spacing={0.75}>
+        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+          <Typography
+            sx={{
+              fontWeight: 700,
+              fontVariantNumeric: 'tabular-nums',
+              // A draft has no code, so the slot says why rather than sitting
+              // empty — an unnumbered row reads as a rendering bug otherwise.
+              color: report.number === null ? 'text.disabled' : 'text.primary',
+            }}
+          >
+            {formatEventReportCode(report) ?? t('report.noNumberYet')}
+          </Typography>
+          <CategoryChip category={report.type} label={reportTypeLabel(t, report.type)} size="small" />
+        </Stack>
+
+        <Typography variant="body2" color="text.secondary">
+          {report.occurredOn} · {timeOfDay(report.startedAt) || '--:--'}–
+          {timeOfDay(report.endedAt) || '--:--'}
+          {report.locality ? ` · ${report.locality.name}` : ''}
         </Typography>
-        <CategoryChip category={report.type} label={reportTypeLabel(report.type)} size="small" />
+
+        {report.victims.length > 0 && (
+          <Typography variant="body2">
+            {report.victims.length}{' '}
+            {report.victims.length === 1
+              ? report.victims[0].destinationHospital?.name ??
+                destinationLabel(t, report.victims[0].destinationKind)
+              : ''}
+          </Typography>
+        )}
+
+        {report.vehicles.length > 0 && (
+          <Typography variant="caption" color="text.disabled">
+            {report.vehicles.length === 1
+              ? report.vehicles[0].vehicle?.licensePlate
+              : `${report.vehicles.length}×`}{' '}
+            · {totalKilometres(report.vehicles)} {t('field.kilometresShort')}
+          </Typography>
+        )}
       </Stack>
-
-      <Typography variant="body2" color="text.secondary">
-        {report.occurredOn} · {timeOfDay(report.startedAt) || '--:--'}–
-        {timeOfDay(report.endedAt) || '--:--'}
-        {report.locality ? ` · ${report.locality.name}` : ''}
-      </Typography>
-
-      {report.victims.length > 0 && (
-        <Typography variant="body2">
-          {report.victims.length}{' '}
-          {report.victims.length === 1
-            ? report.victims[0].destinationHospital?.name ??
-              destinationLabel(report.victims[0].destinationKind)
-            : ''}
-        </Typography>
-      )}
-
-      {report.vehicles.length > 0 && (
-        <Typography variant="caption" color="text.disabled">
-          {report.vehicles.length === 1
-            ? report.vehicles[0].vehicle?.licensePlate
-            : `${report.vehicles.length}×`}{' '}
-          · {totalKilometres(report.vehicles)} {t('field.kilometresShort')}
-        </Typography>
-      )}
-    </Stack>
-  </Paper>
-);
+    </Paper>
+  );
+};
 
 /**
  * The activities the signed-in person was on.
@@ -95,6 +99,7 @@ const ReportCard = ({
  * only, so if it is not on this screen it is nowhere.
  */
 export const MyReportsPage = () => {
+  const t = useT();
   const navigate = useNavigate();
   const { permissions } = usePermissions<UserRole>();
   const [reports, setReports] = useState<EventReport[] | null>(null);
@@ -149,7 +154,7 @@ export const MyReportsPage = () => {
             }
           >
             <strong>{t('status.draftUnfinished')}</strong>{' '}
-            {reportTypeLabel(draft.draft.type)} ·{' '}
+            {reportTypeLabel(t, draft.draft.type)} ·{' '}
             {new Date(draft.savedAt).toLocaleString()}
           </Alert>
         )}

@@ -14,26 +14,24 @@ import InventoryIcon from '@mui/icons-material/Inventory';
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
 import { Action } from '@redinfo/shared';
+import { MessageKey } from '../i18n/labels';
 
 export interface NavEntry {
   to: string;
-  /**
-   * English label typed inline, per the convention in `i18n/labels.ts`.
-   * #180 turns these into translation keys — one file to change.
-   */
-  label: string;
+  /** Translated at render, in `AppLayout.tsx`'s `NavMenuItem`. */
+  label: MessageKey;
   icon: ReactElement;
   /** Any one of these makes the entry visible. Omitted means everyone. */
   requires?: Action[];
   /** The pinned live-mode entry, which renders as a red block. */
   variant?: 'live';
-  /** Second line, only used by the live entry. */
-  subtitle?: string;
+  /** Second line, only used by the live entry. Translated the same way. */
+  subtitle?: MessageKey;
 }
 
 export interface NavSection {
   /** Rendered as an uppercase subheader. Omitted for the pinned group. */
-  label?: string;
+  label?: MessageKey;
   entries: NavEntry[];
 }
 
@@ -52,110 +50,110 @@ export const NAV_SECTIONS: NavSection[] = [
     entries: [
       {
         to: '/live',
-        label: 'Emergência',
-        subtitle: 'Modo em campo',
+        label: 'nav.live',
+        subtitle: 'nav.liveSubtitle',
         icon: <BoltIcon />,
         requires: [Action.EMERGENCY_OPERATION],
         variant: 'live',
       },
       {
         to: '/',
-        label: 'Home',
+        label: 'nav.home',
         icon: <HomeIcon />,
       },
     ],
   },
   {
-    label: 'My work',
+    label: 'nav.myWork',
     entries: [
       {
         to: '/my-availability',
-        label: 'My Availability',
+        label: 'nav.myAvailability',
         icon: <EventAvailableIcon />,
         requires: [Action.SUBMIT_AVAILABILITY],
       },
       {
         to: '/my-duties',
-        label: 'My Duties',
+        label: 'nav.myDuties',
         icon: <AssignmentIndIcon />,
       },
       {
         to: '/my-reports',
-        label: 'My Reports',
+        label: 'nav.myReports',
         icon: <ArticleIcon />,
         requires: [Action.CREATE_EVENT_REPORT],
       },
     ],
   },
   {
-    label: 'Operations',
+    label: 'nav.operations',
     entries: [
       {
         to: '/live-runs',
-        label: 'Live Emergencies',
+        label: 'nav.liveEmergencies',
         icon: <MonitorHeartIcon />,
         requires: [Action.VIEW_LIVE_RUNS],
       },
       {
         to: '/event-reports',
-        label: 'Event Reports',
+        label: 'nav.eventReports',
         icon: <DescriptionIcon />,
         requires: [Action.VIEW_EVENT_REPORTS],
       },
       {
         to: '/schedules',
-        label: 'Schedules',
+        label: 'nav.schedules',
         icon: <EventNoteIcon />,
         requires: [Action.VIEW_SCHEDULES],
       },
       {
         to: '/availability-windows',
-        label: 'Availability Windows',
+        label: 'nav.availabilityWindows',
         icon: <DateRangeIcon />,
         requires: [Action.MANAGE_AVAILABILITY_WINDOWS, Action.VIEW_AVAILABILITY_MATRIX],
       },
     ],
   },
   {
-    label: 'People',
+    label: 'nav.people',
     entries: [
       {
         to: '/users',
-        label: 'Personnel',
+        label: 'nav.personnel',
         icon: <PeopleIcon />,
         requires: [Action.VIEW_USERS],
       },
     ],
   },
   {
-    label: 'Fleet',
+    label: 'nav.fleet',
     entries: [
       {
         to: '/vehicles',
-        label: 'Vehicles',
+        label: 'nav.vehicles',
         icon: <DirectionsCarIcon />,
         requires: [Action.VIEW_VEHICLES],
       },
       {
         to: '/inventory-templates',
-        label: 'Inventory Templates',
+        label: 'nav.inventoryTemplates',
         icon: <InventoryIcon />,
         requires: [Action.MANAGE_LOGISTICS],
       },
     ],
   },
   {
-    label: 'Configuration',
+    label: 'nav.configuration',
     entries: [
       {
         to: '/hospitals',
-        label: 'Hospitals',
+        label: 'nav.hospitals',
         icon: <LocalHospitalIcon />,
         requires: [Action.MANAGE_HOSPITALS],
       },
       {
         to: '/holidays',
-        label: 'Holidays',
+        label: 'nav.holidays',
         icon: <EventBusyIcon />,
         requires: [Action.MANAGE_HOLIDAYS],
       },

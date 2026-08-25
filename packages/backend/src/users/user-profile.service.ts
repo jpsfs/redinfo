@@ -64,6 +64,10 @@ export class UserProfileService {
         ...(dto.emergencyContactPhone !== undefined && {
           emergencyContactPhone: dto.emergencyContactPhone,
         }),
+        // Deliberately not in `SELF_AUDITED_FIELDS` below: a UI preference,
+        // not personnel data, so it does not belong in a record of who
+        // changed whose details.
+        ...(dto.locale !== undefined && { locale: dto.locale }),
       },
       select: PERSON_SELECT,
     });

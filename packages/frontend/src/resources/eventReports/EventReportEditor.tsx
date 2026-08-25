@@ -34,7 +34,8 @@ import {
 import { apiFetch } from '../../api';
 import { categoryColor } from '../../components/CategoryChip';
 import { useIsMobile } from '../../hooks/useIsMobile';
-import { problemLabel, reportTypeLabel, t, warningLabel } from '../../i18n/labels';
+import { Translate, problemLabel, reportTypeLabel, warningLabel } from '../../i18n/labels';
+import { useT } from '../../i18n/useT';
 import { uploadAttachment } from './uploadAttachment';
 import { StepId } from './reportDraft';
 import { EventReportDraft } from './useEventReportDraft';
@@ -57,7 +58,7 @@ import {
  * and one victim, a support report may have several, and the heading should say
  * so rather than reading "Vítima" above a list of four.
  */
-const stepTitle = (step: StepId, type: EventReportType | string): string => {
+const stepTitle = (t: Translate, step: StepId, type: EventReportType | string): string => {
   const rules = eventReportRules(type);
   switch (step) {
     case 'whenWhere':
@@ -96,6 +97,7 @@ export interface EventReportEditorProps {
  * difference is how much is on screen at once.
  */
 export const EventReportEditor = ({ form, report = null }: EventReportEditorProps) => {
+  const t = useT();
   const isMobile = useIsMobile();
   const notify = useNotify();
   const redirect = useRedirect();
@@ -252,7 +254,7 @@ export const EventReportEditor = ({ form, report = null }: EventReportEditorProp
     } finally {
       setSaving(false);
     }
-  }, [form, notify, pendingFiles, pendingVerbete, redirect, report]);
+  }, [form, notify, pendingFiles, pendingVerbete, redirect, report, t]);
 
   /**
    * Files the report, and says what it displaced.
@@ -286,7 +288,7 @@ export const EventReportEditor = ({ form, report = null }: EventReportEditorProp
     } finally {
       setFiling(false);
     }
-  }, [form.draft, notify, redirect, report]);
+  }, [form.draft, notify, redirect, report, t]);
 
   const sectionProps: SectionProps = {
     draft: form.draft,
@@ -340,8 +342,8 @@ export const EventReportEditor = ({ form, report = null }: EventReportEditorProp
   };
 
   const currentStepTitle = useMemo(
-    () => stepTitle(form.stepId, form.draft.type),
-    [form.stepId, form.draft.type],
+    () => stepTitle(t, form.stepId, form.draft.type),
+    [t, form.stepId, form.draft.type],
   );
 
   // ── Phone: one section at a time ──
@@ -351,7 +353,7 @@ export const EventReportEditor = ({ form, report = null }: EventReportEditorProp
         <AppBar position="sticky">
           <Toolbar>
             <Typography sx={{ flex: 1, fontWeight: 600 }}>
-              {reportTypeLabel(form.draft.type)}
+              {reportTypeLabel(t, form.draft.type)}
             </Typography>
             {form.savedAt && (
               <Chip
@@ -465,7 +467,7 @@ export const EventReportEditor = ({ form, report = null }: EventReportEditorProp
                   {t('field.type').toUpperCase()}
                 </Typography>
                 <Typography variant="h6" sx={{ color: categoryColor(form.draft.type) }}>
-                  {reportTypeLabel(form.draft.type)}
+                  {reportTypeLabel(t, form.draft.type)}
                 </Typography>
               </Box>
               <Divider orientation="vertical" flexItem />
@@ -494,7 +496,7 @@ export const EventReportEditor = ({ form, report = null }: EventReportEditorProp
               <Paper key={step} variant="outlined">
                 <Box sx={{ px: 2.5, py: 1.75, borderBottom: 1, borderColor: 'divider' }}>
                   <Typography sx={{ fontWeight: 700 }}>
-                    {stepTitle(step, form.draft.type)}
+                    {stepTitle(t, step, form.draft.type)}
                   </Typography>
                 </Box>
                 <Box sx={{ p: 2.5 }}>{renderStep(step)}</Box>
@@ -505,7 +507,7 @@ export const EventReportEditor = ({ form, report = null }: EventReportEditorProp
             <Alert severity="warning">
               <Stack spacing={0.25}>
                 {form.warnings.map((warning) => (
-                  <span key={warning}>{warningLabel(warning)}</span>
+                  <span key={warning}>{warningLabel(t, warning)}</span>
                 ))}
                 <strong>{t('hint.canSaveIncomplete')}</strong>
               </Stack>
@@ -531,7 +533,7 @@ export const EventReportEditor = ({ form, report = null }: EventReportEditorProp
       >
         {form.error ? (
           <Alert severity="warning" sx={{ py: 0 }}>
-            {problemLabel(form.error)}
+            {problemLabel(t, form.error)}
           </Alert>
         ) : (
           <Typography variant="body2" color="text.secondary">

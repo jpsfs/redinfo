@@ -1,8 +1,18 @@
 import { describe, expect, it } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { AdminContext, testDataProvider } from 'react-admin';
+import polyglotI18nProvider from 'ra-i18n-polyglot';
 import { UserRole } from '@redinfo/shared';
+import { messages } from '../i18n/i18nProvider';
 import { RedInfoMenu } from './AppLayout';
+
+/**
+ * Pinned to English: this file's assertions predate #180 and check the
+ * pre-translation strings, which are what `messagesFor('en')` still holds —
+ * see `i18n/labels.ts`. What is under test here is which routes a role sees,
+ * not which language they see them in.
+ */
+const i18nProvider = polyglotI18nProvider(messages, 'en');
 
 /**
  * `usePermissions` is async, so a synchronous `getAllByRole` would see the
@@ -24,7 +34,11 @@ async function renderMenuAs(role: UserRole | null): Promise<string[]> {
   };
 
   render(
-    <AdminContext dataProvider={testDataProvider()} authProvider={authProvider}>
+    <AdminContext
+      dataProvider={testDataProvider()}
+      authProvider={authProvider}
+      i18nProvider={i18nProvider}
+    >
       <RedInfoMenu />
     </AdminContext>,
   );

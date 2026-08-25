@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { AdminContext, testDataProvider } from 'react-admin';
+import polyglotI18nProvider from 'ra-i18n-polyglot';
 import { MemoryRouter } from 'react-router-dom';
 import {
   EventLocationType,
@@ -12,7 +13,13 @@ import {
 } from '@redinfo/shared';
 import { MyReportsPage } from './MyReportsPage';
 import { apiFetch } from '../api';
+import { messages } from '../i18n/i18nProvider';
 import { emptyDraft, saveDraft } from '../resources/eventReports/reportDraft';
+
+// Pinned to 'pt' rather than the app's own locale-detecting singleton: jsdom
+// reports `en-US`, which would otherwise render this page in English and
+// break every Portuguese assertion below.
+const i18nProvider = polyglotI18nProvider(messages, 'pt');
 
 vi.mock('../api', () => ({ apiFetch: vi.fn(), apiDownload: vi.fn() }));
 
@@ -73,7 +80,11 @@ function renderPage(as: UserRole = UserRole.EMERGENCY_OPERATIONAL) {
 
   render(
     <MemoryRouter>
-      <AdminContext dataProvider={testDataProvider()} authProvider={authProvider}>
+      <AdminContext
+        dataProvider={testDataProvider()}
+        authProvider={authProvider}
+        i18nProvider={i18nProvider}
+      >
         <MyReportsPage />
       </AdminContext>
     </MemoryRouter>,

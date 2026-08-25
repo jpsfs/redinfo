@@ -19,7 +19,8 @@ import {
   AbcdeStatus,
   AssessmentInput,
 } from '@redinfo/shared';
-import { abcdeStatusLabel, t, vitalLabel } from '../../i18n/labels';
+import { abcdeStatusLabel, vitalLabel } from '../../i18n/labels';
+import { useT } from '../../i18n/useT';
 import { VitalField, formatVital, isImplausible, isOutOfRange, parseVital } from './vitalsFields';
 
 /**
@@ -47,6 +48,7 @@ export const VitalControl = ({
   assessment: AssessmentInput;
   onChange: (changes: Partial<AssessmentInput>) => void;
 }) => {
+  const t = useT();
   const stored = assessment[field.key] ?? null;
   const [text, setText] = useState(() => formatVital(stored, field.decimals));
 
@@ -96,12 +98,12 @@ export const VitalControl = ({
         <Typography
           sx={{ fontWeight: 600, fontSize: '0.8125rem', color: 'text.secondary', mb: 0.5 }}
         >
-          {vitalLabel(field.key)}
+          {vitalLabel(t, field.key)}
         </Typography>
         <Stack direction="row" alignItems="center" spacing={1}>
           <IconButton
             onClick={() => step(-1)}
-            aria-label={`${vitalLabel(field.key)} −1`}
+            aria-label={`${vitalLabel(t, field.key)} −1`}
             sx={{ minWidth: 60, minHeight: 60, border: 1, borderColor: 'divider' }}
           >
             <RemoveIcon />
@@ -119,7 +121,7 @@ export const VitalControl = ({
           </Typography>
           <IconButton
             onClick={() => step(1)}
-            aria-label={`${vitalLabel(field.key)} +1`}
+            aria-label={`${vitalLabel(t, field.key)} +1`}
             sx={{ minWidth: 60, minHeight: 60, border: 1, borderColor: 'divider' }}
           >
             <AddIcon />
@@ -141,7 +143,7 @@ export const VitalControl = ({
         <Typography
           sx={{ fontWeight: 600, fontSize: '0.8125rem', color: 'text.secondary', mb: 0.75 }}
         >
-          {vitalLabel(field.key)}
+          {vitalLabel(t, field.key)}
         </Typography>
         <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
           {scale.map((score) => (
@@ -166,7 +168,7 @@ export const VitalControl = ({
   return (
     <TextField
       fullWidth
-      label={vitalLabel(field.key)}
+      label={vitalLabel(t, field.key)}
       value={text}
       onChange={(event) => write(event.target.value)}
       error={outOfRange}
@@ -175,7 +177,7 @@ export const VitalControl = ({
       }
       inputProps={{
         inputMode: field.inputMode,
-        'aria-label': vitalLabel(field.key),
+        'aria-label': vitalLabel(t, field.key),
         enterKeyHint: 'next',
       }}
       InputProps={{
@@ -206,6 +208,7 @@ export const AbcdeStatusPicker = ({
   /** A microphone, on the screens that have one. */
   noteAdornment?: (value: string, onChangeNote: (text: string) => void) => React.ReactNode;
 }) => {
+  const t = useT();
   const finding = findings[band];
   const note = finding?.note ?? '';
 
@@ -236,7 +239,7 @@ export const AbcdeStatusPicker = ({
       >
         {ABCDE_STATUSES.map((status) => (
           <ToggleButton key={status} value={status}>
-            {abcdeStatusLabel(status)}
+            {abcdeStatusLabel(t, status)}
           </ToggleButton>
         ))}
       </ToggleButtonGroup>

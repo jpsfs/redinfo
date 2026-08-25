@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AdminContext, testDataProvider } from 'react-admin';
+import polyglotI18nProvider from 'ra-i18n-polyglot';
 import { MemoryRouter } from 'react-router-dom';
 import {
   EventLocationType,
@@ -16,10 +17,16 @@ import { EventReportEditor } from './EventReportEditor';
 import { useEventReportDraft } from './useEventReportDraft';
 import { apiFetch } from '../../api';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { messages } from '../../i18n/i18nProvider';
 import { loadDraft, stepsForType } from './reportDraft';
 
 vi.mock('../../api', () => ({ apiFetch: vi.fn(), apiDownload: vi.fn() }));
 vi.mock('../../hooks/useIsMobile', () => ({ useIsMobile: vi.fn(() => true) }));
+
+// Pinned to 'pt' rather than the app's own locale-detecting singleton: jsdom
+// reports `en-US`, which would otherwise render this screen in English and
+// break every Portuguese assertion below.
+const i18nProvider = polyglotI18nProvider(messages, 'pt');
 
 const mockApiFetch = apiFetch as unknown as Mock;
 const mockUseIsMobile = useIsMobile as unknown as Mock;
@@ -138,7 +145,7 @@ function renderEditor({
   // own inside, and two nested routers is an error.
   render(
     <MemoryRouter>
-      <AdminContext dataProvider={testDataProvider()}>
+      <AdminContext dataProvider={testDataProvider()} i18nProvider={i18nProvider}>
         <Harness />
       </AdminContext>
     </MemoryRouter>,

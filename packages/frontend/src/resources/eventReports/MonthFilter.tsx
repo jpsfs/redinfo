@@ -5,7 +5,7 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import CloseIcon from '@mui/icons-material/Close';
 import { useListContext } from 'react-admin';
 import { addMonths, formatMonthLabel, isoMonth, monthEnd, monthStart, toIsoDate } from '../../utils/dates';
-import { t } from '../../i18n/labels';
+import { useT } from '../../i18n/useT';
 
 /**
  * Narrows the list to one calendar month, via the same `from`/`to` query
@@ -18,6 +18,7 @@ import { t } from '../../i18n/labels';
  * while unset starts from the current month.
  */
 export const MonthFilter = () => {
+  const t = useT();
   const { filterValues, setFilters, displayedFilters } = useListContext();
   const [month, setMonth] = useState<string | null>(null);
 
