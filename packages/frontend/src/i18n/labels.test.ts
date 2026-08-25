@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AvailabilityWindowCategory,
   BloodType,
   CertificationType,
   EVENT_LOCATION_TYPES,
@@ -8,10 +9,13 @@ import {
   EventReportWarningCode,
   GENDERS,
   OCCURRENCE_TIME_FIELDS,
+  UserRole,
   VictimDestinationKind,
 } from '@redinfo/shared';
 import englishMessages from 'ra-language-english';
 import {
+  accountRoleDescription,
+  accountRoleLabel,
   bloodTypeLabel,
   certificationLabel,
   destinationLabel,
@@ -25,6 +29,8 @@ import {
   roleLabel,
   Translate,
   warningLabel,
+  windowCategoryDescription,
+  windowCategoryLabel,
 } from './labels';
 import raPortugueseMessages from './ra-pt';
 
@@ -100,6 +106,24 @@ describe('every enum value has a label', () => {
   it('covers every blood type', () => {
     for (const type of Object.values(BloodType)) {
       expect(bloodTypeLabel(tPt, type)).not.toContain('bloodType.');
+    }
+  });
+
+  // #180 phase 2: moved out of `@redinfo/shared`'s `ROLE_METADATA`.
+  it('covers every account role, with both a label and a description', () => {
+    for (const role of Object.values(UserRole)) {
+      expect(accountRoleLabel(tPt, role)).not.toContain('accountRole.');
+      expect(accountRoleDescription(tPt, role)).not.toContain('accountRoleDescription.');
+    }
+  });
+
+  // #180 phase 2: the frontend's own translated keys, over
+  // `AVAILABILITY_WINDOW_CATEGORY_METADATA`'s English (kept in shared for the
+  // backend's still-English overlap-exception message).
+  it('covers every availability-window category, with both a label and a description', () => {
+    for (const category of Object.values(AvailabilityWindowCategory)) {
+      expect(windowCategoryLabel(tPt, category)).not.toContain('windowCategory.');
+      expect(windowCategoryDescription(tPt, category)).not.toContain('windowCategoryDescription.');
     }
   });
 

@@ -10,12 +10,9 @@ import {
   usePermissions,
 } from 'react-admin';
 import { Divider, Typography } from '@mui/material';
-import { Action, BLOOD_TYPE_LABEL, BloodType, ROLE_METADATA, UserRole, hasPermission } from '@redinfo/shared';
-
-const roleChoices = Object.values(UserRole).map((role) => ({
-  id: role,
-  name: ROLE_METADATA[role].displayName,
-}));
+import { Action, BLOOD_TYPE_LABEL, BloodType, UserRole, hasPermission } from '@redinfo/shared';
+import { accountRoleLabel } from '../../i18n/labels';
+import { useT } from '../../i18n/useT';
 
 const bloodTypeChoices = Object.values(BloodType).map((type) => ({
   id: type,
@@ -31,9 +28,14 @@ const bloodTypeChoices = Object.values(BloodType).map((type) => ({
  * or password.
  */
 export const UserEdit = () => {
+  const t = useT();
   const { permissions } = usePermissions<UserRole>();
   const canManageAccount = Boolean(permissions && hasPermission(permissions, Action.MANAGE_USERS));
   const canManagePersonnel = Boolean(permissions && hasPermission(permissions, Action.MANAGE_PERSONNEL));
+  const roleChoices = Object.values(UserRole).map((role) => ({
+    id: role,
+    name: accountRoleLabel(t, role),
+  }));
 
   return (
     <Edit>

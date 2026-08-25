@@ -147,20 +147,24 @@ describe('hasPermission', () => {
 });
 
 // ── ROLE_METADATA tests ───────────────────────────────────────────────────────
+//
+// `displayName`/`description` moved to the frontend catalogue in #180 phase
+// 2 (`accountRole.*`/`accountRoleDescription.*` in `i18n/labels.ts`, covered
+// by that file's own exhaustive-coverage test) — `domain` is the one field
+// that stays here, since it groups roles for permission logic rather than
+// for display.
 
 describe('ROLE_METADATA', () => {
-  it('every role has a displayName, description and domain', () => {
+  it('every role has a domain', () => {
     Object.values(UserRole).forEach((role) => {
       const meta = ROLE_METADATA[role as UserRole];
       expect(meta).toBeDefined();
-      expect(meta.displayName).toBeTruthy();
-      expect(meta.description).toBeTruthy();
       expect(meta.domain).toBeTruthy();
     });
   });
 
-  it('System Administrator display name is correct', () => {
-    expect(ROLE_METADATA[UserRole.SYSTEM_ADMIN].displayName).toBe('System Administrator');
+  it('the System Administrator role is in the system domain', () => {
+    expect(ROLE_METADATA[UserRole.SYSTEM_ADMIN].domain).toBe('system');
   });
 });
 

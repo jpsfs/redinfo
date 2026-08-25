@@ -17,9 +17,7 @@ import SaveIcon from '@mui/icons-material/Save';
 import {
   AVAILABILITY_WINDOW_CATEGORIES,
   AvailabilityWindowCategory,
-  availabilityWindowCategoryLabel,
   AvailabilityWindowOverlapsResponse,
-  AVAILABILITY_WINDOW_CATEGORY_METADATA,
   DayShiftPattern,
   defaultRolesForCategory,
   MAX_WINDOW_DAYS,
@@ -29,6 +27,8 @@ import {
   WindowRoleSpec,
 } from '@redinfo/shared';
 import { apiFetch } from '../../api';
+import { windowCategoryDescription, windowCategoryLabel } from '../../i18n/labels';
+import { useT } from '../../i18n/useT';
 import { addIsoDays, formatDateRange, isoDateRange, toIsoDate } from '../../utils/dates';
 import { DayShiftEditor, WindowDayDraft } from './DayShiftEditor';
 import { WindowRoleEditor } from './WindowRoleEditor';
@@ -81,6 +81,7 @@ const describeWindows = (
  * emergency window on the defaults, the list screen has the one-click shortcut.
  */
 export const AvailabilityWindowCreate = () => {
+  const t = useT();
   const notify = useNotify();
   const redirect = useRedirect();
   const [create, { isPending: saving }] = useCreate();
@@ -192,7 +193,7 @@ export const AvailabilityWindowCreate = () => {
     [days],
   );
 
-  const categoryLabel = availabilityWindowCategoryLabel(category);
+  const categoryLabel = windowCategoryLabel(t, category);
   const openOverlaps = overlaps?.open ?? [];
   const closedOverlaps = overlaps?.closed ?? [];
   const needsAcknowledgement = openOverlaps.length === 0 && closedOverlaps.length > 0;
@@ -280,13 +281,13 @@ export const AvailabilityWindowCreate = () => {
                 if (!rolesEdited) setRoles(defaultRolesForCategory(next));
               }}
               SelectProps={{ native: true, inputProps: { 'aria-label': 'Category' } }}
-              helperText={AVAILABILITY_WINDOW_CATEGORY_METADATA[category]?.description}
+              helperText={windowCategoryDescription(t, category)}
               InputLabelProps={{ shrink: true }}
               sx={{ minWidth: 200 }}
             >
               {AVAILABILITY_WINDOW_CATEGORIES.map((value) => (
                 <option key={value} value={value}>
-                  {availabilityWindowCategoryLabel(value)}
+                  {windowCategoryLabel(t, value)}
                 </option>
               ))}
             </TextField>

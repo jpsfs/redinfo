@@ -7,33 +7,24 @@ export enum UserRole {
   LOGISTICS_COORDINATOR = 'LOGISTICS_COORDINATOR',
 }
 
+/**
+ * `displayName`/`description` lived here until #180 phase 2 — removed rather
+ * than translated in place, because nothing needed an English fallback for
+ * them (unlike `AVAILABILITY_WINDOW_CATEGORY_METADATA`'s `label`, which the
+ * backend still builds an English exception message from). The frontend's
+ * own catalogue now owns both: `accountRole.<ROLE>` and
+ * `accountRoleDescription.<ROLE>` in `i18n/labels.ts`. `domain` stays here —
+ * it groups roles for permission logic, not for display.
+ */
 export interface RoleMetadata {
-  displayName: string;
-  description: string;
   domain: string;
 }
 
 export const ROLE_METADATA: Record<UserRole, RoleMetadata> = {
-  [UserRole.SYSTEM_ADMIN]: {
-    displayName: 'System Administrator',
-    description: 'Full access to all system resources and operations.',
-    domain: 'system',
-  },
-  [UserRole.EMERGENCY_OPERATIONAL]: {
-    displayName: 'Emergency Operational',
-    description: 'Performs emergency field operations; cannot manage configuration.',
-    domain: 'emergency',
-  },
-  [UserRole.EMERGENCY_COORDINATOR]: {
-    displayName: 'Emergency Coordinator',
-    description: 'Manages emergency-operation configuration and workflows.',
-    domain: 'emergency',
-  },
-  [UserRole.LOGISTICS_COORDINATOR]: {
-    displayName: 'Logistics Coordinator',
-    description: 'Manages logistics operations and configuration.',
-    domain: 'logistics',
-  },
+  [UserRole.SYSTEM_ADMIN]: { domain: 'system' },
+  [UserRole.EMERGENCY_OPERATIONAL]: { domain: 'emergency' },
+  [UserRole.EMERGENCY_COORDINATOR]: { domain: 'emergency' },
+  [UserRole.LOGISTICS_COORDINATOR]: { domain: 'logistics' },
 };
 
 // ─── Actions ─────────────────────────────────────────────────────────────────
@@ -2792,6 +2783,17 @@ export const OCCURRENCE_TIME_FIELDS = [
 
 export type OccurrenceTimeField = (typeof OCCURRENCE_TIME_FIELDS)[number];
 
+/**
+ * English on purpose, and it stays that way (#180 phase 2) — this only ever
+ * builds the English `EventReportProblem.message` for
+ * `TIMES_NOT_FOR_TYPE`/`INVALID_TIME`/`TIMES_OUT_OF_ORDER`, which is already
+ * fallback-only: the client translates by `problem.<code>` in
+ * `i18n/labels.ts`'s `problemLabel()`, keyed on `code`, not on this text.
+ * `i18n/labels.test.ts`'s exhaustive walk of `EventReportProblemCode` is what
+ * actually guarantees nothing here reaches a screen — every code that can
+ * embed this text has its own translated `problem.*` entry, so `problemLabel`
+ * never falls through to it.
+ */
 const OCCURRENCE_TIME_LABELS: Record<OccurrenceTimeField, string> = {
   activationAt: 'Activation',
   sceneArrivalAt: 'Arrival on scene',

@@ -17,17 +17,13 @@ import {
   Action,
   CERTIFICATION_LABEL,
   CERTIFICATION_TYPES,
-  ROLE_METADATA,
   User,
   UserRole,
   hasPermission,
 } from '@redinfo/shared';
 import { CertificationBadge } from '../../components/CertificationBadge';
-
-const roleChoices = Object.values(UserRole).map((role) => ({
-  id: role,
-  name: ROLE_METADATA[role].displayName,
-}));
+import { accountRoleLabel } from '../../i18n/labels';
+import { useT } from '../../i18n/useT';
 
 const readinessChoices = [
   { id: 'OPERATIONAL', name: 'Operational' },
@@ -47,25 +43,6 @@ const certificationStatusChoices = [
 const activeChoices = [
   { id: 'true', name: 'Active' },
   { id: 'false', name: 'Inactive' },
-];
-
-const userFilters = [
-  <SearchInput source="q" alwaysOn key="q" placeholder="Search name or number" />,
-  <SelectInput source="role" key="role" choices={roleChoices} />,
-  <SelectInput source="isActive" key="isActive" choices={activeChoices} label="Status" />,
-  <SelectInput source="readiness" key="readiness" choices={readinessChoices} label="Readiness" />,
-  <SelectInput
-    source="certification"
-    key="certification"
-    choices={certificationChoices}
-    label="Holds certification"
-  />,
-  <SelectInput
-    source="certificationStatus"
-    key="certificationStatus"
-    choices={certificationStatusChoices}
-    label="Certification status"
-  />,
 ];
 
 const ListActions = () => {
@@ -113,26 +90,52 @@ const CertificationsField = ({ record }: { record?: User }) => {
  * filterable by role, active status, and operational readiness — a derived
  * flag (valid TAT or TAS), not a column a coordinator sets directly.
  */
-export const UserList = () => (
-  <List filters={userFilters} actions={<ListActions />} perPage={25}>
-    <Datagrid rowClick="show" bulkActionButtons={false}>
-      <FunctionField
-        label="Name"
-        render={(record: User) => (
-          <Typography variant="body2" sx={{ fontWeight: 600 }}>
-            {record.firstName} {record.lastName}
-          </Typography>
-        )}
-      />
-      <ChipField source="role" />
-      <FunctionField label="Readiness" render={(record: User) => <ReadinessField record={record} />} />
-      <FunctionField
-        label="Certifications"
-        render={(record: User) => <CertificationsField record={record} />}
-      />
-      <BooleanField source="isActive" label="Active" />
-      <TextField source="redCrossNumber" label="CVP no." emptyText="—" />
-      <TextField source="volunteerNumber" label="Vol. no." emptyText="—" />
-    </Datagrid>
-  </List>
-);
+export const UserList = () => {
+  const t = useT();
+  const roleChoices = Object.values(UserRole).map((role) => ({
+    id: role,
+    name: accountRoleLabel(t, role),
+  }));
+  const userFilters = [
+    <SearchInput source="q" alwaysOn key="q" placeholder="Search name or number" />,
+    <SelectInput source="role" key="role" choices={roleChoices} />,
+    <SelectInput source="isActive" key="isActive" choices={activeChoices} label="Status" />,
+    <SelectInput source="readiness" key="readiness" choices={readinessChoices} label="Readiness" />,
+    <SelectInput
+      source="certification"
+      key="certification"
+      choices={certificationChoices}
+      label="Holds certification"
+    />,
+    <SelectInput
+      source="certificationStatus"
+      key="certificationStatus"
+      choices={certificationStatusChoices}
+      label="Certification status"
+    />,
+  ];
+
+  return (
+    <List filters={userFilters} actions={<ListActions />} perPage={25}>
+      <Datagrid rowClick="show" bulkActionButtons={false}>
+        <FunctionField
+          label="Name"
+          render={(record: User) => (
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>
+              {record.firstName} {record.lastName}
+            </Typography>
+          )}
+        />
+        <ChipField source="role" />
+        <FunctionField label="Readiness" render={(record: User) => <ReadinessField record={record} />} />
+        <FunctionField
+          label="Certifications"
+          render={(record: User) => <CertificationsField record={record} />}
+        />
+        <BooleanField source="isActive" label="Active" />
+        <TextField source="redCrossNumber" label="CVP no." emptyText="—" />
+        <TextField source="volunteerNumber" label="Vol. no." emptyText="—" />
+      </Datagrid>
+    </List>
+  );
+};

@@ -15,12 +15,13 @@ import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import {
   Action,
   AVAILABILITY_WINDOW_CATEGORIES,
-  availabilityWindowCategoryLabel,
   hasPermission,
   Schedule,
   ScheduleStatus,
   UserRole,
 } from '@redinfo/shared';
+import { windowCategoryLabel } from '../../i18n/labels';
+import { useT } from '../../i18n/useT';
 import { formatDateRange } from '../../utils/dates';
 import { WindowCategoryChip } from '../availability/WindowIdentity';
 import { CreateScheduleDialog } from './CreateScheduleDialog';
@@ -117,28 +118,6 @@ const ScheduleFlags = ({ schedule }: { schedule: Schedule }) => {
   );
 };
 
-const scheduleFilters = [
-  <SelectInput
-    key="category"
-    source="category"
-    label="Category"
-    alwaysOn
-    choices={AVAILABILITY_WINDOW_CATEGORIES.map((category) => ({
-      id: category,
-      name: availabilityWindowCategoryLabel(category),
-    }))}
-  />,
-  <SelectInput
-    key="status"
-    source="status"
-    label="Status"
-    choices={[
-      { id: ScheduleStatus.DRAFT, name: 'Draft' },
-      { id: ScheduleStatus.PUBLISHED, name: 'Published' },
-    ]}
-  />,
-];
-
 const actorName = (actor?: { firstName: string; lastName: string } | null) =>
   actor ? `${actor.firstName} ${actor.lastName}` : '—';
 
@@ -146,7 +125,32 @@ const actorName = (actor?: { firstName: string; lastName: string } | null) =>
  * Every schedule, newest first — which is also the history the ACs ask for:
  * one row per window, filterable by the window's category and by status.
  */
-export const ScheduleList = () => (
+export const ScheduleList = () => {
+  const t = useT();
+
+  const scheduleFilters = [
+    <SelectInput
+      key="category"
+      source="category"
+      label="Category"
+      alwaysOn
+      choices={AVAILABILITY_WINDOW_CATEGORIES.map((category) => ({
+        id: category,
+        name: windowCategoryLabel(t, category),
+      }))}
+    />,
+    <SelectInput
+      key="status"
+      source="status"
+      label="Status"
+      choices={[
+        { id: ScheduleStatus.DRAFT, name: 'Draft' },
+        { id: ScheduleStatus.PUBLISHED, name: 'Published' },
+      ]}
+    />,
+  ];
+
+  return (
   <List
     actions={<ScheduleListActions />}
     filters={scheduleFilters}
@@ -201,4 +205,5 @@ export const ScheduleList = () => (
       </Datagrid>
     </>
   </List>
-);
+  );
+};

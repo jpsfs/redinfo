@@ -2,7 +2,9 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AdminContext, Notification, testDataProvider } from 'react-admin';
+import polyglotI18nProvider from 'ra-i18n-polyglot';
 import { toMinuteOfDay } from '@redinfo/shared';
+import { messages } from '../i18n/i18nProvider';
 import { MyAvailabilityPage } from './MyAvailabilityPage';
 import { apiFetch } from '../api';
 import { useIsMobile } from '../hooks/useIsMobile';
@@ -59,10 +61,16 @@ function stubApi(
   );
 }
 
+// This screen has not gone through #180 phase 3 yet — it is still English by
+// convention, so a real i18nProvider is pinned to 'en' rather than left
+// unset (which would fall back to react-admin's own default translate, the
+// raw key — what `windowCategoryLabel` would otherwise render as).
+const i18nProvider = polyglotI18nProvider(messages, 'en');
+
 /** `Notification` is rendered so `useNotify` messages are assertable. */
 const renderPage = () =>
   render(
-    <AdminContext dataProvider={testDataProvider()}>
+    <AdminContext dataProvider={testDataProvider()} i18nProvider={i18nProvider}>
       <MyAvailabilityPage />
       <Notification />
     </AdminContext>,

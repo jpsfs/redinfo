@@ -25,11 +25,12 @@ import EventBusyIcon from '@mui/icons-material/EventBusy';
 import {
   AVAILABILITY_WINDOW_CATEGORIES,
   AvailabilityWindow,
-  availabilityWindowCategoryLabel,
   AvailabilityWindowStatus,
   Holiday,
 } from '@redinfo/shared';
 import { apiFetch } from '../../api';
+import { windowCategoryLabel } from '../../i18n/labels';
+import { useT } from '../../i18n/useT';
 import { formatDate, formatDateRange, toIsoDate } from '../../utils/dates';
 import { EmergencyWindowDialog } from './EmergencyWindowDialog';
 import { WindowCategoryChip } from './WindowIdentity';
@@ -129,36 +130,39 @@ const UpcomingHolidays = () => {
   );
 };
 
-/** Categories are independent rotas, so filtering by one is the common view. */
-const windowFilters = [
-  <SelectInput
-    key="category"
-    source="category"
-    label="Category"
-    alwaysOn
-    choices={AVAILABILITY_WINDOW_CATEGORIES.map((category) => ({
-      id: category,
-      name: availabilityWindowCategoryLabel(category),
-    }))}
-  />,
-  <SelectInput
-    key="status"
-    source="status"
-    label="Status"
-    choices={[
-      { id: AvailabilityWindowStatus.OPEN, name: 'Open' },
-      { id: AvailabilityWindowStatus.CLOSED, name: 'Closed' },
-    ]}
-  />,
-];
+export const AvailabilityWindowList = () => {
+  const t = useT();
 
-export const AvailabilityWindowList = () => (
-  <List
-    actions={<WindowListActions />}
-    filters={windowFilters}
-    sort={{ field: 'openedAt', order: 'DESC' }}
-    empty={false}
-  >
+  /** Categories are independent rotas, so filtering by one is the common view. */
+  const windowFilters = [
+    <SelectInput
+      key="category"
+      source="category"
+      label="Category"
+      alwaysOn
+      choices={AVAILABILITY_WINDOW_CATEGORIES.map((category) => ({
+        id: category,
+        name: windowCategoryLabel(t, category),
+      }))}
+    />,
+    <SelectInput
+      key="status"
+      source="status"
+      label="Status"
+      choices={[
+        { id: AvailabilityWindowStatus.OPEN, name: 'Open' },
+        { id: AvailabilityWindowStatus.CLOSED, name: 'Closed' },
+      ]}
+    />,
+  ];
+
+  return (
+    <List
+      actions={<WindowListActions />}
+      filters={windowFilters}
+      sort={{ field: 'openedAt', order: 'DESC' }}
+      empty={false}
+    >
     <>
       <UpcomingHolidays />
       <Alert severity="info" sx={{ mb: 2 }}>
@@ -197,4 +201,5 @@ export const AvailabilityWindowList = () => (
       </Datagrid>
     </>
   </List>
-);
+  );
+};

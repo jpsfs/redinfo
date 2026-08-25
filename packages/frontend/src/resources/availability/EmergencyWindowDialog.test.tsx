@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AdminContext, Notification, testDataProvider } from 'react-admin';
+import polyglotI18nProvider from 'ra-i18n-polyglot';
+import { messages } from '../../i18n/i18nProvider';
 import { defaultMonth, EmergencyWindowDialog } from './EmergencyWindowDialog';
 import {
   AvailabilityWindow,
@@ -21,10 +23,13 @@ const mockApiFetch = apiFetch as unknown as Mock;
 const DECEMBER = new Date('2026-12-14T10:00:00.000Z');
 const SEPTEMBER = new Date('2026-09-14T10:00:00.000Z');
 
+// This screen has not gone through #180 phase 3 yet — English by convention.
+const i18nProvider = polyglotI18nProvider(messages, 'en');
+
 function renderDialog(today = SEPTEMBER) {
   const onClose = vi.fn();
   render(
-    <AdminContext dataProvider={testDataProvider()}>
+    <AdminContext dataProvider={testDataProvider()} i18nProvider={i18nProvider}>
       <EmergencyWindowDialog open onClose={onClose} today={today} />
       <Notification />
     </AdminContext>,

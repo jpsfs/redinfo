@@ -9,12 +9,9 @@ import {
   minLength,
 } from 'react-admin';
 import { Divider, Typography } from '@mui/material';
-import { BLOOD_TYPE_LABEL, BloodType, ROLE_METADATA, UserRole } from '@redinfo/shared';
-
-const roleChoices = Object.values(UserRole).map((role) => ({
-  id: role,
-  name: ROLE_METADATA[role].displayName,
-}));
+import { BLOOD_TYPE_LABEL, BloodType, UserRole } from '@redinfo/shared';
+import { accountRoleLabel } from '../../i18n/labels';
+import { useT } from '../../i18n/useT';
 
 const bloodTypeChoices = Object.values(BloodType).map((type) => ({
   id: type,
@@ -27,7 +24,14 @@ const bloodTypeChoices = Object.values(BloodType).map((type) => ({
  * fields by permission. Certifications are added afterwards, from the
  * person's own record: driving is a certification, not a flag set here.
  */
-export const UserCreate = () => (
+export const UserCreate = () => {
+  const t = useT();
+  const roleChoices = Object.values(UserRole).map((role) => ({
+    id: role,
+    name: accountRoleLabel(t, role),
+  }));
+
+  return (
   <Create>
     <SimpleForm>
       <Typography variant="subtitle2">Account</Typography>
@@ -58,4 +62,5 @@ export const UserCreate = () => (
       <TextInput source="emergencyContactPhone" label="Emergency contact phone" />
     </SimpleForm>
   </Create>
-);
+  );
+};

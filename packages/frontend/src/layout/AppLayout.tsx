@@ -16,10 +16,10 @@ import {
 } from 'react-admin';
 import { Box, Divider, ListSubheader } from '@mui/material';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
-import { ROLE_METADATA, UserRole } from '@redinfo/shared';
 import { useCapabilities } from '../hooks/useCapabilities';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { PersonAvatar } from '../components/PersonAvatar';
+import { accountRoleLabel, Translate } from '../i18n/labels';
 import { useT } from '../i18n/useT';
 import { NAV_SECTIONS, NavEntry } from './navigation';
 import {
@@ -34,11 +34,11 @@ import {
  * `identity.role` is a `UserRole` account role (`SYSTEM_ADMIN`,
  * `EMERGENCY_COORDINATOR`, …) — a different vocabulary from `i18n/labels.ts`'s
  * `roleLabel`, which names a *shift* role ("Driver", "Team Leader"). Reuses
- * `ROLE_METADATA`, the same lookup `UserList`/`UserEdit`/`UserCreate` already
+ * `accountRoleLabel`, the same lookup `UserList`/`UserEdit`/`UserCreate` already
  * use for it, so this doesn't invent a second display name for the same enum.
  */
-const identityRoleLabel = (role?: string | null): string =>
-  (role && ROLE_METADATA[role as UserRole]?.displayName) || role || '';
+const identityRoleLabel = (t: Translate, role?: string | null): string =>
+  (role && accountRoleLabel(t, role)) || role || '';
 
 const RedInfoAppBar = () => (
   <AppBar userMenu={<RedInfoUserMenu />}>
@@ -163,6 +163,7 @@ const SectionSubheader = ({ label }: { label: string }) => (
 
 /** Identity block shown at the top of the drawer on mobile, where there is no app bar user menu in reach. */
 const MobileIdentityHeader = () => {
+  const t = useT();
   const { identity } = useGetIdentity();
   if (!identity) return null;
 
@@ -193,7 +194,7 @@ const MobileIdentityHeader = () => {
         <Box sx={{ fontWeight: 700, fontSize: '0.9375rem', lineHeight: 1.3 }}>
           {identity.fullName}
         </Box>
-        <Box sx={{ fontSize: fontSizeXSmall, opacity: 0.85 }}>{identityRoleLabel(identity.role)}</Box>
+        <Box sx={{ fontSize: fontSizeXSmall, opacity: 0.85 }}>{identityRoleLabel(t, identity.role)}</Box>
       </Box>
     </Box>
   );
@@ -263,6 +264,7 @@ const MyProfileMenuItem = () => {
  * design — they are account actions, not places to navigate to.
  */
 const RedInfoUserMenu = () => {
+  const t = useT();
   const { identity } = useGetIdentity();
   const initials = `${identity?.firstName?.[0] ?? ''}${identity?.lastName?.[0] ?? ''}`;
 
@@ -298,7 +300,7 @@ const RedInfoUserMenu = () => {
             <Box sx={{ minWidth: 0 }}>
               <Box sx={{ fontWeight: 600, fontSize: '0.9375rem' }}>{identity.fullName}</Box>
               <Box sx={{ fontSize: fontSizeXSmall, color: 'text.secondary' }}>
-                {identityRoleLabel(identity.role)}
+                {identityRoleLabel(t, identity.role)}
               </Box>
             </Box>
           </Box>

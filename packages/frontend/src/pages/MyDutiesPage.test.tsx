@@ -1,7 +1,10 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
+import { AdminContext, testDataProvider } from 'react-admin';
+import polyglotI18nProvider from 'ra-i18n-polyglot';
 import userEvent from '@testing-library/user-event';
 import { AvailabilityWindowCategory } from '@redinfo/shared';
+import { messages } from '../i18n/i18nProvider';
 import { MyDutiesPage } from './MyDutiesPage';
 import { apiFetch } from '../api';
 import { MY_DUTY } from '../test/fixtures';
@@ -17,6 +20,19 @@ vi.mock('react-admin', async (importOriginal) => ({
 
 const mockApiFetch = apiFetch as unknown as Mock;
 
+// This screen has not gone through #180 phase 3 yet — it is still English by
+// convention, so a real i18nProvider is pinned to 'en' rather than left
+// unset. Unset would fall back to react-admin's own default translate
+// (the raw key), which is what `windowCategoryLabel` (used to render a
+// duty's window category, e.g. "Emergency") would otherwise render as.
+const i18nProvider = polyglotI18nProvider(messages, 'en');
+const renderPage = () =>
+  render(
+    <AdminContext dataProvider={testDataProvider()} i18nProvider={i18nProvider}>
+      <MyDutiesPage />
+    </AdminContext>,
+  );
+
 describe('MyDutiesPage', () => {
   beforeEach(() => {
     mockApiFetch.mockReset();
@@ -24,7 +40,7 @@ describe('MyDutiesPage', () => {
   });
 
   it('reads the signed-in person own duties', async () => {
-    render(<MyDutiesPage />);
+    renderPage();
 
     await waitFor(() => expect(mockApiFetch).toHaveBeenCalledWith('/schedules/me'));
   });
@@ -33,7 +49,7 @@ describe('MyDutiesPage', () => {
   // view, labelled with the window it belongs to and with the role each person
   // is assigned to."
   it('labels a duty with its date, hours, role and window', async () => {
-    render(<MyDutiesPage />);
+    renderPage();
 
     expect(await screen.findByText('08:00–16:00')).toBeInTheDocument();
     expect(screen.getByText('Driver')).toBeInTheDocument();
@@ -46,7 +62,7 @@ describe('MyDutiesPage', () => {
   });
 
   it('says how many vehicles the shift crews', async () => {
-    render(<MyDutiesPage />);
+    renderPage();
 
     expect(await screen.findByText('2 vehicles')).toBeInTheDocument();
   });
@@ -63,7 +79,7 @@ describe('MyDutiesPage', () => {
       ],
       past: [],
     });
-    render(<MyDutiesPage />);
+    renderPage();
 
     expect(await screen.findByText('Rally Serra da Estrela')).toBeInTheDocument();
     expect(screen.queryByText('Driver')).not.toBeInTheDocument();
@@ -75,7 +91,7 @@ describe('MyDutiesPage', () => {
       upcoming: [],
       past: [{ ...MY_DUTY, id: 'old-1', date: '2026-09-05', label: '20:00–24:00' }],
     });
-    render(<MyDutiesPage />);
+    renderPage();
 
     expect(await screen.findByText('Past duties')).toBeInTheDocument();
     expect(screen.queryByText('20:00–24:00')).not.toBeInTheDocument();
@@ -87,14 +103,14 @@ describe('MyDutiesPage', () => {
 
   it('says so plainly when nothing is scheduled yet', async () => {
     mockApiFetch.mockResolvedValue({ upcoming: [], past: [] });
-    render(<MyDutiesPage />);
+    renderPage();
 
     expect(await screen.findByText(/No duties scheduled yet/)).toBeInTheDocument();
   });
 
   it('reports a failure to load', async () => {
     mockApiFetch.mockRejectedValue(new Error('Network unavailable'));
-    render(<MyDutiesPage />);
+    renderPage();
 
     expect(await screen.findByText('Network unavailable')).toBeInTheDocument();
   });

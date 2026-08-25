@@ -1,11 +1,31 @@
+import { ReactElement } from 'react';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { render as rtlRender, RenderOptions, screen, waitFor, within } from '@testing-library/react';
+import { AdminContext, testDataProvider } from 'react-admin';
+import polyglotI18nProvider from 'ra-i18n-polyglot';
 import userEvent from '@testing-library/user-event';
 import { AvailabilityWindowStatus, toMinuteOfDay } from '@redinfo/shared';
+import { messages } from '../../i18n/i18nProvider';
 import { AvailabilityMatrix } from './AvailabilityMatrix';
 import { apiDownload, apiFetch } from '../../api';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { ANA, BRUNO, CLOSED_WINDOW, matrixResponse } from '../../test/fixtures';
+
+// This screen has not gone through #180 phase 3 yet — it is still English by
+// convention, so every `render()` below is wrapped with an i18nProvider
+// pinned to 'en' rather than left unset (which would fall back to
+// react-admin's own default translate, the raw key — what
+// `windowCategoryLabel` would otherwise render as).
+const i18nProvider = polyglotI18nProvider(messages, 'en');
+const render = (ui: ReactElement, options?: Omit<RenderOptions, 'wrapper'>) =>
+  rtlRender(ui, {
+    wrapper: ({ children }) => (
+      <AdminContext dataProvider={testDataProvider()} i18nProvider={i18nProvider}>
+        {children}
+      </AdminContext>
+    ),
+    ...options,
+  });
 
 vi.mock('../../api', () => ({
   apiFetch: vi.fn(),

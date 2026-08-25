@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AdminContext, testDataProvider } from 'react-admin';
+import polyglotI18nProvider from 'ra-i18n-polyglot';
 import { MemoryRouter } from 'react-router-dom';
 import { AvailabilityWindowStatus, CertificationType, ScheduleStatus, UserRole } from '@redinfo/shared';
+import { messages } from '../../i18n/i18nProvider';
 import { ScheduleBoard } from './ScheduleBoard';
 import { apiDownload, apiFetch } from '../../api';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -54,6 +56,9 @@ const DRIVING_MEMBER = {
   },
 };
 
+// This screen has not gone through #180 phase 3 yet — English by convention.
+const i18nProvider = polyglotI18nProvider(messages, 'en');
+
 /**
  * The board reads who is looking at it from react-admin, so every render goes
  * through an AdminContext carrying that person's role and identity.
@@ -69,7 +74,7 @@ function renderBoard(as: { role: UserRole; identity: Record<string, unknown> } =
   };
   return render(
     <MemoryRouter>
-      <AdminContext dataProvider={testDataProvider()} authProvider={authProvider}>
+      <AdminContext dataProvider={testDataProvider()} authProvider={authProvider} i18nProvider={i18nProvider}>
         <ScheduleBoard scheduleId={SCHEDULE_ID} />
       </AdminContext>
     </MemoryRouter>,

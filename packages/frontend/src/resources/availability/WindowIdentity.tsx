@@ -2,12 +2,13 @@ import { Box, Chip, Tooltip, Typography } from '@mui/material';
 import BadgeIcon from '@mui/icons-material/Badge';
 import {
   AvailabilityWindowCategory,
-  availabilityWindowCategoryLabel,
   AvailabilityWindowRole,
   CERTIFICATION_LABEL,
   formatRoleCapacity,
 } from '@redinfo/shared';
 import { CategoryChip } from '../../components/CategoryChip';
+import { windowCategoryLabel } from '../../i18n/labels';
+import { useT } from '../../i18n/useT';
 
 /**
  * A rota's category, colored so it's recognisable before it's read.
@@ -25,11 +26,12 @@ export const WindowCategoryChip = ({
   category?: AvailabilityWindowCategory | string | null;
   size?: 'small' | 'medium';
 }) => {
+  const t = useT();
   if (!category) return null;
   return (
     <CategoryChip
       category={category}
-      label={availabilityWindowCategoryLabel(category)}
+      label={windowCategoryLabel(t, category)}
       size={size}
     />
   );

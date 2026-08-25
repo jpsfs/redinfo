@@ -1,10 +1,14 @@
 import type { Locale } from '@redinfo/shared';
 import {
+  AVAILABILITY_WINDOW_CATEGORY_METADATA,
+  AvailabilityWindowCategory,
+  availabilityWindowCategoryLabel,
   EventLocationType,
   EventReportProblem,
   EventReportType,
   EventReportWarningCode,
   Gender,
+  UserRole,
   VictimDestinationKind,
 } from '@redinfo/shared';
 
@@ -822,6 +826,68 @@ const ENUM_MESSAGES = {
   'bloodType.AB_NEG': { pt: 'AB-', en: 'AB-' },
   'bloodType.O_POS': { pt: 'O+', en: 'O+' },
   'bloodType.O_NEG': { pt: 'O-', en: 'O-' },
+
+  // ── Account roles (#180 phase 2) ──
+  // A different vocabulary from `role.*` above: this is `UserRole` (the
+  // account-level role — "System Administrator") not a shift post ("Driver").
+  // Moved out of `@redinfo/shared`'s `ROLE_METADATA`, which nothing else
+  // needed an English fallback for — see its doc comment.
+  [`accountRole.${UserRole.SYSTEM_ADMIN}`]: { pt: 'Administrador de Sistema', en: 'System Administrator' },
+  [`accountRole.${UserRole.EMERGENCY_OPERATIONAL}`]: {
+    pt: 'Operacional de Emergência',
+    en: 'Emergency Operational',
+  },
+  [`accountRole.${UserRole.EMERGENCY_COORDINATOR}`]: {
+    pt: 'Coordenador de Emergência',
+    en: 'Emergency Coordinator',
+  },
+  [`accountRole.${UserRole.LOGISTICS_COORDINATOR}`]: {
+    pt: 'Coordenador de Logística',
+    en: 'Logistics Coordinator',
+  },
+  [`accountRoleDescription.${UserRole.SYSTEM_ADMIN}`]: {
+    pt: 'Acesso total a todos os recursos e operações do sistema.',
+    en: 'Full access to all system resources and operations.',
+  },
+  [`accountRoleDescription.${UserRole.EMERGENCY_OPERATIONAL}`]: {
+    pt: 'Realiza operações de emergência no terreno; não gere configuração.',
+    en: 'Performs emergency field operations; cannot manage configuration.',
+  },
+  [`accountRoleDescription.${UserRole.EMERGENCY_COORDINATOR}`]: {
+    pt: 'Gere a configuração e os fluxos das operações de emergência.',
+    en: 'Manages emergency-operation configuration and workflows.',
+  },
+  [`accountRoleDescription.${UserRole.LOGISTICS_COORDINATOR}`]: {
+    pt: 'Gere as operações e a configuração de logística.',
+    en: 'Manages logistics operations and configuration.',
+  },
+
+  // ── Availability-window categories (#180 phase 2) ──
+  // `@redinfo/shared`'s `AVAILABILITY_WINDOW_CATEGORY_METADATA.label` stays
+  // English (the backend still builds an exception message from it, until
+  // #180 phase 4) — these are the frontend's own translated keys, with the
+  // shared English value as the fallback if one is ever missing.
+  [`windowCategory.${AvailabilityWindowCategory.EMERGENCY}`]: { pt: 'Emergência', en: 'Emergency' },
+  [`windowCategory.${AvailabilityWindowCategory.LOCAL_SUPPORT}`]: {
+    pt: 'Apoio Local',
+    en: 'Local Support',
+  },
+  [`windowCategory.${AvailabilityWindowCategory.SALOP_SUPPORT}`]: {
+    pt: 'Apoio SALOP',
+    en: 'SALOP Support',
+  },
+  [`windowCategoryDescription.${AvailabilityWindowCategory.EMERGENCY}`]: {
+    pt: 'Cobertura de resposta a emergências — a escala permanente de prevenção.',
+    en: 'Emergency response cover — the standing on-call rota.',
+  },
+  [`windowCategoryDescription.${AvailabilityWindowCategory.LOCAL_SUPPORT}`]: {
+    pt: 'Cobertura para eventos locais e pedidos de prevenção.',
+    en: 'Cover for local events and standby requests.',
+  },
+  [`windowCategoryDescription.${AvailabilityWindowCategory.SALOP_SUPPORT}`]: {
+    pt: 'Cobertura para operações SALOP.',
+    en: 'Cover for SALOP operations.',
+  },
 } as const;
 
 const ALL_MESSAGES: Record<string, { pt: string; en: string }> = {
@@ -909,3 +975,34 @@ export const certificationLabel = (t: Translate, type: string): string =>
   t(`certification.${type}`);
 
 export const bloodTypeLabel = (t: Translate, type: string): string => t(`bloodType.${type}`);
+
+/** The account role's display name — `UserRole`, not a shift post; see `roleLabel` for that. */
+export const accountRoleLabel = (t: Translate, role: UserRole | string): string =>
+  t(`accountRole.${role}`);
+
+export const accountRoleDescription = (t: Translate, role: UserRole | string): string =>
+  t(`accountRoleDescription.${role}`);
+
+/**
+ * A window category's display label, falling back to `@redinfo/shared`'s
+ * English `AVAILABILITY_WINDOW_CATEGORY_METADATA` if this catalogue is ever
+ * missing an entry — that shared English string is what the backend still
+ * builds an overlap exception message from (until #180 phase 4), so it is
+ * never removed, only preferred-over.
+ */
+export const windowCategoryLabel = (t: Translate, category: AvailabilityWindowCategory | string): string => {
+  const key = `windowCategory.${category}`;
+  return key in ALL_MESSAGES ? t(key) : availabilityWindowCategoryLabel(category);
+};
+
+export const windowCategoryDescription = (
+  t: Translate,
+  category: AvailabilityWindowCategory | string,
+): string => {
+  const key = `windowCategoryDescription.${category}`;
+  if (key in ALL_MESSAGES) return t(key);
+  return (
+    AVAILABILITY_WINDOW_CATEGORY_METADATA[category as AvailabilityWindowCategory]?.description ??
+    String(category)
+  );
+};
