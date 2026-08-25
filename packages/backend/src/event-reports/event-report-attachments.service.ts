@@ -13,7 +13,7 @@ import {
 } from '@redinfo/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { EventReportsService, RequestUser } from './event-reports.service';
-import { ATTACHMENT_STORAGE, AttachmentStorage } from './attachment-storage';
+import { ATTACHMENT_STORAGE, AttachmentStorage } from '../storage/attachment-storage';
 
 /** What a controller hands over, independent of how the file arrived. */
 export interface UploadedAttachment {

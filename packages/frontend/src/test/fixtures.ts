@@ -6,13 +6,13 @@ import {
   AvailabilityWindowCategory,
   AvailabilityWindowRole,
   AvailabilityWindowStatus,
+  CertificationType,
   coverageLevel,
   DayShiftPattern,
   DEFAULT_EMERGENCY_WINDOW_ROLES,
   defaultShiftsForDayType,
   MyAvailabilityResponse,
   MyDuty,
-  roleRequiresDriverCertification,
   Schedule,
   ScheduleAssignment,
   ScheduleBoardResponse,
@@ -36,14 +36,24 @@ export const WINDOW_END = '2026-10-05';
 export const HOLIDAY_DATE = '2026-10-05';
 export const HOLIDAY_NAME = 'Implantação da República';
 
-/** The default emergency crew, as the API returns it for a window. */
+/**
+ * The default emergency crew, as the API returns it for a window.
+ *
+ * Deliberately only the Driver post carries a requirement here, rather than
+ * the current `DEFAULT_EMERGENCY_WINDOW_ROLES` (which now also asks TAS/TAT of
+ * Team Leader/Team Member): most of this fixture's many consumers test
+ * assignment, override and self-signup mechanics unrelated to certifications,
+ * and giving every role a requirement would make every test fixture person
+ * need a matching certification just to be assignable. Tests that are
+ * specifically about certification requirements build their own role.
+ */
 export const EMERGENCY_ROLES: AvailabilityWindowRole[] = DEFAULT_EMERGENCY_WINDOW_ROLES.map(
   (role, index) => ({
     ...role,
     id: `role-${index + 1}`,
     windowId: 'win-1',
     order: index,
-    requiresDriverCertification: roleRequiresDriverCertification(role.name),
+    requiredCertification: role.name === 'Driver' ? CertificationType.DRIVER : null,
   }),
 );
 
@@ -234,7 +244,14 @@ export const DRAFT_SCHEDULE: Schedule = {
   publishedBy: null,
   publishedAt: null,
   updatedAt: '2026-09-20T09:00:00.000Z',
-  stats: { requiredSlots: 6, filledSlots: 3, shiftsWithGaps: 1, overrideCount: 1 },
+  stats: {
+    requiredSlots: 6,
+    filledSlots: 3,
+    shiftsWithGaps: 1,
+    overrideCount: 1,
+    certificationExceptionCount: 0,
+    lapsedCertificationCount: 0,
+  },
 };
 
 export function scheduleAssignment(
@@ -263,6 +280,7 @@ const person = (from: AvailabilityMatrixPerson): SchedulePerson => ({
   firstName: from.firstName,
   lastName: from.lastName,
   isDriver: from.isDriver,
+  certifications: from.isDriver ? [{ type: CertificationType.DRIVER, validUntil: null }] : [],
 });
 
 export const ANA_PERSON = person(ANA);
@@ -337,7 +355,14 @@ export function scheduleBoard(
       },
     ],
     conflicts: [],
-    stats: { requiredSlots: 6, filledSlots: 2, shiftsWithGaps: 2, overrideCount: 1 },
+    stats: {
+      requiredSlots: 6,
+      filledSlots: 2,
+      shiftsWithGaps: 2,
+      overrideCount: 1,
+      certificationExceptionCount: 0,
+      lapsedCertificationCount: 0,
+    },
     ...overrides,
   };
 }

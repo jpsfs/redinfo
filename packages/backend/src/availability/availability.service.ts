@@ -26,6 +26,7 @@ import {
   MyAvailabilityResponse,
   UserRole,
 } from '@redinfo/shared';
+import { CERT_HELD_SELECT, computeIsDriver, today } from '../users/certifications.util';
 
 /** The authenticated caller, as attached to the request by `JwtStrategy`. */
 export interface RequestUser {
@@ -37,7 +38,7 @@ const PERSON_SELECT = {
   id: true,
   firstName: true,
   lastName: true,
-  isDriver: true,
+  certifications: { select: CERT_HELD_SELECT },
 } as const;
 
 @Injectable()
@@ -281,8 +282,9 @@ export class AvailabilityService {
       orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
     });
     const personnelIds = personnel.map((person) => person.id);
+    const asOf = today();
     const driverIds = new Set(
-      personnel.filter((person) => person.isDriver).map((person) => person.id),
+      personnel.filter((person) => computeIsDriver(person.certifications, asOf)).map((person) => person.id),
     );
 
     const [calendar, submissions, declines] = await Promise.all([
@@ -344,7 +346,10 @@ export class AvailabilityService {
     }));
 
     const taggedPersonnel: AvailabilityMatrixPerson[] = personnel.map((person) => ({
-      ...person,
+      id: person.id,
+      firstName: person.firstName,
+      lastName: person.lastName,
+      isDriver: driverIds.has(person.id),
       responseStatus: submittedUserIds.has(person.id)
         ? 'submitted'
         : declinedUserIds.has(person.id)

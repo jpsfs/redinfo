@@ -12,6 +12,7 @@ import {
   AvailabilityWindow,
   AvailabilityWindowCategory,
   AvailabilityWindowStatus,
+  CertificationType,
   DEFAULT_VEHICLES_NEEDED,
   toMinuteOfDay,
   UserRole,
@@ -66,11 +67,14 @@ const LOCAL_WINDOW: AvailabilityWindow = {
   name: null,
 };
 
-const ANA = { id: 'u-ana', firstName: 'Ana', lastName: 'Silva', isDriver: true };
-const BRUNO = { id: 'u-bruno', firstName: 'Bruno', lastName: 'Costa', isDriver: true };
-const CARLA = { id: 'u-carla', firstName: 'Carla', lastName: 'Ferreira', isDriver: false };
-const RUI = { id: 'u-rui', firstName: 'Rui', lastName: 'Nunes', isDriver: false };
-const MARTA = { id: 'u-marta', firstName: 'Marta', lastName: 'Oliveira', isDriver: false };
+const driverCert = [{ type: CertificationType.DRIVER, validUntil: null }];
+const noCerts: Array<{ type: CertificationType; validUntil: string | null }> = [];
+
+const ANA = { id: 'u-ana', firstName: 'Ana', lastName: 'Silva', certifications: driverCert };
+const BRUNO = { id: 'u-bruno', firstName: 'Bruno', lastName: 'Costa', certifications: driverCert };
+const CARLA = { id: 'u-carla', firstName: 'Carla', lastName: 'Ferreira', certifications: noCerts };
+const RUI = { id: 'u-rui', firstName: 'Rui', lastName: 'Nunes', certifications: noCerts };
+const MARTA = { id: 'u-marta', firstName: 'Marta', lastName: 'Oliveira', certifications: noCerts };
 
 const ROSTER = [ANA, BRUNO, CARLA, MARTA, RUI];
 

@@ -321,14 +321,18 @@ describe('AvailabilityWindowCreate', () => {
     expect(screen.getByLabelText('Role 1 people')).toHaveValue(1);
   });
 
-  it('marks the Driver role as needing the certification', async () => {
+  it('pre-fills each Emergency default with its required certification', async () => {
     renderScreen();
     await setRange();
 
-    expect(screen.getByText('Driver certification')).toBeInTheDocument();
+    const selects = screen.getAllByRole('combobox', { name: /required certification/i });
+    expect(selects[0]).toHaveTextContent('Driver');
+    expect(selects[1]).toHaveTextContent('TAS');
+    expect(selects[2]).toHaveTextContent('TAT');
+    expect(screen.getAllByText("Coordinator's choice")).toHaveLength(3);
   });
 
-  it('saves the crew with the window', async () => {
+  it('saves the crew with the window, each with its required certification', async () => {
     const { create } = renderScreen();
     await setRange();
 
@@ -336,9 +340,9 @@ describe('AvailabilityWindowCreate', () => {
 
     await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
     expect(savedWindow(create).roles).toEqual([
-      { name: 'Driver', maxPeople: 1 },
-      { name: 'Team Leader', maxPeople: 1 },
-      { name: 'Team Member', maxPeople: 1 },
+      { name: 'Driver', maxPeople: 1, requiredCertification: 'DRIVER' },
+      { name: 'Team Leader', maxPeople: 1, requiredCertification: 'TAS' },
+      { name: 'Team Member', maxPeople: 1, requiredCertification: 'TAT' },
     ]);
   });
 
@@ -378,8 +382,10 @@ describe('AvailabilityWindowCreate', () => {
 
     await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
     expect(savedWindow(create).roles).toEqual([
-      { name: 'Driver', maxPeople: 1 },
-      { name: 'Team Leader', maxPeople: 1 },
+      { name: 'Driver', maxPeople: 1, requiredCertification: 'DRIVER' },
+      { name: 'Team Leader', maxPeople: 1, requiredCertification: 'TAS' },
+      // A freshly added role has no explicit choice — left unset, for the API
+      // to resolve the same way `toWindowRoles` does (shared).
       { name: 'Stretcher bearer', maxPeople: 0 },
     ]);
     expect(screen.getByText('unlimited')).toBeInTheDocument();

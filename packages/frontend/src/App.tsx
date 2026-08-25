@@ -44,6 +44,7 @@ import { LiveEntryPage, LiveRunGate, LiveRunPage } from './resources/liveRuns';
 import { MyAvailabilityPage } from './pages/MyAvailabilityPage';
 import { MyDutiesPage } from './pages/MyDutiesPage';
 import { MyReportsPage } from './pages/MyReportsPage';
+import { MyProfilePage } from './pages/MyProfilePage';
 import PeopleIcon from '@mui/icons-material/People';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import BuildIcon from '@mui/icons-material/Build';
@@ -116,6 +117,10 @@ export default function App() {
             operational reaches their own reports — and the form to file a new
             one — through here rather than the resource list. */}
         <Route path="/my-reports" element={<MyReportsPage />} />
+        {/* Everyone's own record — certifications (read-only, coordinator-
+            maintained) and the contact details they keep current themselves.
+            Placement here is provisional pending #181's navigation review. */}
+        <Route path="/my-profile" element={<MyProfilePage />} />
       </CustomRoutes>
 
       <Resource

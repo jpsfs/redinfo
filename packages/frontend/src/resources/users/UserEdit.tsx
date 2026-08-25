@@ -1,35 +1,82 @@
 import {
+  BooleanInput,
   Edit,
+  PasswordInput,
+  SelectInput,
   SimpleForm,
   TextInput,
-  SelectInput,
-  BooleanInput,
-  PasswordInput,
-  required,
   email,
+  required,
+  usePermissions,
 } from 'react-admin';
+import { Divider, Typography } from '@mui/material';
+import { Action, BLOOD_TYPE_LABEL, BloodType, ROLE_METADATA, UserRole, hasPermission } from '@redinfo/shared';
 
-const roleChoices = [
-  { id: 'SYSTEM_ADMIN', name: 'System Administrator' },
-  { id: 'EMERGENCY_OPERATIONAL', name: 'Emergency Operational' },
-  { id: 'EMERGENCY_COORDINATOR', name: 'Emergency Coordinator' },
-  { id: 'LOGISTICS_COORDINATOR', name: 'Logistics Coordinator' },
-];
+const roleChoices = Object.values(UserRole).map((role) => ({
+  id: role,
+  name: ROLE_METADATA[role].displayName,
+}));
 
-export const UserEdit = () => (
-  <Edit>
-    <SimpleForm>
-      <TextInput source="firstName" label="First Name" validate={required()} />
-      <TextInput source="lastName" label="Last Name" validate={required()} />
-      <TextInput source="email" validate={[required(), email()]} />
-      <SelectInput source="role" choices={roleChoices} validate={required()} />
-      <PasswordInput source="password" label="New Password (leave blank to keep)" />
-      <BooleanInput source="isActive" label="Active" />
-      <BooleanInput
-        source="isDriver"
-        label="Certified driver"
-        helperText="A scheduled shift always needs at least one driver."
-      />
-    </SimpleForm>
-  </Edit>
-);
+const bloodTypeChoices = Object.values(BloodType).map((type) => ({
+  id: type,
+  name: BLOOD_TYPE_LABEL[type],
+}));
+
+/**
+ * One PATCH endpoint serves both an admin and a coordinator — the API enforces
+ * which fields each may change (`MANAGE_USERS` for account fields,
+ * `MANAGE_PERSONNEL` for everything else), and this form matches that by only
+ * rendering the fields the viewer may submit. A field never rendered is never
+ * part of the submission, so a coordinator's save never touches email, role
+ * or password.
+ */
+export const UserEdit = () => {
+  const { permissions } = usePermissions<UserRole>();
+  const canManageAccount = Boolean(permissions && hasPermission(permissions, Action.MANAGE_USERS));
+  const canManagePersonnel = Boolean(permissions && hasPermission(permissions, Action.MANAGE_PERSONNEL));
+
+  return (
+    <Edit>
+      <SimpleForm>
+        <Typography variant="subtitle2">Account</Typography>
+        <TextInput source="firstName" label="First Name" validate={required()} />
+        <TextInput source="lastName" label="Last Name" validate={required()} />
+        {canManageAccount ? (
+          <>
+            <TextInput source="email" validate={[required(), email()]} />
+            <SelectInput source="role" choices={roleChoices} validate={required()} />
+            <PasswordInput source="password" label="New Password (leave blank to keep)" />
+          </>
+        ) : (
+          <Typography variant="caption" color="text.secondary">
+            Email, role and password are administrator-only. Ask an admin to change them.
+          </Typography>
+        )}
+
+        {canManagePersonnel && (
+          <>
+            <Divider sx={{ width: '100%', my: 2 }} />
+            <Typography variant="subtitle2">Personnel</Typography>
+            <BooleanInput source="isActive" label="Active" />
+            <TextInput source="phone" label="Phone" />
+            <TextInput source="birthDate" label="Date of birth" type="date" InputLabelProps={{ shrink: true }} />
+            <TextInput source="joinedOn" label="Joined on" type="date" InputLabelProps={{ shrink: true }} />
+            <TextInput source="addressLine" label="Address" />
+            <TextInput source="postalCode" label="Postal code" />
+            <TextInput source="redCrossNumber" label="Red Cross national no." />
+            <TextInput
+              source="volunteerNumber"
+              label="Volunteer no."
+              helperText="Optional, manually assigned."
+            />
+            <TextInput source="nif" label="NIF" />
+            <TextInput source="citizenCardNumber" label="Citizen card" />
+            <SelectInput source="bloodType" choices={bloodTypeChoices} label="Blood type" />
+            <TextInput source="emergencyContactName" label="Emergency contact name" />
+            <TextInput source="emergencyContactPhone" label="Emergency contact phone" />
+          </>
+        )}
+      </SimpleForm>
+    </Edit>
+  );
+};

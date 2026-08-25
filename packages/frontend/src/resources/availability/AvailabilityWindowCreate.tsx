@@ -217,8 +217,14 @@ export const AvailabilityWindowCreate = () => {
           category,
           name: name.trim() || undefined,
           // Sent even when empty: an empty list means "no roles", which is not
-          // the same request as "give me the category defaults".
-          roles: roles.map((role) => ({ name: role.name.trim(), maxPeople: role.maxPeople })),
+          // the same request as "give me the category defaults". Includes
+          // requiredCertification as the editor left it — undefined (take the
+          // name-derived suggestion), null (deliberately none), or a type.
+          roles: roles.map((role) => ({
+            name: role.name.trim(),
+            maxPeople: role.maxPeople,
+            requiredCertification: role.requiredCertification,
+          })),
           acknowledgeOverlap: acknowledged || undefined,
           days: days.map((day) => ({ date: day.date, shifts: day.shifts })),
         },

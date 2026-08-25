@@ -68,17 +68,25 @@ describeIntegration('Schedules module (integration)', () => {
     role: UserRole,
     options: { isDriver?: boolean; isActive?: boolean } = {},
   ) {
-    return prisma.user.create({
+    const user = await prisma.user.create({
       data: {
         email: email(`${firstName}.${lastName}`.toLowerCase()),
         firstName,
         lastName,
         role,
-        isDriver: options.isDriver ?? false,
         isActive: options.isActive ?? true,
       },
       select: { id: true },
     });
+    // isDriver is no longer a column — a certified driver is someone who
+    // holds a DRIVER certification. Self-attributed: there is no coordinator
+    // actor in these fixtures, same as the isDriver migration's backfill.
+    if (options.isDriver) {
+      await prisma.userCertification.create({
+        data: { userId: user.id, type: 'DRIVER', validUntil: null, createdById: user.id },
+      });
+    }
+    return user;
   }
 
   /**
@@ -96,6 +104,23 @@ describeIntegration('Schedules module (integration)', () => {
         category,
         name,
         acknowledgeOverlap: true,
+        // Explicit for EMERGENCY, rather than the category defaults (which
+        // now also require TAS/TAT on Team Leader/Team Member): this suite's
+        // fixture users hold no certifications beyond DRIVER, and most of its
+        // tests are about assignment/override/headcount mechanics unrelated
+        // to certifications — only the Driver post should be a bar here,
+        // exactly as before certifications generalised beyond it. Other
+        // categories keep taking their default (none), which some tests here
+        // rely on explicitly.
+        ...(category === EMERGENCY
+          ? {
+              roles: [
+                { name: 'Driver', maxPeople: 1 },
+                { name: 'Team Leader', maxPeople: 1 },
+                { name: 'Team Member', maxPeople: 1 },
+              ],
+            }
+          : {}),
         days: [
           {
             date: START,
@@ -378,7 +403,11 @@ describeIntegration('Schedules module (integration)', () => {
     expect(candidates.others.map((person) => person.id)).not.toContain(logistics.id);
   });
 
-  it('integration: leaves uncertified people out of the Driver role entirely', async () => {
+  // Reversed from the old "driver is a bar" behaviour (ADO #163): every
+  // requirement is now overridable, so the picker lists everyone eligible by
+  // role — certified or not — and the assign dialog flags the ones who lack
+  // the post's requirement rather than hiding them.
+  it('integration: lists uncertified people for the Driver role too, rather than excluding them', async () => {
     const window = await openWindow();
     const schedule = await schedules.create({ windowId: window.id }, coordinator.id);
 
@@ -392,10 +421,14 @@ describeIntegration('Schedules module (integration)', () => {
     // Asserted by membership, not by an exact set: the roster is every active
     // field member in the database, which other suites also add to.
     const everyone = [...candidates.available, ...candidates.others].map((p) => p.id);
-    expect(everyone).toEqual(expect.arrayContaining([ana.id, bruno.id]));
-    expect(everyone).not.toContain(carla.id);
-    expect(everyone).not.toContain(rui.id);
+    expect(everyone).toEqual(expect.arrayContaining([ana.id, bruno.id, carla.id, rui.id]));
     expect(everyone.every((id) => id !== logistics.id)).toBe(true);
+
+    const carlaCandidate = [...candidates.available, ...candidates.others].find(
+      (p) => p.id === carla.id,
+    );
+    expect(carlaCandidate?.isDriver).toBe(false);
+    expect(carlaCandidate?.certifications).toEqual([]);
   });
 
   // ── Across windows ───────────────────────────────────────────────────────────

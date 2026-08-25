@@ -13,6 +13,7 @@ import {
   availabilityWindowLabel,
   DayShiftPattern,
   formatShiftLabel,
+  holdsCertification,
   MyDutiesResponse,
   MyDuty,
   Schedule,
@@ -36,6 +37,14 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ShiftScheduleService } from '../availability/shift-schedule.service';
 import { serializeWindow } from '../availability/availability-windows.service';
 import { toIsoDate } from '../utils/date.util';
+import {
+  CERT_HELD_SELECT,
+  HeldCertificationRow,
+  computeIsDriver,
+  today,
+  toHeldCertifications,
+  toSchedulePerson,
+} from '../users/certifications.util';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
 
 const ACTOR_SELECT = { select: { id: true, firstName: true, lastName: true } };
@@ -53,7 +62,7 @@ const SCHEDULE_INCLUDE = {
 } as const;
 
 const ASSIGNMENT_INCLUDE = {
-  user: { select: { id: true, firstName: true, lastName: true, isDriver: true } },
+  user: { select: { id: true, firstName: true, lastName: true, certifications: { select: CERT_HELD_SELECT } } },
   role: true,
   assignedBy: ACTOR_SELECT,
 } as const;
@@ -331,7 +340,7 @@ export class SchedulesService {
       roles: context.roles,
       days,
       conflicts: await this.detectConflicts(context, days),
-      stats: scheduleFillStats(days, context.roles),
+      stats: scheduleFillStats(days, context.roles, today()),
     };
   }
 
@@ -602,10 +611,12 @@ export class SchedulesService {
           // Both needed to tell a coordinator's override from a self-signup.
           userId: true,
           assignedById: true,
-          user: { select: { isDriver: true } },
+          certificationOverrideReason: true,
+          user: { select: { certifications: { select: CERT_HELD_SELECT } } },
         },
       }),
     ]);
+    const asOf = today();
 
     const shiftsByWindow = new Map<string, Array<{ key: string; vehiclesNeeded: number }>>();
     for (const shift of shiftRows) {
@@ -660,9 +671,29 @@ export class SchedulesService {
         const gaps = shiftGaps({
           vehiclesNeeded: shift.vehiclesNeeded,
           roles,
-          assignments: onShift,
+          assignments: onShift.map((assignment) => ({
+            roleId: assignment.roleId,
+            user: { isDriver: computeIsDriver(assignment.user.certifications) },
+          })),
         });
         if (gaps.length > 0) shiftsWithGaps += 1;
+      }
+
+      const roleById = new Map(roles.map((role) => [role.id, role]));
+      let certificationExceptionCount = 0;
+      let lapsedCertificationCount = 0;
+      for (const assignment of assignments) {
+        if (assignment.certificationOverrideReason) {
+          certificationExceptionCount += 1;
+          continue;
+        }
+        const role = assignment.roleId ? roleById.get(assignment.roleId) : undefined;
+        if (
+          role?.requiredCertification &&
+          !holdsCertification(toHeldCertifications(assignment.user.certifications), role.requiredCertification, asOf)
+        ) {
+          lapsedCertificationCount += 1;
+        }
       }
 
       stats.set(row.id, {
@@ -673,6 +704,8 @@ export class SchedulesService {
           (assignment) =>
             assignment.isOverride && assignment.assignedById !== assignment.userId,
         ).length,
+        certificationExceptionCount,
+        lapsedCertificationCount,
       });
     }
 
@@ -736,10 +769,11 @@ export function serializeAssignment(
     scheduleId: string;
     slot: number;
     userId: string;
-    user: { id: string; firstName: string; lastName: string; isDriver: boolean };
+    user: { id: string; firstName: string; lastName: string; certifications: HeldCertificationRow[] };
     roleId: string | null;
     role?: { name: string } | null;
     isOverride: boolean;
+    certificationOverrideReason?: string | null;
     assignedById: string;
     assignedBy?: { id: string; firstName: string; lastName: string } | null;
     assignedAt: Date;
@@ -753,10 +787,11 @@ export function serializeAssignment(
     date,
     slot: row.slot,
     userId: row.userId,
-    user: row.user,
+    user: toSchedulePerson(row.user),
     roleId: row.roleId,
     roleName: row.role?.name ?? null,
     isOverride: row.isOverride,
+    certificationOverrideReason: row.certificationOverrideReason ?? null,
     // Derived, not stored: an override is something done *to* someone, so
     // a volunteer who put themselves forward must not read as one.
     selfAssigned: row.assignedById === row.userId,

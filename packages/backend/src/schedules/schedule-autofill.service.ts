@@ -3,21 +3,19 @@ import {
   AutofillReport,
   AvailabilityWindowRole,
   availabilityEligibleRoles,
+  holdsCertification,
   requiredSlotsForShift,
+  SchedulePerson,
   shiftsOverlap,
   UNLIMITED_ROLE_PEOPLE,
 } from '@redinfo/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { toIsoDate } from '../utils/date.util';
+import { CERT_HELD_SELECT, today, toSchedulePerson } from '../users/certifications.util';
 import { AutofillScheduleDto } from './dto/autofill-schedule.dto';
 import { SchedulesService, shiftKey } from './schedules.service';
 
-interface Person {
-  id: string;
-  firstName: string;
-  lastName: string;
-  isDriver: boolean;
-}
+type Person = SchedulePerson;
 
 interface PlannedAssignment {
   date: string;
@@ -58,10 +56,11 @@ export class ScheduleAutofillService {
       await this.prisma.scheduleAssignment.deleteMany({ where: { scheduleId } });
     }
 
-    const [roster, submissions, existing] = await Promise.all([
+    const asOf = today();
+    const [rosterRows, submissions, existing] = await Promise.all([
       this.prisma.user.findMany({
         where: { isActive: true, role: { in: availabilityEligibleRoles() as never[] } },
-        select: { id: true, firstName: true, lastName: true, isDriver: true },
+        select: { id: true, firstName: true, lastName: true, certifications: { select: CERT_HELD_SELECT } },
       }),
       this.prisma.availabilitySubmission.findMany({
         where: { windowId: context.window.id },
@@ -75,6 +74,7 @@ export class ScheduleAutofillService {
           }),
     ]);
 
+    const roster = rosterRows.map((row) => toSchedulePerson(row, asOf));
     const people = new Map(roster.map((person) => [person.id, person]));
 
     /** Who submitted for each shift, as `date#slot` → userIds. */
@@ -127,6 +127,7 @@ export class ScheduleAutofillService {
               context,
               dutyCount,
               fairness,
+              asOf,
               driversStillNeeded:
                 shift.vehiclesNeeded - onShift.filter((a) => people.get(a.userId)?.isDriver).length,
             });
@@ -206,6 +207,7 @@ export class ScheduleAutofillService {
     context,
     dutyCount,
     fairness,
+    asOf,
     driversStillNeeded,
   }: {
     candidates: Person[];
@@ -217,13 +219,18 @@ export class ScheduleAutofillService {
     context: { shifts: Map<string, { startMinute: number; endMinute: number; slot: number }> };
     dutyCount: Map<string, number>;
     fairness: boolean;
+    asOf: string;
     driversStillNeeded: number;
   }): Person | null {
     const taken = new Set(onShift.map((entry) => entry.userId));
 
+    // Autofill never overrides — a person missing the post's requirement is
+    // simply not a candidate for it, unlike a coordinator assigning by hand.
     const eligible = candidates.filter((person) => {
       if (taken.has(person.id)) return false;
-      if (role?.requiresDriverCertification && !person.isDriver) return false;
+      if (role?.requiredCertification && !holdsCertification(person.certifications, role.requiredCertification, asOf)) {
+        return false;
+      }
       return !this.overlapsExisting(person.id, day, shift, occupancy, context);
     });
     if (eligible.length === 0) return null;

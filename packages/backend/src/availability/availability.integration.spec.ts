@@ -83,17 +83,25 @@ describeIntegration('Availability module (integration)', () => {
     role: UserRole,
     options: { isDriver?: boolean; isActive?: boolean } = {},
   ) {
-    return prisma.user.create({
+    const user = await prisma.user.create({
       data: {
         email: email(`${firstName}.${lastName}`.toLowerCase()),
         firstName,
         lastName,
         role,
-        isDriver: options.isDriver ?? false,
         isActive: options.isActive ?? true,
       },
       select: { id: true },
     });
+    // isDriver is no longer a column — a certified driver is someone who
+    // holds a DRIVER certification. Self-attributed: there is no coordinator
+    // actor in these fixtures, same as the isDriver migration's backfill.
+    if (options.isDriver) {
+      await prisma.userCertification.create({
+        data: { userId: user.id, type: 'DRIVER', validUntil: null, createdById: user.id },
+      });
+    }
+    return user;
   }
 
   /**
@@ -671,19 +679,19 @@ describeIntegration('Availability module (integration)', () => {
         orderBy: { order: 'asc' },
       });
 
-    it('gives an Emergency window the default crew, with the driver flagged', async () => {
+    it('gives an Emergency window the default crew, each with its required certification', async () => {
       const window = await openWithRoles(EMERGENCY);
 
       expect(
         (await storedRoles(window.id)).map((role) => [
           role.name,
           role.maxPeople,
-          role.requiresDriverCertification,
+          role.requiredCertification,
         ]),
       ).toEqual([
-        ['Driver', 1, true],
-        ['Team Leader', 1, false],
-        ['Team Member', 1, false],
+        ['Driver', 1, 'DRIVER'],
+        ['Team Leader', 1, 'TAS'],
+        ['Team Member', 1, 'TAT'],
       ]);
       expect(window.roles?.map((role) => role.name)).toEqual([
         'Driver',
@@ -709,13 +717,13 @@ describeIntegration('Availability module (integration)', () => {
         expect.objectContaining({
           name: 'Driver',
           maxPeople: 2,
-          requiresDriverCertification: true,
+          requiredCertification: 'DRIVER',
           order: 0,
         }),
         expect.objectContaining({
           name: 'Stretcher bearer',
           maxPeople: 0,
-          requiresDriverCertification: false,
+          requiredCertification: null,
           order: 1,
         }),
       ]);

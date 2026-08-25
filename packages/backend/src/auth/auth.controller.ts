@@ -31,7 +31,7 @@ export class AuthController {
   @UseGuards(LocalAuthGuard)
   @ApiBody({ type: LoginDto })
   async login(@Req() req: any) {
-    return this.authService.login(req.user as User);
+    return this.authService.login((req.user as User).id);
   }
 
   // ── Refresh ─────────────────────────────────────────────────────────────────
@@ -72,7 +72,7 @@ export class AuthController {
   @ApiExcludeEndpoint()
   @UseGuards(AuthGuard('google'))
   async googleCallback(@Req() req: any, @Res() res: any) {
-    const tokens = await this.authService.login(req.user as User);
+    const tokens = await this.authService.login((req.user as User).id);
     const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:5173';
     res.redirect(
       `${frontendUrl}/auth/callback?accessToken=${tokens.accessToken}&refreshToken=${tokens.refreshToken}`,
@@ -92,7 +92,7 @@ export class AuthController {
   @ApiExcludeEndpoint()
   @UseGuards(AuthGuard('microsoft'))
   async microsoftCallback(@Req() req: any, @Res() res: any) {
-    const tokens = await this.authService.login(req.user as User);
+    const tokens = await this.authService.login((req.user as User).id);
     const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:5173';
     res.redirect(
       `${frontendUrl}/auth/callback?accessToken=${tokens.accessToken}&refreshToken=${tokens.refreshToken}`,

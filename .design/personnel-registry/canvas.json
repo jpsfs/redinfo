@@ -1,0 +1,51 @@
+{
+  "pages": [
+    { "id": "page-1", "name": "Registry & profile" },
+    { "id": "page-2", "name": "Scheduling impact" }
+  ],
+  "artboards": [
+    { "file": "Main.dc.html", "title": "Personnel registry · desktop", "page": "page-1", "x": 0, "y": 0, "w": 1280, "h": 920 },
+    { "file": "RegistryMobile.dc.html", "title": "Personnel registry · mobile", "page": "page-1", "x": 1360, "y": 0, "w": 390, "h": 860 },
+    { "file": "CertificationDialog.dc.html", "title": "Add / edit certification", "page": "page-1", "x": 1840, "y": 0, "w": 680, "h": 620 },
+    { "file": "PersonDetail.dc.html", "title": "Person detail · coordinator", "page": "page-1", "x": 0, "y": 1000, "w": 1280, "h": 1140 },
+    { "file": "MyProfile.dc.html", "title": "O meu perfil · crew", "page": "page-1", "x": 1360, "y": 1000, "w": 390, "h": 1180 },
+    { "file": "RoleEditor.dc.html", "title": "Window roles · required certification", "page": "page-2", "x": 0, "y": 0, "w": 880, "h": 560 },
+    { "file": "ScheduleBoardWarnings.dc.html", "title": "Schedule board · warnings", "page": "page-2", "x": 0, "y": 640, "w": 1280, "h": 820 },
+    { "file": "AssignOverride.dc.html", "title": "Assign · override with reason", "page": "page-2", "x": 1360, "y": 0, "w": 760, "h": 1010 }
+  ],
+  "annotations": [
+    {
+      "id": "note-brief",
+      "page": "page-1",
+      "x": -340,
+      "y": 0,
+      "w": 300,
+      "text": "ADO #163 — Personnel registry\n\nToday the whole personnel model is: email, name, role, isActive, isDriver. No phone, no address, no photo, no numbers, no profile screen, and no certification concept at all.\n\nThese artboards add: profile data, four certifications (Driver / SBV / TAT / TAS) with expiry dates and scanned certificates, and a derived readiness flag.\n\nDesk screens stay English; crew screens stay Portuguese — the app's existing rule. Full PT/EN for every screen is ADO #180."
+    },
+    {
+      "id": "note-implied",
+      "page": "page-1",
+      "x": 1840,
+      "y": 700,
+      "w": 300,
+      "text": "Held vs granted\n\nOnly certifications actually awarded are stored. TAS grants TAT and SBV; TAT grants SBV. Granted ones are computed at read time and inherit the granting certificate's date — shown with a dashed border, never editable.\n\nWhere someone holds several that grant the same thing, the furthest date wins, so a lapsed TAS never masks a valid TAT.\n\n'No expiry recorded' is its own state, in grey — never a green tick. That is what the isDriver migration writes for every existing driver."
+    },
+    {
+      "id": "note-override",
+      "page": "page-2",
+      "x": -340,
+      "y": 0,
+      "w": 300,
+      "text": "This reverses an existing rule\n\nToday the driver requirement is absolute — the code says so: 'The one requirement no coordinator may override: a vehicle nobody may legally drive is not cover.'\n\nPer the PO, every requirement is now overridable, Driver included, but only with a typed reason recorded against the assignment and shown on the board and the published schedule.\n\nA volunteer signing themselves up is still refused outright — they never see this dialog."
+    },
+    {
+      "id": "note-dayone",
+      "page": "page-2",
+      "x": -340,
+      "y": 330,
+      "w": 300,
+      "text": "Day one, honestly\n\nThere is no TAT/TAS data in the database. Rosters therefore stay role-based — nothing empties — and the new Emergency defaults (Condutor→Driver, Chefe de Equipa→TAS, Socorrista→TAT) apply only to newly-opened windows, so no published schedule suddenly starts warning.\n\nExisting drivers migrate to a Driver certification with no expiry, so the Condutor post behaves exactly as it does now."
+    }
+  ],
+  "launch": { "view": "canvas", "page": "page-1" }
+}

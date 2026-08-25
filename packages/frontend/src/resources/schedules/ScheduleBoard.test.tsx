@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AdminContext, testDataProvider } from 'react-admin';
 import { MemoryRouter } from 'react-router-dom';
-import { AvailabilityWindowStatus, ScheduleStatus, UserRole } from '@redinfo/shared';
+import { AvailabilityWindowStatus, CertificationType, ScheduleStatus, UserRole } from '@redinfo/shared';
 import { ScheduleBoard } from './ScheduleBoard';
 import { apiDownload, apiFetch } from '../../api';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -38,15 +38,20 @@ const rowFor = (label: string): HTMLElement =>
 
 const COORDINATOR = {
   role: UserRole.EMERGENCY_COORDINATOR,
-  identity: { id: 'u-coord', fullName: 'Maria Santos', isDriver: false },
+  identity: { id: 'u-coord', fullName: 'Maria Santos', isDriver: false, certifications: [] },
 };
 const MEMBER = {
   role: UserRole.EMERGENCY_OPERATIONAL,
-  identity: { id: 'u-rui', fullName: 'Rui Nunes', isDriver: false },
+  identity: { id: 'u-rui', fullName: 'Rui Nunes', isDriver: false, certifications: [] },
 };
 const DRIVING_MEMBER = {
   role: UserRole.EMERGENCY_OPERATIONAL,
-  identity: { id: 'u-bruno', fullName: 'Bruno Costa', isDriver: true },
+  identity: {
+    id: 'u-bruno',
+    fullName: 'Bruno Costa',
+    isDriver: true,
+    certifications: [{ type: CertificationType.DRIVER, validUntil: null }],
+  },
 };
 
 /**
@@ -106,7 +111,7 @@ describe('ScheduleBoard', () => {
     expect(header[0]).toContain('Date');
     expect(header[1]).toContain('Shift');
     expect(header[2]).toContain('Driver');
-    expect(header[2]).toContain('certification required');
+    expect(header[2]).toContain('Driver required');
     expect(header[3]).toContain('Team Leader');
     expect(header[4]).toContain('Team Member');
   });

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AssignPersonDialog, AssignTarget } from './AssignPersonDialog';
 import { apiFetch } from '../../api';
@@ -108,13 +108,14 @@ describe('AssignPersonDialog', () => {
     expect(screen.getByText(/agree it with them before assigning/i)).toBeInTheDocument();
   });
 
-  // AC: "A role named Driver always requires the driver certification …
-  // the requirement cannot be switched off."
-  it('says the driver certification cannot be overridden', async () => {
+  // Reversed from the old "driver is a bar" behaviour (ADO #163): everyone
+  // eligible is listed, and someone lacking the post's requirement is flagged
+  // and needs a typed reason before they can be assigned.
+  it('explains that an uncertified person is listed rather than hidden, for a role with a requirement', async () => {
     renderDialog({ target: target({ role: DRIVER_ROLE }) });
 
     expect(
-      await screen.findByText(/only ever lists certified drivers/i),
+      await screen.findByText(/listed rather than hidden/i),
     ).toBeInTheDocument();
   });
 
@@ -122,7 +123,57 @@ describe('AssignPersonDialog', () => {
     renderDialog();
 
     await screen.findByText('Available for this shift');
-    expect(screen.queryByText(/only ever lists certified drivers/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/listed rather than hidden/i)).not.toBeInTheDocument();
+  });
+
+  it('flags someone lacking the required certification and asks for a reason before assigning them', async () => {
+    const user = userEvent.setup();
+    mockApiFetch.mockResolvedValue(
+      scheduleCandidates({
+        available: [],
+        others: [
+          {
+            ...CARLA_PERSON,
+            availability: 'pending',
+            submittedForShift: false,
+            alreadyOnShift: false,
+            currentRoleName: null,
+            dutyCount: 0,
+            conflictLabel: null,
+          },
+        ],
+      }),
+    );
+    renderDialog({ target: target({ role: DRIVER_ROLE }) });
+
+    await user.click(await screen.findByRole('button', { name: /show everyone else/i }));
+    expect(screen.getByText('No Driver')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Assign by exception' }));
+
+    const confirmDialog = (
+      await screen.findByRole('heading', { name: /assign without the required certification/i })
+    ).closest('[role="dialog"]') as HTMLElement;
+    expect(within(confirmDialog).getByText(/Driver requires Driver\./i)).toBeInTheDocument();
+    const confirmButton = within(confirmDialog).getByRole('button', { name: 'Assign by exception' });
+    expect(confirmButton).toBeDisabled();
+
+    await user.type(within(confirmDialog).getByLabelText(/Reason/), 'Only driver available tonight');
+    expect(confirmButton).toBeEnabled();
+    await user.click(confirmButton);
+
+    await waitFor(() =>
+      expect(mockApiFetch).toHaveBeenCalledWith(`/schedules/${SCHEDULE_ID}/assignments`, {
+        method: 'POST',
+        body: {
+          date: '2026-10-03',
+          slot: 1,
+          userId: CARLA_PERSON.id,
+          roleId: DRIVER_ROLE.id,
+          overrideReason: 'Only driver available tonight',
+        },
+      }),
+    );
   });
 
   it('will not assign someone already on the shift', async () => {

@@ -4,6 +4,7 @@ import {
   AvailabilityWindowCategory,
   availabilityWindowCategoryLabel,
   AvailabilityWindowRole,
+  CERTIFICATION_LABEL,
   formatRoleCapacity,
 } from '@redinfo/shared';
 import { CategoryChip } from '../../components/CategoryChip';
@@ -38,8 +39,9 @@ export const WindowCategoryChip = ({
  * The roles a window's schedule will be built from, read-only.
  *
  * Each carries what it may hold, because "Driver" alone does not say whether one
- * person or six may be assigned to it. The driver certification is called out
- * where it applies: it is a hard requirement on who may fill the role.
+ * person or six may be assigned to it. The required certification is called out
+ * where the role has one — enforceable when building the schedule, but not
+ * absolute: a coordinator may still assign someone who lacks it, with a reason.
  */
 export const WindowRoleChips = ({
   roles,
@@ -57,17 +59,17 @@ export const WindowRoleChips = ({
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
       {roles.map((role) => {
         const label = `${role.name} · ${formatRoleCapacity(role.maxPeople)}`;
-        return role.requiresDriverCertification ? (
+        return role.requiredCertification ? (
           <Tooltip
             key={role.id}
-            title="Only personnel with the driver certification can be assigned to this role."
+            title={`Requires the ${CERTIFICATION_LABEL[role.requiredCertification]} certification — overridable with a reason.`}
           >
             <Chip
               size="small"
               variant="outlined"
               color="warning"
               icon={<BadgeIcon />}
-              label={label}
+              label={`${label} · ${CERTIFICATION_LABEL[role.requiredCertification]}`}
             />
           </Tooltip>
         ) : (

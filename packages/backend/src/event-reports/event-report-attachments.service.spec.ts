@@ -6,7 +6,7 @@ import {
 } from './event-report-attachments.service';
 import { EventReportsService, RequestUser } from './event-reports.service';
 import { PrismaService } from '../prisma/prisma.service';
-import { AttachmentStorage } from './attachment-storage';
+import { AttachmentStorage } from '../storage/attachment-storage';
 
 // ── Photographs and paperwork ──────────────────────────────────────────────────
 //

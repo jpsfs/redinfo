@@ -1,5 +1,5 @@
 import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
-import { ScheduleStatus, UserRole } from '@redinfo/shared';
+import { CertificationType, ScheduleStatus, UserRole } from '@redinfo/shared';
 import { SchedulesService } from './schedules.service';
 
 // ── The schedule itself (ADO #161) ─────────────────────────────────────────────
@@ -13,7 +13,7 @@ const DRIVER_ROLE = {
   windowId: 'w1',
   name: 'Driver',
   maxPeople: 1,
-  requiresDriverCertification: true,
+  requiredCertification: CertificationType.DRIVER,
   order: 0,
 };
 const MEMBER_ROLE = {
@@ -21,7 +21,7 @@ const MEMBER_ROLE = {
   windowId: 'w1',
   name: 'Team Member',
   maxPeople: 1,
-  requiresDriverCertification: false,
+  requiredCertification: null,
   order: 1,
 };
 
@@ -30,8 +30,18 @@ const ACTOR = { id: 'u-coord', firstName: 'Ana', lastName: 'Ferreira' };
 /** A coordinator sees drafts; a volunteer sees only what is published. */
 const COORDINATOR = { id: ACTOR.id, role: UserRole.EMERGENCY_COORDINATOR };
 const VOLUNTEER = { id: 'u-ana', role: UserRole.EMERGENCY_OPERATIONAL };
-const ANA = { id: 'u-ana', firstName: 'Ana', lastName: 'Silva', isDriver: true };
-const JOANA = { id: 'u-joana', firstName: 'Joana', lastName: 'Pinto', isDriver: false };
+const ANA = {
+  id: 'u-ana',
+  firstName: 'Ana',
+  lastName: 'Silva',
+  certifications: [{ type: CertificationType.DRIVER, validUntil: null }],
+};
+const JOANA = {
+  id: 'u-joana',
+  firstName: 'Joana',
+  lastName: 'Pinto',
+  certifications: [] as Array<{ type: CertificationType; validUntil: string | null }>,
+};
 
 const windowRow = (overrides: Record<string, unknown> = {}) => ({
   id: 'w1',
@@ -377,6 +387,8 @@ describe('SchedulesService.getBoard', () => {
       filledSlots: 2,
       shiftsWithGaps: 1,
       overrideCount: 1,
+      certificationExceptionCount: 0,
+      lapsedCertificationCount: 0,
     });
   });
 });

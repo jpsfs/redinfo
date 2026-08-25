@@ -103,6 +103,11 @@ describe('RedInfoMenu', () => {
     // of the cycle actually happen in. Reports is a personal page because
     // reading the whole archive needs VIEW_EVENT_REPORTS, which an operational
     // does not have.
-    expect(links.slice(-3)).toEqual(['/my-availability', '/my-duties', '/my-reports']);
+    expect(links.slice(-4)).toEqual([
+      '/my-availability',
+      '/my-duties',
+      '/my-reports',
+      '/my-profile',
+    ]);
   });
 });

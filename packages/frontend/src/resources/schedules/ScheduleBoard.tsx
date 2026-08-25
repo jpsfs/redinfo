@@ -33,9 +33,13 @@ import {
   Action,
   AvailabilityWindowRole,
   AvailabilityWindowStatus,
+  CERTIFICATION_LABEL,
+  CertificationType,
   formatGap,
   formatRoleCapacity,
   hasPermission,
+  HeldCertification,
+  holdsCertification,
   ScheduleAssignment,
   ScheduleBoardResponse,
   ScheduleConflict,
@@ -78,11 +82,32 @@ const personName = (assignment: ScheduleAssignment) =>
 interface Viewer {
   id: string;
   isDriver: boolean;
+  certifications: HeldCertification[];
   isCoordinator: boolean;
   /** The schedule is published, so open places are there to be taken. */
   canSignUp: boolean;
   /** Whether the viewer already holds a duty overlapping this shift. */
   overlaps: (date: string, shift: ScheduleShiftBoard) => boolean;
+}
+
+/** Today, as the ISO date the shared certification functions expect. */
+const today = () => new Date().toISOString().slice(0, 10);
+
+/** Why an assignment is flagged, or nothing — see `AssignmentChip`. */
+type CertificationIssue = 'exception' | 'lapsed' | null;
+
+function certificationIssue(
+  assignment: ScheduleAssignment,
+  role: AvailabilityWindowRole | null,
+): CertificationIssue {
+  if (assignment.certificationOverrideReason) return 'exception';
+  if (
+    role?.requiredCertification &&
+    !holdsCertification(assignment.user.certifications, role.requiredCertification, today())
+  ) {
+    return 'lapsed';
+  }
+  return null;
 }
 
 // ─── Small pieces ──────────────────────────────────────────────────────────────
@@ -96,11 +121,13 @@ interface Viewer {
  */
 const AssignmentChip = ({
   assignment,
+  role,
   conflict,
   isSelf,
   onRemove,
 }: {
   assignment: ScheduleAssignment;
+  role: AvailabilityWindowRole | null;
   conflict?: ScheduleConflict;
   isSelf?: boolean;
   onRemove?: () => void;
@@ -109,27 +136,38 @@ const AssignmentChip = ({
   // Someone who put themselves forward is not someone a coordinator overrode,
   // so it is never read as one however the availability lines up.
   const signedUp = assignment.selfAssigned;
+  const issue = certificationIssue(assignment, role);
+  const certLabel = role?.requiredCertification ? CERTIFICATION_LABEL[role.requiredCertification] : '';
+
   const title = conflict
     ? `Double-booked: also on ${conflict.otherWindowLabel}, ${conflict.otherLabel}`
-    : signedUp
-      ? `Signed up on ${new Date(assignment.assignedAt).toLocaleString()}`
-      : assignment.isOverride
-        ? `Override — did not submit for this shift. Assigned by ${
-            assignment.assignedBy
-              ? `${assignment.assignedBy.firstName} ${assignment.assignedBy.lastName}`
-              : 'a coordinator'
-          } on ${new Date(assignment.assignedAt).toLocaleString()}`
-        : assignment.availability === 'submitted'
-          ? 'Submitted availability for this shift'
-          : 'No longer available for this shift';
+    : issue === 'lapsed'
+      ? `${certLabel} lapsed since this shift was built — kept on purpose, but worth reviewing.`
+      : issue === 'exception'
+        ? `Assigned by exception — does not hold ${certLabel}. ${assignment.certificationOverrideReason}`
+        : signedUp
+          ? `Signed up on ${new Date(assignment.assignedAt).toLocaleString()}`
+          : assignment.isOverride
+            ? `Override — did not submit for this shift. Assigned by ${
+                assignment.assignedBy
+                  ? `${assignment.assignedBy.firstName} ${assignment.assignedBy.lastName}`
+                  : 'a coordinator'
+              } on ${new Date(assignment.assignedAt).toLocaleString()}`
+            : assignment.availability === 'submitted'
+              ? 'Submitted availability for this shift'
+              : 'No longer available for this shift';
 
   const color = conflict
     ? 'error'
-    : signedUp
-      ? 'info'
-      : assignment.isOverride
+    : issue === 'lapsed'
+      ? 'error'
+      : issue === 'exception'
         ? 'warning'
-        : 'default';
+        : signedUp
+          ? 'info'
+          : assignment.isOverride
+            ? 'warning'
+            : 'default';
 
   return (
     <Tooltip title={title}>
@@ -138,8 +176,10 @@ const AssignmentChip = ({
         variant={isSelf ? 'filled' : 'outlined'}
         color={color}
         icon={
-          conflict ? (
+          conflict || issue === 'lapsed' ? (
             <ErrorOutlineIcon fontSize="small" />
+          ) : issue === 'exception' ? (
+            <WarningAmberIcon fontSize="small" />
           ) : signedUp ? (
             <HowToRegIcon fontSize="small" />
           ) : assignment.isOverride ? (
@@ -155,7 +195,9 @@ const AssignmentChip = ({
         {...(onRemove ? { onDelete: onRemove } : {})}
         aria-label={`${name}${signedUp ? ', signed up' : ''}${
           !signedUp && assignment.isOverride ? ', override' : ''
-        }${conflict ? ', double-booked' : ''}${isSelf ? ', you' : ''}`}
+        }${conflict ? ', double-booked' : ''}${issue ? `, certification ${issue}` : ''}${
+          isSelf ? ', you' : ''
+        }`}
       />
     </Tooltip>
   );
@@ -248,6 +290,8 @@ const BoardLegend = () => (
         [undefined, 'Assigned from submitted availability'],
         ['signUp', 'Signed up by the person themselves'],
         ['override', 'Override — did not submit for this shift'],
+        ['exception', 'Assigned without the post’s required certification, with a reason'],
+        ['lapsed', 'Certification lapsed since this shift was built'],
         ['open', 'An open place, one per person the role still wants'],
         ['gap', 'No driver for the vehicles this shift crews'],
         ['conflict', 'Double-booked'],
@@ -256,6 +300,8 @@ const BoardLegend = () => (
       <Box key={label} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
         {kind === 'signUp' && <HowToRegIcon sx={{ fontSize: 16, color: 'info.dark' }} />}
         {kind === 'override' && <SwapHorizIcon sx={{ fontSize: 16, color: 'warning.dark' }} />}
+        {kind === 'exception' && <WarningAmberIcon sx={{ fontSize: 16, color: 'warning.dark' }} />}
+        {kind === 'lapsed' && <ErrorOutlineIcon sx={{ fontSize: 16, color: 'error.dark' }} />}
         {kind === 'open' && (
           <Box
             sx={{
@@ -323,7 +369,8 @@ const RoleCell = ({
     mode === 'signUp'
       ? selfAssignBlockedReason({
           role,
-          isDriver: viewer.isDriver,
+          certifications: viewer.certifications,
+          today: today(),
           filledInRole: people.length,
           alreadyOnShift: shift.assignments.some(
             (assignment) => assignment.userId === viewer.id,
@@ -364,6 +411,7 @@ const RoleCell = ({
         <AssignmentChip
           key={assignment.id}
           assignment={assignment}
+          role={role}
           conflict={conflictFor(assignment)}
           isSelf={assignment.userId === viewer.id}
           onRemove={viewer.isCoordinator ? () => onRemove(assignment) : undefined}
@@ -417,7 +465,7 @@ const DesktopBoard = ({
               <strong>{role?.name ?? CREW_COLUMN}</strong>
               <Typography variant="caption" color="text.secondary" display="block">
                 {role ? formatRoleCapacity(role.maxPeople) : 'no roles on this window'}
-                {role?.requiresDriverCertification ? ' · certification required' : ''}
+                {role?.requiredCertification ? ` · ${CERTIFICATION_LABEL[role.requiredCertification]} required` : ''}
               </Typography>
             </TableCell>
           ))}
@@ -507,7 +555,9 @@ function gapsForColumn(
   columns: Array<AvailabilityWindowRole | null>,
 ): ScheduleGap[] {
   const driverColumn =
-    columns.find((column) => column?.requiresDriverCertification) ?? columns[0] ?? null;
+    columns.find((column) => column?.requiredCertification === CertificationType.DRIVER) ??
+    columns[0] ??
+    null;
   return gaps.filter(
     (gap) =>
       gap.kind === 'MISSING_DRIVER' &&
@@ -669,9 +719,11 @@ export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
         .filter((shift) => shift.assignments.some((a) => a.userId === id))
         .map((shift) => ({ date: day.date, shift })),
     );
+    const self = identity as { isDriver?: boolean; certifications?: HeldCertification[] } | undefined;
     return {
       id,
-      isDriver: Boolean((identity as { isDriver?: boolean } | undefined)?.isDriver),
+      isDriver: Boolean(self?.isDriver),
+      certifications: self?.certifications ?? [],
       isCoordinator: permissions
         ? hasPermission(permissions, Action.MANAGE_SCHEDULES)
         : false,

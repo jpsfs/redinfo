@@ -23,6 +23,27 @@ enum AuthProvider {
   MICROSOFT
 }
 
+/// The four operational certifications the delegation tracks. DRIVER is
+/// autonomous; SBV/TAT/TAS form a ladder — see `UserCertification` and
+/// `CERTIFICATION_IMPLIES` in `@redinfo/shared`.
+enum CertificationType {
+  DRIVER
+  SBV
+  TAT
+  TAS
+}
+
+enum BloodType {
+  A_POS
+  A_NEG
+  B_POS
+  B_NEG
+  AB_POS
+  AB_NEG
+  O_POS
+  O_NEG
+}
+
 model User {
   id           String       @id @default(cuid())
   email        String       @unique
@@ -33,9 +54,36 @@ model User {
   provider     AuthProvider @default(LOCAL)
   providerId   String?
   isActive     Boolean      @default(true)
-  isDriver     Boolean      @default(false)
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
+
+  // ── Personnel profile ──
+  // `isDriver` no longer lives here: it is computed from holding a valid
+  // DRIVER certification (see `UserCertification`). Everything below is
+  // nullable — this is a migration onto rows that never had it.
+  phone                 String?
+  birthDate             DateTime?  @db.Date
+  /// When the person joined the delegation.
+  joinedOn              DateTime?  @db.Date
+  addressLine           String?
+  postalCode            String?
+  localityId            String?
+  locality              Locality?  @relation(fields: [localityId], references: [id], onDelete: SetNull)
+  /// Assigned by the delegation; not self-editable.
+  redCrossNumber        String?    @unique
+  /// Optional, manually assigned by a coordinator; not self-editable.
+  volunteerNumber       String?    @unique
+  nif                   String?    @unique
+  citizenCardNumber     String?
+  bloodType             BloodType?
+  emergencyContactName  String?
+  emergencyContactPhone String?
+  /// The profile photo. Same shape as `UserCertification`'s document — bytes
+  /// on disk, metadata here.
+  photoFilename         String?
+  photoMimeType         String?
+  photoByteSize         Int?
+  photoStorageKey       String?    @unique
 
   refreshTokens RefreshToken[]
 
@@ -57,9 +105,73 @@ model User {
   liveRunsCreated LiveRun[]           @relation("LiveRunCreatedBy")
   liveRunCrew     LiveRunCrewMember[]
 
+  certifications        UserCertification[] @relation("UserCertifications")
+  certificationsCreated UserCertification[] @relation("UserCertificationCreatedBy")
+  profileAudits         UserProfileAudit[]  @relation("UserProfileAuditSubject")
+  profileChangesMade    UserProfileAudit[]  @relation("UserProfileAuditChangedBy")
+
   @@index([email])
   @@index([provider, providerId])
   @@index([isActive, role])
+  @@index([localityId])
+}
+
+/// A certification actually awarded to a person — see `CertificationType` and
+/// `effectiveCertifications` in `@redinfo/shared` for what each one grants.
+///
+/// Only what was *held* is stored; TAT/SBV granted by a TAS are computed at
+/// read time rather than materialised as rows, so there is exactly one place
+/// to correct an expiry date.
+model UserCertification {
+  id     String            @id @default(cuid())
+  userId String
+  user   User              @relation("UserCertifications", fields: [userId], references: [id], onDelete: Cascade)
+  type   CertificationType
+
+  /// Null = no known expiry; counts as valid. What the isDriver→DRIVER
+  /// backfill writes, and what a certification looks like before a
+  /// coordinator has entered its real date.
+  validUntil DateTime? @db.Date
+  issuedOn   DateTime? @db.Date
+  notes      String?
+
+  /// The scanned certificate. All four null together — a record may exist
+  /// before the scan is uploaded.
+  filename   String?
+  mimeType   String?
+  byteSize   Int?
+  storageKey String? @unique
+
+  createdById String
+  createdBy   User     @relation("UserCertificationCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  /// One record per certification per person — a renewal edits the existing
+  /// row rather than adding a second one.
+  @@unique([userId, type])
+  @@index([userId])
+  /// Drives the expiring-soon query.
+  @@index([type, validUntil])
+}
+
+/// Actor-and-timestamp trail for personnel profile changes, following
+/// `VehicleInventoryAudit`'s pattern. For fields marked sensitive (NIF,
+/// citizen card, blood type, emergency contact, birth date) `oldValue` and
+/// `newValue` stay null — the audit records *that* something changed, not a
+/// second copy of the sensitive value.
+model UserProfileAudit {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation("UserProfileAuditSubject", fields: [userId], references: [id], onDelete: Cascade)
+  changedById String
+  changedBy   User     @relation("UserProfileAuditChangedBy", fields: [changedById], references: [id], onDelete: Restrict)
+  field       String
+  oldValue    String?
+  newValue    String?
+  changedAt   DateTime @default(now())
+
+  @@index([userId])
 }
 
 model RefreshToken {
@@ -282,17 +394,19 @@ model AvailabilityWindowShift {
 /// is collected without them (a volunteer says only when they can be there) and
 /// the coordinator allocates roles when building the schedule.
 model AvailabilityWindowRole {
-  id                          String             @id @default(cuid())
-  windowId                    String
-  window                      AvailabilityWindow @relation(fields: [windowId], references: [id], onDelete: Cascade)
-  name                        String
+  id                    String             @id @default(cuid())
+  windowId              String
+  window                AvailabilityWindow @relation(fields: [windowId], references: [id], onDelete: Cascade)
+  name                  String
   /// Most people the schedule may put in this role on one shift. 0 = unlimited.
-  maxPeople                   Int
-  /// Only a certified driver may fill this role. Always true for "Driver",
-  /// derived from the name rather than chosen, so the rule cannot be turned off.
-  requiresDriverCertification Boolean            @default(false)
+  maxPeople             Int
+  /// The certification someone must hold to be assigned here, or null for no
+  /// requirement. A coordinator's choice — the editor suggests DRIVER for a
+  /// role named "Driver", but nothing forces it, and every requirement is
+  /// overridable at assignment time with a recorded reason.
+  requiredCertification CertificationType?
   /// Position in the window's own role list, 0-based.
-  order                       Int
+  order                 Int
 
   assignments ScheduleAssignment[]
 
@@ -356,26 +470,31 @@ model Schedule {
 
 /// One person on one shift of one schedule, in at most one role.
 model ScheduleAssignment {
-  id           String                  @id @default(cuid())
-  scheduleId   String
-  schedule     Schedule                @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  id                          String                  @id @default(cuid())
+  scheduleId                  String
+  schedule                    Schedule                @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
   /// Identified the same way a submission is — by (date, slot) rather than a
   /// foreign key to the shift row. Slots never move once a window is opened, and
   /// this keeps a legacy window with no materialised shifts schedulable.
-  date         DateTime                @db.Date
-  slot         Int
-  userId       String
-  user         User                    @relation("ScheduleAssignedTo", fields: [userId], references: [id], onDelete: Cascade)
+  date                        DateTime                @db.Date
+  slot                        Int
+  userId                      String
+  user                        User                    @relation("ScheduleAssignedTo", fields: [userId], references: [id], onDelete: Cascade)
   /// Null only when the window defines no roles at all.
-  roleId       String?
-  role         AvailabilityWindowRole? @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  roleId                      String?
+  role                        AvailabilityWindowRole? @relation(fields: [roleId], references: [id], onDelete: SetNull)
   /// The person had not submitted availability for this shift when they were
   /// assigned. Computed server-side and never recomputed afterwards: it records
   /// a decision, so a later change of availability must not rewrite history.
-  isOverride   Boolean                 @default(false)
-  assignedById String
-  assignedBy   User                    @relation("ScheduleAssignedBy", fields: [assignedById], references: [id])
-  assignedAt   DateTime                @default(now())
+  isOverride                  Boolean                 @default(false)
+  /// Set when this assignment was made against the post's own
+  /// `requiredCertification` — non-null exactly when a reason was given.
+  /// Distinct from `isOverride`, which is about availability, not
+  /// certification: an assignment may carry either, both, or neither.
+  certificationOverrideReason String?
+  assignedById                String
+  assignedBy                  User                    @relation("ScheduleAssignedBy", fields: [assignedById], references: [id])
+  assignedAt                  DateTime                @default(now())
 
   /// One person at most once per shift — the same person in two roles on one
   /// shift is a data error, not a conflict to report.
@@ -451,6 +570,7 @@ model Locality {
 
   eventReports EventReport[]
   liveRuns     LiveRun[]
+  users        User[]
 
   @@unique([municipalityId, name])
   @@index([searchName])
@@ -544,14 +664,14 @@ enum VictimDestinationKind {
 /// still where a run in progress lives; this table takes over the moment the
 /// ambulance is available again.
 model EventReport {
-  id     String          @id @default(cuid())
-  type   EventReportType
+  id           String          @id @default(cuid())
+  type         EventReportType
   /// Position within `(type, year)`, 1-based, assigned when the report is
   /// **submitted** and recomputed whenever the partition changes. Null while
   /// the report is a draft: a report with no number is a report nobody has
   /// filed yet, and Postgres treats NULLs as distinct so the unique constraint
   /// stays quiet about drafts.
-  number Int?
+  number       Int?
   /// What this report was called before the sequence was last recomputed. Kept
   /// forever and searchable, so paper filed as "EMG 042/2026" stays findable
   /// after a renumber.
@@ -559,7 +679,7 @@ model EventReport {
   /// Calendar year the sequence belongs to, taken from `occurredOn`. Stored
   /// rather than derived so the unique index below can hold the numbering
   /// rule, and so a year's reports are one index seek away.
-  year   Int
+  year         Int
 
   /// Who filed it and when. An actor-and-timestamp pair rather than a boolean,
   /// matching `Schedule.publishedBy/publishedAt`: a transition is a fact about a
@@ -767,7 +887,7 @@ model EventReportVehicle {
   /// Base — as returned by the Google Routes API. Stored so "28 km" is
   /// explainable a year later rather than being a number with no provenance.
   /// Null on a report whose distance was typed, or not computed yet.
-  routeLegs Json?
+  routeLegs    Json?
   /// A human changed the computed figure. Kept so an edited number is visibly
   /// an edit rather than silently replacing a measurement.
   isOverridden Boolean @default(false)

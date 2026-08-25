@@ -14,12 +14,13 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { ShiftScheduleService } from '../availability/shift-schedule.service';
 import { addIsoDays, toIsoDate } from '../utils/date.util';
+import { CERT_HELD_SELECT, toSchedulePerson } from '../users/certifications.util';
 
 const CANDIDATE_SELECT = {
   id: true,
   firstName: true,
   lastName: true,
-  isDriver: true,
+  certifications: { select: CERT_HELD_SELECT },
 } as const;
 
 /**
@@ -58,11 +59,12 @@ export class EventReportCrewService {
    * `VIEW_USERS`.
    */
   async listCandidates(): Promise<SchedulePerson[]> {
-    return this.prisma.user.findMany({
+    const rows = await this.prisma.user.findMany({
       where: { isActive: true, role: { in: eventReportCrewEligibleRoles() as never[] } },
       select: CANDIDATE_SELECT,
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
     });
+    return rows.map((row) => toSchedulePerson(row));
   }
 
   /**
@@ -203,7 +205,7 @@ export class EventReportCrewService {
             firstName: assignment.user.firstName,
             lastName: assignment.user.lastName,
             roleName: assignment.role?.name ?? null,
-            isDriver: assignment.user.isDriver,
+            isDriver: toSchedulePerson(assignment.user).isDriver,
           })),
         });
       }

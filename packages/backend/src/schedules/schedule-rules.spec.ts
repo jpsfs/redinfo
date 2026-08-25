@@ -2,6 +2,7 @@ import {
   Action,
   AvailabilityWindowRole,
   assignedDriverCount,
+  CertificationType,
   hasPermission,
   requiredSlotsForShift,
   roleCanTakeMore,
@@ -19,12 +20,14 @@ import {
 // disagree about whether a shift is covered. They are pure, so this is where the
 // awkward cases get pinned down.
 
+const TODAY = '2026-10-01';
+
 const role = (
   overrides: Partial<AvailabilityWindowRole> & { id: string; name: string },
 ): AvailabilityWindowRole => ({
   windowId: 'w1',
   maxPeople: 1,
-  requiresDriverCertification: overrides.name === 'Driver',
+  requiredCertification: overrides.name === 'Driver' ? CertificationType.DRIVER : null,
   order: 0,
   ...overrides,
 });
@@ -226,11 +229,13 @@ describe('scheduleFillStats', () => {
   ];
 
   it('counts required slots per shift, filled people, gapped shifts and overrides', () => {
-    expect(scheduleFillStats(days, EMERGENCY_ROLES)).toEqual({
+    expect(scheduleFillStats(days, EMERGENCY_ROLES, TODAY)).toEqual({
       requiredSlots: 6,
       filledSlots: 3,
       shiftsWithGaps: 1,
       overrideCount: 1,
+      certificationExceptionCount: 0,
+      lapsedCertificationCount: 0,
     });
   });
 
@@ -253,7 +258,90 @@ describe('scheduleFillStats', () => {
       },
     ];
 
-    expect(scheduleFillStats(withSignUp, EMERGENCY_ROLES).overrideCount).toBe(1);
+    expect(scheduleFillStats(withSignUp, EMERGENCY_ROLES, TODAY).overrideCount).toBe(1);
+  });
+});
+
+describe('scheduleFillStats certification counters', () => {
+  const TAS_ROLE = role({ id: 'r-tas', name: 'Team Leader', requiredCertification: CertificationType.TAS });
+  const ROLES = [TAS_ROLE];
+
+  const heldCert = (type: CertificationType, validUntil: string | null) => [{ type, validUntil }];
+
+  const dayWith = (assignments: unknown[]): ScheduleDayBoard[] => [
+    {
+      date: '2026-10-01',
+      isWeekend: false,
+      isHoliday: false,
+      shifts: [
+        {
+          slot: 1,
+          startMinute: 1200,
+          endMinute: 1440,
+          vehiclesNeeded: 1,
+          label: '20:00–24:00',
+          driverCount: 1,
+          gaps: [],
+          assignments: assignments as never,
+        },
+      ],
+    },
+  ];
+
+  it('counts an assignment carrying a reason as an exception, not a lapse', () => {
+    const days = dayWith([
+      {
+        roleId: TAS_ROLE.id,
+        certificationOverrideReason: 'TAS de serviço em formação',
+        user: { certifications: [] },
+      } as never,
+    ]);
+    expect(scheduleFillStats(days, ROLES, TODAY)).toMatchObject({
+      certificationExceptionCount: 1,
+      lapsedCertificationCount: 0,
+    });
+  });
+
+  it('counts an assignment whose certification has since lapsed, with no reason on file', () => {
+    const days = dayWith([
+      {
+        roleId: TAS_ROLE.id,
+        certificationOverrideReason: null,
+        user: { certifications: heldCert(CertificationType.TAS, '2026-01-01') },
+      } as never,
+    ]);
+    expect(scheduleFillStats(days, ROLES, TODAY)).toMatchObject({
+      certificationExceptionCount: 0,
+      lapsedCertificationCount: 1,
+    });
+  });
+
+  it('counts neither when the person still holds the requirement', () => {
+    const days = dayWith([
+      {
+        roleId: TAS_ROLE.id,
+        certificationOverrideReason: null,
+        user: { certifications: heldCert(CertificationType.TAS, '2030-01-01') },
+      } as never,
+    ]);
+    expect(scheduleFillStats(days, ROLES, TODAY)).toMatchObject({
+      certificationExceptionCount: 0,
+      lapsedCertificationCount: 0,
+    });
+  });
+
+  it('counts neither for a post with no requirement', () => {
+    const days = dayWith([
+      {
+        roleId: MEMBER.id,
+        certificationOverrideReason: null,
+        user: { certifications: [] },
+      } as never,
+    ]);
+    expect(scheduleFillStats(days, [MEMBER], TODAY)).toMatchObject({
+      certificationExceptionCount: 0,
+      lapsedCertificationCount: 0,
+    });
   });
 });
 

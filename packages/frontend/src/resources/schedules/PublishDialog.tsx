@@ -129,6 +129,20 @@ export const PublishDialog = ({
             note="agreed off-platform"
           />
         )}
+        {stats.certificationExceptionCount > 0 && (
+          <Line
+            icon={<WarningAmberIcon fontSize="small" sx={{ color: 'warning.dark' }} />}
+            text={`${stats.certificationExceptionCount} certification exceptions`}
+            note="each with a recorded reason"
+          />
+        )}
+        {stats.lapsedCertificationCount > 0 && (
+          <Line
+            icon={<ErrorOutlineIcon fontSize="small" sx={{ color: 'error.dark' }} />}
+            text={`${stats.lapsedCertificationCount} certifications lapsed since assignment`}
+            note="worth a second look, not a decision anyone made"
+          />
+        )}
         {conflicts.length > 0 && (
           <Line
             icon={<ErrorOutlineIcon fontSize="small" sx={{ color: 'error.dark' }} />}

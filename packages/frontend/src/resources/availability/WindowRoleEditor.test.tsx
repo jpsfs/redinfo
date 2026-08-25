@@ -40,14 +40,15 @@ describe('WindowRoleEditor', () => {
     expect(screen.getByText('unlimited')).toBeInTheDocument();
   });
 
-  it('flags the driver post, and only that one', () => {
+  it('suggests DRIVER for the driver post, and only that one', () => {
     renderEditor(CREW);
-    expect(screen.getAllByText('Driver certification')).toHaveLength(1);
+    expect(screen.getAllByText(/Suggested from the name: Driver/)).toHaveLength(1);
+    expect(screen.getByText('No suggestion')).toBeInTheDocument();
   });
 
-  it('flags a driver role however it was typed', () => {
+  it('suggests DRIVER for a driver role however it was typed', () => {
     renderEditor([{ name: '  DRIVER', maxPeople: 1 }]);
-    expect(screen.getByText('Driver certification')).toBeInTheDocument();
+    expect(screen.getByText(/Suggested from the name: Driver/)).toBeInTheDocument();
   });
 
   it('renames a role without touching the others', async () => {
@@ -83,7 +84,10 @@ describe('WindowRoleEditor', () => {
 
     await userEvent.click(screen.getByRole('button', { name: 'Add role' }));
 
-    expect(onChange).toHaveBeenCalledWith([...CREW, { name: '', maxPeople: 1 }]);
+    expect(onChange).toHaveBeenCalledWith([
+      ...CREW,
+      { name: '', maxPeople: 1, requiredCertification: undefined },
+    ]);
   });
 
   it('removes the role asked for', async () => {
@@ -107,6 +111,30 @@ describe('WindowRoleEditor', () => {
   it('shows the rule the API would refuse the payload with', () => {
     renderEditor([{ name: 'Driver', maxPeople: 1 }, { name: 'driver', maxPeople: 1 }]);
     expect(screen.getByText('Two roles are both called "driver".')).toBeInTheDocument();
+  });
+
+  it("keeps a coordinator's explicit choice of required certification", async () => {
+    const { onChange } = renderEditor(CREW);
+
+    await userEvent.click(screen.getByLabelText('Role 2 required certification'));
+    await userEvent.click(await screen.findByRole('option', { name: 'TAS' }));
+
+    expect(onChange).toHaveBeenLastCalledWith([
+      CREW[0],
+      { name: 'Team Leader', maxPeople: 1, requiredCertification: 'TAS' },
+    ]);
+  });
+
+  it('lets a coordinator explicitly remove the driver suggestion', async () => {
+    const { onChange } = renderEditor(CREW);
+
+    await userEvent.click(screen.getByLabelText('Role 1 required certification'));
+    await userEvent.click(await screen.findByRole('option', { name: 'No requirement' }));
+
+    expect(onChange).toHaveBeenLastCalledWith([
+      { name: 'Driver', maxPeople: 1, requiredCertification: null },
+      CREW[1],
+    ]);
   });
 
   it('edits nothing while disabled', () => {

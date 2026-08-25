@@ -39,6 +39,11 @@ services:
       DATABASE_URL: postgresql://${POSTGRES_USER:-redinfo}:${POSTGRES_PASSWORD:-redinfo_dev_password}@postgres:5432/${POSTGRES_DB:-redinfo}
       NODE_ENV: development
       FRONTEND_URL: http://localhost:5173
+      # Event report attachments, certification documents, profile photos.
+      # A named volume so they survive a redeploy — see docker-compose.prod.yml.
+      ATTACHMENTS_DIR: /app/uploads
+    volumes:
+      - backend_uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -60,3 +65,4 @@ services:
 
 volumes:
   postgres_data:
+  backend_uploads:

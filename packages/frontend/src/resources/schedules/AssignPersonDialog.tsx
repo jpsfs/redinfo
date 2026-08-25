@@ -15,19 +15,21 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
-import BadgeIcon from '@mui/icons-material/Badge';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import {
   AvailabilityWindowRole,
+  CERTIFICATION_LABEL,
   formatRoleCapacity,
+  holdsCertification,
   ScheduleCandidate,
   ScheduleCandidatesResponse,
 } from '@redinfo/shared';
 import { apiFetch } from '../../api';
-import { formatDayLabel } from '../../utils/dates';
+import { formatDayLabel, toIsoDate } from '../../utils/dates';
 
 export interface AssignTarget {
   date: string;
@@ -41,6 +43,11 @@ const fullName = (person: ScheduleCandidate) => `${person.firstName} ${person.la
 
 const matches = (person: ScheduleCandidate, search: string) =>
   fullName(person).toLowerCase().includes(search.trim().toLowerCase());
+
+/** Whether this person holds the target role's requirement, if it has one. */
+const meetsRequirement = (person: ScheduleCandidate, role: AvailabilityWindowRole | null): boolean =>
+  !role?.requiredCertification ||
+  holdsCertification(person.certifications, role.requiredCertification, toIsoDate(new Date()));
 
 /** Why this person is not the obvious pick, in one line, or nothing. */
 const candidateNote = (person: ScheduleCandidate): string | null => {
@@ -61,16 +68,19 @@ const candidateNote = (person: ScheduleCandidate): string | null => {
 
 const CandidateRow = ({
   person,
+  role,
   override,
   onAssign,
   busy,
 }: {
   person: ScheduleCandidate;
+  role: AvailabilityWindowRole | null;
   override: boolean;
   onAssign: () => void;
   busy: boolean;
 }) => {
   const note = candidateNote(person);
+  const needsException = !meetsRequirement(person, role);
   return (
     <Box
       sx={{
@@ -100,6 +110,15 @@ const CandidateRow = ({
           {person.availability === 'declined' && (
             <Chip size="small" variant="outlined" color="warning" label="Declined" />
           )}
+          {needsException && role?.requiredCertification && (
+            <Chip
+              size="small"
+              variant="outlined"
+              color="warning"
+              icon={<WarningAmberIcon fontSize="small" />}
+              label={`No ${CERTIFICATION_LABEL[role.requiredCertification]}`}
+            />
+          )}
         </Stack>
         {note && (
           <Typography variant="caption" color="text.secondary">
@@ -110,11 +129,18 @@ const CandidateRow = ({
       <Button
         size="small"
         variant="outlined"
+        color={needsException ? 'warning' : 'primary'}
         disabled={person.alreadyOnShift || busy}
-        startIcon={override ? <SwapHorizIcon /> : undefined}
+        startIcon={needsException ? <SwapHorizIcon /> : override ? <SwapHorizIcon /> : undefined}
         onClick={onAssign}
       >
-        {person.alreadyOnShift ? 'Assigned' : override ? 'Assign as override' : 'Assign'}
+        {person.alreadyOnShift
+          ? 'Assigned'
+          : needsException
+            ? 'Assign by exception'
+            : override
+              ? 'Assign as override'
+              : 'Assign'}
       </Button>
     </Box>
   );
@@ -127,8 +153,11 @@ const CandidateRow = ({
  * assign in one action — the ordinary case stays two clicks. Everyone else is
  * behind a disclosure, plainly labelled: cover is often agreed by phone, so the
  * platform must not block it, but it must not pretend it was a submission
- * either. A role requiring the driver certification never lists anyone without
- * it, in either group — that requirement is a bar, not an override.
+ * either.
+ *
+ * A role's `requiredCertification` is enforceable but not absolute — someone
+ * who lacks it is listed and flagged rather than hidden, and assigning them
+ * needs a typed reason, confirmed in a second step below.
  */
 export const AssignPersonDialog = ({
   scheduleId,
@@ -147,6 +176,8 @@ export const AssignPersonDialog = ({
   const [search, setSearch] = useState('');
   const [showOthers, setShowOthers] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [pendingOverride, setPendingOverride] = useState<ScheduleCandidate | null>(null);
+  const [overrideReason, setOverrideReason] = useState('');
 
   const load = useCallback(async () => {
     if (!target) return;
@@ -174,10 +205,12 @@ export const AssignPersonDialog = ({
     setSearch('');
     setShowOthers(false);
     setCandidates(null);
+    setPendingOverride(null);
+    setOverrideReason('');
     void load();
   }, [load]);
 
-  const assign = async (person: ScheduleCandidate) => {
+  const assign = async (person: ScheduleCandidate, reason?: string) => {
     if (!target) return;
     setBusy(true);
     setError(null);
@@ -189,14 +222,27 @@ export const AssignPersonDialog = ({
           slot: target.slot,
           userId: person.id,
           ...(target.role ? { roleId: target.role.id } : {}),
+          ...(reason ? { overrideReason: reason } : {}),
         },
       });
+      setPendingOverride(null);
+      setOverrideReason('');
       onAssigned();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Could not assign that person.');
     } finally {
       setBusy(false);
     }
+  };
+
+  const requestAssign = (person: ScheduleCandidate) => {
+    if (!meetsRequirement(person, target?.role ?? null)) {
+      setError(null);
+      setOverrideReason('');
+      setPendingOverride(person);
+      return;
+    }
+    void assign(person);
   };
 
   const available = useMemo(
@@ -211,104 +257,157 @@ export const AssignPersonDialog = ({
   if (!target) return null;
 
   return (
-    <Dialog open onClose={onClose} fullWidth maxWidth="sm">
-      <DialogTitle sx={{ pb: 1 }}>
-        <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-          <span>Assign · {target.role?.name ?? 'Crew'}</span>
-          {target.role && (
-            <Chip size="small" variant="outlined" label={formatRoleCapacity(target.role.maxPeople)} />
+    <>
+      <Dialog open onClose={onClose} fullWidth maxWidth="sm">
+        <DialogTitle sx={{ pb: 1 }}>
+          <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+            <span>Assign · {target.role?.name ?? 'Crew'}</span>
+            {target.role && (
+              <Chip size="small" variant="outlined" label={formatRoleCapacity(target.role.maxPeople)} />
+            )}
+            {target.role?.requiredCertification && (
+              <Chip
+                size="small"
+                variant="outlined"
+                color="warning"
+                label={`Requires ${CERTIFICATION_LABEL[target.role.requiredCertification]}`}
+              />
+            )}
+          </Stack>
+          <Typography variant="body2" color="text.secondary">
+            {formatDayLabel(target.date)} · {target.shiftLabel}
+          </Typography>
+        </DialogTitle>
+
+        <DialogContent>
+          {error && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              {error}
+            </Alert>
           )}
-        </Stack>
-        <Typography variant="body2" color="text.secondary">
-          {formatDayLabel(target.date)} · {target.shiftLabel}
-        </Typography>
-      </DialogTitle>
 
-      <DialogContent>
-        {error && (
-          <Alert severity="warning" sx={{ mb: 2 }}>
-            {error}
-          </Alert>
-        )}
+          <TextField
+            fullWidth
+            size="small"
+            label="Search personnel"
+            value={search}
+            onChange={(event) => setSearch(event.target.value)}
+            sx={{ mb: 2 }}
+          />
 
-        <TextField
-          fullWidth
-          size="small"
-          label="Search personnel"
-          value={search}
-          onChange={(event) => setSearch(event.target.value)}
-          sx={{ mb: 2 }}
-        />
+          {loading ? (
+            <CircularProgress size={24} />
+          ) : (
+            <>
+              <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
+                <Typography variant="subtitle2">Available for this shift</Typography>
+                <Chip size="small" variant="outlined" color="success" label={available.length} />
+              </Stack>
+              {available.length === 0 ? (
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                  Nobody submitted availability for this shift.
+                </Typography>
+              ) : (
+                <Box sx={{ mb: 2 }}>
+                  {available.map((person) => (
+                    <CandidateRow
+                      key={person.id}
+                      person={person}
+                      role={target.role}
+                      override={false}
+                      busy={busy}
+                      onAssign={() => requestAssign(person)}
+                    />
+                  ))}
+                </Box>
+              )}
 
-        {loading ? (
-          <CircularProgress size={24} />
-        ) : (
-          <>
-            <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 0.5 }}>
-              <Typography variant="subtitle2">Available for this shift</Typography>
-              <Chip size="small" variant="outlined" color="success" label={available.length} />
-            </Stack>
-            {available.length === 0 ? (
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Nobody submitted availability for this shift.
-              </Typography>
-            ) : (
-              <Box sx={{ mb: 2 }}>
-                {available.map((person) => (
+              <Divider sx={{ mb: 1 }} />
+
+              <Button
+                size="small"
+                onClick={() => setShowOthers((value) => !value)}
+                startIcon={showOthers ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                sx={{ px: 0 }}
+              >
+                {showOthers ? 'Hide everyone else' : `Show everyone else (${others.length})`}
+              </Button>
+
+              <Collapse in={showOthers} unmountOnExit>
+                <Alert severity="warning" sx={{ my: 1 }}>
+                  Nobody here submitted availability for this shift. Assigning them is
+                  recorded as an override, stamped with your name and the time.
+                </Alert>
+                {others.map((person) => (
                   <CandidateRow
                     key={person.id}
                     person={person}
-                    override={false}
+                    role={target.role}
+                    override
                     busy={busy}
-                    onAssign={() => void assign(person)}
+                    onAssign={() => requestAssign(person)}
                   />
                 ))}
-              </Box>
-            )}
+              </Collapse>
 
-            <Divider sx={{ mb: 1 }} />
+              {target.role?.requiredCertification && (
+                <Stack direction="row" spacing={0.75} sx={{ mt: 2 }} alignItems="flex-start">
+                  <WarningAmberIcon fontSize="small" sx={{ color: 'warning.dark' }} />
+                  <Typography variant="caption" color="text.secondary">
+                    People who do not hold the {CERTIFICATION_LABEL[target.role.requiredCertification]}{' '}
+                    certification are listed rather than hidden — assigning one of them needs a reason,
+                    recorded against the assignment.
+                  </Typography>
+                </Stack>
+              )}
+            </>
+          )}
+        </DialogContent>
 
-            <Button
-              size="small"
-              onClick={() => setShowOthers((value) => !value)}
-              startIcon={showOthers ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-              sx={{ px: 0 }}
-            >
-              {showOthers ? 'Hide everyone else' : `Show everyone else (${others.length})`}
-            </Button>
+        <DialogActions>
+          <Button onClick={onClose}>Close</Button>
+        </DialogActions>
+      </Dialog>
 
-            <Collapse in={showOthers} unmountOnExit>
-              <Alert severity="warning" sx={{ my: 1 }}>
-                Nobody here submitted availability for this shift. Assigning them is
-                recorded as an override, stamped with your name and the time.
-              </Alert>
-              {others.map((person) => (
-                <CandidateRow
-                  key={person.id}
-                  person={person}
-                  override
-                  busy={busy}
-                  onAssign={() => void assign(person)}
-                />
-              ))}
-            </Collapse>
-
-            {target.role?.requiresDriverCertification && (
-              <Stack direction="row" spacing={0.75} sx={{ mt: 2 }} alignItems="flex-start">
-                <BadgeIcon fontSize="small" sx={{ color: 'warning.dark' }} />
-                <Typography variant="caption" color="text.secondary">
-                  {target.role.name} only ever lists certified drivers — that
-                  requirement cannot be overridden.
-                </Typography>
-              </Stack>
-            )}
-          </>
-        )}
-      </DialogContent>
-
-      <DialogActions>
-        <Button onClick={onClose}>Close</Button>
-      </DialogActions>
-    </Dialog>
+      <Dialog open={pendingOverride !== null} onClose={() => setPendingOverride(null)} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          <WarningAmberIcon color="warning" />
+          Assign without the required certification?
+        </DialogTitle>
+        <DialogContent>
+          {pendingOverride && target.role?.requiredCertification && (
+            <Alert severity="warning" sx={{ mb: 2 }}>
+              <strong>
+                {target.role.name} requires {CERTIFICATION_LABEL[target.role.requiredCertification]}.
+              </strong>{' '}
+              {fullName(pendingOverride)} does not hold it. Assigning them is recorded as an exception
+              against this shift, stamped with your name and the time.
+            </Alert>
+          )}
+          <TextField
+            autoFocus
+            fullWidth
+            multiline
+            minRows={3}
+            required
+            label="Reason"
+            value={overrideReason}
+            onChange={(event) => setOverrideReason(event.target.value)}
+            helperText="Shown on the board and on the published schedule."
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setPendingOverride(null)}>Cancel</Button>
+          <Button
+            variant="contained"
+            color="warning"
+            disabled={!overrideReason.trim() || busy}
+            onClick={() => pendingOverride && void assign(pendingOverride, overrideReason.trim())}
+          >
+            Assign by exception
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </>
   );
 };

@@ -33,7 +33,7 @@ export class AuthService {
 
   // ── Token generation ────────────────────────────────────────────────────────
 
-  async generateTokens(user: User) {
+  async generateTokens(user: Pick<User, 'id' | 'email' | 'role'>) {
     const payload = { sub: user.id, email: user.email, role: user.role };
 
     const accessToken = this.jwtService.sign(payload, {
@@ -56,9 +56,15 @@ export class AuthService {
     return { accessToken, refreshToken: rawRefresh };
   }
 
-  async login(user: User) {
-    const tokens = await this.generateTokens(user);
-    return { ...tokens, user: this.sanitize(user) };
+  /**
+   * `userId` rather than a full row: the response's `user` must carry the
+   * computed personnel fields (`isDriver`, `isActiveEmergencyOperational`),
+   * which only `UsersService.findOne` knows how to assemble.
+   */
+  async login(userId: string) {
+    const person = await this.usersService.findOne(userId);
+    const tokens = await this.generateTokens(person);
+    return { ...tokens, user: person };
   }
 
   // ── Refresh ─────────────────────────────────────────────────────────────────
@@ -97,7 +103,7 @@ export class AuthService {
 
   // ── Me ───────────────────────────────────────────────────────────────────────
 
-  sanitize(user: User) {
+  sanitize<T extends { passwordHash?: string | null }>(user: T): Omit<T, 'passwordHash'> {
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { passwordHash, ...safe } = user;
     return safe;

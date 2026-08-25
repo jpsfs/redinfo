@@ -21,6 +21,22 @@ describe('hasPermission', () => {
     expect(hasPermission(UserRole.EMERGENCY_OPERATIONAL, Action.MANAGE_USERS)).toBe(false);
   });
 
+  it('EMERGENCY_OPERATIONAL cannot perform MANAGE_PERSONNEL', () => {
+    expect(hasPermission(UserRole.EMERGENCY_OPERATIONAL, Action.MANAGE_PERSONNEL)).toBe(false);
+  });
+
+  it('EMERGENCY_COORDINATOR can perform MANAGE_PERSONNEL (may enable/disable people and maintain certifications)', () => {
+    expect(hasPermission(UserRole.EMERGENCY_COORDINATOR, Action.MANAGE_PERSONNEL)).toBe(true);
+  });
+
+  it('EMERGENCY_COORDINATOR cannot perform MANAGE_USERS (account-level stays admin-only)', () => {
+    expect(hasPermission(UserRole.EMERGENCY_COORDINATOR, Action.MANAGE_USERS)).toBe(false);
+  });
+
+  it('LOGISTICS_COORDINATOR cannot perform MANAGE_PERSONNEL', () => {
+    expect(hasPermission(UserRole.LOGISTICS_COORDINATOR, Action.MANAGE_PERSONNEL)).toBe(false);
+  });
+
   it('EMERGENCY_OPERATIONAL cannot perform MANAGE_LOGISTICS', () => {
     expect(hasPermission(UserRole.EMERGENCY_OPERATIONAL, Action.MANAGE_LOGISTICS)).toBe(false);
   });

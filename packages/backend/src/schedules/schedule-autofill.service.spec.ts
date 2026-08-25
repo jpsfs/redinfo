@@ -1,20 +1,27 @@
-import { AvailabilityWindowCategory, AvailabilityWindowStatus } from '@redinfo/shared';
+import {
+  AvailabilityWindowCategory,
+  AvailabilityWindowStatus,
+  CertificationType,
+} from '@redinfo/shared';
 import { ScheduleAutofillService } from './schedule-autofill.service';
 import { ScheduleContext } from './schedules.service';
 
-// ── Generating a first draft from availability (ADO #161) ──────────────────────
+// ── Generating a first draft from availability (ADO #161, generalised #163) ────
 //
 // AC: "Coordinators can manually adjust the generated schedule before
 // publishing." The generator only ever places people who submitted for the
 // shift — an override is a human decision — and it is deterministic, so
-// re-running it does not reshuffle a rota someone has already read.
+// re-running it does not reshuffle a rota someone has already read. Autofill
+// never overrides a `requiredCertification` either: unlike a coordinator
+// assigning by hand, a person who lacks a post's requirement is simply not a
+// candidate for it.
 
 const DRIVER_ROLE = {
   id: 'r-driver',
   windowId: 'w1',
   name: 'Driver',
   maxPeople: 1,
-  requiresDriverCertification: true,
+  requiredCertification: CertificationType.DRIVER,
   order: 0,
 };
 const LEADER_ROLE = {
@@ -22,7 +29,7 @@ const LEADER_ROLE = {
   windowId: 'w1',
   name: 'Team Leader',
   maxPeople: 1,
-  requiresDriverCertification: false,
+  requiredCertification: null,
   order: 1,
 };
 const MEMBER_ROLE = {
@@ -30,21 +37,31 @@ const MEMBER_ROLE = {
   windowId: 'w1',
   name: 'Team Member',
   maxPeople: 1,
-  requiresDriverCertification: false,
+  requiredCertification: null,
   order: 2,
 };
 
-const ANA = { id: 'u-ana', firstName: 'Ana', lastName: 'Silva', isDriver: true };
-const PEDRO = { id: 'u-pedro', firstName: 'Pedro', lastName: 'Neves', isDriver: true };
-const JOANA = { id: 'u-joana', firstName: 'Joana', lastName: 'Pinto', isDriver: false };
-const LUISA = { id: 'u-luisa', firstName: 'Luísa', lastName: 'Rocha', isDriver: false };
+const driverCert = [{ type: CertificationType.DRIVER, validUntil: null }];
+const noCerts: Array<{ type: CertificationType; validUntil: string | null }> = [];
+
+const ANA = { id: 'u-ana', firstName: 'Ana', lastName: 'Silva', certifications: driverCert };
+const PEDRO = { id: 'u-pedro', firstName: 'Pedro', lastName: 'Neves', certifications: driverCert };
+const JOANA = { id: 'u-joana', firstName: 'Joana', lastName: 'Pinto', certifications: noCerts };
+const LUISA = { id: 'u-luisa', firstName: 'Luísa', lastName: 'Rocha', certifications: noCerts };
 const ROSTER = [ANA, PEDRO, JOANA, LUISA];
 
 function makeContext({
   roles = [DRIVER_ROLE, LEADER_ROLE, MEMBER_ROLE],
   days = [{ date: '2026-10-03', vehiclesNeeded: 1 }],
 }: {
-  roles?: typeof DRIVER_ROLE[];
+  roles?: Array<{
+    id: string;
+    windowId: string;
+    name: string;
+    maxPeople: number;
+    requiredCertification: CertificationType | null;
+    order: number;
+  }>;
   days?: Array<{ date: string; vehiclesNeeded: number }>;
 } = {}): ScheduleContext {
   const shifts = new Map<string, never>();
@@ -183,6 +200,28 @@ describe('ScheduleAutofillService', () => {
     ]);
     expect(report.shiftsWithoutDriver).toBe(1);
     expect(report.unfilled).toBe(1);
+  });
+
+  // Generalised for ADO #163: the same skip-not-override rule applies to any
+  // requiredCertification, not only DRIVER.
+  it('never places anyone lacking a non-driver requiredCertification either', async () => {
+    const tasRole = { ...LEADER_ROLE, requiredCertification: CertificationType.TAS };
+    const prisma = buildPrismaStub();
+    prisma.availabilitySubmission.findMany.mockResolvedValue(
+      submissionsFor([ANA, JOANA], ['2026-10-03']),
+    );
+    // vehiclesNeeded: 0 keeps the driver-preference tiebreak out of it — this
+    // test is only about the requiredCertification skip.
+    const service = makeService(
+      prisma,
+      makeContext({ roles: [tasRole, MEMBER_ROLE], days: [{ date: '2026-10-03', vehiclesNeeded: 0 }] }),
+    );
+
+    await service.autofill('s1', {}, 'u-coord');
+
+    // Neither ANA nor JOANA holds TAS, so the leader post stays empty —
+    // autofill never overrides, unlike a coordinator assigning by hand.
+    expect(written(prisma)).toEqual(['2026-10-03/1/u-joana/r-member']);
   });
 
   it('never places anyone who did not submit for the shift', async () => {

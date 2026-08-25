@@ -11,15 +11,23 @@ export interface AttachmentStorage {
    * Stores the bytes and returns the key they can be read back with. The key
    * is generated here, never derived from the uploader's filename — a name
    * from a phone is display text, not a path.
+   *
+   * `prefix` namespaces the key — an event report id (`<reportId>/<uuid>…`),
+   * or `certifications-<userId>` / `people-<userId>` for personnel documents.
+   * Always one flat segment, never itself containing a `/`: the key stays
+   * exactly `<prefix>/<uuid><ext>`, which is what `SAFE_KEY` below enforces.
+   * It is never parsed back out of the key; it only groups files on disk.
    */
-  save(reportId: string, filename: string, data: Buffer): Promise<string>;
+  save(prefix: string, filename: string, data: Buffer): Promise<string>;
   read(storageKey: string): Promise<Buffer>;
   /** Idempotent: removing a key that is already gone is not an error. */
   remove(storageKey: string): Promise<void>;
 }
 
 /**
- * A storage key is `<reportId>/<uuid><ext>` and nothing else.
+ * A storage key is `<prefix>/<uuid><ext>` and nothing else — exactly two
+ * segments, so a caller passing a `prefix` with its own `/` in it (a bug, not
+ * a feature) is refused here rather than silently nesting directories.
  *
  * Checked on the way out of the database as well as on the way in. The keys we
  * write are safe by construction, but a path assembled from a database value is
@@ -61,9 +69,9 @@ export class DiskAttachmentStorage implements AttachmentStorage {
     this.root = resolve(root);
   }
 
-  async save(reportId: string, filename: string, data: Buffer): Promise<string> {
+  async save(prefix: string, filename: string, data: Buffer): Promise<string> {
     const storageKey = assertSafeStorageKey(
-      `${reportId}/${randomUUID()}${safeExtension(filename)}`,
+      `${prefix}/${randomUUID()}${safeExtension(filename)}`,
     );
     const target = this.pathFor(storageKey);
     await mkdir(dirname(target), { recursive: true });

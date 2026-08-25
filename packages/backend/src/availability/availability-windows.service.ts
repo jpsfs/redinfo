@@ -19,6 +19,7 @@ import {
   AvailabilityWindowOverlapsResponse,
   AvailabilityWindowRole,
   AvailabilityWindowStatus,
+  CertificationType,
   DayShiftPattern,
   defaultRolesForCategory,
   defaultShiftsForDayType,
@@ -44,7 +45,9 @@ type RoleRow = {
   windowId: string;
   name: string;
   maxPeople: number;
-  requiresDriverCertification: boolean;
+  // Template-literal form so Prisma's own string-union enum type-checks
+  // against the shared TS enum without a cast at every call site.
+  requiredCertification: `${CertificationType}` | null;
   order: number;
 };
 
@@ -404,7 +407,7 @@ export class AvailabilityWindowsService {
   private resolveRoles(
     category: AvailabilityWindowCategory,
     roles?: WindowRoleSpec[],
-  ): Array<WindowRoleSpec & { order: number; requiresDriverCertification: boolean }> {
+  ): Array<WindowRoleSpec & { order: number }> {
     const requested = roles ?? defaultRolesForCategory(category);
     const error = validateWindowRoles(requested);
     if (error) throw new BadRequestException(error);
@@ -494,7 +497,7 @@ function serializeRole(row: RoleRow): AvailabilityWindowRole {
     windowId: row.windowId,
     name: row.name,
     maxPeople: row.maxPeople,
-    requiresDriverCertification: row.requiresDriverCertification,
+    requiredCertification: row.requiredCertification as CertificationType | null,
     order: row.order,
   };
 }

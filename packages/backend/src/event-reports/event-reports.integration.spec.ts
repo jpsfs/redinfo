@@ -27,7 +27,7 @@ import { EventReportsService, RequestUser } from './event-reports.service';
 import { EventReportNumbering } from './event-report-numbering';
 import { EventReportCrewService } from './event-report-crew.service';
 import { EventReportAttachmentsService } from './event-report-attachments.service';
-import { DiskAttachmentStorage } from './attachment-storage';
+import { DiskAttachmentStorage } from '../storage/attachment-storage';
 
 /**
  * Integration coverage for event reports (ADO #151), against a real Postgres —
@@ -130,17 +130,25 @@ describeIntegration('Event reports (integration)', () => {
       new DiskAttachmentStorage(attachmentRoot),
     );
 
-    const makeUser = (local: string, role: UserRole, isDriver = false) =>
-      prisma.user.create({
+    const makeUser = async (local: string, role: UserRole, isDriver = false) => {
+      const user = await prisma.user.create({
         data: {
           email: email(local),
           firstName: local[0].toUpperCase() + local.slice(1),
           lastName: 'Test',
           role,
           isActive: true,
-          isDriver,
         },
       });
+      // isDriver is no longer a column — a certified driver holds a DRIVER
+      // certification. Self-attributed: there is no coordinator actor here.
+      if (isDriver) {
+        await prisma.userCertification.create({
+          data: { userId: user.id, type: 'DRIVER', validUntil: null, createdById: user.id },
+        });
+      }
+      return user;
+    };
 
     tiago = await makeUser('tiago', UserRole.EMERGENCY_OPERATIONAL, true);
     ana = await makeUser('ana', UserRole.EMERGENCY_OPERATIONAL);
@@ -927,12 +935,12 @@ describeIntegration('Event reports (integration)', () => {
           },
           roles: {
             create: [
-              { name: 'Driver', maxPeople: 1, order: 0, requiresDriverCertification: true },
+              { name: 'Driver', maxPeople: 1, order: 0, requiredCertification: 'DRIVER' },
               {
                 name: 'Team Leader',
                 maxPeople: 1,
                 order: 1,
-                requiresDriverCertification: false,
+                requiredCertification: null,
               },
             ],
           },

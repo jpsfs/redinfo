@@ -2,6 +2,9 @@ import { IsDateString, IsInt, IsOptional, IsString, Max, MaxLength, Min } from '
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { MAX_SHIFTS_PER_DAY } from '@redinfo/shared';
 
+/** A reason typed by hand; long enough to say something, short enough for a chip. */
+export const MAX_OVERRIDE_REASON_LENGTH = 500;
+
 /**
  * Putting one person on one shift.
  *
@@ -38,6 +41,11 @@ export class SelfAssignDto {
   roleId?: string;
 }
 
+/**
+ * Self-assignment has no override path for a certification requirement — see
+ * `selfAssignBlockedReason` (shared): a volunteer who lacks a post's
+ * `requiredCertification` is refused outright, not offered an exception.
+ */
 export class CreateScheduleAssignmentDto {
   @ApiProperty({ example: '2026-10-03', description: 'Day of the window (YYYY-MM-DD)' })
   @IsDateString()
@@ -69,4 +77,15 @@ export class CreateScheduleAssignmentDto {
   @IsString()
   @MaxLength(40)
   roleId?: string;
+
+  @ApiPropertyOptional({
+    example: 'TAS de serviço em formação; assume chefia com apoio do coordenador.',
+    description:
+      "Required exactly when the person does not hold the role's requiredCertification. " +
+      'Ignored otherwise.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(MAX_OVERRIDE_REASON_LENGTH)
+  overrideReason?: string;
 }

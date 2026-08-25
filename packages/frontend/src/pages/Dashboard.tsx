@@ -10,12 +10,15 @@ import {
   CircularProgress,
 } from '@mui/material';
 import { DelegacaoCampoLogo } from '../components/DelegacaoCampoLogo';
-import { useGetList, Link } from 'react-admin';
+import { useGetList, Link, usePermissions } from 'react-admin';
 import { useEffect, useState } from 'react';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import InventoryIcon from '@mui/icons-material/Inventory';
+import AssignmentLateIcon from '@mui/icons-material/AssignmentLate';
+import { Action, hasPermission, UserRole } from '@redinfo/shared';
+import { apiFetch } from '../api';
 import { LiveRunBoard } from '../resources/liveRuns';
 
 const API_URL = import.meta.env.VITE_API_URL ?? '';
@@ -128,6 +131,62 @@ const LowStockPanel = () => {
   );
 };
 
+interface CertificationAlerts {
+  expiring: number;
+  expired: number;
+}
+
+const certificationFilterLink = (status: 'EXPIRING' | 'EXPIRED') =>
+  `/users?filter=${encodeURIComponent(JSON.stringify({ certificationStatus: status }))}`;
+
+/**
+ * Coordinators/admins only — a plain operational already sees their own
+ * lapsed certifications on `MyProfilePage`. Backed by
+ * `GET /users/certification-alerts`, which counts *people*, not
+ * certifications, the same way the personnel registry's own
+ * `certificationStatus` filter does — so the numbers here always match what
+ * clicking through actually lists.
+ */
+export const CertificationAlertsTile = () => {
+  const { permissions, isLoading } = usePermissions<UserRole>();
+  const [alerts, setAlerts] = useState<CertificationAlerts | null>(null);
+  const canView = Boolean(permissions && hasPermission(permissions, Action.MANAGE_PERSONNEL));
+
+  useEffect(() => {
+    if (!canView) return;
+    apiFetch<CertificationAlerts>('/users/certification-alerts')
+      .then(setAlerts)
+      .catch(() => setAlerts(null));
+  }, [canView]);
+
+  if (isLoading || !canView || !alerts || (alerts.expired === 0 && alerts.expiring === 0)) return null;
+
+  return (
+    <Card sx={{ mt: 2 }} data-testid="certification-alerts-tile">
+      <CardContent>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+          <AssignmentLateIcon color="warning" />
+          <Typography variant="h6" fontWeight={700}>
+            Personnel Certifications
+          </Typography>
+        </Box>
+        <Stack direction="row" spacing={2} flexWrap="wrap" useFlexGap>
+          {alerts.expired > 0 && (
+            <Box component={Link} to={certificationFilterLink('EXPIRED')} sx={{ textDecoration: 'none' }}>
+              <Chip color="error" label={`${alerts.expired} expired`} clickable />
+            </Box>
+          )}
+          {alerts.expiring > 0 && (
+            <Box component={Link} to={certificationFilterLink('EXPIRING')} sx={{ textDecoration: 'none' }}>
+              <Chip color="warning" label={`${alerts.expiring} expiring within 6 months`} clickable />
+            </Box>
+          )}
+        </Stack>
+      </CardContent>
+    </Card>
+  );
+};
+
 const UpcomingAlertsPanel = () => {
   const { data: vehicles, isLoading } = useGetList<VehicleRecord>('vehicles', {
     pagination: { page: 1, perPage: 100 },
@@ -225,6 +284,7 @@ export const Dashboard = () => (
     <Box sx={{ mt: 2 }}>
       <LiveRunBoard />
     </Box>
+    <CertificationAlertsTile />
     <UpcomingAlertsPanel />
     <LowStockPanel />
     <Alert severity="info" sx={{ mt: 2 }}>

@@ -64,6 +64,34 @@ export async function apiDownload(path: string, filename: string): Promise<void>
   }
 }
 
+/**
+ * Upload a single file to an authenticated endpoint that expects it under the
+ * multipart field name `file` (every such endpoint in this app does).
+ *
+ * `apiFetch` always sends JSON, and `fetch` needs to set its own multipart
+ * boundary when handed a `FormData`, so this builds the request by hand
+ * rather than going through it — same reasoning as `uploadAttachment.ts`,
+ * generalised for the photo and certification-document endpoints.
+ */
+export async function apiUpload<T>(path: string, file: File | Blob): Promise<T> {
+  const body = new FormData();
+  body.append('file', file, file instanceof File ? file.name : 'ficheiro');
+
+  const token = getAccessToken();
+  const response = await fetch(`${API_URL}${path}`, {
+    method: 'POST',
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+    body,
+  });
+
+  if (!response.ok) {
+    throw new ApiError(await readErrorMessage(response), response.status);
+  }
+
+  const text = await response.text();
+  return (text ? JSON.parse(text) : undefined) as T;
+}
+
 export class ApiError extends Error {
   constructor(
     message: string,

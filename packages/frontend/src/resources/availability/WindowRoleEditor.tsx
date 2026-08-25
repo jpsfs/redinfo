@@ -1,19 +1,19 @@
 import {
   Box,
   Button,
-  Chip,
   IconButton,
+  MenuItem,
   Paper,
   Stack,
   TextField,
-  Tooltip,
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import BadgeIcon from '@mui/icons-material/Badge';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import {
-  DRIVER_ROLE_NAME,
+  CERTIFICATION_LABEL,
+  CERTIFICATION_TYPES,
+  CertificationType,
   formatRoleCapacity,
   MAX_ROLE_NAME_LENGTH,
   MAX_ROLE_PEOPLE,
@@ -23,6 +23,22 @@ import {
   validateWindowRoles,
   WindowRoleSpec,
 } from '@redinfo/shared';
+
+/** The select's own value space: unset (suggestion), explicitly none, or a type. */
+const NONE = 'NONE' as const;
+type CertSelectValue = '' | typeof NONE | CertificationType;
+
+function toSelectValue(requiredCertification: CertificationType | null | undefined): CertSelectValue {
+  if (requiredCertification === undefined) return '';
+  if (requiredCertification === null) return NONE;
+  return requiredCertification;
+}
+
+function fromSelectValue(value: string): CertificationType | null | undefined {
+  if (value === '') return undefined;
+  if (value === NONE) return null;
+  return value as CertificationType;
+}
 
 /**
  * The roles a window's schedule will be built from.
@@ -60,7 +76,9 @@ export const WindowRoleEditor = ({
       ) : (
         <Stack spacing={1} sx={{ mb: 1 }}>
           {roles.map((role, index) => {
-            const needsDriver = roleRequiresDriverCertification(role.name);
+            const suggested = roleRequiresDriverCertification(role.name)
+              ? CertificationType.DRIVER
+              : null;
             return (
               <Paper
                 // Index-keyed on purpose: a row's identity here is its position,
@@ -72,7 +90,7 @@ export const WindowRoleEditor = ({
                 <Stack
                   direction="row"
                   spacing={1}
-                  alignItems="center"
+                  alignItems="flex-start"
                   flexWrap="wrap"
                   useFlexGap
                 >
@@ -111,19 +129,37 @@ export const WindowRoleEditor = ({
                       step: 1,
                     }}
                     helperText={formatRoleCapacity(role.maxPeople)}
-                    sx={{ width: 120 }}
+                    sx={{ width: 110 }}
                   />
-                  {needsDriver && (
-                    <Tooltip title="Only personnel with the driver certification can be assigned to this role.">
-                      <Chip
-                        size="small"
-                        color="warning"
-                        variant="outlined"
-                        icon={<BadgeIcon />}
-                        label="Driver certification"
-                      />
-                    </Tooltip>
-                  )}
+                  <TextField
+                    select
+                    size="small"
+                    label="Requires"
+                    value={toSelectValue(role.requiredCertification)}
+                    disabled={disabled}
+                    onChange={(event) =>
+                      updateRole(index, { requiredCertification: fromSelectValue(event.target.value) })
+                    }
+                    inputProps={{ 'aria-label': `Role ${index + 1} required certification` }}
+                    helperText={
+                      role.requiredCertification === undefined
+                        ? suggested
+                          ? `Suggested from the name: ${CERTIFICATION_LABEL[suggested]}`
+                          : 'No suggestion'
+                        : "Coordinator's choice"
+                    }
+                    sx={{ width: 200 }}
+                  >
+                    <MenuItem value="">
+                      <em>{suggested ? `Suggested: ${CERTIFICATION_LABEL[suggested]}` : 'Unset'}</em>
+                    </MenuItem>
+                    <MenuItem value={NONE}>No requirement</MenuItem>
+                    {CERTIFICATION_TYPES.map((type) => (
+                      <MenuItem key={type} value={type}>
+                        {CERTIFICATION_LABEL[type]}
+                      </MenuItem>
+                    ))}
+                  </TextField>
                   <IconButton
                     size="small"
                     disabled={disabled}
@@ -131,6 +167,7 @@ export const WindowRoleEditor = ({
                     onClick={() =>
                       onChange(roles.filter((_, position) => position !== index))
                     }
+                    sx={{ mt: 0.5 }}
                   >
                     <DeleteOutlineIcon fontSize="small" />
                   </IconButton>
@@ -147,15 +184,16 @@ export const WindowRoleEditor = ({
           startIcon={<AddIcon />}
           disabled={disabled || roles.length >= MAX_ROLES_PER_WINDOW}
           onClick={() =>
-            onChange([...roles, { name: '', maxPeople: 1 }])
+            onChange([...roles, { name: '', maxPeople: 1, requiredCertification: undefined }])
           }
         >
           Add role
         </Button>
         <Typography variant="caption" color="text.secondary">
           {`People is the most the schedule may put in a role on one shift; ` +
-            `${UNLIMITED_ROLE_PEOPLE} means unlimited. A role named ` +
-            `"${DRIVER_ROLE_NAME}" always requires the driver certification.`}
+            `${UNLIMITED_ROLE_PEOPLE} means unlimited. A required certification is ` +
+            `enforceable but not absolute — a coordinator may still assign someone ` +
+            `who lacks it, with a reason.`}
         </Typography>
       </Stack>
 

@@ -10,7 +10,9 @@ import {
   AvailabilityWindowRole,
   availabilityEligibleRoles,
   availabilityWindowLabel,
+  CERTIFICATION_LABEL,
   formatRoleCapacity,
+  holdsCertification,
   ScheduleAssignment,
   ScheduleCandidate,
   ScheduleCandidatesResponse,
@@ -22,6 +24,12 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { ShiftScheduleService } from '../availability/shift-schedule.service';
 import { toIsoDate } from '../utils/date.util';
+import {
+  CERT_HELD_SELECT,
+  today,
+  toHeldCertifications,
+  toSchedulePerson,
+} from '../users/certifications.util';
 import { CreateScheduleAssignmentDto, SelfAssignDto } from './dto/create-assignment.dto';
 import {
   ScheduleContext,
@@ -31,7 +39,7 @@ import {
 } from './schedules.service';
 
 const ASSIGNMENT_INCLUDE = {
-  user: { select: { id: true, firstName: true, lastName: true, isDriver: true } },
+  user: { select: { id: true, firstName: true, lastName: true, certifications: { select: CERT_HELD_SELECT } } },
   role: true,
   assignedBy: { select: { id: true, firstName: true, lastName: true } },
 } as const;
@@ -40,7 +48,7 @@ const PERSON_SELECT = {
   id: true,
   firstName: true,
   lastName: true,
-  isDriver: true,
+  certifications: { select: CERT_HELD_SELECT },
 } as const;
 
 /**
@@ -52,8 +60,10 @@ const PERSON_SELECT = {
  * submitted, or who declared they had none. What the platform owes in return is
  * honesty: every such assignment is stamped as an override, with who and when.
  *
- * Exactly one rule is absolute, and it is not about availability: a role that
- * requires the driver certification only ever takes a certified driver.
+ * A post's `requiredCertification` is enforceable, not absolute: a coordinator
+ * may still assign someone who lacks it, but only with a reason, recorded as
+ * `certificationOverrideReason`. Self-assignment has no such door — see
+ * `selfAssignBlockedReason` (shared).
  */
 @Injectable()
 export class ScheduleAssignmentsService {
@@ -88,12 +98,17 @@ export class ScheduleAssignmentsService {
       );
     }
 
-    // The one requirement no coordinator may override: a vehicle nobody may
-    // legally drive is not cover.
-    if (role?.requiresDriverCertification && !person.isDriver) {
+    // Every requirement is overridable, the driver post included — but never
+    // without a reason, recorded on the assignment rather than merely implied
+    // by it existing.
+    const overrideReason = dto.overrideReason?.trim() || undefined;
+    const meetsRequirement =
+      !role?.requiredCertification ||
+      holdsCertification(toHeldCertifications(person.certifications), role.requiredCertification, today());
+    if (!meetsRequirement && !overrideReason) {
       throw new BadRequestException(
-        `${role.name} requires the driver certification, which ${person.firstName} ` +
-          `${person.lastName} does not hold. This cannot be overridden.`,
+        `${role!.name} requires the ${CERTIFICATION_LABEL[role!.requiredCertification!]} certification, ` +
+          `which ${person.firstName} ${person.lastName} does not hold. Assigning them needs a reason.`,
       );
     }
 
@@ -141,6 +156,7 @@ export class ScheduleAssignmentsService {
         userId: dto.userId,
         roleId: role?.id ?? null,
         isOverride: submission === null,
+        certificationOverrideReason: meetsRequirement ? null : (overrideReason as string),
         assignedById,
       },
       include: ASSIGNMENT_INCLUDE,
@@ -222,8 +238,9 @@ export class ScheduleAssignmentsService {
    *
    * `available` is the easy path — people who submitted for exactly this shift.
    * `others` is everyone else eligible, each assignable but each an override.
-   * For a driver role `others` still only contains certified drivers: that
-   * requirement is not an override, it is a bar.
+   * Nobody is excluded for lacking the role's `requiredCertification` — every
+   * requirement is overridable now, so the client checks each candidate's own
+   * `certifications` against it and flags rather than hides them.
    */
   async getCandidates(
     scheduleId: string,
@@ -233,7 +250,8 @@ export class ScheduleAssignmentsService {
   ): Promise<ScheduleCandidatesResponse> {
     const context = await this.schedules.loadContext(scheduleId);
     const shift = this.assertShift(context, date, slot);
-    const role = roleId ? this.assertRole(context, roleId) : null;
+    // Validates roleId belongs to this window; nothing further is read from it.
+    if (roleId) this.assertRole(context, roleId);
 
     const [roster, submissions, declined, assignments] = await Promise.all([
       this.prisma.user.findMany({
@@ -271,13 +289,16 @@ export class ScheduleAssignmentsService {
 
     const available: ScheduleCandidate[] = [];
     const others: ScheduleCandidate[] = [];
+    const asOf = today();
 
-    for (const person of roster) {
+    for (const personRow of roster) {
+      const person = toSchedulePerson(personRow, asOf);
       const submitted = submittedForShift.has(person.id);
 
-      // Left out of both lists rather than shown as unassignable: offering a
-      // button that can only ever be refused is not a choice.
-      if (role?.requiresDriverCertification && !person.isDriver) continue;
+      // No longer excluded when a role has a requirement they lack — every
+      // requirement is now overridable, so they are listed and flagged
+      // instead. `ScheduleCandidate.certifications` (via `SchedulePerson`)
+      // is what the assign dialog checks against `role.requiredCertification`.
 
       const availability: AssignmentAvailability = submitted
         ? 'submitted'

@@ -39,8 +39,16 @@ export const ROLE_METADATA: Record<UserRole, RoleMetadata> = {
 // ─── Actions ─────────────────────────────────────────────────────────────────
 
 export enum Action {
+  /** Account level: email, role, password, create/delete. Admin only. */
   MANAGE_USERS = 'MANAGE_USERS',
   VIEW_USERS = 'VIEW_USERS',
+  /**
+   * Personnel level: profile fields, certifications, and the active flag.
+   * Split from `MANAGE_USERS` so a coordinator can enable/disable someone and
+   * keep their certifications current without also being able to change their
+   * email, role or password.
+   */
+  MANAGE_PERSONNEL = 'MANAGE_PERSONNEL',
   EMERGENCY_OPERATION = 'EMERGENCY_OPERATION',
   MANAGE_EMERGENCY_CONFIG = 'MANAGE_EMERGENCY_CONFIG',
   MANAGE_LOGISTICS = 'MANAGE_LOGISTICS',
@@ -84,6 +92,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Action[]> = {
     Action.EMERGENCY_OPERATION,
     Action.MANAGE_EMERGENCY_CONFIG,
     Action.VIEW_USERS,
+    Action.MANAGE_PERSONNEL,
     Action.MANAGE_VEHICLES,
     Action.VIEW_VEHICLES,
     Action.MANAGE_VEHICLE_INVENTORY,
@@ -123,6 +132,28 @@ export enum AuthProvider {
   MICROSOFT = 'MICROSOFT',
 }
 
+export enum BloodType {
+  A_POS = 'A_POS',
+  A_NEG = 'A_NEG',
+  B_POS = 'B_POS',
+  B_NEG = 'B_NEG',
+  AB_POS = 'AB_POS',
+  AB_NEG = 'AB_NEG',
+  O_POS = 'O_POS',
+  O_NEG = 'O_NEG',
+}
+
+export const BLOOD_TYPE_LABEL: Record<BloodType, string> = {
+  [BloodType.A_POS]: 'A+',
+  [BloodType.A_NEG]: 'A-',
+  [BloodType.B_POS]: 'B+',
+  [BloodType.B_NEG]: 'B-',
+  [BloodType.AB_POS]: 'AB+',
+  [BloodType.AB_NEG]: 'AB-',
+  [BloodType.O_POS]: 'O+',
+  [BloodType.O_NEG]: 'O-',
+};
+
 export interface User {
   id: string;
   email: string;
@@ -131,10 +162,223 @@ export interface User {
   role: UserRole;
   provider: AuthProvider;
   isActive: boolean;
-  /** Certified driver — a scheduled shift always needs at least one. */
+  /**
+   * Certified driver. Computed from holding a valid `DRIVER` certification —
+   * there is no `isDriver` column; see the `── Certifications ──` section.
+   */
   isDriver: boolean;
+  /**
+   * Derived: holds a valid TAT or TAS. This is *readiness*, not *access* —
+   * `isActive` alone gates login; an inactive person or one whose
+   * certification lapsed keeps their account but stops appearing in
+   * scheduling and availability pickers.
+   */
+  isActiveEmergencyOperational: boolean;
   createdAt: string;
   updatedAt: string;
+
+  // ─── Personnel profile ───────────────────────────────────────────────────
+  // Present on `/users` (coordinator/admin) and `/users/me/profile` (self).
+  // Absent from the narrow roster/picker shapes (`SchedulePerson` and
+  // friends), which is the actual privacy boundary — those endpoints are not
+  // gated by `VIEW_USERS`/`MANAGE_PERSONNEL` and must never carry this data.
+  phone?: string | null;
+  /** ISO date, `YYYY-MM-DD`. */
+  birthDate?: string | null;
+  /** ISO date, `YYYY-MM-DD`. When the person joined the delegation. */
+  joinedOn?: string | null;
+  addressLine?: string | null;
+  postalCode?: string | null;
+  localityId?: string | null;
+  locality?: Locality | null;
+  /** Assigned by the delegation; not self-editable. */
+  redCrossNumber?: string | null;
+  /** Optional, manually assigned by a coordinator; not self-editable. */
+  volunteerNumber?: string | null;
+  nif?: string | null;
+  citizenCardNumber?: string | null;
+  bloodType?: BloodType | null;
+  emergencyContactName?: string | null;
+  emergencyContactPhone?: string | null;
+  photoFilename?: string | null;
+  photoMimeType?: string | null;
+  photoByteSize?: number | null;
+  /** Convenience: whether a photo exists, without exposing its storage key. */
+  hasPhoto?: boolean;
+  /** Held certifications only — see `effectiveCertifications` for what they grant. */
+  certifications?: UserCertification[];
+}
+
+// ─── Certifications ──────────────────────────────────────────────────────────
+
+/**
+ * The four operational certifications the delegation tracks. `DRIVER` is an
+ * autonomous certification — vehicle-driving authority, unrelated to crew
+ * role. The other three form a ladder: TAS (Tripulante de Ambulância de
+ * Socorro) implies TAT (Tripulante de Ambulância de Transporte), which
+ * implies SBV (Suporte Básico de Vida).
+ */
+export enum CertificationType {
+  DRIVER = 'DRIVER',
+  SBV = 'SBV',
+  TAT = 'TAT',
+  TAS = 'TAS',
+}
+
+export const CERTIFICATION_TYPES: readonly CertificationType[] = [
+  CertificationType.DRIVER,
+  CertificationType.SBV,
+  CertificationType.TAT,
+  CertificationType.TAS,
+];
+
+export const CERTIFICATION_LABEL: Record<CertificationType, string> = {
+  [CertificationType.DRIVER]: 'Driver',
+  [CertificationType.SBV]: 'SBV',
+  [CertificationType.TAT]: 'TAT',
+  [CertificationType.TAS]: 'TAS',
+};
+
+/**
+ * Transitive closure of what holding one certification also grants — see the
+ * doc comment on `CertificationType`. `DRIVER` and `SBV` grant nothing beyond
+ * themselves.
+ */
+export const CERTIFICATION_IMPLIES: Record<CertificationType, CertificationType[]> = {
+  [CertificationType.DRIVER]: [],
+  [CertificationType.SBV]: [],
+  [CertificationType.TAT]: [CertificationType.SBV],
+  [CertificationType.TAS]: [CertificationType.TAT, CertificationType.SBV],
+};
+
+/**
+ * How far ahead an expiring certification is flagged — six months, per the
+ * PO. Applies uniformly to every certification type.
+ */
+export const CERTIFICATION_EXPIRY_WARNING_DAYS = 183;
+
+export type CertificationStatus = 'VALID' | 'EXPIRING' | 'EXPIRED';
+
+/** The minimum a certification needs to reason about: what it is, and until when. */
+export interface HeldCertification {
+  type: CertificationType;
+  /** ISO date, `YYYY-MM-DD`. Null = no known expiry — counts as valid. */
+  validUntil: string | null;
+}
+
+/** A certification actually awarded to a person — the record a coordinator maintains. */
+export interface UserCertification extends HeldCertification {
+  id: string;
+  userId: string;
+  /** ISO date, `YYYY-MM-DD`. */
+  issuedOn?: string | null;
+  notes?: string | null;
+  hasDocument: boolean;
+  filename?: string | null;
+  mimeType?: string | null;
+  byteSize?: number | null;
+  createdById: string;
+  createdBy?: { id: string; firstName: string; lastName: string } | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Whole days between two ISO dates (`to` minus `from`); negative if `to` is earlier. */
+function daysBetweenIsoDates(from: string, to: string): number {
+  const fromMs = new Date(`${from}T00:00:00.000Z`).getTime();
+  const toMs = new Date(`${to}T00:00:00.000Z`).getTime();
+  return Math.round((toMs - fromMs) / 86_400_000);
+}
+
+/**
+ * `validUntil: null` means no known expiry and counts as `VALID` — what the
+ * `isDriver` migration writes, and what a certification looks like before a
+ * coordinator has entered its real date. Never render that as if the date
+ * were confirmed; say plainly that none is on file.
+ */
+export function certificationStatus(
+  validUntil: string | null,
+  today: string,
+): CertificationStatus {
+  if (!validUntil) return 'VALID';
+  if (validUntil < today) return 'EXPIRED';
+  const daysLeft = daysBetweenIsoDates(today, validUntil);
+  return daysLeft <= CERTIFICATION_EXPIRY_WARNING_DAYS ? 'EXPIRING' : 'VALID';
+}
+
+/** Held or implied, with the certificate that granted it. */
+export interface EffectiveCertification {
+  type: CertificationType;
+  validUntil: string | null;
+  /** === `type` when held directly; the granting certification otherwise. */
+  grantedBy: CertificationType;
+  status: CertificationStatus;
+}
+
+/** Whether `a` is a later expiry than `b` — `null` (no known expiry) beats every date. */
+function isFurtherExpiry(a: string | null, b: string | null): boolean {
+  if (a === null) return b !== null;
+  if (b === null) return false;
+  return a > b;
+}
+
+/**
+ * Every certification a person effectively has: what they were awarded, plus
+ * what each of those grants — one entry per type, resolved to whichever
+ * source has the furthest expiry.
+ *
+ * "Best source wins": a person may hold a lapsed TAS *and* a current TAT. For
+ * each effective type this picks the granting certificate with the furthest
+ * `validUntil`, so a stale TAS never masks a valid TAT held in its own right.
+ */
+export function effectiveCertifications(
+  held: HeldCertification[],
+  today: string,
+): EffectiveCertification[] {
+  const bestSource = new Map<CertificationType, { grantedBy: CertificationType; validUntil: string | null }>();
+
+  const consider = (type: CertificationType, source: HeldCertification) => {
+    const current = bestSource.get(type);
+    if (!current || isFurtherExpiry(source.validUntil, current.validUntil)) {
+      bestSource.set(type, { grantedBy: source.type, validUntil: source.validUntil });
+    }
+  };
+
+  for (const cert of held) {
+    consider(cert.type, cert);
+    for (const granted of CERTIFICATION_IMPLIES[cert.type] ?? []) {
+      consider(granted, cert);
+    }
+  }
+
+  return Array.from(bestSource.entries()).map(([type, { grantedBy, validUntil }]) => ({
+    type,
+    validUntil,
+    grantedBy,
+    status: certificationStatus(validUntil, today),
+  }));
+}
+
+/** Whether a person currently holds a given certification — directly or granted, not expired. */
+export function holdsCertification(
+  held: HeldCertification[],
+  type: CertificationType,
+  today: string,
+): boolean {
+  const effective = effectiveCertifications(held, today).find((cert) => cert.type === type);
+  return effective !== undefined && effective.status !== 'EXPIRED';
+}
+
+/**
+ * What qualifies a user as an emergency operational: a valid TAT or TAS.
+ * Independent of `UserRole`, which is purely about access — see the doc
+ * comment on `User.isActiveEmergencyOperational`.
+ */
+export function isActiveEmergencyOperational(held: HeldCertification[], today: string): boolean {
+  return (
+    holdsCertification(held, CertificationType.TAT, today) ||
+    holdsCertification(held, CertificationType.TAS, today)
+  );
 }
 
 // ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -674,6 +918,19 @@ export interface WindowRoleSpec {
    * unlimited, for a role that is a pool rather than a post.
    */
   maxPeople: number;
+  /**
+   * The certification someone must hold to be assigned here, or `null` for a
+   * post with no requirement. A coordinator's choice, not derived — though
+   * the editor suggests `DRIVER` for a role named "Driver" (see
+   * `roleRequiresDriverCertification`). Requirements are enforceable but not
+   * absolute: a coordinator may still assign someone who lacks it, recorded
+   * as an override with a reason — see `ScheduleAssignment.certificationOverrideReason`.
+   *
+   * Optional on this base shape only as an *input*: omitted means "take the
+   * name-derived suggestion" (see `toWindowRoles`). Once stored, it is always
+   * resolved — `AvailabilityWindowRole` below narrows it to required.
+   */
+  requiredCertification?: CertificationType | null;
 }
 
 export interface AvailabilityWindowRole extends WindowRoleSpec {
@@ -681,18 +938,14 @@ export interface AvailabilityWindowRole extends WindowRoleSpec {
   windowId: string;
   /** Position in the window's own list, 0-based — the order it is offered in. */
   order: number;
-  /**
-   * Only a certified driver may be assigned to this role. Always true for the
-   * driver post: a vehicle nobody may legally drive is not cover, so this is
-   * derived from the name rather than left to whoever fills the form in.
-   */
-  requiresDriverCertification: boolean;
+  /** Always resolved once stored — see the doc comment on `WindowRoleSpec`. */
+  requiredCertification: CertificationType | null;
 }
 
 /** What `maxPeople: 0` means — as many people as the coordinator assigns. */
 export const UNLIMITED_ROLE_PEOPLE = 0;
 
-/** The role that always requires the driver certification. */
+/** The role whose name suggests the `DRIVER` certification by default. */
 export const DRIVER_ROLE_NAME = 'Driver';
 
 /** Guards on the role editor; not domain rules. */
@@ -701,9 +954,10 @@ export const MAX_ROLES_PER_WINDOW = 12;
 export const MAX_ROLE_PEOPLE = 20;
 
 /**
- * Whether a role is the driver post. Matched on the name, case- and
+ * Whether a role's name suggests the driver post. Matched case- and
  * space-insensitively, so "driver" typed by hand is the same post as the one
- * the Emergency defaults create.
+ * the Emergency defaults create. A suggestion for the editor to pre-fill —
+ * see `WindowRoleSpec.requiredCertification` — not an enforced rule on its own.
  */
 export function roleRequiresDriverCertification(name: string): boolean {
   return name.trim().toLowerCase() === DRIVER_ROLE_NAME.toLowerCase();
@@ -711,12 +965,13 @@ export function roleRequiresDriverCertification(name: string): boolean {
 
 /**
  * The roles an Emergency window has unless the coordinator changes them: one
- * crew, one person each, as confirmed with the PO.
+ * crew, one person each, as confirmed with the PO. Condutor needs the driver
+ * certification, Chefe de Equipa needs TAS, Socorrista needs TAT.
  */
 export const DEFAULT_EMERGENCY_WINDOW_ROLES: readonly WindowRoleSpec[] = [
-  { name: DRIVER_ROLE_NAME, maxPeople: 1 },
-  { name: 'Team Leader', maxPeople: 1 },
-  { name: 'Team Member', maxPeople: 1 },
+  { name: DRIVER_ROLE_NAME, maxPeople: 1, requiredCertification: CertificationType.DRIVER },
+  { name: 'Team Leader', maxPeople: 1, requiredCertification: CertificationType.TAS },
+  { name: 'Team Member', maxPeople: 1, requiredCertification: CertificationType.TAT },
 ];
 
 /**
@@ -766,6 +1021,13 @@ export function validateWindowRoles(roles: WindowRoleSpec[]): string | null {
     if (role.maxPeople > MAX_ROLE_PEOPLE) {
       return `A role may take at most ${MAX_ROLE_PEOPLE} people (got ${role.maxPeople}), or 0 for unlimited.`;
     }
+    if (
+      role.requiredCertification !== null &&
+      role.requiredCertification !== undefined &&
+      !CERTIFICATION_TYPES.includes(role.requiredCertification)
+    ) {
+      return `"${role.requiredCertification}" is not a certification.`;
+    }
     const key = name.toLowerCase();
     if (seen.has(key)) return `Two roles are both called "${name}".`;
     seen.add(key);
@@ -774,17 +1036,28 @@ export function validateWindowRoles(roles: WindowRoleSpec[]): string | null {
   return null;
 }
 
-/** Trimmed, ordered and with the driver rule applied — how roles are stored. */
+/**
+ * Trimmed, ordered, and with the driver suggestion applied — how roles are
+ * stored. A coordinator's own choice of `requiredCertification` is kept as
+ * given; only a role left unset (`undefined`) falls back to the name-derived
+ * suggestion, so a role deliberately set to no requirement (`null`) stays that way.
+ */
 export function toWindowRoles(
   roles: WindowRoleSpec[],
-): Array<WindowRoleSpec & { order: number; requiresDriverCertification: boolean }> {
+): Array<WindowRoleSpec & { order: number }> {
   return roles.map((role, index) => {
     const name = role.name.trim();
+    const requiredCertification =
+      role.requiredCertification !== undefined
+        ? role.requiredCertification
+        : roleRequiresDriverCertification(name)
+          ? CertificationType.DRIVER
+          : null;
     return {
       name,
       maxPeople: role.maxPeople,
       order: index,
-      requiresDriverCertification: roleRequiresDriverCertification(name),
+      requiredCertification,
     };
   });
 }
@@ -1069,6 +1342,8 @@ export interface SchedulePerson {
   firstName: string;
   lastName: string;
   isDriver: boolean;
+  /** What they hold, for checking a post's `requiredCertification` client-side. */
+  certifications: HeldCertification[];
 }
 
 export interface ScheduleAssignment {
@@ -1089,6 +1364,15 @@ export interface ScheduleAssignment {
    * record of a decision, not a live view of the submission table.
    */
   isOverride: boolean;
+  /**
+   * Set when this assignment was made against the post's own
+   * `requiredCertification` — the person does not hold it, or holds it
+   * lapsed. Distinct from `isOverride`, which is about availability, not
+   * certification: the two may both apply, one, or neither. Every
+   * requirement is overridable this way, the driver post included, but never
+   * without a reason — see `CreateScheduleAssignmentRequest.overrideReason`.
+   */
+  certificationOverrideReason?: string | null;
   /**
    * The person put themselves here, on a published schedule.
    *
@@ -1150,6 +1434,14 @@ export interface ScheduleFillStats {
   /** Shifts carrying at least one gap. */
   shiftsWithGaps: number;
   overrideCount: number;
+  /** Assignments made against the post's `requiredCertification`, reason and all. */
+  certificationExceptionCount: number;
+  /**
+   * Assignments whose certification was fine when made but has since lapsed
+   * — never an override (no reason was needed at the time), so counted
+   * separately: something to review, not a decision anyone made.
+   */
+  lapsedCertificationCount: number;
 }
 
 export interface Schedule {
@@ -1213,6 +1505,12 @@ export interface CreateScheduleAssignmentRequest {
   userId: string;
   /** Required when the window defines roles; rejected when it defines none. */
   roleId?: string | null;
+  /**
+   * Required exactly when the person does not hold the role's
+   * `requiredCertification` — the API rejects the assignment without one, and
+   * ignores it otherwise. Stored as `ScheduleAssignment.certificationOverrideReason`.
+   */
+  overrideReason?: string;
 }
 
 /**
@@ -1235,24 +1533,33 @@ export interface SelfAssignRequest {
  * Signing up is a one-way door — a volunteer may fill an open place but not
  * vacate it — so the screens offering it check the same things the API will,
  * and say which one is in the way rather than presenting a button that fails.
+ *
+ * Unlike a coordinator assigning someone else, a certification requirement
+ * here always blocks — self-assignment has no override, by design: only a
+ * coordinator may decide to make an exception, and only with a reason.
  */
 export function selfAssignBlockedReason({
   role,
-  isDriver,
+  certifications,
+  today,
   filledInRole,
   alreadyOnShift,
   overlaps,
 }: {
   role: AvailabilityWindowRole | null;
-  isDriver: boolean;
+  certifications: HeldCertification[];
+  today: string;
   filledInRole: number;
   alreadyOnShift: boolean;
   overlaps: boolean;
 }): string | null {
   if (alreadyOnShift) return 'You are already on this shift.';
   if (overlaps) return 'You are already on another shift at the same time.';
-  if (role?.requiresDriverCertification && !isDriver) {
-    return `${role.name} requires the driver certification.`;
+  if (
+    role?.requiredCertification &&
+    !holdsCertification(certifications, role.requiredCertification, today)
+  ) {
+    return `${role.name} requires the ${CERTIFICATION_LABEL[role.requiredCertification]} certification.`;
   }
   if (role && !roleCanTakeMore(role, filledInRole)) {
     return `${role.name} is already full on this shift.`;
@@ -1382,17 +1689,27 @@ export function requiredSlotsForShift(roles: AvailabilityWindowRole[]): number {
   );
 }
 
-/** Headline numbers for a whole board, computed the same way everywhere. */
+/**
+ * Headline numbers for a whole board, computed the same way everywhere.
+ *
+ * `today` drives `lapsedCertificationCount` only — an assignment fine when
+ * made can lapse later, and that is judged against the current date, not the
+ * date it was made.
+ */
 export function scheduleFillStats(
   days: ScheduleDayBoard[],
   roles: AvailabilityWindowRole[],
+  today: string,
 ): ScheduleFillStats {
   let requiredSlots = 0;
   let filledSlots = 0;
   let shiftsWithGaps = 0;
   let overrideCount = 0;
+  let certificationExceptionCount = 0;
+  let lapsedCertificationCount = 0;
 
   const perShift = requiredSlotsForShift(roles);
+  const roleById = new Map(roles.map((role) => [role.id, role]));
 
   for (const day of days) {
     for (const shift of day.shifts) {
@@ -1405,10 +1722,31 @@ export function scheduleFillStats(
       overrideCount += shift.assignments.filter(
         (a) => a.isOverride && !a.selfAssigned,
       ).length;
+
+      for (const assignment of shift.assignments) {
+        if (assignment.certificationOverrideReason) {
+          certificationExceptionCount += 1;
+          continue;
+        }
+        const role = assignment.roleId ? roleById.get(assignment.roleId) : undefined;
+        if (
+          role?.requiredCertification &&
+          !holdsCertification(assignment.user.certifications, role.requiredCertification, today)
+        ) {
+          lapsedCertificationCount += 1;
+        }
+      }
     }
   }
 
-  return { requiredSlots, filledSlots, shiftsWithGaps, overrideCount };
+  return {
+    requiredSlots,
+    filledSlots,
+    shiftsWithGaps,
+    overrideCount,
+    certificationExceptionCount,
+    lapsedCertificationCount,
+  };
 }
 
 /** e.g. "3 of 4 people" / "no gaps". Short enough for a chip. */

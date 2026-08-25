@@ -10,6 +10,7 @@ import { Box, Divider } from '@mui/material';
 import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
 import EventAvailableIcon from '@mui/icons-material/EventAvailable';
 import DescriptionIcon from '@mui/icons-material/Description';
+import AccountCircleIcon from '@mui/icons-material/AccountCircle';
 import { logoRedCrossEmblemPath } from './design-tokens';
 
 const RedInfoAppBar = () => (
@@ -70,6 +71,12 @@ export const RedInfoMenu = () => {
         to="/my-reports"
         primaryText="My Reports"
         leftIcon={<DescriptionIcon />}
+      />
+      {/* Placement is provisional pending #181's navigation review. */}
+      <Menu.Item
+        to="/my-profile"
+        primaryText="My Profile"
+        leftIcon={<AccountCircleIcon />}
       />
     </Menu>
   );

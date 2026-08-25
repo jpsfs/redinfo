@@ -2,24 +2,27 @@ import { BadRequestException, ConflictException, NotFoundException } from '@nest
 import {
   AvailabilityWindowCategory,
   AvailabilityWindowStatus,
+  CertificationType,
   UserRole,
 } from '@redinfo/shared';
 import { ScheduleAssignmentsService } from './schedule-assignments.service';
 import { ScheduleContext } from './schedules.service';
 
-// ── Assigning people to shifts (ADO #161) ──────────────────────────────────────
+// ── Assigning people to shifts (ADO #161, generalised for ADO #163) ────────────
 //
 // The governing rule: availability guides the schedule, it does not constrain
 // it. A coordinator may place anyone — cover is agreed by phone too — and the
-// platform's job is to record that honestly rather than refuse it. The one
-// exception is the driver certification, which is a bar, not a preference.
+// platform's job is to record that honestly rather than refuse it. Every
+// post's `requiredCertification` is enforceable but not absolute: assigning
+// someone who lacks it needs a reason, recorded as
+// `certificationOverrideReason`, but is never refused outright.
 
 const DRIVER_ROLE = {
   id: 'r-driver',
   windowId: 'w1',
   name: 'Driver',
   maxPeople: 1,
-  requiresDriverCertification: true,
+  requiredCertification: CertificationType.DRIVER,
   order: 0,
 };
 const MEMBER_ROLE = {
@@ -27,7 +30,7 @@ const MEMBER_ROLE = {
   windowId: 'w1',
   name: 'Team Member',
   maxPeople: 2,
-  requiresDriverCertification: false,
+  requiredCertification: null,
   order: 1,
 };
 
@@ -85,7 +88,7 @@ const ANA = {
   id: 'u-ana',
   firstName: 'Ana',
   lastName: 'Silva',
-  isDriver: true,
+  certifications: [{ type: CertificationType.DRIVER, validUntil: null }],
   isActive: true,
   role: UserRole.EMERGENCY_OPERATIONAL,
 };
@@ -93,7 +96,7 @@ const JOANA = {
   id: 'u-joana',
   firstName: 'Joana',
   lastName: 'Pinto',
-  isDriver: false,
+  certifications: [] as Array<{ type: CertificationType; validUntil: string | null }>,
   isActive: true,
   role: UserRole.EMERGENCY_OPERATIONAL,
 };
@@ -224,17 +227,58 @@ describe('ScheduleAssignmentsService.assign', () => {
     );
   });
 
-  // AC: "A role named Driver always requires the driver certification … the
-  // requirement cannot be switched off for a window."
-  it('refuses an uncertified person on the driver role', async () => {
+  // AC: every requirement is overridable, the driver post included, but never
+  // without a reason.
+  it('refuses an uncertified person on the driver role without a reason', async () => {
     const prisma = buildPrismaStub();
     prisma.user.findUnique.mockResolvedValue(JOANA);
     const { service } = makeService(prisma);
 
     await expect(service.assign('s1', dto({ userId: JOANA.id }), 'u-coord')).rejects.toThrow(
-      /driver certification/i,
+      /needs a reason/i,
     );
     expect(prisma.scheduleAssignment.create).not.toHaveBeenCalled();
+  });
+
+  it('assigns an uncertified person to the driver role given a reason, recorded on the assignment', async () => {
+    const prisma = buildPrismaStub();
+    prisma.user.findUnique.mockResolvedValue(JOANA);
+    const { service } = makeService(prisma);
+
+    await service.assign(
+      's1',
+      dto({ userId: JOANA.id, overrideReason: 'Only driver available tonight' }),
+      'u-coord',
+    );
+
+    expect(prisma.scheduleAssignment.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          certificationOverrideReason: 'Only driver available tonight',
+        }),
+      }),
+    );
+  });
+
+  it('a blank reason does not count as a reason', async () => {
+    const prisma = buildPrismaStub();
+    prisma.user.findUnique.mockResolvedValue(JOANA);
+    const { service } = makeService(prisma);
+
+    await expect(
+      service.assign('s1', dto({ userId: JOANA.id, overrideReason: '   ' }), 'u-coord'),
+    ).rejects.toThrow(/needs a reason/i);
+  });
+
+  it('ignores a reason nobody needed — the certified driver needs none', async () => {
+    const prisma = buildPrismaStub();
+    const { service } = makeService(prisma);
+
+    await service.assign('s1', dto({ overrideReason: 'not needed' }), 'u-coord');
+
+    expect(prisma.scheduleAssignment.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ certificationOverrideReason: null }) }),
+    );
   });
 
   it('allows an uncertified person on a role that does not require it', async () => {
@@ -419,7 +463,10 @@ describe('ScheduleAssignmentsService.selfAssign', () => {
     );
   });
 
-  // The rule that holds however the request arrives.
+  // Self-assignment has no override path — see `SelfAssignDto`, which carries
+  // no `overrideReason` field at all. The rule holds however the request
+  // arrives: it just surfaces as "needs a reason" here too, since nothing
+  // supplies one.
   it('refuses an uncertified person on the driver role', async () => {
     const prisma = buildPrismaStub();
     prisma.user.findUnique.mockResolvedValue(JOANA);
@@ -427,7 +474,7 @@ describe('ScheduleAssignmentsService.selfAssign', () => {
 
     await expect(
       service.selfAssign('s1', selfDto({ roleId: DRIVER_ROLE.id }), { id: JOANA.id }),
-    ).rejects.toThrow(/driver certification/i);
+    ).rejects.toThrow(/needs a reason/i);
     expect(prisma.scheduleAssignment.create).not.toHaveBeenCalled();
   });
 
@@ -587,14 +634,23 @@ describe('ScheduleAssignmentsService.getCandidates', () => {
     expect(result.others[0].availability).toBe('declined');
   });
 
-  it('leaves uncertified people out entirely for a driver role', async () => {
+  // Reversed from the old "driver is a bar" behaviour: every requirement is
+  // now overridable, so uncertified people are listed — flagged via their own
+  // `certifications`, which the assign dialog checks against the role's
+  // `requiredCertification` — rather than hidden from the picker entirely.
+  it('lists uncertified people for a driver role too, rather than excluding them', async () => {
     const prisma = buildPrismaStub();
     prisma.user.findMany.mockResolvedValue(roster);
     const { service } = makeService(prisma);
 
     const result = await service.getCandidates('s1', '2026-10-01', 1, DRIVER_ROLE.id);
 
-    expect([...result.available, ...result.others].map((c) => c.id)).toEqual([ANA.id]);
+    const ids = [...result.available, ...result.others].map((c) => c.id);
+    expect(ids).toEqual(expect.arrayContaining([ANA.id, JOANA.id, 'u-luisa']));
+    const joana = result.others.find((c) => c.id === JOANA.id);
+    expect(joana?.certifications).toEqual([]);
+    const ana = [...result.available, ...result.others].find((c) => c.id === ANA.id);
+    expect(ana?.isDriver).toBe(true);
   });
 
   it('orders each group by fewest duties, then by name', async () => {

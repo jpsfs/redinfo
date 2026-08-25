@@ -16,6 +16,7 @@ import {
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   AvailabilityWindowCategory,
+  CertificationType,
   DEFAULT_VEHICLES_NEEDED,
   DRIVER_ROLE_NAME,
   MAX_ROLE_NAME_LENGTH,
@@ -71,8 +72,10 @@ export class ShiftSpecDto {
 /**
  * One role the window's schedule will be built from.
  *
- * `requiresDriverCertification` is deliberately not an input: it is derived from
- * the name, because "Driver" always requires the certification.
+ * `requiredCertification` is a coordinator's own choice — unlike the old
+ * driver-only boolean it replaces, it is accepted as input. Omitting it falls
+ * back to a name-derived suggestion (a role named "Driver" defaults to
+ * `DRIVER`); sending it explicitly, `null` included, is honoured as given.
  */
 export class WindowRoleDto {
   @ApiProperty({
@@ -80,7 +83,7 @@ export class WindowRoleDto {
     maxLength: MAX_ROLE_NAME_LENGTH,
     description:
       'Role name, unique within the window (case-insensitively). A role named ' +
-      `"${DRIVER_ROLE_NAME}" always requires the driver certification.`,
+      `"${DRIVER_ROLE_NAME}" suggests the driver certification by default.`,
   })
   @IsString()
   @MaxLength(MAX_ROLE_NAME_LENGTH)
@@ -98,6 +101,17 @@ export class WindowRoleDto {
   @Min(0)
   @Max(MAX_ROLE_PEOPLE)
   maxPeople: number;
+
+  @ApiPropertyOptional({
+    enum: CertificationType,
+    nullable: true,
+    description:
+      'The certification someone must hold to be assigned here. Omit to take ' +
+      'the name-derived suggestion; send null for explicitly no requirement.',
+  })
+  @IsOptional()
+  @IsEnum(CertificationType)
+  requiredCertification?: CertificationType | null;
 }
 
 export class AvailabilityWindowDayDto {

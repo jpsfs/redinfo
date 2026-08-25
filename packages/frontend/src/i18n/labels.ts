@@ -352,6 +352,61 @@ const MESSAGES = {
   'report.kilometresPending': { pt: 'por calcular', en: 'not computed yet' },
   'report.kilometresComputed': { pt: 'Calculado a partir do percurso', en: 'Computed from the route' },
   'report.kilometresOverridden': { pt: 'Alterado à mão', en: 'Edited by hand' },
+
+  // ── My profile ──
+  'profile.title': { pt: 'O meu perfil', en: 'My profile' },
+  'profile.operational': { pt: 'Operacional', en: 'Operational' },
+  'profile.notOperational': { pt: 'Não operacional', en: 'Not operational' },
+  'profile.myCertifications': { pt: 'As minhas certificações', en: 'My certifications' },
+  'profile.certificationsHint': {
+    pt: 'Mantidas pelo coordenador. Se algo estiver errado, fale com ele.',
+    en: 'Maintained by your coordinator. If something looks wrong, talk to them.',
+  },
+  'profile.noCertifications': {
+    pt: 'Ainda não tem certificações registadas.',
+    en: 'No certifications on file yet.',
+  },
+  'profile.grantedBy': { pt: 'concedido por', en: 'granted by' },
+  'profile.noExpiryOnFile': { pt: 'sem data de validade registada', en: 'no expiry on file' },
+  'profile.personalData': { pt: 'Dados pessoais', en: 'Personal data' },
+  'profile.edit': { pt: 'Editar', en: 'Edit' },
+  'profile.save': { pt: 'Guardar', en: 'Save' },
+  'profile.cancel': { pt: 'Cancelar', en: 'Cancel' },
+  'profile.saved': { pt: 'Perfil atualizado', en: 'Profile updated' },
+  'profile.saveFailed': { pt: 'Não foi possível guardar.', en: 'Could not save.' },
+  'profile.phone': { pt: 'Telefone', en: 'Phone' },
+  'profile.address': { pt: 'Morada', en: 'Address' },
+  'profile.postalCode': { pt: 'Código postal', en: 'Postal code' },
+  'profile.birthDate': { pt: 'Data de nascimento', en: 'Date of birth' },
+  'profile.emergencyContact': { pt: 'Contacto de emergência', en: 'Emergency contact' },
+  'profile.emergencyContactPhone': {
+    pt: 'Telefone do contacto de emergência',
+    en: 'Emergency contact phone',
+  },
+  'profile.identification': { pt: 'Identificação', en: 'Identification' },
+  'profile.identificationHint': {
+    pt: 'Atribuída pela delegação. Para corrigir, fale com o coordenador.',
+    en: 'Assigned by the delegation. To correct, talk to your coordinator.',
+  },
+  'profile.redCrossNumber': { pt: 'Nº Nacional CVP', en: 'Red Cross national no.' },
+  'profile.volunteerNumber': { pt: 'Nº de Voluntário', en: 'Volunteer no.' },
+  'profile.joinedOn': { pt: 'Data de admissão', en: 'Joined on' },
+  'profile.bloodType': { pt: 'Grupo sanguíneo', en: 'Blood type' },
+  'profile.nif': { pt: 'NIF', en: 'NIF' },
+  'profile.citizenCard': { pt: 'Cartão de cidadão', en: 'Citizen card' },
+  'profile.notSet': { pt: 'não definido', en: 'not set' },
+  'profile.expiresIn': { pt: 'expira em', en: 'expires in' },
+  'profile.days': { pt: 'dias', en: 'days' },
+  'profile.lapsedKeepsAccess': {
+    pt: 'Continua a ter acesso, mas deixa de poder ser escalado.',
+    en: 'You keep access, but you can no longer be scheduled.',
+  },
+  'profile.changePhoto': { pt: 'Alterar foto', en: 'Change photo' },
+  'profile.removePhoto': { pt: 'Remover', en: 'Remove' },
+  'profile.photoUpdated': { pt: 'Foto atualizada', en: 'Photo updated' },
+  'profile.photoUpdateFailed': { pt: 'Não foi possível carregar a foto.', en: 'Could not upload the photo.' },
+  'profile.photoRemoved': { pt: 'Foto removida', en: 'Photo removed' },
+  'profile.photoRemoveFailed': { pt: 'Não foi possível remover a foto.', en: 'Could not remove the photo.' },
 } as const;
 
 export type MessageKey = keyof typeof MESSAGES;
@@ -690,6 +745,22 @@ const ENUM_MESSAGES = {
   'role.Driver': { pt: 'Condutor', en: 'Driver' },
   'role.Team Leader': { pt: 'Chefe de Equipa', en: 'Team Leader' },
   'role.Team Member': { pt: 'Socorrista', en: 'Team Member' },
+
+  // ── Certifications ── SBV/TAT/TAS are already Portuguese acronyms.
+  'certification.DRIVER': { pt: 'Condutor', en: 'Driver' },
+  'certification.SBV': { pt: 'SBV', en: 'SBV' },
+  'certification.TAT': { pt: 'TAT', en: 'TAT' },
+  'certification.TAS': { pt: 'TAS', en: 'TAS' },
+
+  // ── Blood types ──
+  'bloodType.A_POS': { pt: 'A+', en: 'A+' },
+  'bloodType.A_NEG': { pt: 'A-', en: 'A-' },
+  'bloodType.B_POS': { pt: 'B+', en: 'B+' },
+  'bloodType.B_NEG': { pt: 'B-', en: 'B-' },
+  'bloodType.AB_POS': { pt: 'AB+', en: 'AB+' },
+  'bloodType.AB_NEG': { pt: 'AB-', en: 'AB-' },
+  'bloodType.O_POS': { pt: 'O+', en: 'O+' },
+  'bloodType.O_NEG': { pt: 'O-', en: 'O-' },
 } as const;
 
 type EnumMessageKey = keyof typeof ENUM_MESSAGES;
@@ -791,3 +862,8 @@ export const roleLabel = (name?: string | null): string => {
   const key = `role.${name}`;
   return key in ALL_MESSAGES ? t(key as EnumMessageKey) : name;
 };
+
+export const certificationLabel = (type: string): string =>
+  t(`certification.${type}` as EnumMessageKey);
+
+export const bloodTypeLabel = (type: string): string => t(`bloodType.${type}` as EnumMessageKey);

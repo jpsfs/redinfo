@@ -14,6 +14,7 @@ import { CreateAvailabilityWindowDto } from './dto/create-availability-window.dt
 import {
   AvailabilityWindowCategory,
   AvailabilityWindowStatus,
+  CertificationType,
   formatShiftLabel,
   toMinuteOfDay,
 } from '@redinfo/shared';
@@ -23,6 +24,7 @@ import {
 const COORDINATOR = { id: 'user-coord', firstName: 'Maria', lastName: 'Santos' };
 
 const { EMERGENCY, LOCAL_SUPPORT } = AvailabilityWindowCategory;
+const { TAS } = CertificationType;
 
 /** Mon 5 Oct 2026 is a holiday, so it gets the two-shift default. */
 const HOLIDAYS: Record<string, string> = { '2026-10-05': 'Implantação da República' };
@@ -274,9 +276,9 @@ describe('AvailabilityWindowsService', () => {
       const result = await open();
 
       expect(createdRoles(prisma)).toEqual([
-        { name: 'Driver', maxPeople: 1, order: 0, requiresDriverCertification: true },
-        { name: 'Team Leader', maxPeople: 1, order: 1, requiresDriverCertification: false },
-        { name: 'Team Member', maxPeople: 1, order: 2, requiresDriverCertification: false },
+        { name: 'Driver', maxPeople: 1, order: 0, requiredCertification: 'DRIVER' },
+        { name: 'Team Leader', maxPeople: 1, order: 1, requiredCertification: 'TAS' },
+        { name: 'Team Member', maxPeople: 1, order: 2, requiredCertification: 'TAT' },
       ]);
       expect(result.roles?.map((role) => role.name)).toEqual([
         'Driver',
@@ -304,22 +306,44 @@ describe('AvailabilityWindowsService', () => {
           name: 'Radio operator',
           maxPeople: 2,
           order: 0,
-          requiresDriverCertification: false,
+          requiredCertification: null,
         },
         {
           name: 'Stretcher bearer',
           maxPeople: 0,
           order: 1,
-          requiresDriverCertification: false,
+          requiredCertification: null,
         },
       ]);
     });
 
-    it('marks a Driver role as needing the certification however it was typed', async () => {
+    it('suggests DRIVER for a Driver role however it was typed, when left unset', async () => {
       await open({ category: LOCAL_SUPPORT, roles: [{ name: '  driver ', maxPeople: 1 }] });
 
       expect(createdRoles(prisma)).toEqual([
-        { name: 'driver', maxPeople: 1, order: 0, requiresDriverCertification: true },
+        { name: 'driver', maxPeople: 1, order: 0, requiredCertification: 'DRIVER' },
+      ]);
+    });
+
+    it("keeps a coordinator's explicit choice, suggestion or not", async () => {
+      await open({
+        category: LOCAL_SUPPORT,
+        roles: [{ name: 'Team Leader', maxPeople: 1, requiredCertification: TAS }],
+      });
+
+      expect(createdRoles(prisma)).toEqual([
+        { name: 'Team Leader', maxPeople: 1, order: 0, requiredCertification: 'TAS' },
+      ]);
+    });
+
+    it('keeps an explicit null — deliberately no requirement — even for a role named "Driver"', async () => {
+      await open({
+        category: LOCAL_SUPPORT,
+        roles: [{ name: 'Driver', maxPeople: 1, requiredCertification: null }],
+      });
+
+      expect(createdRoles(prisma)).toEqual([
+        { name: 'Driver', maxPeople: 1, order: 0, requiredCertification: null },
       ]);
     });
 
@@ -899,7 +923,7 @@ describe('AvailabilityWindowsService', () => {
               windowId: 'win-1',
               name: 'Driver',
               maxPeople: 1,
-              requiresDriverCertification: true,
+              requiredCertification: 'DRIVER',
               order: 0,
             },
           ],
@@ -914,7 +938,7 @@ describe('AvailabilityWindowsService', () => {
           windowId: 'win-1',
           name: 'Driver',
           maxPeople: 1,
-          requiresDriverCertification: true,
+          requiredCertification: 'DRIVER',
           order: 0,
         },
       ]);
