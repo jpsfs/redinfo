@@ -319,6 +319,16 @@ describe('ScheduleBoard', () => {
     );
   });
 
+  it('opens the print screen in a new tab, board state untouched', async () => {
+    const user = userEvent.setup();
+    const openSpy = vi.spyOn(window, 'open').mockReturnValue(null);
+    renderBoard();
+
+    await user.click(await screen.findByRole('button', { name: /print schedule/i }));
+
+    expect(openSpy).toHaveBeenCalledWith(`/schedules/${SCHEDULE_ID}/print`, '_blank', 'noopener');
+  });
+
   it('offers Publish on a draft and not on a published schedule', async () => {
     renderBoard();
     expect(await screen.findByRole('button', { name: /publish schedule/i })).toBeInTheDocument();

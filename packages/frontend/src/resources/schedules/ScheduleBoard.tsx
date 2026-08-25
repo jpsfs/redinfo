@@ -26,6 +26,7 @@ import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import DownloadIcon from '@mui/icons-material/Download';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import HowToRegIcon from '@mui/icons-material/HowToReg';
+import PrintIcon from '@mui/icons-material/Print';
 import PublishIcon from '@mui/icons-material/Publish';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
@@ -833,6 +834,18 @@ export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
             onClick={() => void handleExport()}
           >
             {t('common.exportCsv')}
+          </Button>
+          <Button
+            size="small"
+            variant="outlined"
+            color="secondary"
+            startIcon={<PrintIcon />}
+            aria-label={t('scheduleBoard.printButton')}
+            // A new tab keeps the board's own state (dialogs, scroll position)
+            // intact — printing is a side trip, not a navigation away from it.
+            onClick={() => window.open(`/schedules/${scheduleId}/print`, '_blank', 'noopener')}
+          >
+            {t('action.print')}
           </Button>
           {viewer.isCoordinator && !isPublished && (
             <Button
