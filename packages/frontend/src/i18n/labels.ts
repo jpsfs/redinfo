@@ -1139,6 +1139,11 @@ const MESSAGES = {
   'schedulePrint.printButton': { pt: 'Imprimir', en: 'Print' },
   'schedulePrint.close': { pt: 'Fechar', en: 'Close' },
   'schedulePrint.loadFailed': { pt: 'Não foi possível carregar a escala.', en: 'Could not load the schedule.' },
+  'schedulePrint.generatedAt': { pt: 'Gerado em %{date}', en: 'Generated %{date}' },
+  'schedulePrint.disclaimer': {
+    pt: 'Esta escala pode ser alterada após a impressão — confirme sempre a versão em vigor online antes de uma resposta de emergência.',
+    en: 'This schedule may change after printing — always confirm the current version online before an emergency response.',
+  },
 
   // ── Assign / autofill / create schedule / publish / sign-up dialogs ──
   'assignDialog.alreadyOnRole': {

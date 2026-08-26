@@ -125,6 +125,25 @@
 }
 
 /*
+ * Footer: generation timestamp plus the "verify online" note (AB#191
+ * follow-up). Kept to a single small line — it prints once, at the end of
+ * the last page, not repeated per page like a running header/footer would
+ * be; that would need `position: fixed` in `@media print`, which is flaky
+ * across browsers for anything printed via `window.print()` rather than a
+ * fixed-layout PDF. One line stays legible without eating into the row
+ * budget `printLayout.ts`'s density tiers count on (see that file's
+ * comment on the ~8mm of headroom freed when the legend was dropped).
+ */
+.print-footer {
+  margin-top: 4px;
+  padding-top: 3px;
+  border-top: 1px solid #bdbdbd;
+  font-size: 7px;
+  line-height: 1.3;
+  color: #757575;
+}
+
+/*
  * Density tiers, matched to `printLayout.ts`'s row-height budget
  * (comfortable 7.5mm, compact 6.0mm, dense 4.8mm). Chosen by the loosest
  * tier the board's row count fits inside one page's ~236mm of body height.

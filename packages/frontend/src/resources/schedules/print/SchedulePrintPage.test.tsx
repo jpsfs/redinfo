@@ -195,6 +195,14 @@ describe('SchedulePrintPage', () => {
     ).toBeInTheDocument();
   });
 
+  it('renders a footer with the generation time and a verify-online note', async () => {
+    mockApiFetch.mockResolvedValue(printBoard());
+    renderPrintPage();
+
+    expect(await screen.findByText(/Generated/)).toBeInTheDocument();
+    expect(screen.getByText(/always confirm the current version online/)).toBeInTheDocument();
+  });
+
   it('renders in Portuguese', async () => {
     mockApiFetch.mockResolvedValue(printBoard());
     renderPrintPage('pt');

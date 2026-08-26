@@ -8,6 +8,7 @@ import { availabilityWindowLabel, ScheduleBoardResponse, ScheduleStatus } from '
 import { ApiError, apiFetch } from '../../../api';
 import { DelegacaoCampoLogo } from '../../../components/DelegacaoCampoLogo';
 import { apiErrorLabel, windowCategoryLabel } from '../../../i18n/labels';
+import { useIntlLocale } from '../../../i18n/useIntlLocale';
 import { useT } from '../../../i18n/useT';
 import { formatDateRange, formatDayLabel } from '../../../utils/dates';
 import { buildPrintRows, choosePrintLayout, PrintCell } from './printLayout';
@@ -46,9 +47,14 @@ export const SchedulePrintPage = () => {
   useAuthenticated();
   const { id = '' } = useParams<{ id: string }>();
   const t = useT();
+  const intlLocale = useIntlLocale();
   const [board, setBoard] = useState<ScheduleBoardResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [logoLoaded, setLogoLoaded] = useState(false);
+  // Fixed once, at mount, rather than read fresh in the footer's render —
+  // this is "when the page was generated", not a clock that should keep
+  // ticking while the reader has it open.
+  const [generatedAt] = useState(() => new Date());
 
   useEffect(() => {
     let cancelled = false;
@@ -206,6 +212,13 @@ export const SchedulePrintPage = () => {
           ))}
         </tbody>
       </table>
+
+      <Box className="print-footer" component="footer">
+        {t('schedulePrint.generatedAt', {
+          date: generatedAt.toLocaleString(intlLocale, { dateStyle: 'short', timeStyle: 'short' }),
+        })}{' '}
+        · {t('schedulePrint.disclaimer')}
+      </Box>
     </Box>
   );
 };
