@@ -147,16 +147,14 @@ describe('SchedulePrintPage', () => {
     expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(4);
   });
 
-  it('marks a holiday row with its name and a weekend row with a tint, not a repeated label', async () => {
+  it('marks a holiday row with its name and a weekend row as a weekend, both tinted for a colour print', async () => {
     mockApiFetch.mockResolvedValue(printBoard());
     renderPrintPage();
 
     expect(await screen.findByText(HOLIDAY_NAME)).toBeInTheDocument();
-    // The weekend row is tinted (`day-weekend`, styled in schedulePrint.css and
-    // explained once in the legend) rather than repeating a "Weekend" label on
-    // every such row.
-    expect(screen.queryByText('Weekend')).not.toBeInTheDocument();
+    expect(screen.getByText(/Weekend/)).toBeInTheDocument();
     expect(screen.getAllByRole('row')[1]).toHaveClass('day-weekend');
+    expect(screen.getAllByRole('row')[2]).toHaveClass('day-holiday');
   });
 
   it('sets the document title to the window name and category, for a distinct "Save as PDF" file name', async () => {

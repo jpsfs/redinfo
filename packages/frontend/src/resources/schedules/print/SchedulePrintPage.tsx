@@ -167,12 +167,18 @@ export const SchedulePrintPage = () => {
               <td>
                 {row.firstOfDay && (
                   <>
-                    <div>{formatDayLabel(t, row.date)}</div>
-                    {/* The row's tint already flags weekend/holiday (see the legend swatches
-                        below) — text repeated on every such row would cost more vertical
-                        space than it is worth. A holiday's name is the one thing the tint
-                        alone can't say, so it still gets a line, falling back to the generic
-                        word only when the holiday has none. */}
+                    <div>
+                      {formatDayLabel(t, row.date)}
+                      {/* Riding the date's own line (an inline `<span>`, not a block) costs
+                          nothing on the common case — every weekend row — while still being
+                          legible without colour, unlike the background tint alone (see
+                          `.day-holiday, .day-weekend` in schedulePrint.css). */}
+                      {row.isWeekend && !row.isHoliday && (
+                        <span className="day-marker"> · {t('schedulePrint.weekend')}</span>
+                      )}
+                    </div>
+                    {/* A holiday's name is usually too long to share the date's line, so it
+                        keeps its own — falling back to the generic word when it has none. */}
                     {row.isHoliday && (
                       <div className="day-marker">{row.holidayName ?? t('schedulePrint.holiday')}</div>
                     )}
@@ -206,12 +212,6 @@ export const SchedulePrintPage = () => {
           <strong>{t('schedulePrint.legendDriver')}</strong>
         </span>
         <span className="legend-item">{t('schedulePrint.legendUnfilled')}</span>
-        <span className="legend-item">
-          <span className="legend-swatch day-weekend" /> {t('schedulePrint.legendWeekend')}
-        </span>
-        <span className="legend-item">
-          <span className="legend-swatch day-holiday" /> {t('schedulePrint.legendHoliday')}
-        </span>
       </Box>
     </Box>
   );

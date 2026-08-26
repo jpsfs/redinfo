@@ -1132,9 +1132,8 @@ const MESSAGES = {
   'schedulePrint.unfilled': { pt: 'Por preencher', en: 'Unfilled' },
   'schedulePrint.legendDriver': { pt: 'Negrito — condutor', en: 'Bold — driver' },
   'schedulePrint.legendUnfilled': { pt: '— — lugar por preencher', en: '— — unfilled place' },
-  'schedulePrint.legendWeekend': { pt: 'Sombreado — fim de semana', en: 'Shaded — weekend' },
-  'schedulePrint.legendHoliday': { pt: 'Sombreado — feriado', en: 'Shaded — holiday' },
   'schedulePrint.holiday': { pt: 'Feriado', en: 'Holiday' },
+  'schedulePrint.weekend': { pt: 'Fim de semana', en: 'Weekend' },
   'schedulePrint.draftNotice': {
     pt: 'RASCUNHO — ainda não publicada, sujeita a alterações',
     en: 'DRAFT — not yet published, subject to change',
