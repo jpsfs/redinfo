@@ -2060,6 +2060,14 @@ export interface EventReportTypeRules {
   hasClinicalRecord: boolean;
   /** A slot for the paper INEM *Verbete de Socorro* the crew was handed. */
   hasVerbete: boolean;
+  /**
+   * "Treated and left on scene" is an outcome this kind of report may record.
+   * False only for an emergency: a CODU-dispatched victim is transported,
+   * refuses transport, dies on scene, or the run is cancelled — being treated
+   * and simply left behind is what a support job's own crew does, not what
+   * happens on a 112 call.
+   */
+  allowsTreatedOnScene: boolean;
 }
 
 /** How many victims a support report may carry — a guard, not a domain rule. */
@@ -2081,6 +2089,7 @@ export const EVENT_REPORT_TYPE_RULES: Record<EventReportType, EventReportTypeRul
     supportsLiveRun: true,
     hasClinicalRecord: true,
     hasVerbete: true,
+    allowsTreatedOnScene: false,
   },
   [EventReportType.LOCAL_SUPPORT]: {
     codePrefix: 'APL',
@@ -2093,6 +2102,7 @@ export const EVENT_REPORT_TYPE_RULES: Record<EventReportType, EventReportTypeRul
     supportsLiveRun: false,
     hasClinicalRecord: false,
     hasVerbete: false,
+    allowsTreatedOnScene: true,
   },
   [EventReportType.SALOP_SUPPORT]: {
     codePrefix: 'SAL',
@@ -2105,6 +2115,7 @@ export const EVENT_REPORT_TYPE_RULES: Record<EventReportType, EventReportTypeRul
     supportsLiveRun: false,
     hasClinicalRecord: false,
     hasVerbete: false,
+    allowsTreatedOnScene: true,
   },
 };
 
@@ -2199,6 +2210,8 @@ export enum EventLocationType {
   HOME = 'HOME',
   ROAD = 'ROAD',
   PUBLIC_SPACE = 'PUBLIC_SPACE',
+  OTHER_PUBLIC_LOCATION = 'OTHER_PUBLIC_LOCATION',
+  WORK_PLACE = 'WORK_PLACE',
 }
 
 /** Declaration order, which is the order the picker offers them in. */
@@ -2232,6 +2245,20 @@ export enum VictimDestinationKind {
 export const NO_TRANSPORT_DESTINATIONS = Object.values(VictimDestinationKind).filter(
   (kind) => kind !== VictimDestinationKind.HOSPITAL,
 );
+
+/**
+ * The non-hospital destinations a given report type may record — the same
+ * list as `NO_TRANSPORT_DESTINATIONS`, minus `TREATED_ON_SCENE` for a report
+ * type whose rules don't allow it (an emergency, today).
+ */
+export function noTransportDestinationsFor(
+  type: EventReportType | string,
+): VictimDestinationKind[] {
+  const rules = eventReportRules(type);
+  return rules.allowsTreatedOnScene
+    ? NO_TRANSPORT_DESTINATIONS
+    : NO_TRANSPORT_DESTINATIONS.filter((kind) => kind !== VictimDestinationKind.TREATED_ON_SCENE);
+}
 
 export const MIN_VICTIM_AGE = 0;
 export const MAX_VICTIM_AGE = 130;
@@ -2657,7 +2684,14 @@ export interface EventReportVehicleInput {
 export interface EventReportVictimInput {
   gender: Gender;
   age: number;
-  destinationKind: VictimDestinationKind;
+  /**
+   * Left unset rather than guessed: unlike gender and age, there is no
+   * placeholder outcome that is true of every victim before someone says what
+   * happened, so a fresh victim carries no destination until the crew picks
+   * one. `validateVictimDestination` rejects an unset value with a message
+   * asking for a choice, same as any other invalid one.
+   */
+  destinationKind?: VictimDestinationKind;
   /** Required when `destinationKind` is HOSPITAL, refused otherwise. */
   destinationHospitalId?: string | null;
 }
@@ -2775,6 +2809,7 @@ export type EventReportProblemCode =
   | 'DESTINATION_INVALID'
   | 'DESTINATION_HOSPITAL_REQUIRED'
   | 'DESTINATION_HOSPITAL_NOT_ALLOWED'
+  | 'DESTINATION_NOT_FOR_TYPE'
   | 'NARRATIVE_TOO_LONG'
   | 'SHIFT_MISSING_SCHEDULE'
   | 'SHIFT_MISSING_DATE'
@@ -2912,10 +2947,7 @@ export function validateEventReport(input: EventReportInput): EventReportProblem
   }
 
   if (!EVENT_LOCATION_TYPES.includes(input.locationType)) {
-    return problem(
-      'MISSING_LOCATION_TYPE',
-      'Choose where this happened: at home, on the road, or in a public space.',
-    );
+    return problem('MISSING_LOCATION_TYPE', 'Choose where this happened.');
   }
   if (!input.localityId) {
     return problem('MISSING_LOCALITY', 'Choose the locality this happened in.');
@@ -3265,7 +3297,7 @@ function validateVictims(
         `A victim's age must be between ${MIN_VICTIM_AGE} and ${MAX_VICTIM_AGE}.`,
       );
     }
-    const destinationProblem = validateVictimDestination(victim);
+    const destinationProblem = validateVictimDestination(victim, rules);
     if (destinationProblem) return destinationProblem;
   }
   return null;
@@ -3273,13 +3305,18 @@ function validateVictims(
 
 /**
  * A victim is either transported to a hospital or not transported at all. The
- * database holds the same rule as a CHECK constraint; this one exists to say so
- * in words before the request is sent.
+ * database holds the same pairing as a CHECK constraint; this one exists to
+ * say so in words before the request is sent.
+ *
+ * `rules` is required, not defaulted, so no call site can skip the
+ * type-specific check below by omission — there are only a handful of call
+ * sites in the whole repo.
  */
 export function validateVictimDestination(
   victim: Pick<EventReportVictimInput, 'destinationKind' | 'destinationHospitalId'>,
+  rules: EventReportTypeRules,
 ): EventReportProblem | null {
-  if (!Object.values(VictimDestinationKind).includes(victim.destinationKind)) {
+  if (!Object.values(VictimDestinationKind).includes(victim.destinationKind as VictimDestinationKind)) {
     return problem(
       'DESTINATION_INVALID',
       'Choose where the victim was taken, or why they were not transported.',
@@ -3296,6 +3333,12 @@ export function validateVictimDestination(
     return problem(
       'DESTINATION_HOSPITAL_NOT_ALLOWED',
       'A victim who was not transported cannot have a hospital.',
+    );
+  }
+  if (victim.destinationKind === VictimDestinationKind.TREATED_ON_SCENE && !rules.allowsTreatedOnScene) {
+    return problem(
+      'DESTINATION_NOT_FOR_TYPE',
+      'Treated on scene is only recorded on a support report — an emergency victim is transported, refuses transport, dies on scene, or the run is cancelled.',
     );
   }
   return null;
@@ -3789,10 +3832,13 @@ export function validateLiveRun(input: LiveRunInput): EventReportProblem | null 
   }
 
   if (!isBlank(input.destinationKind)) {
-    const destinationProblem = validateVictimDestination({
-      destinationKind: input.destinationKind as VictimDestinationKind,
-      destinationHospitalId: input.destinationHospitalId ?? null,
-    });
+    const destinationProblem = validateVictimDestination(
+      {
+        destinationKind: input.destinationKind as VictimDestinationKind,
+        destinationHospitalId: input.destinationHospitalId ?? null,
+      },
+      EVENT_REPORT_TYPE_RULES[EventReportType.EMERGENCY],
+    );
     if (destinationProblem) return destinationProblem;
   } else if (input.destinationHospitalId) {
     return problem(
@@ -4022,9 +4068,22 @@ export function liveRunToEventReportInput(
           {
             gender: (run.victimGender ?? Gender.UNKNOWN) as Gender,
             age: run.victimAge ?? 0,
-            destinationKind:
-              (run.destinationKind as VictimDestinationKind) ??
-              VictimDestinationKind.TREATED_ON_SCENE,
+            // A run is always an emergency, so `TREATED_ON_SCENE` — the value
+            // this used to default to — is no longer a destination an
+            // emergency victim can carry. Unlike a fresh victim in the report
+            // form, this is not a person choosing nothing yet: closing a run
+            // has already happened, must not fail, and cannot ask anyone a
+            // question. `CANCELLED` is the fallback for that one write path
+            // only — never recorded (blank) or recorded before this change
+            // (a legacy `TREATED_ON_SCENE`) both land here, and the crew
+            // corrects it like any other gap on the draft's edit page.
+            destinationKind: (
+              [VictimDestinationKind.HOSPITAL, ...noTransportDestinationsFor(EventReportType.EMERGENCY)] as Array<
+                VictimDestinationKind | null | undefined
+              >
+            ).includes(run.destinationKind)
+              ? (run.destinationKind as VictimDestinationKind)
+              : VictimDestinationKind.CANCELLED,
             destinationHospitalId:
               run.destinationKind === VictimDestinationKind.HOSPITAL
                 ? run.destinationHospitalId ?? null

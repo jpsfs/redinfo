@@ -18,11 +18,12 @@ import CloseIcon from '@mui/icons-material/Close';
 import SearchIcon from '@mui/icons-material/Search';
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import {
+  EventReportType,
   HospitalWithDistance,
   Locality,
-  NO_TRANSPORT_DESTINATIONS,
   VictimDestinationKind,
   foldForSearch,
+  noTransportDestinationsFor,
 } from '@redinfo/shared';
 import { apiFetch } from '../../api';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -51,12 +52,15 @@ export interface DestinationChoice {
 export const HospitalPicker = ({
   open,
   locality,
+  reportType,
   onClose,
   onPick,
 }: {
   open: boolean;
   /** The report's locality; hospitals are ordered by distance from it. */
   locality?: Locality | null;
+  /** Which report this destination is for — an emergency has no "treated on scene". */
+  reportType: EventReportType;
   onClose: () => void;
   onPick: (choice: DestinationChoice) => void;
 }) => {
@@ -65,6 +69,10 @@ export const HospitalPicker = ({
   const [hospitals, setHospitals] = useState<HospitalWithDistance[] | null>(null);
   const [query, setQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const noTransportDestinations = useMemo(
+    () => noTransportDestinationsFor(reportType),
+    [reportType],
+  );
 
   useEffect(() => {
     if (!open) return undefined;
@@ -182,11 +190,14 @@ export const HospitalPicker = ({
           sx={{
             mt: 1,
             display: 'grid',
-            gridTemplateColumns: { xs: '1fr 1fr', sm: 'repeat(4, 1fr)' },
+            gridTemplateColumns: {
+              xs: '1fr 1fr',
+              sm: `repeat(${noTransportDestinations.length}, 1fr)`,
+            },
             gap: 1,
           }}
         >
-          {NO_TRANSPORT_DESTINATIONS.map((kind) => (
+          {noTransportDestinations.map((kind) => (
             <Button
               key={kind}
               variant="outlined"

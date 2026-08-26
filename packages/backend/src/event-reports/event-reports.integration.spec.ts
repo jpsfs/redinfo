@@ -677,6 +677,36 @@ describeIntegration('Event reports (integration)', () => {
       expect(read.victims[1].destinationHospitalId).toBeNull();
       expect(read.vehicles.map((entry) => entry.kilometres)).toEqual([51, 36]);
     });
+
+    it('refuses an emergency victim who was treated and left on scene', async () => {
+      await expect(
+        file({
+          victims: [{ gender: Gender.MALE, age: 14, destinationKind: VictimDestinationKind.TREATED_ON_SCENE }],
+        }),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('still accepts "treated on scene" on a support report', async () => {
+      const report = await file({
+        type: EventReportType.LOCAL_SUPPORT,
+        externalReference: null,
+        victims: [{ gender: Gender.MALE, age: 14, destinationKind: VictimDestinationKind.TREATED_ON_SCENE }],
+      });
+
+      const read = await reports.findOne(report.id, coordinatorUser);
+      expect(read.victims[0].destinationKind).toBe(VictimDestinationKind.TREATED_ON_SCENE);
+    });
+
+    it('files and round-trips the two newer location types', async () => {
+      for (const locationType of [
+        EventLocationType.OTHER_PUBLIC_LOCATION,
+        EventLocationType.WORK_PLACE,
+      ]) {
+        const report = await file({ locationType });
+        const read = await reports.findOne(report.id, coordinatorUser);
+        expect(read.locationType).toBe(locationType);
+      }
+    });
   });
 
   // ── Editing ─────────────────────────────────────────────────────────────────

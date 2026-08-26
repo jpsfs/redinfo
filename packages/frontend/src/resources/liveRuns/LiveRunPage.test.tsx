@@ -295,6 +295,22 @@ describe('the handoff into Maps', () => {
     await screen.findByRole('button', { name: 'CHEGADA AO HOSPITAL' });
     expect(screen.queryByRole('link', { name: /NAVEGAR/ })).not.toBeInTheDocument();
   });
+
+  it('does not offer "treated on scene" — a live run is always an emergency', async () => {
+    const user = userEvent.setup();
+    respondWith({ hospitals: [HOSPITAL] });
+    await seed({
+      state: LiveRunState.EN_ROUTE_TO_HOSPITAL,
+      activationAt: '2026-08-22T20:14:00.000Z',
+      sceneArrivalAt: '2026-08-22T20:26:00.000Z',
+      sceneDepartureAt: '2026-08-22T20:40:00.000Z',
+    });
+    renderRun('transport');
+
+    await user.click(await screen.findByRole('button', { name: 'Procurar' }));
+    expect(await screen.findByText('Recusou transporte')).toBeInTheDocument();
+    expect(screen.queryByText('Tratado no local')).not.toBeInTheDocument();
+  });
 });
 
 describe('the top bar', () => {

@@ -24,6 +24,7 @@ import PlaceIcon from '@mui/icons-material/Place';
 import {
   EVENT_LOCATION_TYPES,
   EventLocationType,
+  EventReportType,
   GENDERS,
   Gender,
   Locality,
@@ -388,7 +389,11 @@ export const SceneScreen = ({
           onChange={(_event, value) =>
             form.patch({ locationType: (value as EventLocationType) ?? null })
           }
-          sx={{ '& .MuiToggleButton-root': { minHeight: 60, fontWeight: 700 } }}
+          sx={{
+            flexWrap: 'wrap',
+            gap: 1,
+            '& .MuiToggleButton-root': { minHeight: 60, fontWeight: 700 },
+          }}
         >
           {EVENT_LOCATION_TYPES.map((type) => (
             <ToggleButton key={type} value={type}>
@@ -504,7 +509,8 @@ export const AssessmentScreen = ({ form, dictation }: LiveScreenProps) => (
  *
  * `HospitalPicker` reused whole, including the no-transport outcomes — they are
  * one question, and splitting them would make "recusou transporte" feel like a
- * failure to answer.
+ * failure to answer. A live run is always an emergency, so the picker is told
+ * that explicitly and never offers "treated on scene".
  */
 export const TransportScreen = ({ form, lookups, locality }: LiveScreenProps) => {
   const t = useT();
@@ -550,6 +556,7 @@ export const TransportScreen = ({ form, lookups, locality }: LiveScreenProps) =>
       <HospitalPicker
         open={open}
         locality={locality}
+        reportType={EventReportType.EMERGENCY}
         onClose={() => setOpen(false)}
         onPick={choose}
       />

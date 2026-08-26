@@ -182,6 +182,7 @@ const MESSAGES = {
   'hint.noVictim': { pt: 'Não houve vítima a registar', en: 'No victim to record' },
   'hint.recent': { pt: 'RECENTES', en: 'RECENT' },
   'hint.noTransport': { pt: 'SEM TRANSPORTE', en: 'NOT TRANSPORTED' },
+  'hint.chooseDestination': { pt: 'Escolher desfecho', en: 'Choose an outcome' },
   'hint.chooseShift': { pt: 'Escolher turno', en: 'Choose a shift' },
   'hint.recogniseCrew': {
     pt: 'Reconhece a equipa pelos nomes.',
@@ -1627,6 +1628,14 @@ const ENUM_MESSAGES = {
     pt: 'Espaço público',
     en: 'Public space',
   },
+  [`locationType.${EventLocationType.OTHER_PUBLIC_LOCATION}`]: {
+    pt: 'Outro espaço público',
+    en: 'Other public location',
+  },
+  [`locationType.${EventLocationType.WORK_PLACE}`]: {
+    pt: 'Local de trabalho',
+    en: 'Work place',
+  },
 
   [`gender.${Gender.FEMALE}`]: { pt: 'Feminino', en: 'Female' },
   [`gender.${Gender.MALE}`]: { pt: 'Masculino', en: 'Male' },
@@ -1668,7 +1677,7 @@ const ENUM_MESSAGES = {
     en: 'The activity cannot end before it starts.',
   },
   'problem.MISSING_LOCATION_TYPE': {
-    pt: 'Escolhe o tipo de local: habitação, via pública ou espaço público.',
+    pt: 'Escolhe o tipo de local.',
     en: 'Choose the location type.',
   },
   'problem.MISSING_LOCALITY': { pt: 'Escolhe a localidade.', en: 'Choose the locality.' },
@@ -1738,6 +1747,10 @@ const ENUM_MESSAGES = {
   'problem.DESTINATION_HOSPITAL_NOT_ALLOWED': {
     pt: 'Uma vítima que não foi transportada não pode ter hospital.',
     en: 'A victim who was not transported cannot have a hospital.',
+  },
+  'problem.DESTINATION_NOT_FOR_TYPE': {
+    pt: '"Tratado no local" só existe num relatório de apoio.',
+    en: 'Treated on scene is only recorded on a support report.',
   },
   'problem.NARRATIVE_TOO_LONG': {
     pt: 'O relato é demasiado longo.',

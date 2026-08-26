@@ -2,6 +2,7 @@ import {
   ALLOWED_ATTACHMENT_MIME_TYPES,
   Action,
   AvailabilityWindowCategory,
+  EVENT_LOCATION_TYPES,
   EVENT_REPORT_TYPES,
   EVENT_REPORT_TYPE_RULES,
   EventLocationType,
@@ -14,6 +15,7 @@ import {
   MAX_OPERATIONAL_REPORT_LENGTH,
   MAX_VEHICLE_KILOMETRES,
   MAX_VICTIM_AGE,
+  NO_TRANSPORT_DESTINATIONS,
   ROLE_PERMISSIONS,
   UserRole,
   VITALS_RANGES,
@@ -28,6 +30,7 @@ import {
   formatEventReportCode,
   hasPermission,
   implausibleVitals,
+  noTransportDestinationsFor,
   parseEventReportCode,
   sortHospitalsForPicker,
   totalKilometres,
@@ -441,6 +444,53 @@ describe('validateEventReport', () => {
     ).toBe('MISSING_LOCATION_TYPE');
   });
 
+  it('accepts the two newer location types, on every report type', () => {
+    expect(EVENT_LOCATION_TYPES).toHaveLength(5);
+    for (const locationType of [
+      EventLocationType.OTHER_PUBLIC_LOCATION,
+      EventLocationType.WORK_PLACE,
+    ]) {
+      expect(validateEventReport(emergency({ locationType }))).toBeNull();
+      expect(validateEventReport(support({ locationType }))).toBeNull();
+    }
+  });
+
+  it('refuses an emergency victim who was treated and left on scene', () => {
+    expect(
+      codeOf(
+        validateEventReport(
+          emergency({
+            victims: [
+              { gender: Gender.FEMALE, age: 67, destinationKind: VictimDestinationKind.TREATED_ON_SCENE },
+            ],
+          }),
+        ),
+      ),
+    ).toBe('DESTINATION_NOT_FOR_TYPE');
+    // A support report keeps the option.
+    expect(
+      validateEventReport(
+        support({
+          victims: [
+            { gender: Gender.FEMALE, age: 67, destinationKind: VictimDestinationKind.TREATED_ON_SCENE },
+          ],
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  it('refuses an emergency victim with no destination picked yet', () => {
+    expect(
+      codeOf(
+        validateEventReport(
+          emergency({
+            victims: [{ gender: Gender.FEMALE, age: 67, destinationKind: undefined }],
+          }),
+        ),
+      ),
+    ).toBe('DESTINATION_INVALID');
+  });
+
   it('refuses a second vehicle on an emergency, and allows it on a support report', () => {
     const two = [
       { vehicleId: 'veh-a', kilometres: 10 },
@@ -548,13 +598,16 @@ describe('validateEventReport', () => {
 });
 
 describe('validateVictimDestination', () => {
+  const emergencyRules = EVENT_REPORT_TYPE_RULES[EMERGENCY];
+  const supportRules = EVENT_REPORT_TYPE_RULES[LOCAL_SUPPORT];
+
   it('requires a hospital when the victim was transported', () => {
     expect(
       codeOf(
-        validateVictimDestination({
-          destinationKind: VictimDestinationKind.HOSPITAL,
-          destinationHospitalId: null,
-        }),
+        validateVictimDestination(
+          { destinationKind: VictimDestinationKind.HOSPITAL, destinationHospitalId: null },
+          emergencyRules,
+        ),
       ),
     ).toBe('DESTINATION_HOSPITAL_REQUIRED');
   });
@@ -568,7 +621,10 @@ describe('validateVictimDestination', () => {
     ]) {
       expect(
         codeOf(
-          validateVictimDestination({ destinationKind, destinationHospitalId: 'hosp-chuc' }),
+          validateVictimDestination(
+            { destinationKind, destinationHospitalId: 'hosp-chuc' },
+            supportRules,
+          ),
         ),
       ).toBe('DESTINATION_HOSPITAL_NOT_ALLOWED');
     }
@@ -576,16 +632,68 @@ describe('validateVictimDestination', () => {
 
   it('accepts each coherent pairing', () => {
     expect(
-      validateVictimDestination({
-        destinationKind: VictimDestinationKind.HOSPITAL,
-        destinationHospitalId: 'hosp-chuc',
-      }),
+      validateVictimDestination(
+        { destinationKind: VictimDestinationKind.HOSPITAL, destinationHospitalId: 'hosp-chuc' },
+        emergencyRules,
+      ),
     ).toBeNull();
     expect(
-      validateVictimDestination({
-        destinationKind: VictimDestinationKind.REFUSED_TRANSPORT,
-      }),
+      validateVictimDestination(
+        { destinationKind: VictimDestinationKind.REFUSED_TRANSPORT },
+        emergencyRules,
+      ),
     ).toBeNull();
+  });
+
+  it('refuses "treated on scene" on an emergency, but not on a support report', () => {
+    expect(
+      codeOf(
+        validateVictimDestination(
+          { destinationKind: VictimDestinationKind.TREATED_ON_SCENE },
+          emergencyRules,
+        ),
+      ),
+    ).toBe('DESTINATION_NOT_FOR_TYPE');
+    expect(
+      validateVictimDestination(
+        { destinationKind: VictimDestinationKind.TREATED_ON_SCENE },
+        supportRules,
+      ),
+    ).toBeNull();
+  });
+
+  it('accepts every other no-transport outcome on an emergency', () => {
+    for (const destinationKind of [
+      VictimDestinationKind.REFUSED_TRANSPORT,
+      VictimDestinationKind.DECEASED_ON_SCENE,
+      VictimDestinationKind.CANCELLED,
+    ]) {
+      expect(
+        validateVictimDestination({ destinationKind }, emergencyRules),
+      ).toBeNull();
+    }
+  });
+
+  it('rejects a victim with no destination at all', () => {
+    expect(
+      codeOf(validateVictimDestination({ destinationKind: undefined }, emergencyRules)),
+    ).toBe('DESTINATION_INVALID');
+  });
+});
+
+describe('noTransportDestinationsFor', () => {
+  it('drops "treated on scene" for an emergency only', () => {
+    expect(noTransportDestinationsFor(EMERGENCY)).toEqual([
+      VictimDestinationKind.REFUSED_TRANSPORT,
+      VictimDestinationKind.DECEASED_ON_SCENE,
+      VictimDestinationKind.CANCELLED,
+    ]);
+    expect(noTransportDestinationsFor(LOCAL_SUPPORT)).toEqual(NO_TRANSPORT_DESTINATIONS);
+    expect(noTransportDestinationsFor(SALOP_SUPPORT)).toEqual(NO_TRANSPORT_DESTINATIONS);
+  });
+
+  it('is permissive for an unknown type, like eventReportRules', () => {
+    expect(noTransportDestinationsFor('bogus')).toEqual(NO_TRANSPORT_DESTINATIONS);
   });
 });
 

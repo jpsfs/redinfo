@@ -17,6 +17,7 @@ import {
   liveRunClosingStamps,
   liveRunToEventReportInput,
   liveRunWarnings,
+  noTransportDestinationsFor,
   validateEventReport,
   validateLiveRun,
   validateLiveRunIdentity,
@@ -168,6 +169,19 @@ describe('validateLiveRun', () => {
     ).toBe('DESTINATION_HOSPITAL_NOT_ALLOWED');
   });
 
+  it('refuses "treated on scene" — a run is always an emergency', () => {
+    expect(
+      codeOf(
+        validateLiveRun(
+          run({
+            destinationKind: VictimDestinationKind.TREATED_ON_SCENE,
+            destinationHospitalId: null,
+          }),
+        ),
+      ),
+    ).toBe('DESTINATION_NOT_FOR_TYPE');
+  });
+
   it('checks the clinical capture with the report’s own rules', () => {
     expect(
       codeOf(
@@ -303,8 +317,11 @@ describe('the stamps closing writes for itself', () => {
 });
 
 describe('liveRunToEventReportInput', () => {
-  it('produces a report every outcome can be filed as', () => {
-    for (const kind of Object.values(VictimDestinationKind)) {
+  it('produces a report every outcome an emergency can carry is filed as', () => {
+    for (const kind of [
+      VictimDestinationKind.HOSPITAL,
+      ...noTransportDestinationsFor(EventReportType.EMERGENCY),
+    ]) {
       const subject = run({
         destinationKind: kind,
         destinationHospitalId: kind === VictimDestinationKind.HOSPITAL ? 'hosp-chuc' : null,
@@ -314,6 +331,20 @@ describe('liveRunToEventReportInput', () => {
       expect(input.victims[0].destinationKind).toBe(kind);
       expect(validateEventReport(input)).toBeNull();
     }
+  });
+
+  it('coerces a "treated on scene" outcome — no longer valid for an emergency — to a filable report', () => {
+    // A run recorded before this change (or a legacy client) may still carry
+    // `TREATED_ON_SCENE`. Closing has already happened by the time this runs,
+    // so the conversion must never fail — the crew corrects the outcome on the
+    // draft's own edit page instead.
+    const subject = run({
+      destinationKind: VictimDestinationKind.TREATED_ON_SCENE,
+      destinationHospitalId: null,
+    });
+    const input = liveRunToEventReportInput(subject);
+    expect(input.victims[0].destinationKind).toBe(VictimDestinationKind.CANCELLED);
+    expect(validateEventReport(input)).toBeNull();
   });
 
   it('drops every identity field, rather than trusting a later step to', () => {

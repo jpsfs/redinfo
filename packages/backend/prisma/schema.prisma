@@ -665,6 +665,8 @@ enum EventLocationType {
   HOME
   ROAD
   PUBLIC_SPACE
+  OTHER_PUBLIC_LOCATION
+  WORK_PLACE
 }
 
 enum Gender {

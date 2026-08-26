@@ -237,11 +237,17 @@ describe('when and where', () => {
     expect(await screen.findAllByText('Nº de referência')).not.toHaveLength(0);
   });
 
-  it('offers all three kinds of location', async () => {
+  it('offers all five kinds of location', async () => {
     renderEditor();
     await screen.findByText('Quando e onde');
 
-    for (const label of ['Habitação', 'Via pública', 'Espaço público']) {
+    for (const label of [
+      'Habitação',
+      'Via pública',
+      'Espaço público',
+      'Outro espaço público',
+      'Local de trabalho',
+    ]) {
       expect(screen.getByRole('button', { name: label })).toBeInTheDocument();
     }
   });
@@ -385,6 +391,33 @@ describe('the victim step', () => {
     // The hospital's name, resolved from the id the draft holds.
     expect(screen.getByText(CHUC.name)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /adicionar vítima/i })).not.toBeInTheDocument();
+  });
+
+  it('does not offer "treated on scene" as an emergency victim\'s destination', async () => {
+    const user = userEvent.setup();
+    renderEditor({
+      seed: {
+        ...COHERENT,
+        victims: [
+          {
+            gender: Gender.FEMALE,
+            age: 67,
+            destinationKind: VictimDestinationKind.HOSPITAL,
+            destinationHospitalId: CHUC.id,
+          },
+        ],
+      },
+    });
+
+    await screen.findByText('Guardado');
+    for (let step = 0; step < 4; step += 1) {
+      await user.click(screen.getByRole('button', { name: /seguinte/i }));
+    }
+    await screen.findByText('Vítima e transporte');
+
+    await user.click(screen.getByText(CHUC.name));
+    expect(await screen.findByText('Recusou transporte')).toBeInTheDocument();
+    expect(screen.queryByText('Tratado no local')).not.toBeInTheDocument();
   });
 
   it('lets a support report add more than one', async () => {

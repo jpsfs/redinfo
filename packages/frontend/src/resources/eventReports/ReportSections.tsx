@@ -34,6 +34,7 @@ import {
   EventReportAttachment,
   EventReportAttachmentKind,
   EventReportInput,
+  EventReportType,
   EventReportWarningCode,
   GENDERS,
   Gender,
@@ -553,12 +554,14 @@ export const VehiclesSection = ({ draft, patch, lookups }: SectionProps) => {
 const VictimEditor = ({
   victim,
   locality,
+  type,
   hospitalName,
   onChange,
   onRemove,
 }: {
   victim: EventReportInput['victims'][number];
   locality: Locality | null;
+  type: EventReportType;
   hospitalName?: string;
   onChange: (changes: Partial<EventReportInput['victims'][number]>) => void;
   onRemove?: () => void;
@@ -567,9 +570,11 @@ const VictimEditor = ({
   const [pickerOpen, setPickerOpen] = useState(false);
 
   const destinationText =
-    victim.destinationKind === VictimDestinationKind.HOSPITAL
-      ? hospitalName ?? destinationLabel(t, victim.destinationKind)
-      : destinationLabel(t, victim.destinationKind);
+    victim.destinationKind == null
+      ? t('hint.chooseDestination')
+      : victim.destinationKind === VictimDestinationKind.HOSPITAL
+        ? hospitalName ?? destinationLabel(t, victim.destinationKind)
+        : destinationLabel(t, victim.destinationKind);
 
   return (
     <Paper variant="outlined" sx={{ p: 2 }}>
@@ -665,6 +670,7 @@ const VictimEditor = ({
       <HospitalPicker
         open={pickerOpen}
         locality={locality}
+        reportType={type}
         onClose={() => setPickerOpen(false)}
         onPick={(choice: DestinationChoice) => {
           onChange({
@@ -678,12 +684,21 @@ const VictimEditor = ({
   );
 };
 
-/** A new victim starts unanswered rather than guessed — except the destination,
- *  which has a truthful default: nobody was taken anywhere until someone says so. */
-const blankVictim = (): EventReportInput['victims'][number] => ({
+/**
+ * A new victim starts unanswered rather than guessed. The destination used to
+ * default to "treated on scene" as a truthful placeholder — nobody was taken
+ * anywhere until someone says so — but that is not true of every report type:
+ * an emergency victim is always transported, refuses transport, dies on
+ * scene, or the run is cancelled, so there is no placeholder outcome that
+ * fits until the crew picks one. A support report, where "treated on scene"
+ * really is the common case, keeps the old default.
+ */
+const blankVictim = (type: EventReportType): EventReportInput['victims'][number] => ({
   gender: Gender.UNKNOWN,
   age: 0,
-  destinationKind: VictimDestinationKind.TREATED_ON_SCENE,
+  destinationKind: eventReportRules(type).allowsTreatedOnScene
+    ? VictimDestinationKind.TREATED_ON_SCENE
+    : undefined,
   destinationHospitalId: null,
 });
 
@@ -716,6 +731,7 @@ export const VictimsSection = ({ draft, patch, lookups }: SectionProps) => {
           <VictimEditor
             victim={victim}
             locality={lookups.locality}
+            type={draft.type}
             hospitalName={hospitalName(victim.destinationHospitalId)}
             onChange={(changes) => setVictim(0, changes)}
           />
@@ -723,7 +739,7 @@ export const VictimsSection = ({ draft, patch, lookups }: SectionProps) => {
           <Button
             variant="outlined"
             startIcon={<AddIcon />}
-            onClick={() => patch({ victims: [blankVictim()] })}
+            onClick={() => patch({ victims: [blankVictim(draft.type)] })}
             sx={{ minHeight: 56 }}
           >
             {t('action.addVictim')}
@@ -754,6 +770,7 @@ export const VictimsSection = ({ draft, patch, lookups }: SectionProps) => {
           key={index}
           victim={victim}
           locality={lookups.locality}
+          type={draft.type}
           hospitalName={hospitalName(victim.destinationHospitalId)}
           onChange={(changes) => setVictim(index, changes)}
           onRemove={() =>
@@ -766,7 +783,7 @@ export const VictimsSection = ({ draft, patch, lookups }: SectionProps) => {
         <Button
           variant="outlined"
           startIcon={<AddIcon />}
-          onClick={() => patch({ victims: [...draft.victims, blankVictim()] })}
+          onClick={() => patch({ victims: [...draft.victims, blankVictim(draft.type)] })}
           sx={{ minHeight: 56, borderStyle: 'dashed' }}
         >
           {t('action.addVictim')}
@@ -1054,10 +1071,12 @@ export const ReviewSection = ({
           : draft.victims
               .map((victim) => {
                 const where =
-                  victim.destinationKind === VictimDestinationKind.HOSPITAL
-                    ? lookups.hospitalsById[victim.destinationHospitalId ?? '']?.name ??
-                      destinationLabel(t, victim.destinationKind)
-                    : destinationLabel(t, victim.destinationKind);
+                  victim.destinationKind == null
+                    ? t('hint.chooseDestination')
+                    : victim.destinationKind === VictimDestinationKind.HOSPITAL
+                      ? lookups.hospitalsById[victim.destinationHospitalId ?? '']?.name ??
+                        destinationLabel(t, victim.destinationKind)
+                      : destinationLabel(t, victim.destinationKind);
                 return `${genderLabel(t, victim.gender)}, ${victim.age} → ${where}`;
               })
               .join(' | '),

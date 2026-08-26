@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AdminContext, testDataProvider } from 'react-admin';
 import polyglotI18nProvider from 'ra-i18n-polyglot';
-import { VictimDestinationKind } from '@redinfo/shared';
+import { EventReportType, VictimDestinationKind } from '@redinfo/shared';
 import { LocalityPicker, loadRecentLocalities, localityLabel } from './LocalityPicker';
 import { HospitalPicker } from './HospitalPicker';
 import { apiFetch } from '../../api';
@@ -182,12 +182,16 @@ describe('the hospital picker', () => {
     ]);
   });
 
-  const open = (locality: typeof TAVEIRO | null = TAVEIRO) =>
+  const open = (
+    locality: typeof TAVEIRO | null = TAVEIRO,
+    reportType: EventReportType = EventReportType.LOCAL_SUPPORT,
+  ) =>
     render(
       <AdminContext dataProvider={testDataProvider()} i18nProvider={i18nProvider}>
         <HospitalPicker
           open
           locality={locality}
+          reportType={reportType}
           onClose={() => undefined}
           onPick={onPick}
         />
@@ -249,6 +253,15 @@ describe('the hospital picker', () => {
     ]) {
       expect(await screen.findByRole('button', { name: label })).toBeInTheDocument();
     }
+  });
+
+  it('drops "treated on scene" for an emergency — it is not a valid outcome there', async () => {
+    open(TAVEIRO, EventReportType.EMERGENCY);
+
+    for (const label of ['Recusou transporte', 'Óbito no local', 'Cancelado']) {
+      expect(await screen.findByRole('button', { name: label })).toBeInTheDocument();
+    }
+    expect(screen.queryByRole('button', { name: 'Tratado no local' })).not.toBeInTheDocument();
   });
 
   it('hands back an outcome with no hospital attached', async () => {
