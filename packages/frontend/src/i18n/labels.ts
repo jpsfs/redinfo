@@ -1130,8 +1130,6 @@ const MESSAGES = {
   'schedulePrint.dateColumn': { pt: 'Data', en: 'Date' },
   'schedulePrint.shiftColumn': { pt: 'Turno', en: 'Shift' },
   'schedulePrint.unfilled': { pt: 'Por preencher', en: 'Unfilled' },
-  'schedulePrint.legendDriver': { pt: 'Negrito — condutor', en: 'Bold — driver' },
-  'schedulePrint.legendUnfilled': { pt: '— — lugar por preencher', en: '— — unfilled place' },
   'schedulePrint.holiday': { pt: 'Feriado', en: 'Holiday' },
   'schedulePrint.weekend': { pt: 'Fim de semana', en: 'Weekend' },
   'schedulePrint.draftNotice': {

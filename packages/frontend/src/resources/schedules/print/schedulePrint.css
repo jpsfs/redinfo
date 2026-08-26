@@ -124,14 +124,6 @@
   font-weight: 600;
 }
 
-.legend {
-  margin-top: 10px;
-  display: flex;
-  gap: 24px;
-  font-size: 0.8em;
-  color: #616161;
-}
-
 /*
  * Density tiers, matched to `printLayout.ts`'s row-height budget
  * (comfortable 7.5mm, compact 6.0mm, dense 4.8mm). Chosen by the loosest

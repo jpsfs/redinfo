@@ -206,13 +206,6 @@ export const SchedulePrintPage = () => {
           ))}
         </tbody>
       </table>
-
-      <Box className="legend">
-        <span className="legend-item">
-          <strong>{t('schedulePrint.legendDriver')}</strong>
-        </span>
-        <span className="legend-item">{t('schedulePrint.legendUnfilled')}</span>
-      </Box>
     </Box>
   );
 };
