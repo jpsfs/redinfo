@@ -31,6 +31,7 @@ Using ADO MCP (server)
 
 - A VS Code MCP server entry is provided at `.vscode/mcp.json` and defaults to the `jpsfs` organization. You can also run the MCP CLI locally with `pnpm ado:mcp`.
 - For non-interactive usage (CI or automation) you must provide authentication: see `.github/ADO_AUTH.md` for PAT creation and using the `AZURE_DEVOPS_EXT_PAT` environment variable.
+- In coding-agent environments where the MCP server can't complete its interactive login, ADO reads/writes go through the `az boards` CLI instead (same org/project flags) — this is the path Claude Code agents in this repo use by default.
 
 When blocked
 - If you cannot comply with a mandate (e.g., missing assets, missing test harness), create a short report listing blockers and the minimal actions needed, then open a work item instead of attempting risky partial changes.

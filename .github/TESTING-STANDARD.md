@@ -3,6 +3,8 @@
 Purpose
 This document defines the mandatory testing approach for features: unit, integration, and end-to-end tests that validate user story acceptance criteria (behavior/outcome focused).
 
+Current reality: there is no e2e harness wired up yet (`pnpm --filter frontend test:e2e` is a stub). The e2e requirement below is the target, not something already enforced — don't block a PR on it until a harness exists.
+
 Principles
 - Tests must validate user-facing outcomes or domain/business rules described in the user story acceptance criteria.
 - Avoid tests that only assert private implementation details.
