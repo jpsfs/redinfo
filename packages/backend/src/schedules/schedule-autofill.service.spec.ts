@@ -97,6 +97,7 @@ function makeContext({
     roles: roles as never,
     pattern: pattern as never,
     shifts,
+    overrides: new Map(),
   };
 }
 

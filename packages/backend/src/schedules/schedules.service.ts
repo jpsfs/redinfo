@@ -4,15 +4,18 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import {
+  ApiBadRequestException,
   ApiConflictException,
   ApiForbiddenException,
 } from '../common/api-error.exception';
 import {
   Action,
+  AdjustScheduleShiftResponse,
   AvailabilityWindow,
   AvailabilityWindowCategory,
   AvailabilityWindowRole,
   availabilityWindowLabel,
+  applyShiftOverrides,
   DayShiftPattern,
   formatShiftLabel,
   holdsCertification,
@@ -24,9 +27,11 @@ import {
   ScheduleConflict,
   ScheduleDayBoard,
   ScheduleFillStats,
+  ScheduleShiftAdjustment,
   ScheduleShiftBoard,
   ScheduleStatus,
   ShiftDefinition,
+  ShiftTimes,
   UserRole,
   assignedDriverCount,
   hasPermission,
@@ -34,6 +39,7 @@ import {
   scheduleFillStats,
   shiftGaps,
   shiftsOverlap,
+  validateDayShifts,
 } from '@redinfo/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { ShiftScheduleService } from '../availability/shift-schedule.service';
@@ -47,6 +53,7 @@ import {
   toHeldCertifications,
   toSchedulePerson,
 } from '../users/certifications.util';
+import { AdjustShiftDto } from './dto/adjust-shift.dto';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
 
 const ACTOR_SELECT = { select: { id: true, firstName: true, lastName: true } };
@@ -76,6 +83,9 @@ export const shiftKey = (date: string, slot: number) => `${date}#${slot}`;
 const submissionKey = (userId: string, date: string, slot: number) =>
   `${userId}#${date}#${slot}`;
 
+/** `@db.Date` columns round-trip through UTC midnight — never local midnight. */
+const parseDate = (date: string): Date => new Date(`${date}T00:00:00.000Z`);
+
 /**
  * Everything a schedule operation needs about the window behind it, read once.
  *
@@ -88,9 +98,12 @@ export interface ScheduleContext {
   status: ScheduleStatus;
   window: AvailabilityWindow;
   roles: AvailabilityWindowRole[];
+  /** The window's own grid, with this schedule's own adjustments applied. */
   pattern: DayShiftPattern[];
-  /** Every shift of the window, by `date#slot`. */
+  /** Every shift of the (adjusted) pattern, by `date#slot`. */
   shifts: Map<string, ShiftDefinition & { date: string }>;
+  /** `date#slot` → the window's own hours, for shifts this schedule moved. */
+  overrides: Map<string, ScheduleShiftAdjustment>;
 }
 
 /** Just enough of the caller to answer "may they see this, and as whom". */
@@ -245,11 +258,43 @@ export class SchedulesService {
   async loadContext(scheduleId: string): Promise<ScheduleContext> {
     const row = await this.loadRow(scheduleId);
     const window = serializeWindow(row.window);
-    const pattern = await this.shiftSchedule.getPatternForWindow({
+    const rawPattern = await this.shiftSchedule.getPatternForWindow({
       id: window.id,
       startDate: window.startDate,
       endDate: window.endDate,
     });
+
+    const rawByKey = new Map<string, ShiftDefinition>();
+    for (const day of rawPattern) {
+      for (const shift of day.shifts) rawByKey.set(shiftKey(day.date, shift.slot), shift);
+    }
+
+    const overrideRows = await this.prisma.scheduleShiftOverride.findMany({
+      where: { scheduleId },
+      include: { adjustedBy: ACTOR_SELECT },
+    });
+
+    // `overrides` carries the *original* hours (for the board's "was …"
+    // badge); `overrideTimes` is the thinner shape `applyShiftOverrides`
+    // wants. A row whose (date, slot) the window no longer defines is
+    // dropped rather than applied — the window's grid is never edited after
+    // opening, so this can't happen in practice, but tolerating it is cheap.
+    const overrides = new Map<string, ScheduleShiftAdjustment>();
+    const overrideTimes = new Map<string, ShiftTimes>();
+    for (const override of overrideRows) {
+      const date = toIsoDate(override.date);
+      const key = shiftKey(date, override.slot);
+      const original = rawByKey.get(key);
+      if (!original) continue;
+      overrides.set(key, {
+        original: { startMinute: original.startMinute, endMinute: original.endMinute },
+        adjustedBy: override.adjustedBy,
+        adjustedAt: override.adjustedAt.toISOString(),
+      });
+      overrideTimes.set(key, { startMinute: override.startMinute, endMinute: override.endMinute });
+    }
+
+    const pattern = applyShiftOverrides(rawPattern, overrideTimes);
 
     const shifts = new Map<string, ShiftDefinition & { date: string }>();
     for (const day of pattern) {
@@ -265,7 +310,32 @@ export class SchedulesService {
       roles: window.roles ?? [],
       pattern,
       shifts,
+      overrides,
     };
+  }
+
+  /**
+   * Every shift-time override of the given schedules, grouped by schedule
+   * and keyed `date#slot` — the shape `applyShiftOverrides` wants. Shared by
+   * every read path that overlays *another* schedule's adjustments rather
+   * than the current one's own (already built into `loadContext`'s `pattern`).
+   */
+  private async loadOverrideTimesByScheduleId(
+    scheduleIds: string[],
+  ): Promise<Map<string, Map<string, ShiftTimes>>> {
+    const byScheduleId = new Map<string, Map<string, ShiftTimes>>();
+    if (scheduleIds.length === 0) return byScheduleId;
+
+    const rows = await this.prisma.scheduleShiftOverride.findMany({
+      where: { scheduleId: { in: scheduleIds } },
+    });
+    for (const row of rows) {
+      const key = shiftKey(toIsoDate(row.date), row.slot);
+      const times = byScheduleId.get(row.scheduleId) ?? new Map<string, ShiftTimes>();
+      times.set(key, { startMinute: row.startMinute, endMinute: row.endMinute });
+      byScheduleId.set(row.scheduleId, times);
+    }
+    return byScheduleId;
   }
 
   /** Shift slots someone submitted availability for, as `userId#date#slot`. */
@@ -322,13 +392,15 @@ export class SchedulesService {
       isHoliday: day.isHoliday,
       holidayName: day.holidayName ?? null,
       shifts: day.shifts.map<ScheduleShiftBoard>((shift) => {
-        const onShift = byShift.get(shiftKey(day.date, shift.slot)) ?? [];
+        const key = shiftKey(day.date, shift.slot);
+        const onShift = byShift.get(key) ?? [];
         return {
           slot: shift.slot,
           startMinute: shift.startMinute,
           endMinute: shift.endMinute,
           vehiclesNeeded: shift.vehiclesNeeded,
           label: shift.label,
+          adjustment: context.overrides.get(key) ?? null,
           assignments: onShift,
           driverCount: assignedDriverCount(onShift),
           gaps: shiftGaps({
@@ -383,8 +455,14 @@ export class SchedulesService {
     });
 
     // Times for the *other* windows' shifts: each window carries its own grid,
-    // so a slot number alone says nothing about when it runs.
-    const otherWindows = new Map<string, { id: string; startDate: string; endDate: string; label: string }>();
+    // so a slot number alone says nothing about when it runs. `scheduleId`
+    // rides along so that window's own schedule's adjustments can be
+    // overlaid too — an overlap a coordinator created by moving a shift is
+    // exactly the kind this check exists to surface.
+    const otherWindows = new Map<
+      string,
+      { id: string; startDate: string; endDate: string; label: string; scheduleId: string }
+    >();
     for (const row of others) {
       const window = row.schedule.window;
       if (window.id === context.window.id) continue;
@@ -397,14 +475,23 @@ export class SchedulesService {
             category: window.category as AvailabilityWindowCategory,
             name: window.name,
           }),
+          scheduleId: row.schedule.id,
         });
       }
     }
 
+    const otherOverridesBySchedule = await this.loadOverrideTimesByScheduleId(
+      [...otherWindows.values()].map((window) => window.scheduleId),
+    );
+
     const otherShifts = new Map<string, ShiftDefinition>();
     for (const window of otherWindows.values()) {
       const pattern = await this.shiftSchedule.getPatternForWindow(window);
-      for (const day of pattern) {
+      const overlaid = applyShiftOverrides(
+        pattern,
+        otherOverridesBySchedule.get(window.scheduleId) ?? new Map(),
+      );
+      for (const day of overlaid) {
         for (const shift of day.shifts) {
           otherShifts.set(`${window.id}#${shiftKey(day.date, shift.slot)}`, shift);
         }
@@ -449,6 +536,150 @@ export class SchedulesService {
     }
 
     return conflicts;
+  }
+
+  // ── Shift adjustments ──────────────────────────────────────────────────────
+
+  /**
+   * Moves one day's shift for this schedule alone — the window's own grid is
+   * never touched, since availability was submitted against it.
+   *
+   * Allowed on a published schedule as well as a draft: the need to correct a
+   * shift's hours is usually discovered after the rota is posted, not before,
+   * and every other mutation of an assignment already carries no status
+   * check either. What changes is recorded (`adjustedById`/`adjustedAt`), and
+   * the caller is expected to have warned the user first.
+   */
+  async adjustShift(
+    scheduleId: string,
+    date: string,
+    slot: number,
+    dto: AdjustShiftDto,
+    adjustedById: string,
+  ): Promise<AdjustScheduleShiftResponse> {
+    const context = await this.loadContext(scheduleId);
+    const key = shiftKey(date, slot);
+    const day = context.pattern.find((entry) => entry.date === date);
+    const current = context.shifts.get(key);
+    if (!day || !current) {
+      throw new NotFoundException(`Schedule ${scheduleId} has no shift ${date}#${slot}`);
+    }
+
+    if (dto.endMinute <= dto.startMinute) {
+      throw new ApiBadRequestException(
+        'SHIFT_ADJUSTMENT_END_BEFORE_START',
+        `A shift must end after it starts (got ${formatShiftLabel(dto)}).`,
+      );
+    }
+
+    const otherShiftsThatDay = day.shifts.filter((shift) => shift.slot !== slot);
+    const overlap = otherShiftsThatDay.find((shift) => shiftsOverlap(dto, shift));
+    if (overlap) {
+      throw new ApiBadRequestException(
+        'SHIFT_ADJUSTMENT_OVERLAPS',
+        `Shifts ${formatShiftLabel(dto)} and ${formatShiftLabel(overlap)} overlap.`,
+        { shift: formatShiftLabel(dto), other: formatShiftLabel(overlap) },
+      );
+    }
+
+    // Backstop: the two checks above already cover every case the DTO's own
+    // bounds don't, so this can only fire in agreement with them. It is the
+    // one place the rule is written, matching the per-day window editor.
+    const effectiveDay = [...otherShiftsThatDay, { ...dto, slot }];
+    const validationError = validateDayShifts(effectiveDay);
+    if (validationError) {
+      throw new BadRequestException(validationError);
+    }
+
+    // The window's own hours, exactly as they were before this schedule ever
+    // touched them — an adjustment back to them is a reset, not a change.
+    const original = context.overrides.get(key)?.original ?? {
+      startMinute: current.startMinute,
+      endMinute: current.endMinute,
+    };
+    if (dto.startMinute === original.startMinute && dto.endMinute === original.endMinute) {
+      await this.prisma.scheduleShiftOverride.deleteMany({
+        where: { scheduleId, date: parseDate(date), slot },
+      });
+    } else {
+      await this.prisma.scheduleShiftOverride.upsert({
+        where: { scheduleId_date_slot: { scheduleId, date: parseDate(date), slot } },
+        create: {
+          scheduleId,
+          date: parseDate(date),
+          slot,
+          startMinute: dto.startMinute,
+          endMinute: dto.endMinute,
+          adjustedById,
+        },
+        update: {
+          startMinute: dto.startMinute,
+          endMinute: dto.endMinute,
+          adjustedById,
+          adjustedAt: new Date(),
+        },
+      });
+    }
+
+    return this.readAdjustedShift(scheduleId, date, slot);
+  }
+
+  /** Restores one shift to the window's own hours. Idempotent: resetting an unadjusted shift is not an error. */
+  async resetShift(scheduleId: string, date: string, slot: number): Promise<AdjustScheduleShiftResponse> {
+    await this.prisma.scheduleShiftOverride.deleteMany({
+      where: { scheduleId, date: parseDate(date), slot },
+    });
+    return this.readAdjustedShift(scheduleId, date, slot);
+  }
+
+  /** The one shift, as `getBoard` would render it — what an adjust/reset call answers with. */
+  private async readAdjustedShift(
+    scheduleId: string,
+    date: string,
+    slot: number,
+  ): Promise<AdjustScheduleShiftResponse> {
+    const context = await this.loadContext(scheduleId);
+    const key = shiftKey(date, slot);
+    const shift = context.shifts.get(key);
+    if (!shift) {
+      throw new NotFoundException(`Schedule ${scheduleId} has no shift ${date}#${slot}`);
+    }
+
+    const [assignments, submissions, declined] = await Promise.all([
+      this.prisma.scheduleAssignment.findMany({
+        where: { scheduleId, date: parseDate(date), slot },
+        include: ASSIGNMENT_INCLUDE,
+        orderBy: { assignedAt: 'asc' },
+      }),
+      this.loadSubmissionKeys(context.window.id),
+      this.loadDeclinedUserIds(context.window.id),
+    ]);
+    const onShift = assignments.map((assignment) =>
+      serializeAssignment(assignment, date, {
+        submitted: submissions.has(submissionKey(assignment.userId, date, slot)),
+        declined: declined.has(assignment.userId),
+      }),
+    );
+
+    return {
+      date,
+      slot,
+      shift: {
+        slot: shift.slot,
+        startMinute: shift.startMinute,
+        endMinute: shift.endMinute,
+        vehiclesNeeded: shift.vehiclesNeeded,
+        label: shift.label,
+        adjustment: context.overrides.get(key) ?? null,
+        assignments: onShift,
+        driverCount: assignedDriverCount(onShift),
+        gaps: shiftGaps({
+          vehiclesNeeded: shift.vehiclesNeeded,
+          roles: context.roles,
+          assignments: onShift,
+        }),
+      },
+    };
   }
 
   // ── Export ──────────────────────────────────────────────────────────────────
@@ -517,24 +748,42 @@ export class SchedulesService {
     });
     if (rows.length === 0) return { upcoming: [], past: [] };
 
-    const windows = new Map<string, { id: string; startDate: string; endDate: string }>();
+    // Keyed by scheduleId rather than windowId: `Schedule.windowId` is
+    // unique, so this is the same grouping, but keying it this way is what
+    // makes the override join below obvious — an adjustment belongs to a
+    // schedule, not to the window behind it.
+    const schedules = new Map<
+      string,
+      { id: string; windowId: string; startDate: string; endDate: string }
+    >();
     for (const row of rows) {
       const window = row.schedule.window;
-      if (!windows.has(window.id)) {
-        windows.set(window.id, {
-          id: window.id,
+      if (!schedules.has(row.scheduleId)) {
+        schedules.set(row.scheduleId, {
+          id: row.scheduleId,
+          windowId: window.id,
           startDate: toIsoDate(window.startDate),
           endDate: toIsoDate(window.endDate),
         });
       }
     }
 
+    const overridesBySchedule = await this.loadOverrideTimesByScheduleId([...schedules.keys()]);
+
     const shifts = new Map<string, ShiftDefinition>();
-    for (const window of windows.values()) {
-      const pattern = await this.shiftSchedule.getPatternForWindow(window);
-      for (const day of pattern) {
+    for (const schedule of schedules.values()) {
+      const pattern = await this.shiftSchedule.getPatternForWindow({
+        id: schedule.windowId,
+        startDate: schedule.startDate,
+        endDate: schedule.endDate,
+      });
+      const overlaid = applyShiftOverrides(
+        pattern,
+        overridesBySchedule.get(schedule.id) ?? new Map(),
+      );
+      for (const day of overlaid) {
         for (const shift of day.shifts) {
-          shifts.set(`${window.id}#${shiftKey(day.date, shift.slot)}`, shift);
+          shifts.set(`${schedule.id}#${shiftKey(day.date, shift.slot)}`, shift);
         }
       }
     }
@@ -545,7 +794,7 @@ export class SchedulesService {
     for (const row of rows) {
       const window = row.schedule.window;
       const date = toIsoDate(row.date);
-      const shift = shifts.get(`${window.id}#${shiftKey(date, row.slot)}`);
+      const shift = shifts.get(`${row.scheduleId}#${shiftKey(date, row.slot)}`);
       // A shift the window no longer defines cannot be described, and inventing
       // times for it would be worse than leaving it out.
       if (!shift) continue;

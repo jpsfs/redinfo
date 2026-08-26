@@ -750,6 +750,41 @@ export function toShiftDefinitions(
 }
 
 /**
+ * A pattern with some of its shifts' clock times replaced, for a schedule
+ * that has moved them without touching the window's own grid.
+ *
+ * `overrides` is keyed `date#slot` (the same shape `shiftKey(date, slot)`
+ * produces) so a caller can build it straight from whatever it stored the
+ * correction under. Only `startMinute`/`endMinute`/`label` change — `slot`
+ * and `vehiclesNeeded` are untouched, and shifts are **not re-sorted**: a
+ * slot is an identity that submissions and assignments point at, so an
+ * adjustment that makes slot 1 run after slot 2 must still show as slot 1's
+ * row, not silently swap places with it. A key with no matching shift is
+ * ignored rather than throwing — the caller may be a step behind a window
+ * change that hasn't happened in practice (window shifts are never edited
+ * after opening) but is cheap to tolerate.
+ */
+export function applyShiftOverrides<
+  Shift extends ShiftDefinition,
+  Day extends { date: string; shifts: Shift[] },
+>(pattern: Day[], overrides: ReadonlyMap<string, ShiftTimes>): Day[] {
+  if (overrides.size === 0) return pattern;
+  return pattern.map((day) => ({
+    ...day,
+    shifts: day.shifts.map((shift) => {
+      const override = overrides.get(`${day.date}#${shift.slot}`);
+      if (!override) return shift;
+      return {
+        ...shift,
+        startMinute: override.startMinute,
+        endMinute: override.endMinute,
+        label: formatShiftLabel(override),
+      };
+    }),
+  }));
+}
+
+/**
  * Month names, in the one place both the backend (naming an emergency window)
  * and the frontend (month pickers, calendar headers) read them from — so the
  * name a window is given always matches the month the coordinator picked.
@@ -1394,10 +1429,31 @@ export interface ScheduleAssignment {
   assignedAt: string;
 }
 
+/**
+ * A shift whose hours a coordinator moved on this schedule alone.
+ *
+ * The availability window's own grid is untouched — submissions were made
+ * against it, so it stays the record of what people were asked about. This
+ * is the board's way of saying "the times below are not the ones that were
+ * asked about", which is why it carries the original rather than only a
+ * flag: the board can show "19:00–24:00 (was 20:00–24:00)" without a second
+ * lookup.
+ */
+export interface ScheduleShiftAdjustment {
+  /** The window's own hours for this shift. */
+  original: ShiftTimes;
+  adjustedBy?: AvailabilityWindowActor | null;
+  /** ISO instant. */
+  adjustedAt: string;
+}
+
 /** One shift of the board: what it needs, who is on it, what is missing. */
 export interface ScheduleShiftBoard extends ShiftSpec {
   slot: number;
+  /** Already reflects `adjustment`, if any — the times that will be worked. */
   label: string;
+  /** Set only when this shift's hours were moved for this schedule. */
+  adjustment?: ScheduleShiftAdjustment | null;
   assignments: ScheduleAssignment[];
   /** Certified drivers across every role on this shift. */
   driverCount: number;
@@ -1517,6 +1573,17 @@ export interface CreateScheduleAssignmentRequest {
    * ignores it otherwise. Stored as `ScheduleAssignment.certificationOverrideReason`.
    */
   overrideReason?: string;
+}
+
+/** `PUT /schedules/:id/shifts/:date/:slot` — move one shift's hours for this schedule alone. */
+export interface AdjustScheduleShiftRequest extends ShiftTimes {}
+
+/** What both the PUT and the reset DELETE answer with, so the caller can render the shift immediately. */
+export interface AdjustScheduleShiftResponse {
+  /** ISO date, `YYYY-MM-DD`. */
+  date: string;
+  slot: number;
+  shift: ScheduleShiftBoard;
 }
 
 /**
@@ -4078,7 +4145,9 @@ export type ApiErrorCode =
   | 'ASSIGNMENT_ROLE_ID_REQUIRED'
   | 'ASSIGNMENT_ROLE_NOT_IN_WINDOW'
   | 'SELF_ASSIGN_SCHEDULE_NOT_PUBLISHED'
-  | 'SELF_ASSIGN_OVERLAPPING_SHIFT';
+  | 'SELF_ASSIGN_OVERLAPPING_SHIFT'
+  | 'SHIFT_ADJUSTMENT_END_BEFORE_START'
+  | 'SHIFT_ADJUSTMENT_OVERLAPS';
 
 export interface ApiErrorBody {
   code: ApiErrorCode;

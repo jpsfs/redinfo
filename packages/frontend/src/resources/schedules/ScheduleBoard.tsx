@@ -20,6 +20,7 @@ import {
   Typography,
 } from '@mui/material';
 import { useGetIdentity, usePermissions } from 'react-admin';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import AddIcon from '@mui/icons-material/Add';
 import AutoFixHighIcon from '@mui/icons-material/AutoFixHigh';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
@@ -37,6 +38,7 @@ import {
   CertificationType,
   formatGap,
   formatRoleCapacity,
+  formatShiftLabel,
   hasPermission,
   HeldCertification,
   holdsCertification,
@@ -59,6 +61,7 @@ import { useIntlLocale } from '../../i18n/useIntlLocale';
 import { useT } from '../../i18n/useT';
 import { formatDateRange, formatDayLabel } from '../../utils/dates';
 import { WindowIdentity } from '../availability/WindowIdentity';
+import { AdjustShiftDialog, AdjustShiftTarget } from './AdjustShiftDialog';
 import { AssignPersonDialog, AssignTarget } from './AssignPersonDialog';
 import { AutofillDialog } from './AutofillDialog';
 import { PublishDialog } from './PublishDialog';
@@ -306,6 +309,7 @@ const BoardLegend = () => {
         [undefined, t('scheduleBoard.legendAssigned')],
         ['signUp', t('scheduleBoard.legendSignedUp')],
         ['override', t('scheduleBoard.legendOverride')],
+        ['adjusted', t('scheduleBoard.legendAdjusted')],
         ['exception', t('scheduleBoard.legendException')],
         ['lapsed', t('scheduleBoard.legendLapsed')],
         ['open', t('scheduleBoard.legendOpen')],
@@ -316,6 +320,7 @@ const BoardLegend = () => {
       <Box key={label} sx={{ display: 'flex', alignItems: 'center', gap: 0.75 }}>
         {kind === 'signUp' && <HowToRegIcon sx={{ fontSize: 16, color: 'info.dark' }} />}
         {kind === 'override' && <SwapHorizIcon sx={{ fontSize: 16, color: 'warning.dark' }} />}
+        {kind === 'adjusted' && <AccessTimeIcon sx={{ fontSize: 16, color: 'warning.dark' }} />}
         {kind === 'exception' && <WarningAmberIcon sx={{ fontSize: 16, color: 'warning.dark' }} />}
         {kind === 'lapsed' && <ErrorOutlineIcon sx={{ fontSize: 16, color: 'error.dark' }} />}
         {kind === 'open' && (
@@ -459,6 +464,7 @@ const DesktopBoard = ({
   conflictFor,
   onAssign,
   onRemove,
+  onAdjust,
   viewer,
 }: {
   board: ScheduleBoardResponse;
@@ -466,6 +472,7 @@ const DesktopBoard = ({
   conflictFor: (assignment: ScheduleAssignment) => ScheduleConflict | undefined;
   onAssign: (target: AssignTarget) => void;
   onRemove: (assignment: ScheduleAssignment) => void;
+  onAdjust: (target: AdjustShiftTarget) => void;
   viewer: Viewer;
 }) => {
   const t = useT();
@@ -535,9 +542,43 @@ const DesktopBoard = ({
                 )}
               </TableCell>
               <TableCell>
-                <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                  {shift.label}
-                </Typography>
+                {viewer.isCoordinator ? (
+                  <Button
+                    size="small"
+                    variant="text"
+                    sx={{ p: 0, minWidth: 0, fontWeight: 600, textTransform: 'none' }}
+                    aria-label={t('scheduleBoard.adjustShiftAria', {
+                      day: formatDayLabel(t, day.date),
+                      label: shift.label,
+                    })}
+                    onClick={() =>
+                      onAdjust({
+                        date: day.date,
+                        slot: shift.slot,
+                        shift,
+                        otherShiftsThatDay: day.shifts
+                          .filter((other) => other.slot !== shift.slot)
+                          .map((other) => ({
+                            startMinute: other.startMinute,
+                            endMinute: other.endMinute,
+                          })),
+                      })
+                    }
+                  >
+                    {shift.label}
+                  </Button>
+                ) : (
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {shift.label}
+                  </Typography>
+                )}
+                {shift.adjustment && (
+                  <Typography variant="caption" color="warning.dark" display="block">
+                    {t('scheduleBoard.adjustedWas', {
+                      label: formatShiftLabel(shift.adjustment.original),
+                    })}
+                  </Typography>
+                )}
               </TableCell>
               {columns.map((role) => (
                 <TableCell key={role?.id ?? CREW_COLUMN_KEY} sx={{ verticalAlign: 'top' }}>
@@ -602,6 +643,7 @@ const MobileBoard = ({
   conflictFor,
   onAssign,
   onRemove,
+  onAdjust,
   viewer,
 }: {
   board: ScheduleBoardResponse;
@@ -609,6 +651,7 @@ const MobileBoard = ({
   conflictFor: (assignment: ScheduleAssignment) => ScheduleConflict | undefined;
   onAssign: (target: AssignTarget) => void;
   onRemove: (assignment: ScheduleAssignment) => void;
+  onAdjust: (target: AdjustShiftTarget) => void;
   viewer: Viewer;
 }) => {
   const t = useT();
@@ -621,9 +664,43 @@ const MobileBoard = ({
           <Stack spacing={2} sx={{ mt: 1.5 }}>
             {day.shifts.map((shift) => (
               <Box key={shift.slot}>
-                <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                  {shift.label}
-                </Typography>
+                {viewer.isCoordinator ? (
+                  <Button
+                    size="small"
+                    variant="text"
+                    sx={{ p: 0, minWidth: 0, fontWeight: 600, textTransform: 'none' }}
+                    aria-label={t('scheduleBoard.adjustShiftAria', {
+                      day: formatDayLabel(t, day.date),
+                      label: shift.label,
+                    })}
+                    onClick={() =>
+                      onAdjust({
+                        date: day.date,
+                        slot: shift.slot,
+                        shift,
+                        otherShiftsThatDay: day.shifts
+                          .filter((other) => other.slot !== shift.slot)
+                          .map((other) => ({
+                            startMinute: other.startMinute,
+                            endMinute: other.endMinute,
+                          })),
+                      })
+                    }
+                  >
+                    {shift.label}
+                  </Button>
+                ) : (
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {shift.label}
+                  </Typography>
+                )}
+                {shift.adjustment && (
+                  <Typography variant="caption" color="warning.dark" display="block">
+                    {t('scheduleBoard.adjustedWas', {
+                      label: formatShiftLabel(shift.adjustment.original),
+                    })}
+                  </Typography>
+                )}
                 <Stack spacing={1} sx={{ mt: 1 }}>
                   {columns.map((role) => (
                     <Box key={role?.id ?? CREW_COLUMN_KEY}>
@@ -681,6 +758,7 @@ export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
   const [error, setError] = useState<string | null>(null);
   const [target, setTarget] = useState<AssignTarget | null>(null);
   const [signUpTarget, setSignUpTarget] = useState<AssignTarget | null>(null);
+  const [adjustTarget, setAdjustTarget] = useState<AdjustShiftTarget | null>(null);
   const [autofillOpen, setAutofillOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -928,6 +1006,7 @@ export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
           conflictFor={conflictFor}
           onAssign={viewer.isCoordinator ? setTarget : setSignUpTarget}
           onRemove={(assignment) => void handleRemove(assignment)}
+          onAdjust={setAdjustTarget}
           viewer={viewer}
         />
       ) : (
@@ -937,6 +1016,7 @@ export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
           conflictFor={conflictFor}
           onAssign={viewer.isCoordinator ? setTarget : setSignUpTarget}
           onRemove={(assignment) => void handleRemove(assignment)}
+          onAdjust={setAdjustTarget}
           viewer={viewer}
         />
       )}
@@ -977,6 +1057,16 @@ export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
         onClose={() => setTarget(null)}
         onAssigned={() => {
           setTarget(null);
+          void load();
+        }}
+      />
+      <AdjustShiftDialog
+        scheduleId={scheduleId}
+        target={adjustTarget}
+        isPublished={isPublished}
+        onClose={() => setAdjustTarget(null)}
+        onSaved={() => {
+          setAdjustTarget(null);
           void load();
         }}
       />

@@ -81,6 +81,7 @@ function makeContext(roles = [DRIVER_ROLE, MEMBER_ROLE]): ScheduleContext {
       ['2026-10-01#1', { ...shift, date: '2026-10-01' }],
       ['2026-10-01#2', { ...late, date: '2026-10-01' }],
     ]),
+    overrides: new Map(),
   };
 }
 
@@ -541,6 +542,30 @@ describe('ScheduleAssignmentsService.selfAssign', () => {
 
     await expect(service.selfAssign('s1', selfDto(), { id: ANA.id })).rejects.toThrow(
       /already on 15:00–24:00/i,
+    );
+  });
+
+  // Same guard, but the overlap exists only because a coordinator moved slot
+  // 2 earlier for this schedule — the window's own 15:00–24:00 never would
+  // have clashed. `loadContext` bakes an adjustment straight into
+  // `context.shifts`, so this is what it hands the guard once one is made.
+  it('refuses a shift that only overlaps because the other one was adjusted', async () => {
+    const prisma = buildPrismaStub();
+    prisma.user.findUnique.mockResolvedValue(ANA);
+    prisma.scheduleAssignment.findMany.mockResolvedValue([
+      { userId: ANA.id, date: new Date('2026-10-01T00:00:00.000Z'), slot: 2 },
+    ]);
+    const context = published();
+    context.shifts.set('2026-10-01#2', {
+      ...context.shifts.get('2026-10-01#2')!,
+      startMinute: 720,
+      endMinute: 1200,
+      label: '12:00–20:00',
+    });
+    const { service } = makeService(prisma, buildSchedulesStub(context));
+
+    await expect(service.selfAssign('s1', selfDto(), { id: ANA.id })).rejects.toThrow(
+      /already on 12:00–20:00/i,
     );
   });
 

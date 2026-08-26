@@ -222,6 +222,48 @@ describe('ScheduleBoard', () => {
     expect(shiftCell.textContent?.trim()).toBe('08:00–16:00');
   });
 
+  it('opens the adjust-shift dialog when a coordinator clicks the shift', async () => {
+    renderBoard();
+    const user = userEvent.setup();
+    await screen.findByText('Sat, 3 Oct');
+
+    await user.click(screen.getByRole('button', { name: /Adjust the hours of Sat, 3 Oct/ }));
+
+    expect(await screen.findByText('Adjust shift hours')).toBeInTheDocument();
+  });
+
+  it('marks an adjusted shift with the window\'s own hours, and re-reads the board on save', async () => {
+    const board = scheduleBoard();
+    board.days[0].shifts[0] = {
+      ...board.days[0].shifts[0],
+      startMinute: 7 * 60,
+      endMinute: 16 * 60,
+      label: '07:00–16:00',
+      adjustment: {
+        original: { startMinute: 8 * 60, endMinute: 16 * 60 },
+        adjustedBy: null,
+        adjustedAt: '2026-09-20T10:00:00.000Z',
+      },
+    };
+    respondWith(board);
+    renderBoard();
+    const user = userEvent.setup();
+    await screen.findByText('Sat, 3 Oct');
+
+    expect(screen.getByText('07:00–16:00')).toBeInTheDocument();
+    expect(screen.getByText('was 08:00–16:00')).toBeInTheDocument();
+
+    mockApiFetch.mockClear();
+    await user.click(screen.getByRole('button', { name: /Adjust the hours of Sat, 3 Oct/ }));
+    await user.click(await screen.findByRole('button', { name: 'Save' }));
+
+    await waitFor(() =>
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        expect.stringContaining(`/schedules/${SCHEDULE_ID}/board`),
+      ),
+    );
+  });
+
   it('totals slots, gaps, overrides and conflicts', async () => {
     renderBoard();
 
@@ -390,6 +432,14 @@ describe('ScheduleBoard as a member', () => {
     await screen.findByText('Sat, 3 Oct');
     expect(screen.queryByRole('button', { name: /auto-fill/i })).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /publish/i })).not.toBeInTheDocument();
+  });
+
+  it('shows the shift as plain text, not something to click', async () => {
+    renderBoard(MEMBER);
+    await screen.findByText('Sat, 3 Oct');
+
+    expect(screen.queryByRole('button', { name: /Adjust the hours/ })).not.toBeInTheDocument();
+    expect(screen.getAllByText('08:00–16:00').length).toBeGreaterThan(0);
   });
 
   it('will not let a member take anyone off a shift, themselves included', async () => {

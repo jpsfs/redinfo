@@ -172,6 +172,41 @@ describe('buildPrintRows', () => {
     // Nobody assigned on the afternoon shift → all three roles unfilled.
     expect(rows[1].unfilledCount).toBe(3);
   });
+
+  // The board's own `label` already reflects a coordinator's adjustment
+  // (see ScheduleShiftBoard.adjustment) — the print row need only read it,
+  // never the "was …" badge the board shows.
+  it('prints an adjusted shift at its new hours, with no marker of the change', () => {
+    const day: ScheduleDayBoard = {
+      date: '2026-10-01',
+      isWeekend: false,
+      isHoliday: false,
+      holidayName: null,
+      shifts: [
+        {
+          slot: 1,
+          startMinute: 19 * 60,
+          endMinute: 24 * 60,
+          vehiclesNeeded: 1,
+          label: '19:00–24:00',
+          adjustment: {
+            original: { startMinute: 20 * 60, endMinute: 24 * 60 },
+            adjustedBy: null,
+            adjustedAt: '2026-09-20T10:00:00.000Z',
+          },
+          assignments: [],
+          driverCount: 0,
+          gaps: [],
+        },
+      ],
+    };
+    const board = makeBoard({ roles: EMERGENCY_ROLES, days: [day] });
+
+    const rows = buildPrintRows(board);
+
+    expect(rows[0].shiftLabel).toBe('19:00–24:00');
+    expect(JSON.stringify(rows[0])).not.toContain('20:00');
+  });
 });
 
 // ─── choosePrintLayout ───────────────────────────────────────────────────────

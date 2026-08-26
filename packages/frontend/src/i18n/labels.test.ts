@@ -151,6 +151,8 @@ describe('every enum value has a label', () => {
     'ASSIGNMENT_ROLE_NOT_IN_WINDOW',
     'SELF_ASSIGN_SCHEDULE_NOT_PUBLISHED',
     'SELF_ASSIGN_OVERLAPPING_SHIFT',
+    'SHIFT_ADJUSTMENT_END_BEFORE_START',
+    'SHIFT_ADJUSTMENT_OVERLAPS',
   ] as const satisfies readonly ApiErrorCode[];
   // If ApiErrorCode ever grows a member not listed above, this fails to
   // *compile* — the same trick as the EventReportProblemCode guard below.

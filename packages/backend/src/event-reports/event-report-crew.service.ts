@@ -6,6 +6,8 @@ import {
   SchedulePerson,
   ScheduleStatus,
   ShiftDefinition,
+  ShiftTimes,
+  applyShiftOverrides,
   availabilityWindowLabel,
   categoryForEventReportType,
   eventReportCrewEligibleRoles,
@@ -152,11 +154,25 @@ export class EventReportCrewService {
     for (const schedule of schedules) {
       if (schedule.assignments.length === 0) continue;
 
-      const pattern = await this.shiftSchedule.getPatternForWindow({
+      const rawPattern = await this.shiftSchedule.getPatternForWindow({
         id: schedule.windowId,
         startDate: toIsoDate(schedule.window.startDate),
         endDate: toIsoDate(schedule.window.endDate),
       });
+      // A coordinator may have moved this schedule's own shift hours; the
+      // crew sheet should offer what was actually worked, not the window's
+      // original grid — that is what decides which shift an activity time
+      // falls into, below.
+      const overrideRows = await this.prisma.scheduleShiftOverride.findMany({
+        where: { scheduleId: schedule.id },
+      });
+      const overrideTimes = new Map<string, ShiftTimes>(
+        overrideRows.map((row) => [
+          `${toIsoDate(row.date)}#${row.slot}`,
+          { startMinute: row.startMinute, endMinute: row.endMinute },
+        ]),
+      );
+      const pattern = applyShiftOverrides(rawPattern, overrideTimes);
 
       // (date, slot) → the shift's clock span, so an assignment can be told
       // what hours it covered.

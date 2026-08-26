@@ -1090,7 +1090,10 @@ const MESSAGES = {
   'scheduleBoard.legendOpen': { pt: 'Um lugar aberto, um por cada pessoa que a função ainda quer', en: 'An open place, one per person the role still wants' },
   'scheduleBoard.legendGap': { pt: 'Sem condutor para as viaturas deste turno', en: 'No driver for the vehicles this shift crews' },
   'scheduleBoard.legendConflict': { pt: 'Duplamente escalado', en: 'Double-booked' },
+  'scheduleBoard.legendAdjusted': { pt: 'Horário ajustado só para esta escala', en: "Hours adjusted for this schedule alone" },
   'scheduleBoard.legendNameChip': { pt: 'Nome', en: 'Name' },
+  'scheduleBoard.adjustShiftAria': { pt: 'Ajustar o horário de %{day}, %{label}', en: 'Adjust the hours of %{day}, %{label}' },
+  'scheduleBoard.adjustedWas': { pt: 'era %{label}', en: 'was %{label}' },
   'scheduleBoard.doubleBookedTooltip': {
     pt: 'Duplamente escalado: também em %{window}, %{label}',
     en: 'Double-booked: also on %{window}, %{label}',
@@ -1270,6 +1273,25 @@ const MESSAGES = {
     en: 'Publishing with gaps is allowed — the roster is often finished by phone. Assigned personnel see their duties straight away, and you can keep editing afterwards.',
   },
   'publishDialog.publishButton': { pt: 'Publicar', en: 'Publish' },
+
+  // ── Adjust shift dialog ──
+  'adjustShift.title': { pt: 'Ajustar horário do turno', en: 'Adjust shift hours' },
+  'adjustShift.startAria': { pt: 'Início', en: 'Start' },
+  'adjustShift.endAria': { pt: 'Fim', en: 'End' },
+  'adjustShift.windowTimes': { pt: 'Horário da janela: %{label}', en: "Window's own hours: %{label}" },
+  'adjustShift.publishedWarning': {
+    pt: 'Esta escala está publicada — quem estiver neste turno vai ver o novo horário.',
+    en: 'This rota is published — everyone on this shift will see the new hours.',
+  },
+  'adjustShift.reset': { pt: 'Repor horário da janela', en: 'Reset to window hours' },
+  'adjustShift.save': { pt: 'Guardar', en: 'Save' },
+  'adjustShift.errorEndBeforeStart': {
+    pt: 'O turno tem de terminar depois de começar.',
+    en: 'A shift must end after it starts.',
+  },
+  'adjustShift.errorOverlaps': { pt: 'Sobrepõe-se a %{label}.', en: 'Overlaps %{label}.' },
+  'adjustShift.failed': { pt: 'Não foi possível ajustar este turno.', en: 'Could not adjust this shift.' },
+
   'signUpDialog.title': { pt: 'Inscrever-te neste turno?', en: 'Add yourself to this shift?' },
   'signUpDialog.failed': { pt: 'Não foi possível adicionar-te a este turno.', en: 'Could not add you to this shift.' },
   'signUpDialog.vehicleCountOne': { pt: '%{count} viatura', en: '%{count} vehicle' },
@@ -1509,6 +1531,14 @@ const MESSAGES = {
   'apiError.SELF_ASSIGN_OVERLAPPING_SHIFT': {
     pt: 'Já estás em %{shift} nesse dia, o que se sobrepõe a este turno.',
     en: 'You are already on %{shift} that day, which overlaps this shift.',
+  },
+  'apiError.SHIFT_ADJUSTMENT_END_BEFORE_START': {
+    pt: 'O turno tem de terminar depois de começar.',
+    en: 'A shift must end after it starts.',
+  },
+  'apiError.SHIFT_ADJUSTMENT_OVERLAPS': {
+    pt: 'Este horário sobrepõe-se a %{other}.',
+    en: 'This overlaps %{other}.',
   },
 
   // ── Calendar headers (#180 phase 5) ──

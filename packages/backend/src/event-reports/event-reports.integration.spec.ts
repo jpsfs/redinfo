@@ -1039,6 +1039,35 @@ describeIntegration('Event reports (integration)', () => {
       });
     });
 
+    it('suggests a shift moved by a coordinator at its adjusted hours, not the window\'s own', async () => {
+      await prisma.scheduleShiftOverride.create({
+        data: {
+          scheduleId,
+          date: new Date(`${SHIFT_DATE}T00:00:00.000Z`),
+          slot: 1,
+          startMinute: toMinuteOfDay(19),
+          endMinute: toMinuteOfDay(24),
+          adjustedById: coordinator.id,
+        },
+      });
+
+      try {
+        // 19:30 falls inside the adjusted 19:00–24:00 span but outside the
+        // window's own 20:00–24:00 — only the adjustment can explain a match.
+        const { suggested } = await crewService.suggestCrew(
+          EventReportType.EMERGENCY,
+          new Date(`${SHIFT_DATE}T19:30:00.000Z`),
+          new Date(`${SHIFT_DATE}T23:00:00.000Z`),
+        );
+
+        expect(suggested).toMatchObject({ scheduleId, date: SHIFT_DATE, slot: 1, label: '19:00–24:00' });
+      } finally {
+        await prisma.scheduleShiftOverride.deleteMany({
+          where: { scheduleId, date: new Date(`${SHIFT_DATE}T00:00:00.000Z`), slot: 1 },
+        });
+      }
+    });
+
     it('offers the crew roster without needing permission to read users', async () => {
       const candidates = await crewService.listCandidates();
       const ids = candidates.map((person) => person.id);

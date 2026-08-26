@@ -1,4 +1,5 @@
 import {
+  applyShiftOverrides,
   availabilityWindowCategoryLabel,
   AVAILABILITY_WINDOW_CATEGORIES,
   AvailabilityWindowCategory,
@@ -198,6 +199,77 @@ describe('sortShifts / toShiftDefinitions', () => {
 
   it('maps an empty day to no shifts', () => {
     expect(toShiftDefinitions([])).toEqual([]);
+  });
+});
+
+describe('applyShiftOverrides', () => {
+  const pattern = [
+    {
+      date: '2026-10-03',
+      isWeekend: true,
+      isHoliday: false,
+      holidayName: null,
+      shifts: [
+        { slot: 1, startMinute: at(8), endMinute: at(16), vehiclesNeeded: 2, label: '08:00–16:00' },
+        { slot: 2, startMinute: at(16), endMinute: at(24), vehiclesNeeded: 1, label: '16:00–24:00' },
+      ],
+    },
+  ];
+
+  it('replaces the times and label of a matching shift', () => {
+    const [day] = applyShiftOverrides(
+      pattern,
+      new Map([['2026-10-03#1', { startMinute: at(7), endMinute: at(12) }]]),
+    );
+    expect(day.shifts[0]).toEqual({
+      slot: 1,
+      startMinute: at(7),
+      endMinute: at(12),
+      vehiclesNeeded: 2,
+      label: '07:00–12:00',
+    });
+  });
+
+  it('leaves vehiclesNeeded and slot untouched', () => {
+    const [day] = applyShiftOverrides(
+      pattern,
+      new Map([['2026-10-03#1', { startMinute: at(7), endMinute: at(12) }]]),
+    );
+    expect(day.shifts[0].slot).toBe(1);
+    expect(day.shifts[0].vehiclesNeeded).toBe(2);
+  });
+
+  it('leaves an unmatched shift untouched', () => {
+    const [day] = applyShiftOverrides(
+      pattern,
+      new Map([['2026-10-03#1', { startMinute: at(7), endMinute: at(12) }]]),
+    );
+    expect(day.shifts[1]).toEqual(pattern[0].shifts[1]);
+  });
+
+  it('ignores a key with no matching shift', () => {
+    const result = applyShiftOverrides(
+      pattern,
+      new Map([['2026-10-04#1', { startMinute: at(7), endMinute: at(12) }]]),
+    );
+    expect(result).toEqual(pattern);
+  });
+
+  it('does not re-sort shifts, even when the adjustment makes one start later than the next', () => {
+    const [day] = applyShiftOverrides(
+      pattern,
+      new Map([['2026-10-03#1', { startMinute: at(18), endMinute: at(20) }]]),
+    );
+    // Slot 1 now runs after slot 2 clock-wise, but it must still be first in
+    // the array: row position must agree with the slot every submission and
+    // assignment points at.
+    expect(day.shifts[0].slot).toBe(1);
+    expect(day.shifts[0].startMinute).toBe(at(18));
+    expect(day.shifts[1].slot).toBe(2);
+  });
+
+  it('is the identity for an empty override map', () => {
+    expect(applyShiftOverrides(pattern, new Map())).toBe(pattern);
   });
 });
 

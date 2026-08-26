@@ -7,6 +7,7 @@ import {
   Param,
   ParseIntPipe,
   Post,
+  Put,
   Query,
   Res,
   UseGuards,
@@ -23,6 +24,7 @@ import { AuditInterceptor } from '../auth/interceptors/audit.interceptor';
 import { RequestUser, SchedulesService } from './schedules.service';
 import { ScheduleAssignmentsService } from './schedule-assignments.service';
 import { ScheduleAutofillService } from './schedule-autofill.service';
+import { AdjustShiftDto } from './dto/adjust-shift.dto';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
 import { CreateScheduleAssignmentDto, SelfAssignDto } from './dto/create-assignment.dto';
 import { AutofillScheduleDto } from './dto/autofill-schedule.dto';
@@ -173,5 +175,32 @@ export class SchedulesController {
   @Actions(Action.MANAGE_SCHEDULES)
   publish(@Param('id') id: string, @CurrentUser() user: { id: string }) {
     return this.schedules.publish(id, user.id);
+  }
+
+  /**
+   * Moving one day's shift for this schedule alone — the window's own grid
+   * is untouched. Allowed on a published schedule too; see the service.
+   */
+  @Put(':id/shifts/:date/:slot')
+  @Actions(Action.MANAGE_SCHEDULES)
+  adjustShift(
+    @Param('id') id: string,
+    @Param('date') date: string,
+    @Param('slot', ParseIntPipe) slot: number,
+    @Body() dto: AdjustShiftDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.schedules.adjustShift(id, date, slot, dto, user.id);
+  }
+
+  /** Restores one shift to the window's own hours. */
+  @Delete(':id/shifts/:date/:slot')
+  @Actions(Action.MANAGE_SCHEDULES)
+  resetShift(
+    @Param('id') id: string,
+    @Param('date') date: string,
+    @Param('slot', ParseIntPipe) slot: number,
+  ) {
+    return this.schedules.resetShift(id, date, slot);
   }
 }

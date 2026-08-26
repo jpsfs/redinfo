@@ -97,10 +97,11 @@ model User {
   availabilitySubmissions AvailabilitySubmission[]
   availabilityResponses   AvailabilityResponse[]
 
-  schedulesCreated    Schedule[]           @relation("ScheduleCreatedBy")
-  schedulesPublished  Schedule[]           @relation("SchedulePublishedBy")
-  scheduleAssignments ScheduleAssignment[] @relation("ScheduleAssignedTo")
-  assignmentsMade     ScheduleAssignment[] @relation("ScheduleAssignedBy")
+  schedulesCreated     Schedule[]              @relation("ScheduleCreatedBy")
+  schedulesPublished   Schedule[]              @relation("SchedulePublishedBy")
+  scheduleAssignments  ScheduleAssignment[]    @relation("ScheduleAssignedTo")
+  assignmentsMade      ScheduleAssignment[]    @relation("ScheduleAssignedBy")
+  shiftAdjustmentsMade ScheduleShiftOverride[] @relation("ScheduleShiftAdjustedBy")
 
   eventReportsCreated    EventReport[]           @relation("EventReportCreatedBy")
   eventReportsSubmitted  EventReport[]           @relation("EventReportSubmittedBy")
@@ -464,11 +465,12 @@ model Schedule {
   publishedAt   DateTime?
   updatedAt     DateTime           @updatedAt
 
-  assignments  ScheduleAssignment[]
+  assignments    ScheduleAssignment[]
   /// Reports whose crew was pre-filled from a shift of this schedule.
-  eventReports EventReport[]
+  eventReports   EventReport[]
   /// Runs in progress whose crew came from a shift of this schedule.
-  liveRuns     LiveRun[]
+  liveRuns       LiveRun[]
+  shiftOverrides ScheduleShiftOverride[]
 
   @@index([status])
 }
@@ -507,6 +509,37 @@ model ScheduleAssignment {
   @@index([scheduleId])
   @@index([userId, date])
   @@index([date])
+}
+
+/// A coordinator's correction to one shift's hours, for one schedule alone.
+///
+/// The availability window's own `AvailabilityWindowShift` is never edited
+/// after opening — it is the record of what people were asked about, and
+/// submissions were made against it. Reality sometimes differs from the
+/// pattern once the schedule is being built (a shift genuinely starts an hour
+/// early, or runs late), and this is where that correction lives: keyed the
+/// same way an assignment is, by `(scheduleId, date, slot)` rather than a
+/// foreign key to the shift row, so it works even for a legacy window whose
+/// shifts are derived rather than materialised.
+///
+/// Carries no `vehiclesNeeded` — only clock times move here, so coverage
+/// maths and list-page fill stats never need to look at this table at all.
+model ScheduleShiftOverride {
+  id           String   @id @default(cuid())
+  scheduleId   String
+  schedule     Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  date         DateTime @db.Date
+  slot         Int
+  /// Minutes from midnight the shift now starts, 0–1439.
+  startMinute  Int
+  /// Minutes from midnight it now ends, 1–1440 (1440 = midnight).
+  endMinute    Int
+  adjustedById String
+  adjustedBy   User     @relation("ScheduleShiftAdjustedBy", fields: [adjustedById], references: [id])
+  adjustedAt   DateTime @default(now())
+
+  @@unique([scheduleId, date, slot])
+  @@index([scheduleId])
 }
 
 /// Tri-state response tracking: "submitted" is derived from

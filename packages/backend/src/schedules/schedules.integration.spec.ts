@@ -466,6 +466,154 @@ describeIntegration('Schedules module (integration)', () => {
     });
   });
 
+  // ── Shift adjustments ─────────────────────────────────────────────────────
+
+  it("integration: adjusts one day's shift without touching the window", async () => {
+    const window = await openWindow();
+    const schedule = await schedules.create({ windowId: window.id }, coordinator.id);
+    await assignments.assign(
+      schedule.id,
+      { date: START, slot: 1, userId: ana.id, roleId: roleId(window, 'Driver') },
+      coordinator.id,
+    );
+
+    const adjusted = await schedules.adjustShift(
+      schedule.id,
+      START,
+      1,
+      { startMinute: at(19), endMinute: at(24) },
+      coordinator.id,
+    );
+    expect(adjusted.shift.label).toBe('19:00–24:00');
+    expect(adjusted.shift.adjustment?.original).toEqual({ startMinute: at(8), endMinute: at(16) });
+
+    // The board reflects it...
+    const board = await schedules.getBoard(schedule.id, coordinatorUser);
+    expect(board.days[0].shifts[0].label).toBe('19:00–24:00');
+    expect(board.days[0].shifts[0].adjustment?.original).toEqual({
+      startMinute: at(8),
+      endMinute: at(16),
+    });
+
+    // ...but the window's own grid never moves, since submissions were made
+    // against it — the guarantee the whole feature rests on.
+    const pattern = await shiftSchedule.getPatternForWindow(window);
+    expect(pattern[0].shifts[0].label).toBe('08:00–16:00');
+
+    // Nor does what a volunteer's own calendar shows.
+    const calendar = await availability.getCalendar(START, END, window.id);
+    expect(calendar[0].shifts[0].label).toBe('08:00–16:00');
+
+    // The export reflects the adjustment.
+    const csv = await schedules.getCsv(schedule.id, coordinatorUser);
+    expect(csv).toContain('19:00–24:00');
+
+    // Allowed on a published schedule too, and a volunteer's own duties show
+    // the adjusted hours, not the window's.
+    await schedules.publish(schedule.id, coordinator.id);
+    await schedules.adjustShift(
+      schedule.id,
+      START,
+      1,
+      { startMinute: at(18), endMinute: at(23) },
+      coordinator.id,
+    );
+    const duties = await schedules.getMyDuties(ana.id, START);
+    expect(duties.upcoming[0]).toMatchObject({
+      startMinute: at(18),
+      endMinute: at(23),
+      label: '18:00–23:00',
+    });
+
+    // Reset restores the window's own hours.
+    const reset = await schedules.resetShift(schedule.id, START, 1);
+    expect(reset.shift.label).toBe('08:00–16:00');
+    expect(reset.shift.adjustment).toBeNull();
+  });
+
+  it("integration: refuses an adjustment that overlaps the day's other shift", async () => {
+    const twoShiftDay = await windows.open(
+      {
+        startDate: START,
+        endDate: START,
+        category: EMERGENCY,
+        name: 'Two-shift day',
+        acknowledgeOverlap: true,
+        roles: [{ name: 'Driver', maxPeople: 1 }],
+        days: [
+          {
+            date: START,
+            shifts: [
+              { startMinute: at(8), endMinute: at(12) },
+              { startMinute: at(12), endMinute: at(16) },
+            ],
+          },
+        ],
+      },
+      coordinator.id,
+    );
+    createdWindowIds.push(twoShiftDay.id);
+    const schedule = await schedules.create({ windowId: twoShiftDay.id }, coordinator.id);
+
+    await expect(
+      schedules.adjustShift(
+        schedule.id,
+        START,
+        1,
+        { startMinute: at(8), endMinute: at(13) },
+        coordinator.id,
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('integration: reports a cross-window conflict created only by an adjustment', async () => {
+    const emergency = await openWindow(EMERGENCY, 'November 2026'); // 08:00–16:00 on START
+    const salop = await windows.open(
+      {
+        startDate: START,
+        endDate: START,
+        category: SALOP_SUPPORT,
+        name: 'Rally Serra da Estrela',
+        acknowledgeOverlap: true,
+        days: [{ date: START, shifts: [{ startMinute: at(20), endMinute: at(24) }] }],
+      },
+      coordinator.id,
+    );
+    createdWindowIds.push(salop.id);
+
+    const first = await schedules.create({ windowId: emergency.id }, coordinator.id);
+    const second = await schedules.create({ windowId: salop.id }, coordinator.id);
+
+    await assignments.assign(
+      first.id,
+      { date: START, slot: 1, userId: ana.id, roleId: roleId(emergency, 'Driver') },
+      coordinator.id,
+    );
+    // A SALOP window starts with no roles, so people go on it without one.
+    await assignments.assign(second.id, { date: START, slot: 1, userId: ana.id }, coordinator.id);
+
+    // At their own hours, 08:00–16:00 and 20:00–24:00 do not clash.
+    expect((await schedules.getBoard(first.id, coordinatorUser)).conflicts).toEqual([]);
+
+    // Moving the SALOP shift into the emergency one creates the clash.
+    await schedules.adjustShift(
+      second.id,
+      START,
+      1,
+      { startMinute: at(14), endMinute: at(18) },
+      coordinator.id,
+    );
+
+    const board = await schedules.getBoard(first.id, coordinatorUser);
+    expect(board.conflicts).toHaveLength(1);
+    expect(board.conflicts[0]).toMatchObject({
+      userId: ana.id,
+      crossWindow: true,
+      otherWindowId: salop.id,
+      otherLabel: '14:00–18:00',
+    });
+  });
+
   it('integration: schedules onto a window with no roles at all', async () => {
     const salop = await openWindow(SALOP_SUPPORT, 'Rally Serra da Estrela');
     expect(salop.roles).toEqual([]);

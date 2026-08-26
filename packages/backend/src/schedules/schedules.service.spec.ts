@@ -96,6 +96,20 @@ const assignmentRow = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
+/** Day one's 08:00–16:00 shift moved an hour earlier. */
+const overrideRow = (overrides: Record<string, unknown> = {}) => ({
+  id: 'o1',
+  scheduleId: 's1',
+  date: new Date('2026-10-03T00:00:00.000Z'),
+  slot: 1,
+  startMinute: 420,
+  endMinute: 960,
+  adjustedById: ACTOR.id,
+  adjustedBy: ACTOR,
+  adjustedAt: new Date('2026-09-20T10:00:00.000Z'),
+  ...overrides,
+});
+
 /** Two days, one 08:00–16:00 shift each, the second needing two vehicles. */
 const PATTERN = [
   {
@@ -133,6 +147,11 @@ function buildPrismaStub(overrides: Record<string, unknown> = {}) {
     availabilityWindow: { findUnique: jest.fn().mockResolvedValue(windowRow()) },
     availabilityWindowShift: { findMany: jest.fn().mockResolvedValue([]) },
     scheduleAssignment: { findMany: jest.fn().mockResolvedValue([]) },
+    scheduleShiftOverride: {
+      findMany: jest.fn().mockResolvedValue([]),
+      upsert: jest.fn().mockResolvedValue({}),
+      deleteMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
     availabilitySubmission: { findMany: jest.fn().mockResolvedValue([]) },
     availabilityResponse: { findMany: jest.fn().mockResolvedValue([]) },
     $transaction: jest.fn().mockImplementation((ops: unknown[]) => Promise.all(ops)),
@@ -278,6 +297,16 @@ describe('SchedulesService visibility', () => {
       expect.objectContaining({ where: {} }),
     );
   });
+
+  // List stats read only `vehiclesNeeded`, which an adjustment never
+  // changes — so the list page has no reason to know overrides exist.
+  it('never reads shift-time overrides when listing', async () => {
+    const { service, prisma } = makeService();
+
+    await service.findAll(COORDINATOR);
+
+    expect(prisma.scheduleShiftOverride.findMany).not.toHaveBeenCalled();
+  });
 });
 
 describe('SchedulesService.getBoard', () => {
@@ -391,6 +420,47 @@ describe('SchedulesService.getBoard', () => {
       lapsedCertificationCount: 0,
     });
   });
+
+  it("surfaces an adjusted shift at its new hours, with the window's own kept alongside", async () => {
+    const { service, prisma } = makeService();
+    prisma.scheduleAssignment.findMany.mockResolvedValue([]);
+    prisma.scheduleShiftOverride.findMany.mockResolvedValue([overrideRow()]);
+
+    const board = await service.getBoard('s1', COORDINATOR);
+    const shift = board.days[0].shifts[0];
+
+    expect(shift.startMinute).toBe(420);
+    expect(shift.label).toBe('07:00–16:00');
+    expect(shift.adjustment).toEqual({
+      original: { startMinute: 480, endMinute: 960 },
+      adjustedBy: ACTOR,
+      adjustedAt: '2026-09-20T10:00:00.000Z',
+    });
+    // The window itself is never asked to change — only this schedule's view of it.
+    expect(board.days[0].shifts[0].vehiclesNeeded).toBe(1);
+  });
+
+  it('leaves an untouched shift with no adjustment', async () => {
+    const { service, prisma } = makeService();
+    prisma.scheduleAssignment.findMany.mockResolvedValue([]);
+
+    const board = await service.getBoard('s1', COORDINATOR);
+
+    expect(board.days[0].shifts[0].adjustment).toBeNull();
+  });
+
+  it('ignores an override for a (date, slot) the window no longer defines', async () => {
+    const { service, prisma } = makeService();
+    prisma.scheduleAssignment.findMany.mockResolvedValue([]);
+    prisma.scheduleShiftOverride.findMany.mockResolvedValue([
+      overrideRow({ date: new Date('2026-10-03T00:00:00.000Z'), slot: 9 }),
+    ]);
+
+    const board = await service.getBoard('s1', COORDINATOR);
+
+    expect(board.days[0].shifts[0].startMinute).toBe(480);
+    expect(board.days[0].shifts[0].adjustment).toBeNull();
+  });
 });
 
 describe('SchedulesService double-booking detection', () => {
@@ -444,6 +514,73 @@ describe('SchedulesService double-booking detection', () => {
 
     expect(board.conflicts).toEqual([]);
   });
+
+  // AC: an adjustment can *create* a clash the same as any other change to a
+  // schedule — it is reported, never blocked, same as every other conflict here.
+  it("reports a cross-window conflict that exists only because the other schedule adjusted its shift", async () => {
+    const { service, prisma, shiftSchedule } = makeService();
+    const salopWindow = windowRow({
+      id: 'w2',
+      category: 'SALOP_SUPPORT',
+      name: 'Rally Serra da Estrela',
+    });
+    // At its own window's hours, 17:00–20:00 does not touch 08:00–16:00.
+    const otherPattern = [
+      {
+        date: '2026-10-03',
+        isWeekend: true,
+        isHoliday: false,
+        holidayName: null,
+        shifts: [
+          { slot: 1, startMinute: 1020, endMinute: 1200, vehiclesNeeded: 1, label: '17:00–20:00' },
+        ],
+      },
+    ];
+
+    prisma.scheduleAssignment.findMany
+      .mockResolvedValueOnce([assignmentRow()])
+      .mockResolvedValueOnce([
+        { ...assignmentRow(), schedule: { windowId: 'w1', window: windowRow() } },
+        {
+          ...assignmentRow({ id: 'a-other', scheduleId: 's2' }),
+          schedule: { id: 's2', windowId: 'w2', window: salopWindow },
+        },
+      ]);
+    shiftSchedule.getPatternForWindow.mockImplementation((window: { id: string }) =>
+      Promise.resolve(window.id === 'w1' ? PATTERN : otherPattern),
+    );
+    prisma.scheduleShiftOverride.findMany.mockImplementation(
+      ({ where }: { where: { scheduleId?: string | { in: string[] } } }) => {
+        // loadContext asks for this schedule's own overrides (a plain id);
+        // detectConflicts asks for the other schedules' (an `in` list).
+        if (typeof where.scheduleId === 'string') return Promise.resolve([]);
+        if (where.scheduleId && where.scheduleId.in.includes('s2')) {
+          // s2 moved its shift to 14:00–18:00 — now inside 08:00–16:00.
+          return Promise.resolve([
+            {
+              id: 'o2',
+              scheduleId: 's2',
+              date: new Date('2026-10-03T00:00:00.000Z'),
+              slot: 1,
+              startMinute: 840,
+              endMinute: 1080,
+            },
+          ]);
+        }
+        return Promise.resolve([]);
+      },
+    );
+
+    const board = await service.getBoard('s1', COORDINATOR);
+
+    expect(board.conflicts).toHaveLength(1);
+    expect(board.conflicts[0]).toMatchObject({
+      userId: ANA.id,
+      crossWindow: true,
+      otherWindowId: 'w2',
+      otherLabel: '14:00–18:00',
+    });
+  });
 });
 
 describe('SchedulesService.getCsv', () => {
@@ -465,6 +602,17 @@ describe('SchedulesService.getCsv', () => {
     // The empty shift is a row of its own — a roster that hid its holes would
     // be worse than no export.
     expect(lines[2]).toBe('2026-10-04,weekend,,08:00–16:00,2,,,,unfilled');
+  });
+
+  it('prints the adjusted label, not the window\'s own', async () => {
+    const { service, prisma } = makeService();
+    prisma.scheduleAssignment.findMany.mockResolvedValue([assignmentRow()]);
+    prisma.scheduleShiftOverride.findMany.mockResolvedValue([overrideRow()]);
+
+    const csv = await service.getCsv('s1', COORDINATOR);
+    const lines = csv.trim().split('\n');
+
+    expect(lines[1]).toBe('2026-10-03,weekend,,07:00–16:00,1,Driver,Ana Silva,yes,availability');
   });
 });
 
@@ -498,6 +646,20 @@ describe('SchedulesService.getMyDuties', () => {
     });
   });
 
+  it('shows a duty at its adjusted hours, not the window\'s own', async () => {
+    const { service, prisma } = makeService();
+    prisma.scheduleAssignment.findMany.mockResolvedValue([dutyRow()]);
+    prisma.scheduleShiftOverride.findMany.mockResolvedValue([overrideRow()]);
+
+    const duties = await service.getMyDuties(ANA.id, '2026-10-01');
+
+    expect(duties.upcoming[0]).toMatchObject({
+      startMinute: 420,
+      endMinute: 960,
+      label: '07:00–16:00',
+    });
+  });
+
   it('only ever reads published schedules', async () => {
     const { service, prisma } = makeService();
     await service.getMyDuties(ANA.id);
@@ -528,5 +690,114 @@ describe('SchedulesService.getMyDuties', () => {
   it('is empty for someone with no duties', async () => {
     const { service } = makeService();
     await expect(service.getMyDuties('u-nobody')).resolves.toEqual({ upcoming: [], past: [] });
+  });
+});
+
+describe('SchedulesService.adjustShift', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('rejects an end at or before the start', async () => {
+    const { service } = makeService();
+    await expect(
+      service.adjustShift('s1', '2026-10-03', 1, { startMinute: 600, endMinute: 600 }, ACTOR.id),
+    ).rejects.toThrow(/must end after it starts/i);
+  });
+
+  it('rejects an adjustment that overlaps another shift the same day', async () => {
+    const { service, shiftSchedule } = makeService();
+    shiftSchedule.getPatternForWindow.mockResolvedValue([
+      {
+        date: '2026-10-03',
+        isWeekend: true,
+        isHoliday: false,
+        holidayName: null,
+        shifts: [
+          { slot: 1, startMinute: 480, endMinute: 720, vehiclesNeeded: 1, label: '08:00–12:00' },
+          { slot: 2, startMinute: 720, endMinute: 960, vehiclesNeeded: 1, label: '12:00–16:00' },
+        ],
+      },
+    ]);
+
+    await expect(
+      service.adjustShift('s1', '2026-10-03', 1, { startMinute: 480, endMinute: 780 }, ACTOR.id),
+    ).rejects.toThrow(/overlap/i);
+  });
+
+  it('upserts an override and returns the shift at its new hours', async () => {
+    const { service, prisma } = makeService();
+    prisma.scheduleShiftOverride.findMany
+      .mockResolvedValueOnce([]) // read before saving: unadjusted
+      .mockResolvedValueOnce([overrideRow({ startMinute: 420, endMinute: 960 })]); // read back after
+
+    const result = await service.adjustShift(
+      's1',
+      '2026-10-03',
+      1,
+      { startMinute: 420, endMinute: 960 },
+      ACTOR.id,
+    );
+
+    expect(prisma.scheduleShiftOverride.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          scheduleId_date_slot: {
+            scheduleId: 's1',
+            date: new Date('2026-10-03T00:00:00.000Z'),
+            slot: 1,
+          },
+        },
+        create: expect.objectContaining({
+          scheduleId: 's1',
+          slot: 1,
+          startMinute: 420,
+          endMinute: 960,
+          adjustedById: ACTOR.id,
+        }),
+      }),
+    );
+    expect(result).toMatchObject({ date: '2026-10-03', slot: 1 });
+    expect(result.shift.startMinute).toBe(420);
+    expect(result.shift.label).toBe('07:00–16:00');
+  });
+
+  it("deletes rather than storing a no-op when the new times equal the window's own", async () => {
+    const { service, prisma } = makeService();
+
+    await service.adjustShift('s1', '2026-10-03', 1, { startMinute: 480, endMinute: 960 }, ACTOR.id);
+
+    expect(prisma.scheduleShiftOverride.deleteMany).toHaveBeenCalledWith({
+      where: { scheduleId: 's1', date: new Date('2026-10-03T00:00:00.000Z'), slot: 1 },
+    });
+    expect(prisma.scheduleShiftOverride.upsert).not.toHaveBeenCalled();
+  });
+
+  it('rejects a shift the schedule does not have', async () => {
+    const { service } = makeService();
+    await expect(
+      service.adjustShift('s1', '2026-10-03', 9, { startMinute: 480, endMinute: 960 }, ACTOR.id),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe('SchedulesService.resetShift', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it("deletes the override and returns the shift at the window's own hours", async () => {
+    const { service, prisma } = makeService();
+
+    const result = await service.resetShift('s1', '2026-10-03', 1);
+
+    expect(prisma.scheduleShiftOverride.deleteMany).toHaveBeenCalledWith({
+      where: { scheduleId: 's1', date: new Date('2026-10-03T00:00:00.000Z'), slot: 1 },
+    });
+    expect(result.shift.startMinute).toBe(480);
+    expect(result.shift.adjustment).toBeNull();
+  });
+
+  it('is a no-op resetting a shift nobody adjusted', async () => {
+    const { service, prisma } = makeService();
+    prisma.scheduleShiftOverride.deleteMany.mockResolvedValue({ count: 0 });
+
+    await expect(service.resetShift('s1', '2026-10-03', 1)).resolves.toBeDefined();
   });
 });

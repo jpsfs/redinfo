@@ -17,8 +17,10 @@ import {
   EventReportListFilters,
   EventReportSubmitResponse,
   EventReportType,
+  ShiftTimes,
   UserRole,
   VITAL_KEYS,
+  applyShiftOverrides,
   eventReportRules,
   hasPermission,
   parseEventReportCode,
@@ -734,11 +736,26 @@ export class EventReportsService {
   private async resolveShiftLabel(row: EventReportRow): Promise<string | undefined> {
     if (!row.shiftDate || row.shiftSlot === null || !row.schedule?.window) return undefined;
 
-    const pattern = await this.shiftSchedule.getPatternForWindow({
+    const rawPattern = await this.shiftSchedule.getPatternForWindow({
       id: row.schedule.windowId,
       startDate: toIsoDate(row.schedule.window.startDate),
       endDate: toIsoDate(row.schedule.window.endDate),
     });
+
+    // A moved shift should be labelled with the hours the crew actually
+    // worked, not the window's original grid.
+    const overrideRows = row.scheduleId
+      ? await this.prisma.scheduleShiftOverride.findMany({
+          where: { scheduleId: row.scheduleId },
+        })
+      : [];
+    const overrideTimes = new Map<string, ShiftTimes>(
+      overrideRows.map((override) => [
+        `${toIsoDate(override.date)}#${override.slot}`,
+        { startMinute: override.startMinute, endMinute: override.endMinute },
+      ]),
+    );
+    const pattern = applyShiftOverrides(rawPattern, overrideTimes);
 
     const date = toIsoDate(row.shiftDate);
     const day = pattern.find((entry) => entry.date === date);

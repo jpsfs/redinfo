@@ -243,6 +243,16 @@ describe('ShiftScheduleService', () => {
       expect(patterns[2].shifts).toEqual([]);
     });
 
+    // A schedule may move one of its own shift's hours (`ScheduleShiftOverride`),
+    // but that must never feed back into the window's own grid — submissions
+    // were made against it. `buildPrismaStub` above stubs only
+    // `availabilityWindowShift`, so this test would throw on any read of the
+    // override table; passing is the guarantee.
+    it("never reads a schedule's shift-time overrides", async () => {
+      const built = build([shiftRow('2026-09-28', 1, 8, 16)]);
+      await expect(built.service.getPatternForWindow(WINDOW)).resolves.toBeDefined();
+    });
+
     it('keeps day-type and holiday flags, which drive the calendar styling', async () => {
       const built = build([shiftRow('2026-10-05', 1, 9, 12)]);
       const [pattern] = await built.service.getPatternForWindow({
