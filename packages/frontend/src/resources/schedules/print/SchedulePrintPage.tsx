@@ -72,6 +72,16 @@ export const SchedulePrintPage = () => {
     };
   }, [id, t]);
 
+  // The browser's "Save as PDF" dialog suggests `document.title` as the file
+  // name — left at the app's static title, every schedule would save as the
+  // same "RedInfo — Cruz Vermelha.pdf", indistinguishable in a Downloads
+  // folder. Named for the window (falling back to its category) plus the
+  // category itself, same as the letterhead line right below it.
+  useEffect(() => {
+    if (!board) return;
+    document.title = `${availabilityWindowLabel(board.window)} — ${windowCategoryLabel(t, board.window.category)}`;
+  }, [board, t]);
+
   // Printing before the board has resolved and the logo has settled leaves
   // the letterhead half-drawn on paper — see `DelegacaoCampoLogo.onLoad`.
   useEffect(() => {
@@ -119,15 +129,15 @@ export const SchedulePrintPage = () => {
       </Stack>
 
       <Box className="letterhead">
-        <DelegacaoCampoLogo sx={{ height: 56 }} onLoad={() => setLogoLoaded(true)} />
+        <DelegacaoCampoLogo sx={{ height: 32 }} onLoad={() => setLogoLoaded(true)} />
         <Box>
-          <Typography variant="h6" component="p">
+          <Typography variant="subtitle2" component="p">
             {t('schedulePrint.organisation')}
           </Typography>
-          <Typography variant="subtitle1" component="p">
+          <Typography variant="body1" component="p">
             {availabilityWindowLabel(board.window)} — {windowCategoryLabel(t, board.window.category)}
           </Typography>
-          <Typography variant="body2" component="p">
+          <Typography variant="caption" component="p">
             {formatDateRange(t, board.window.startDate, board.window.endDate)}
           </Typography>
           {isDraft && <Typography className="draft-notice">{t('schedulePrint.draftNotice')}</Typography>}
@@ -158,13 +168,14 @@ export const SchedulePrintPage = () => {
                 {row.firstOfDay && (
                   <>
                     <div>{formatDayLabel(t, row.date)}</div>
+                    {/* The row's tint already flags weekend/holiday (see the legend swatches
+                        below) — text repeated on every such row would cost more vertical
+                        space than it is worth. A holiday's name is the one thing the tint
+                        alone can't say, so it still gets a line, falling back to the generic
+                        word only when the holiday has none. */}
                     {row.isHoliday && (
-                      <div className="day-marker">
-                        {t('schedulePrint.holiday')}
-                        {row.holidayName ? ` · ${row.holidayName}` : ''}
-                      </div>
+                      <div className="day-marker">{row.holidayName ?? t('schedulePrint.holiday')}</div>
                     )}
-                    {row.isWeekend && !row.isHoliday && <div className="day-marker">{t('schedulePrint.weekend')}</div>}
                   </>
                 )}
               </td>
@@ -195,6 +206,12 @@ export const SchedulePrintPage = () => {
           <strong>{t('schedulePrint.legendDriver')}</strong>
         </span>
         <span className="legend-item">{t('schedulePrint.legendUnfilled')}</span>
+        <span className="legend-item">
+          <span className="legend-swatch day-weekend" /> {t('schedulePrint.legendWeekend')}
+        </span>
+        <span className="legend-item">
+          <span className="legend-swatch day-holiday" /> {t('schedulePrint.legendHoliday')}
+        </span>
       </Box>
     </Box>
   );

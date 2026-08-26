@@ -108,9 +108,11 @@ export interface PrintLayout {
 
 /**
  * Density tiers over an A4 portrait body: 277mm usable height at 10mm
- * margins, less ~26mm letterhead, ~7mm column header and ~8mm legend leaves
- * ~236mm for data rows. The loosest tier whose row height still fits every
- * row in that space wins.
+ * margins, less a letterhead (compact, but figured generously here), ~7mm
+ * column header and ~8mm legend leaves ~236mm for data rows. The loosest
+ * tier whose row height still fits every row in that space wins; erring
+ * conservative here just leaves headroom unused, not an overflow, so the
+ * estimate does not need to track the letterhead precisely.
  */
 const DENSITY_TIERS: Array<{ density: PrintDensity; rowsPerPage: number }> = [
   { density: 'comfortable', rowsPerPage: 31 }, // 236mm / 7.5mm
