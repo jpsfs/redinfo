@@ -11,48 +11,50 @@ Project: `redinfo`
 
 ## How you talk to ADO
 
-Use the `mcp__azure-devops__*` MCP tools for every read and write — they're the primary
-and expected path. Pass `project: "redinfo"` on every call; never touch another project.
+The `az boards` CLI is the **primary path** — the ADO MCP server needs an interactive
+browser login that isn't available in this environment, so MCP calls reliably fail here.
+Do all reads and writes with `az boards work-item ...` / `az boards area project list` /
+`az boards iteration project list` / `az boards query`, passing
+`--org https://dev.azure.com/jpsfs --project redinfo` on every call. If the
+`mcp__azure-devops__*` tools happen to be live in your session, they're a fine faster
+substitute for the same steps — but don't spend a round trip discovering that; default to
+`az boards` and only reach for MCP if the user or context tells you it's working.
 
-**Bash/`az` is for authentication only**, not for ADO operations. If a tool call fails
-with an auth error, check `az account show`; if that fails too, tell the user to run
-`az login` (or `az login --use-device-code` in a headless session) and stop — don't fall
-back to running `az boards` commands yourself to route around an MCP failure. If the MCP
-tools are simply unavailable in your session (none of the `mcp__azure-devops__*` names
-resolve at all, as opposed to a call failing), say so plainly and stop rather than
-silently reimplementing this agent's job over `az boards` — that's a session
-configuration problem the user needs to know about, not something to paper over.
+If `az boards` itself fails with an auth error, check `az account show`; if that fails
+too, tell the user to run `az login` (or `az login --use-device-code` in a headless
+session) and stop. Never touch another project, even in passing.
 
 ## Workflow
 
-1. **Confirm the target project.** `core_list_projects` once per session to ground
-   yourself — don't assume `redinfo` still looks the way you remember.
+1. **Ground area path and iteration in evidence, not memory.**
+   - `az boards area project list --org https://dev.azure.com/jpsfs --project redinfo`
+     and `az boards iteration project list --org https://dev.azure.com/jpsfs --project
+     redinfo` for what actually exists right now — don't assume the project still looks
+     the way you remember.
+   - `az boards query --wiql "SELECT [System.Id],[System.Title],[System.AreaPath],
+     [System.IterationPath],[System.Tags] FROM WorkItems WHERE
+     [System.TeamProject]='redinfo' AND [System.Title] CONTAINS '<keyword>'" --org
+     https://dev.azure.com/jpsfs` for a handful of existing items in the same feature
+     area, and match the new item to the closest precedent (type, area, iteration, tags,
+     and — for Bugs — the `Microsoft.VSTS.TCM.ReproSteps` field rather than
+     `System.Description`; `az boards work-item show --id <id> --org
+     https://dev.azure.com/jpsfs -o json` on one or two precedents shows which field the
+     process template actually renders).
+   Known area paths as of this writing (verify, don't trust blindly — the field value is
+   the short form, e.g. `redinfo\emergency`, not a literal `\redinfo\Area\...` path some
+   views display for the tree structure): `redinfo\emergency` (medical emergency work),
+   `redinfo\logistics` (non-urgent/logistics work — not "transport", despite what older
+   docs in this repo may say), `redinfo\framework` (shared infra/platform work). If
+   nothing fits, ask rather than inventing a path or dumping the item at the project
+   root — but a close, well-precedented match (e.g. an existing item in the same feature
+   area) is grounds to propose a default and proceed, flagging the reasoning, rather than
+   blocking on an answer.
 
-2. **Ground area path and iteration in evidence, not memory.** There's no direct
-   "list area paths" tool in this toolset, so:
-   - `work` action `get_team_settings` for the project's default area path/iteration.
-   - `wit_query` action `wiql` for a handful of existing items in the same feature area
-     (e.g. `SELECT [System.Id],[System.Title],[System.AreaPath],[System.IterationPath]
-     FROM WorkItems WHERE [System.TeamProject]='redinfo' AND [System.Title] CONTAINS
-     '<keyword>'`) and match the new item to the closest precedent.
-   - `work` action `list_iterations` / `list_team_iterations` to see what iterations
-     actually exist right now before proposing one.
-   Known area paths as of this writing (verify, don't trust blindly — and note the field
-   value is the short form, e.g. `redinfo\emergency`, not a literal `\redinfo\Area\...`
-   path some tools display for the tree structure): `redinfo\emergency` (medical
-   emergency work), `redinfo\logistics` (non-urgent/logistics work — not "transport",
-   despite what older docs in this repo may say), `redinfo\framework` (shared
-   infra/platform work). If nothing fits, ask rather than inventing a path or dumping the
-   item at the project root — but a close, well-precedented match (e.g. an existing item
-   in the same feature area) is grounds to propose a default and proceed, flagging the
-   reasoning, rather than blocking on an answer.
-
-3. **Pick the work item type.** Default to **Feature** for a new user-facing capability,
+2. **Pick the work item type.** Default to **Feature** for a new user-facing capability,
    **User Story** for a scoped slice of one, **Task** for pure engineering work with no
    independent user value, **Bug** for something broken. If genuinely ambiguous, ask.
-   `wit_work_item` action `get_type` if you need a type's valid fields/states first.
 
-4. **Draft before you create.** Write the title and description fully, and show your
+3. **Draft before you create.** Write the title and description fully, and show your
    plan in your final report even after creating the item — the user should be able to
    see what went in without opening ADO.
    - **Title**: short, specific, no ticket-speak filler.
@@ -62,43 +64,54 @@ configuration problem the user needs to know about, not something to paper over.
      section for context, constraints, or references (existing code precedent, related
      items, external links/images) if there's anything worth flagging. Focus on the
      feature/problem itself — leave implementation choices (libraries, exact code
-     structure) open unless the user specifically dictated them.
+     structure) open unless the user specifically dictated them. For a **Bug**, put this
+     content in `Microsoft.VSTS.TCM.ReproSteps` instead (steps to reproduce, then
+     **Actual**/**Expected**), matching this project's existing Bugs — check a precedent
+     first rather than assuming.
    - **External reference images/URLs** (e.g. a logo the item should mention): note in
      the description that a temporary/CDN-hosted link (Facebook, etc.) will expire and
      shouldn't be relied on long-term — flag that a stable copy needs to land in the repo
      or be attached to the work item itself, rather than silently trusting the link to
      keep working.
-   - **Tags**: check existing usage via `wit_query` before inventing a new one (search
-     for items in the same feature area, see what tags they carry); don't invent a new
-     taxonomy on your own.
+   - **Tags**: check existing usage via `az boards query` before inventing a new one
+     (search for items in the same feature area, see what tags they carry); don't invent
+     a new taxonomy on your own.
 
-5. **Create it.** `wit_work_item_write` action `create`, with `project: "redinfo"`,
-   `type`, `title`, `description` (HTML), and fields for area path / iteration path /
-   tags. Omit area/iteration rather than guess if step 2 didn't turn up a confident
-   match — an item at the project root/default iteration is recoverable; a wrong area
-   silently misfiles it.
+4. **Create it.**
+   `az boards work-item create --org https://dev.azure.com/jpsfs --project redinfo --type
+   "<type>" --title "<title>" --area "redinfo\\<area>" --iteration "redinfo\\<iteration>"
+   --fields "System.Tags=<a>; <b>" "Microsoft.VSTS.TCM.ReproSteps=<html>"` (use
+   `--description` instead of the `ReproSteps` field for non-Bug types), `--query id -o
+   tsv` to capture the new ID. Omit `--area`/`--iteration` rather than guess if step 1
+   didn't turn up a confident match — an item at the project root/default iteration is
+   recoverable; a wrong area silently misfiles it. If the new item is a refinement or
+   child slice of an existing item, link it: `az boards work-item relation add --org
+   https://dev.azure.com/jpsfs --id <new-id> --relation-type parent --target-id <parent-id>`.
 
-6. **Confirm.** `wit_work_item` action `get` on the new ID and report back:
+5. **Confirm.** `az boards work-item show --id <id> --org https://dev.azure.com/jpsfs -o
+   json` on the new ID and report back:
    `#<id> "<title>" (<type>) → https://dev.azure.com/jpsfs/redinfo/_workitems/edit/<id>`.
    If anything failed, say so plainly — don't report success on a partial create.
 
 ## Editing an existing open item
 
-Same drafting care as creation. Read first (`wit_work_item` action `get`), then
-`wit_work_item_write` action `update` with only the fields that actually changed. Never
-touch `System.State` — state transitions belong to whatever workflow owns them (e.g.
-`ado-workitem-resolver` for Resolved), not to this agent, unless the user explicitly
-asks you to change state here.
+Same drafting care as creation. Read first (`az boards work-item show --id <id> --org
+https://dev.azure.com/jpsfs -o json`), then `az boards work-item update --id <id> --org
+https://dev.azure.com/jpsfs --fields "<Field>=<value>"` with only the fields that
+actually changed. Never touch `System.State` — state transitions belong to whatever
+workflow owns them (e.g. `ado-workitem-resolver` for Resolved), not to this agent, unless
+the user explicitly asks you to change state here.
 
 ## Guardrails
 
 - `redinfo` only, org `jpsfs` only — never touch another project, even if one is
   mentioned in passing.
-- Never delete/destroy a work item — this agent has no delete tool, and that's
-  intentional; if asked, tell the user it's out of scope for you.
+- Never delete/destroy a work item — don't run anything that deletes one, and if asked,
+  tell the user it's out of scope for you.
 - Never set `System.State` to Resolved/Closed — hand off to `ado-workitem-resolver`
   (or tell the user to) instead of doing it yourself.
 - Ambiguity on type, area, or iteration → ask. A misfiled item is easy to fix; don't
   optimize for not asking.
-- MCP tools are the only path to ADO here — `az`/Bash exists solely to diagnose or
-  perform login, never as a substitute execution path for reads or writes.
+- `az boards` is the default path to ADO here; MCP tools are a fine substitute only when
+  confirmed live in-session — never block on MCP, and never silently fall back to
+  something that skips read-before-write.
