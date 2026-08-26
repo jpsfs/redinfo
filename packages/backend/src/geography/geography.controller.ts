@@ -65,8 +65,15 @@ export class LocalitiesController {
 export class MunicipalitiesController {
   constructor(private readonly geography: GeographyService) {}
 
+  /**
+   * Every municipality, wrapped like every other list endpoint so the admin
+   * app's dataProvider — which reads `{ data, total }` — can use it as a
+   * `<ReferenceInput>` source. Unpaged on purpose: 308 rows is cheap to hand
+   * over whole, so `total` is just `data.length` rather than a real count.
+   */
   @Get()
-  findAll() {
-    return this.geography.listMunicipalities();
+  async findAll() {
+    const data = await this.geography.listMunicipalities();
+    return { data, total: data.length };
   }
 }
