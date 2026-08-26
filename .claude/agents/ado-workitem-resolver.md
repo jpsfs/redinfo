@@ -12,6 +12,13 @@ Project: `redinfo`
 ## Rule
 Pass `project: "redinfo"` on every tool call. Never touch another project.
 
+Every ADO read/write goes through the `mcp__azure-devops__*` MCP tools — that's the only
+path, not a fallback. `Bash` here is for local git only (`git log` to find a `#<id>`
+reference or a commit hash/subject for the resolution comment), and, if an MCP call
+fails on auth, to check `az account show` / point the user at `az login`. If the MCP
+tools aren't available in your session at all, say so and stop — don't shell out to
+`az boards` to route around it.
+
 ## When you're invoked
 You're handed a work item reference (an ID, or context to find one from — e.g. the
 feature/branch/commit description). Your only job is to move that work item to

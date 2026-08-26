@@ -26,7 +26,20 @@
       "Bash(git push *)",
       "mcp__azure-devops__wit_work_item",
       "mcp__azure-devops__search_workitem",
-      "mcp__azure-devops__wit_query"
+      "mcp__azure-devops__wit_query",
+      "Bash(az boards work-item create --title 'Print layout module \\(printLayout.ts\\) + unit tests' --type Task --org https://dev.azure.com/jpsfs --project redinfo --area 'redinfo\\\\emergency' --iteration 'redinfo\\\\AI' --description '<p>Pure, DOM-free layout module at <code>packages/frontend/src/resources/schedules/print/printLayout.ts</code>. All \"does it fit on one page\" logic lives here so it is testable with plain assertions.</p> *)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\('ID', d['id']\\)\")",
+      "Bash(az boards work-item update --id 189 --org https://dev.azure.com/jpsfs --output none --discussion '<p><strong>Implementation approach settled: browser printing, not a server-generated PDF.</strong> The description left the generation approach open \\(headless browser vs server-side PDF library\\); the decision is a third option — a print-optimized in-app screen that the browser`s own print dialog turns into paper or a PDF.</p> *)",
+      "Bash(az boards *)",
+      "Bash(mkdir -p packages/frontend/src/resources/schedules/print)",
+      "Bash(pnpm --filter frontend test -- printLayout)",
+      "Bash(npm ls *)",
+      "Read(//home/jpsfs/.nvm/versions/**)",
+      "Bash(nvm --version)",
+      "Bash(az account *)",
+      "Bash(sudo -n docker ps --format \"table {{.Names}}\\\\t{{.Ports}}\\\\t{{.Status}}\")",
+      "Bash(sudo -n docker exec redinfo-backend-1 sh -c 'cd /app/packages/backend && npx prisma migrate deploy')",
+      "WebSearch"
     ]
   }
 }
