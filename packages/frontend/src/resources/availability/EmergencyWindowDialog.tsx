@@ -152,7 +152,7 @@ export const EmergencyWindowDialog = ({
           {t('emergencyDialog.description', { crew: describeRoles(EMERGENCY_ROLES) })}
         </DialogContentText>
 
-        <Stack direction="row" spacing={2}>
+        <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
           <TextField
             select
             size="small"
@@ -176,7 +176,10 @@ export const EmergencyWindowDialog = ({
             value={year}
             onChange={(event) => setYear(Number(event.target.value))}
             SelectProps={{ native: true, inputProps: { 'aria-label': t('emergencyDialog.year') } }}
-            sx={{ width: 120 }}
+            // Fixed width only makes sense once the pair sits side by side; on a
+            // narrow phone (see #196 follow-up) each field gets its own row and
+            // should fill it like Month does, not keep its row-layout width.
+            sx={{ width: { xs: '100%', sm: 120 } }}
             InputLabelProps={{ shrink: true }}
           >
             {years.map((value) => (
