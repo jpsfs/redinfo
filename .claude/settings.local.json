@@ -44,5 +44,9 @@
       "Bash(sudo -n docker exec redinfo-backend-1 sh -c 'cd /app/packages/backend && npx prisma migrate deploy')",
       "WebSearch"
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "azure-devops"
+  ],
+  "enableAllProjectMcpServers": true
 }
