@@ -177,7 +177,7 @@ export const MyHoursPage = () => {
 
   const handleEditSave = async () => {
     if (!editing) return;
-    const validationError = validateVolunteerHoursEdit(editForm, editing.source);
+    const validationError = validateVolunteerHoursEdit(editForm, editing.source, editing.activityType);
     if (validationError) {
       setEditError(validationError);
       return;
@@ -289,9 +289,14 @@ export const MyHoursPage = () => {
               onChange={(e) => setForm((prev) => ({ ...prev, minutes: Number(e.target.value) }))}
             />
             <TextField
-              label={t('myHours.descriptionLabel')}
+              label={t(
+                form.activityType === VolunteerActivityType.OTHER
+                  ? 'myHours.descriptionLabel'
+                  : 'myHours.descriptionLabelOptional',
+              )}
+              required={form.activityType === VolunteerActivityType.OTHER}
               placeholder={t('myHours.descriptionPlaceholder')}
-              value={form.description}
+              value={form.description ?? ''}
               onChange={(e) => setForm((prev) => ({ ...prev, description: e.target.value }))}
               multiline
               minRows={2}
@@ -350,7 +355,12 @@ export const MyHoursPage = () => {
               onChange={(e) => setEditForm((prev) => ({ ...prev, minutes: Number(e.target.value) }))}
             />
             <TextField
-              label={t('myHours.descriptionLabel')}
+              label={t(
+                (isManualEdit ? editForm.activityType : undefined) === VolunteerActivityType.OTHER
+                  ? 'myHours.descriptionLabel'
+                  : 'myHours.descriptionLabelOptional',
+              )}
+              required={isManualEdit && editForm.activityType === VolunteerActivityType.OTHER}
               placeholder={t('myHours.descriptionPlaceholder')}
               value={editForm.description ?? ''}
               onChange={(e) => setEditForm((prev) => ({ ...prev, description: e.target.value }))}

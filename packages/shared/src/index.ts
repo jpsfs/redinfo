@@ -2049,7 +2049,8 @@ export interface CreateManualVolunteerHoursRequest {
   /** ISO date, `YYYY-MM-DD`. */
   date: string;
   minutes: number;
-  description: string;
+  /** Required exactly when `activityType` is `OTHER`. */
+  description?: string;
 }
 
 /**
@@ -2122,7 +2123,9 @@ export function validateManualVolunteerHours(
     return `A single entry cannot claim more than ${MAX_MANUAL_HOURS_MINUTES / 60} hours.`;
   }
   const description = request.description?.trim() ?? '';
-  if (!description) return 'Describe what the activity was.';
+  if (!description && request.activityType === VolunteerActivityType.OTHER) {
+    return 'Describe what the activity was.';
+  }
   if (description.length > MAX_MANUAL_HOURS_DESCRIPTION_LENGTH) {
     return `The description may be at most ${MAX_MANUAL_HOURS_DESCRIPTION_LENGTH} characters.`;
   }
@@ -2139,6 +2142,7 @@ export function validateManualVolunteerHours(
 export function validateVolunteerHoursEdit(
   request: UpdateVolunteerHoursRequest,
   source: VolunteerHoursSource,
+  currentActivityType?: VolunteerActivityType,
 ): string | null {
   if (!Number.isInteger(request.minutes) || request.minutes <= 0) {
     return 'Duration must be a whole number of minutes greater than zero.';
@@ -2152,7 +2156,10 @@ export function validateVolunteerHoursEdit(
       return 'Choose a valid activity type.';
     }
     if (request.date !== undefined && !isIsoDateLike(request.date)) return 'Enter a valid date.';
-    if (!description) return 'Describe what the activity was.';
+    const activityType = request.activityType ?? currentActivityType;
+    if (!description && activityType === VolunteerActivityType.OTHER) {
+      return 'Describe what the activity was.';
+    }
   }
   if (description.length > MAX_MANUAL_HOURS_DESCRIPTION_LENGTH) {
     return `The description may be at most ${MAX_MANUAL_HOURS_DESCRIPTION_LENGTH} characters.`;

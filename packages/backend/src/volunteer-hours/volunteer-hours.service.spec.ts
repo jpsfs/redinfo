@@ -293,12 +293,23 @@ describe('manual entries', () => {
     const { service } = makeService();
     await expect(
       service.createManualEntry('u-ana', {
-        activityType: VolunteerActivityType.MEETING,
+        activityType: VolunteerActivityType.OTHER,
         date: '2026-10-05',
         minutes: 90,
         description: '   ',
       }),
     ).rejects.toThrow(BadRequestException);
+  });
+
+  it('does not require a description for a non-OTHER manual entry', async () => {
+    const { service } = makeService();
+    const entry = await service.createManualEntry('u-ana', {
+      activityType: VolunteerActivityType.MEETING,
+      date: '2026-10-05',
+      minutes: 90,
+    });
+
+    expect(entry.description).toBeNull();
   });
 });
 
@@ -387,7 +398,21 @@ describe('updateMine', () => {
     });
   });
 
-  it('rejects a MANUAL edit that empties the description', async () => {
+  it('rejects a MANUAL edit that empties the description of an OTHER entry', async () => {
+    const { service } = makeService();
+    const entry = await service.createManualEntry('u-ana', {
+      activityType: VolunteerActivityType.OTHER,
+      date: '2026-10-05',
+      minutes: 90,
+      description: 'Cleaning the base.',
+    });
+
+    await expect(
+      service.updateMine(entry.id, 'u-ana', { minutes: 90, description: '   ' }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('allows a MANUAL edit that empties the description of a non-OTHER entry', async () => {
     const { service } = makeService();
     const entry = await service.createManualEntry('u-ana', {
       activityType: VolunteerActivityType.MEETING,
@@ -396,9 +421,8 @@ describe('updateMine', () => {
       description: 'Monthly meeting.',
     });
 
-    await expect(
-      service.updateMine(entry.id, 'u-ana', { minutes: 90, description: '   ' }),
-    ).rejects.toThrow(BadRequestException);
+    const updated = await service.updateMine(entry.id, 'u-ana', { minutes: 90, description: '   ' });
+    expect(updated.description).toBeNull();
   });
 
   it('404s for someone else’s entry', async () => {

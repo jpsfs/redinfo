@@ -228,10 +228,25 @@ describe('validateManualVolunteerHours', () => {
     );
   });
 
-  it('rejects a blank description', () => {
-    expect(validateManualVolunteerHours({ ...valid(), description: '   ' })).toMatch(
-      /Describe what the activity was/,
-    );
+  it('accepts a blank description for anything other than OTHER', () => {
+    expect(validateManualVolunteerHours({ ...valid(), description: '   ' })).toBeNull();
+    expect(validateManualVolunteerHours({ ...valid(), description: undefined })).toBeNull();
+  });
+
+  it('rejects a blank description for OTHER', () => {
+    expect(
+      validateManualVolunteerHours({
+        ...valid(),
+        activityType: VolunteerActivityType.OTHER,
+        description: '   ',
+      }),
+    ).toMatch(/Describe what the activity was/);
+  });
+
+  it('accepts a described OTHER activity', () => {
+    expect(
+      validateManualVolunteerHours({ ...valid(), activityType: VolunteerActivityType.OTHER }),
+    ).toBeNull();
   });
 });
 

@@ -643,8 +643,9 @@ model VolunteerHoursEntry {
   /// MANUAL one. Drives grace-period timing and every aggregation view.
   date         DateTime             @db.Date
 
-  /// Required for a MANUAL entry (what the meeting/training/other activity
-  /// was); unused for SCHEDULED, where the shift itself is the description.
+  /// Optional free text for a MANUAL entry (what the meeting/training/other
+  /// activity was) — required only when activityType is OTHER; unused for
+  /// SCHEDULED, where the shift itself is the description.
   description String? @db.Text
 
   /// The shift's own duration in minutes, snapshotted at generation time so a

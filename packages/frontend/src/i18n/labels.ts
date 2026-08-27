@@ -1367,6 +1367,7 @@ const MESSAGES = {
   'myHours.dateLabel': { pt: 'Data', en: 'Date' },
   'myHours.minutesLabel': { pt: 'Duração (minutos)', en: 'Duration (minutes)' },
   'myHours.descriptionLabel': { pt: 'Descrição', en: 'Description' },
+  'myHours.descriptionLabelOptional': { pt: 'Descrição (opcional)', en: 'Description (optional)' },
   'myHours.descriptionPlaceholder': {
     pt: 'Do que se tratou a atividade?',
     en: 'What was the activity?',

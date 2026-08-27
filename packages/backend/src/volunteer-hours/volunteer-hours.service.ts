@@ -98,7 +98,7 @@ export class VolunteerHoursService {
         source: VolunteerHoursSource.MANUAL,
         activityType: dto.activityType,
         date: parseIsoDate(dto.date),
-        description: dto.description.trim(),
+        description: dto.description?.trim() || null,
         proposedMinutes: dto.minutes,
         minutes: dto.minutes,
         loggedById: userId,
@@ -132,7 +132,11 @@ export class VolunteerHoursService {
 
     const source = existing.source as VolunteerHoursSource;
     const request: UpdateVolunteerHoursRequest = dto;
-    const error = validateVolunteerHoursEdit(request, source);
+    const error = validateVolunteerHoursEdit(
+      request,
+      source,
+      existing.activityType as VolunteerActivityType,
+    );
     if (error) throw new BadRequestException(error);
 
     const isManual = source === VolunteerHoursSource.MANUAL;
@@ -144,7 +148,7 @@ export class VolunteerHoursService {
           ? {
               activityType: dto.activityType ?? existing.activityType,
               date: dto.date ? parseIsoDate(dto.date) : existing.date,
-              description: (dto.description ?? existing.description ?? '').trim(),
+              description: (dto.description ?? existing.description ?? '').trim() || null,
             }
           : {
               description:

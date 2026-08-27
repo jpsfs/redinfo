@@ -1,5 +1,5 @@
-import { IsDateString, IsEnum, IsInt, IsString, Max, MaxLength, Min } from 'class-validator';
-import { ApiProperty } from '@nestjs/swagger';
+import { IsDateString, IsEnum, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   MANUAL_VOLUNTEER_ACTIVITY_TYPES,
   MAX_MANUAL_HOURS_DESCRIPTION_LENGTH,
@@ -30,8 +30,12 @@ export class CreateManualVolunteerHoursDto {
   @Max(MAX_MANUAL_HOURS_MINUTES)
   minutes: number;
 
-  @ApiProperty({ example: 'Monthly coordination meeting at the delegation.' })
+  @ApiPropertyOptional({
+    example: 'Monthly coordination meeting at the delegation.',
+    description: 'Required only when activityType is OTHER.',
+  })
+  @IsOptional()
   @IsString()
   @MaxLength(MAX_MANUAL_HOURS_DESCRIPTION_LENGTH)
-  description: string;
+  description?: string;
 }
