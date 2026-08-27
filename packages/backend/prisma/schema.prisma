@@ -119,6 +119,8 @@ model User {
   volunteerHoursEntries  VolunteerHoursEntry[] @relation("VolunteerHoursOwner")
   volunteerHoursApproved VolunteerHoursEntry[] @relation("VolunteerHoursApprovedBy")
   volunteerHoursLogged   VolunteerHoursEntry[] @relation("VolunteerHoursLoggedBy")
+  volunteerHoursReopened VolunteerHoursEntry[] @relation("VolunteerHoursReopenedBy")
+  volunteerHoursDeleted  VolunteerHoursEntry[] @relation("VolunteerHoursDeletedBy")
 
   @@index([email])
   @@index([provider, providerId])
@@ -688,10 +690,28 @@ model VolunteerHoursEntry {
   createdAt  DateTime @default(now())
   updatedAt  DateTime @updatedAt
 
+  /// Set when a coordinator sent an APPROVED entry back to PENDING. Read by
+  /// `isEligibleForAutoApproval` so the grace-period sweep never re-approves
+  /// something a person deliberately reopened.
+  reopenedAt   DateTime?
+  reopenedById String?
+  reopenedBy   User?     @relation("VolunteerHoursReopenedBy", fields: [reopenedById], references: [id])
+
+  /// Soft delete. The row is retained rather than removed because
+  /// `ensureGenerated` treats an assignment with no entry as one still to
+  /// generate — hard-deleting a SCHEDULED entry would resurrect it on the very
+  /// next read of any hours endpoint.
+  deletedAt      DateTime?
+  deletedById    String?
+  deletedBy      User?     @relation("VolunteerHoursDeletedBy", fields: [deletedById], references: [id])
+  deletionReason String?   @db.Text
+
   @@index([userId, date])
   @@index([status])
   @@index([scheduleId])
   @@index([date])
+  @@index([status, date])
+  @@index([deletedAt])
 }
 
 // ─── Geography ────────────────────────────────────────────────────────────────

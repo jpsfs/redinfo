@@ -3,9 +3,12 @@ import {
   VolunteerHoursFlag,
   VolunteerHoursSource,
   VolunteerHoursStatus,
+  canDeleteOwnVolunteerHours,
+  canReopenVolunteerHours,
   detectShiftExceptions,
   formatMinutes,
   isEligibleForAutoApproval,
+  isSweepApprovable,
   proposeScheduledHours,
   shiftMandatoryRolesFilled,
   validateManualVolunteerHours,
@@ -197,6 +200,103 @@ describe('isEligibleForAutoApproval', () => {
     expect(
       isEligibleForAutoApproval({ ...base, flags: ['RAN_OVER'] as VolunteerHoursFlag[] }, TODAY),
     ).toBe(false);
+  });
+
+  // Trap 2 (redesign plan): reopening must permanently suppress auto-approval,
+  // or the grace-period sweep quietly undoes a coordinator's own action.
+  it('is never eligible once reopened, even if otherwise clean and old', () => {
+    expect(isEligibleForAutoApproval({ ...base, reopenedAt: '2026-10-15' }, TODAY)).toBe(false);
+  });
+
+  it('is never eligible once dismissed', () => {
+    expect(isEligibleForAutoApproval({ ...base, deletedAt: '2026-10-15' }, TODAY)).toBe(false);
+  });
+});
+
+describe('isSweepApprovable', () => {
+  const base = {
+    source: VolunteerHoursSource.SCHEDULED,
+    status: VolunteerHoursStatus.PENDING,
+    flags: [] as VolunteerHoursFlag[],
+    reopenedAt: null as string | null,
+    deletedAt: null as string | null,
+  };
+
+  it('is approvable when SCHEDULED, unflagged, PENDING, never reopened, not deleted', () => {
+    expect(isSweepApprovable(base)).toBe(true);
+  });
+
+  it('never sweeps a MANUAL entry — there is no shift to validate it against', () => {
+    expect(isSweepApprovable({ ...base, source: VolunteerHoursSource.MANUAL })).toBe(false);
+  });
+
+  it('never sweeps a flagged entry', () => {
+    expect(isSweepApprovable({ ...base, flags: ['RAN_OVER'] as VolunteerHoursFlag[] })).toBe(false);
+  });
+
+  it('never sweeps an already-APPROVED entry', () => {
+    expect(isSweepApprovable({ ...base, status: VolunteerHoursStatus.APPROVED })).toBe(false);
+  });
+
+  it('never sweeps a reopened entry', () => {
+    expect(isSweepApprovable({ ...base, reopenedAt: '2026-10-15' })).toBe(false);
+  });
+
+  it('never sweeps a dismissed entry', () => {
+    expect(isSweepApprovable({ ...base, deletedAt: '2026-10-15' })).toBe(false);
+  });
+});
+
+describe('canReopenVolunteerHours', () => {
+  it('allows reopening an APPROVED entry', () => {
+    expect(canReopenVolunteerHours({ status: VolunteerHoursStatus.APPROVED, deletedAt: null })).toBe(
+      true,
+    );
+  });
+
+  it('refuses a still-PENDING entry', () => {
+    expect(canReopenVolunteerHours({ status: VolunteerHoursStatus.PENDING, deletedAt: null })).toBe(
+      false,
+    );
+  });
+
+  it('refuses a dismissed entry, even if APPROVED', () => {
+    expect(
+      canReopenVolunteerHours({ status: VolunteerHoursStatus.APPROVED, deletedAt: '2026-10-15' }),
+    ).toBe(false);
+  });
+});
+
+describe('canDeleteOwnVolunteerHours', () => {
+  const base = {
+    userId: 'u-ana',
+    source: VolunteerHoursSource.MANUAL,
+    status: VolunteerHoursStatus.PENDING,
+    deletedAt: null as string | null,
+  };
+
+  it('allows the owner to delete their own pending MANUAL entry', () => {
+    expect(canDeleteOwnVolunteerHours(base, 'u-ana')).toBe(true);
+  });
+
+  it('refuses someone else’s entry', () => {
+    expect(canDeleteOwnVolunteerHours(base, 'u-someone-else')).toBe(false);
+  });
+
+  it('refuses a SCHEDULED entry — there is no shift-less way to file one by hand', () => {
+    expect(canDeleteOwnVolunteerHours({ ...base, source: VolunteerHoursSource.SCHEDULED }, 'u-ana')).toBe(
+      false,
+    );
+  });
+
+  it('refuses an already-APPROVED entry', () => {
+    expect(canDeleteOwnVolunteerHours({ ...base, status: VolunteerHoursStatus.APPROVED }, 'u-ana')).toBe(
+      false,
+    );
+  });
+
+  it('refuses an already-deleted entry', () => {
+    expect(canDeleteOwnVolunteerHours({ ...base, deletedAt: '2026-10-15' }, 'u-ana')).toBe(false);
   });
 });
 

@@ -29,6 +29,16 @@ describe('getSummary', () => {
     expect(volunteerHours.refreshGeneration).toHaveBeenCalledTimes(1);
   });
 
+  // Trap 3 (redesign plan): a dismissed entry is a retained, not deleted, row
+  // — every read path must filter it back out, or totals silently include it.
+  it('excludes dismissed (soft-deleted) entries from the query', async () => {
+    const { service, prisma } = makeService([]);
+    await service.getSummary('2026-10-01', '2026-10-31');
+    expect(prisma.volunteerHoursEntry.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ deletedAt: null }) }),
+    );
+  });
+
   it('splits approved and pending minutes per volunteer', async () => {
     const { service } = makeService([
       ENTRY({ status: 'APPROVED', minutes: 240 }),

@@ -23,9 +23,17 @@ vi.mock('react-admin', async (importOriginal) => ({
 const mockApiFetch = apiFetch as unknown as Mock;
 
 const i18nProvider = polyglotI18nProvider(messages, 'en');
+const authProvider = {
+  login: () => Promise.resolve(),
+  logout: () => Promise.resolve(),
+  checkAuth: () => Promise.resolve(),
+  checkError: () => Promise.resolve(),
+  getPermissions: () => Promise.resolve(),
+  getIdentity: () => Promise.resolve({ id: 'u-ana', fullName: 'Ana Silva' } as never),
+};
 const renderPage = () =>
   render(
-    <AdminContext dataProvider={testDataProvider()} i18nProvider={i18nProvider}>
+    <AdminContext dataProvider={testDataProvider()} authProvider={authProvider} i18nProvider={i18nProvider}>
       <MyHoursPage />
     </AdminContext>,
   );
@@ -353,6 +361,82 @@ describe('MyHoursPage', () => {
       expect(mockApiFetch).toHaveBeenCalledWith(
         `/volunteer-hours/${manualEntry.id}`,
         expect.objectContaining({ method: 'PATCH' }),
+      ),
+    );
+  });
+
+  it('offers to delete a pending MANUAL entry of your own', async () => {
+    mockApiFetch.mockResolvedValue({
+      entries: [
+        {
+          ...ENTRY,
+          id: 'e-manual',
+          source: VolunteerHoursSource.MANUAL,
+          activityType: VolunteerActivityType.MEETING,
+          assignmentId: null,
+          scheduleId: null,
+        },
+      ],
+      totalApprovedMinutes: 0,
+      totalPendingMinutes: 240,
+    });
+    renderPage();
+    await screen.findByText('Manual');
+    expect(screen.getByRole('button', { name: 'Delete' })).toBeInTheDocument();
+  });
+
+  it('never offers to delete a SCHEDULED entry — there is no shift-less way to file one by hand', async () => {
+    renderPage();
+    await screen.findByText('Emergency');
+    expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
+  });
+
+  it('never offers to delete an entry that is not your own', async () => {
+    mockApiFetch.mockResolvedValue({
+      entries: [
+        {
+          ...ENTRY,
+          id: 'e-manual',
+          userId: 'u-someone-else',
+          source: VolunteerHoursSource.MANUAL,
+          activityType: VolunteerActivityType.MEETING,
+          assignmentId: null,
+          scheduleId: null,
+        },
+      ],
+      totalApprovedMinutes: 0,
+      totalPendingMinutes: 240,
+    });
+    renderPage();
+    await screen.findByText('Manual');
+    expect(screen.queryByRole('button', { name: 'Delete' })).not.toBeInTheDocument();
+  });
+
+  it('deletes a pending MANUAL entry after confirming', async () => {
+    const user = userEvent.setup();
+    const manualEntry = {
+      ...ENTRY,
+      id: 'e-manual',
+      source: VolunteerHoursSource.MANUAL,
+      activityType: VolunteerActivityType.MEETING,
+      assignmentId: null,
+      scheduleId: null,
+    };
+    mockApiFetch.mockImplementation((path: string) => {
+      if (path === `/volunteer-hours/${manualEntry.id}`) return Promise.resolve(undefined);
+      return Promise.resolve({ entries: [manualEntry], totalApprovedMinutes: 0, totalPendingMinutes: 240 });
+    });
+    renderPage();
+    await screen.findByText('Manual');
+
+    await user.click(screen.getByRole('button', { name: 'Delete' }));
+    const buttons = await screen.findAllByRole('button', { name: 'Delete' });
+    await user.click(buttons[buttons.length - 1]);
+
+    await waitFor(() =>
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        `/volunteer-hours/${manualEntry.id}`,
+        expect.objectContaining({ method: 'DELETE' }),
       ),
     );
   });

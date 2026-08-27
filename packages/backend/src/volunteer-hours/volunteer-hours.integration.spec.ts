@@ -231,7 +231,7 @@ describeIntegration('Volunteer hours module (integration)', () => {
     );
     await schedules.publish(schedule.id, coordinator.id);
 
-    const pending = await volunteerHours.getPendingQueue();
+    const { data: pending } = await volunteerHours.getReviewQueue({});
     const anaEntry = pending.find((e) => e.userId === ana.id)!;
     expect(anaEntry).toBeDefined();
 
@@ -243,7 +243,7 @@ describeIntegration('Volunteer hours module (integration)', () => {
     expect(approved.minutes).toBe(180);
     expect(approved.correctionReason).toBe('Left an hour early, confirmed by phone.');
 
-    const stillPending = await volunteerHours.getPendingQueue();
+    const { data: stillPending } = await volunteerHours.getReviewQueue({});
     expect(stillPending.find((e) => e.id === anaEntry.id)).toBeUndefined();
   });
 
@@ -279,7 +279,7 @@ describeIntegration('Volunteer hours module (integration)', () => {
     );
     await schedules.publish(schedule.id, coordinator.id);
 
-    const pending = await volunteerHours.getPendingQueue();
+    const { data: pending } = await volunteerHours.getReviewQueue({});
     const anaEntry = pending.find((e) => e.userId === ana.id && e.scheduleId === schedule.id)!;
     await volunteerHours.approve(anaEntry.id, coordinator.id, {});
 

@@ -26,7 +26,7 @@ export class VolunteerHoursSummaryService {
     await this.volunteerHours.refreshGeneration();
 
     const rows = await this.prisma.volunteerHoursEntry.findMany({
-      where: { date: { gte: parseIsoDate(from), lte: parseIsoDate(to) } },
+      where: { date: { gte: parseIsoDate(from), lte: parseIsoDate(to) }, deletedAt: null },
       include: { user: { select: { id: true, firstName: true, lastName: true } } },
     });
 

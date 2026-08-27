@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import {
+  ApproveVolunteerHoursBatchResponse,
   AvailabilityWindowCategory,
   CreateManualVolunteerHoursRequest,
   MyVolunteerHoursResponse,
@@ -8,17 +9,22 @@ import {
   ShiftExceptionAssignment,
   ShiftExceptionReport,
   ShiftTimes,
+  SweepApproveVolunteerHoursResponse,
   UpdateVolunteerHoursRequest,
   VolunteerActivityType,
   VolunteerHoursActor,
   VolunteerHoursEntry as VolunteerHoursEntryShape,
   VolunteerHoursFlag,
   VolunteerHoursFlagDetail,
+  VolunteerHoursReviewResponse,
   VolunteerHoursSource,
   VolunteerHoursStatus,
   applyShiftOverrides,
+  canDeleteOwnVolunteerHours,
+  canReopenVolunteerHours,
   detectShiftExceptions,
   isEligibleForAutoApproval,
+  isSweepApprovable,
   proposeScheduledHours,
   shiftMandatoryRolesFilled,
   validateManualVolunteerHours,
@@ -32,6 +38,10 @@ import { shiftBoundaryToInstant } from '../utils/timezone.util';
 import { CreateManualVolunteerHoursDto } from './dto/create-manual-hours.dto';
 import { UpdateVolunteerHoursDto } from './dto/update-hours.dto';
 import { ApproveVolunteerHoursDto } from './dto/approve-hours.dto';
+import { ReviewVolunteerHoursQueryDto } from './dto/review-query.dto';
+import { ApproveVolunteerHoursBatchDto } from './dto/approve-hours-batch.dto';
+import { SweepApproveVolunteerHoursDto } from './dto/sweep-approve.dto';
+import { DismissVolunteerHoursDto } from './dto/dismiss-hours.dto';
 
 const ACTOR_SELECT = { select: { id: true, firstName: true, lastName: true } } as const;
 
@@ -39,6 +49,8 @@ const ENTRY_INCLUDE = {
   user: ACTOR_SELECT,
   approvedBy: ACTOR_SELECT,
   loggedBy: ACTOR_SELECT,
+  reopenedBy: ACTOR_SELECT,
+  deletedBy: ACTOR_SELECT,
 } as const;
 
 type EntryRow = Prisma.VolunteerHoursEntryGetPayload<{ include: typeof ENTRY_INCLUDE }>;
@@ -54,7 +66,7 @@ type EntryRow = Prisma.VolunteerHoursEntryGetPayload<{ include: typeof ENTRY_INC
  * `identity-purge.service.ts` makes about a different cleanup job: a job that
  * runs occasionally must never be the thing that makes "is this entry here
  * yet" a correctness question. Every entry point below (`getMyHours`,
- * `getPendingQueue`, the summary) calls `ensureGenerated` first for exactly
+ * `getReviewQueue`, the summary) calls `ensureGenerated` first for exactly
  * that reason, and every entry point also sweeps auto-approval — so a
  * grace-period entry becomes final the next time *anyone* looks, not on a
  * clock.
@@ -72,7 +84,7 @@ export class VolunteerHoursService {
     await this.refreshGeneration();
 
     const rows = await this.prisma.volunteerHoursEntry.findMany({
-      where: { userId },
+      where: { userId, deletedAt: null },
       include: ENTRY_INCLUDE,
       orderBy: [{ date: 'desc' }],
     });
@@ -162,15 +174,105 @@ export class VolunteerHoursService {
 
   // ── Coordinator review ───────────────────────────────────────────────────
 
-  async getPendingQueue(): Promise<VolunteerHoursEntryShape[]> {
+  /**
+   * The filterable, paginated queue that replaced the old flat `/pending`
+   * list. Counts are computed over the current status/range/search scope but
+   * *ignoring* `flag`/`source`, so each filter chip can show how many
+   * entries it would reveal without the query re-running per chip.
+   */
+  async getReviewQueue(query: ReviewVolunteerHoursQueryDto): Promise<VolunteerHoursReviewResponse> {
     await this.refreshGeneration();
 
-    const rows = await this.prisma.volunteerHoursEntry.findMany({
-      where: { status: VolunteerHoursStatus.PENDING },
-      include: ENTRY_INCLUDE,
-      orderBy: [{ date: 'asc' }],
-    });
-    return rows.map(serializeEntry);
+    const status = query.status ?? VolunteerHoursStatus.PENDING;
+    const page = query.page ?? 1;
+    const perPage = query.perPage ?? 25;
+    const sort = query.sort ?? 'date';
+    const order = query.order ?? 'asc';
+    const search = query.search?.trim();
+
+    const dateRange = buildDateRangeFilter(query.from, query.to);
+    const scopeWhere: Prisma.VolunteerHoursEntryWhereInput = {
+      deletedAt: null,
+      status,
+      ...(dateRange ? { date: dateRange } : {}),
+      ...(search
+        ? {
+            OR: [
+              { user: { firstName: { contains: search, mode: 'insensitive' } } },
+              { user: { lastName: { contains: search, mode: 'insensitive' } } },
+              { description: { contains: search, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
+
+    const queueWhere: Prisma.VolunteerHoursEntryWhereInput = {
+      ...scopeWhere,
+      ...(query.flag === 'NONE'
+        ? { flags: { isEmpty: true } }
+        : query.flag
+          ? { flags: { has: query.flag } }
+          : {}),
+      ...(query.source ? { source: query.source } : {}),
+    };
+
+    // Fixed definition (mirrors `isSweepApprovable`), not the current
+    // status/search scope — the sweep only ever targets PENDING, unflagged,
+    // SCHEDULED entries, regardless of which tab or search is active.
+    const sweepableWhere: Prisma.VolunteerHoursEntryWhereInput = {
+      deletedAt: null,
+      reopenedAt: null,
+      source: VolunteerHoursSource.SCHEDULED,
+      status: VolunteerHoursStatus.PENDING,
+      flags: { isEmpty: true },
+      ...(dateRange ? { date: dateRange } : {}),
+    };
+
+    const [data, total, all, noFlags, ranOver, possiblyLeftEarly, manual, sweepable, aggregates] =
+      await this.prisma.$transaction([
+        this.prisma.volunteerHoursEntry.findMany({
+          where: queueWhere,
+          include: ENTRY_INCLUDE,
+          orderBy: buildReviewOrderBy(sort, order),
+          skip: (page - 1) * perPage,
+          take: perPage,
+        }),
+        this.prisma.volunteerHoursEntry.count({ where: queueWhere }),
+        this.prisma.volunteerHoursEntry.count({ where: scopeWhere }),
+        this.prisma.volunteerHoursEntry.count({ where: { ...scopeWhere, flags: { isEmpty: true } } }),
+        this.prisma.volunteerHoursEntry.count({
+          where: { ...scopeWhere, flags: { has: 'RAN_OVER' } },
+        }),
+        this.prisma.volunteerHoursEntry.count({
+          where: { ...scopeWhere, flags: { has: 'POSSIBLY_LEFT_EARLY' } },
+        }),
+        this.prisma.volunteerHoursEntry.count({
+          where: { ...scopeWhere, source: VolunteerHoursSource.MANUAL },
+        }),
+        this.prisma.volunteerHoursEntry.count({ where: sweepableWhere }),
+        this.prisma.volunteerHoursEntry.aggregate({
+          where: scopeWhere,
+          _sum: { proposedMinutes: true },
+          _min: { date: true },
+        }),
+      ]);
+
+    return {
+      data: data.map(serializeEntry),
+      total,
+      page,
+      perPage,
+      counts: {
+        all,
+        noFlags,
+        ranOver,
+        possiblyLeftEarly,
+        manual,
+        sweepable,
+        totalProposedMinutes: aggregates._sum.proposedMinutes ?? 0,
+        oldestDate: aggregates._min.date ? toIsoDate(aggregates._min.date) : null,
+      },
+    };
   }
 
   async approve(
@@ -178,28 +280,230 @@ export class VolunteerHoursService {
     approverId: string,
     dto: ApproveVolunteerHoursDto,
   ): Promise<VolunteerHoursEntryShape> {
+    const row = await this.prisma.$transaction((tx) =>
+      this.approveOne(tx, id, approverId, dto.minutes, dto.correctionReason),
+    );
+    return serializeEntry(row);
+  }
+
+  /**
+   * `POST /approve-batch` — deliberately tolerant: one entry a colleague
+   * approved a second earlier must not fail the other 39. Each item runs in
+   * its own transaction so one failure can't roll back the rest.
+   */
+  async approveBatch(
+    dto: ApproveVolunteerHoursBatchDto,
+    approverId: string,
+  ): Promise<ApproveVolunteerHoursBatchResponse> {
+    const approved: VolunteerHoursEntryShape[] = [];
+    const failed: { id: string; message: string }[] = [];
+
+    for (const item of dto.entries) {
+      try {
+        const row = await this.prisma.$transaction((tx) =>
+          this.approveOne(tx, item.id, approverId, item.minutes, item.correctionReason),
+        );
+        approved.push(serializeEntry(row));
+      } catch (error) {
+        failed.push({ id: item.id, message: messageOf(error) });
+      }
+    }
+
+    return { approved, failed };
+  }
+
+  /**
+   * The "approve all without exceptions" sweep. Re-checks each candidate
+   * through `isSweepApprovable` — the same predicate the frontend's button
+   * count uses — rather than trusting the query's own `where` back as fact,
+   * for the same reason `autoApproveEligible` does below.
+   */
+  async sweepApprove(
+    dto: SweepApproveVolunteerHoursDto,
+    approverId: string,
+  ): Promise<SweepApproveVolunteerHoursResponse> {
+    await this.refreshGeneration();
+
+    const dateRange = buildDateRangeFilter(dto.from, dto.to);
+    const candidates = await this.prisma.volunteerHoursEntry.findMany({
+      where: {
+        deletedAt: null,
+        reopenedAt: null,
+        source: VolunteerHoursSource.SCHEDULED,
+        status: VolunteerHoursStatus.PENDING,
+        flags: { isEmpty: true },
+        ...(dateRange ? { date: dateRange } : {}),
+      },
+      select: {
+        id: true,
+        proposedMinutes: true,
+        source: true,
+        status: true,
+        flags: true,
+        reopenedAt: true,
+        deletedAt: true,
+      },
+    });
+
+    const eligible = candidates.filter((entry) =>
+      isSweepApprovable({
+        source: entry.source as VolunteerHoursSource,
+        status: entry.status as VolunteerHoursStatus,
+        flags: entry.flags as VolunteerHoursFlag[],
+        reopenedAt: entry.reopenedAt ? entry.reopenedAt.toISOString() : null,
+        deletedAt: entry.deletedAt ? entry.deletedAt.toISOString() : null,
+      }),
+    );
+    if (eligible.length === 0) return { approvedCount: 0, totalMinutes: 0 };
+
+    await this.prisma.volunteerHoursEntry.updateMany({
+      where: { id: { in: eligible.map((entry) => entry.id) } },
+      data: {
+        status: VolunteerHoursStatus.APPROVED,
+        approvedById: approverId,
+        approvedAt: new Date(),
+        autoApproved: false,
+      },
+    });
+
+    return {
+      approvedCount: eligible.length,
+      totalMinutes: eligible.reduce((total, entry) => total + entry.proposedMinutes, 0),
+    };
+  }
+
+  /** `POST /:id/reopen` — send an APPROVED entry back to PENDING. */
+  async reopen(id: string, actorId: string): Promise<VolunteerHoursEntryShape> {
     const existing = await this.prisma.volunteerHoursEntry.findUnique({ where: { id } });
     if (!existing) throw new NotFoundException('No such volunteer-hours entry.');
-
-    const minutes = dto.minutes ?? existing.proposedMinutes;
-    const corrected = minutes !== existing.proposedMinutes;
-    if (corrected && !dto.correctionReason?.trim()) {
-      throw new BadRequestException('Correcting the minutes needs a reason.');
+    if (
+      !canReopenVolunteerHours({
+        status: existing.status as VolunteerHoursStatus,
+        deletedAt: existing.deletedAt ? existing.deletedAt.toISOString() : null,
+      })
+    ) {
+      throw new BadRequestException('Only an approved entry can be reopened.');
     }
 
     const row = await this.prisma.volunteerHoursEntry.update({
       where: { id },
       data: {
-        minutes,
-        status: VolunteerHoursStatus.APPROVED,
-        approvedById: approverId,
-        approvedAt: new Date(),
+        status: VolunteerHoursStatus.PENDING,
+        minutes: existing.proposedMinutes,
+        correctionReason: null,
+        approvedById: null,
+        approvedAt: null,
         autoApproved: false,
-        correctionReason: corrected ? dto.correctionReason!.trim() : null,
+        reopenedAt: new Date(),
+        reopenedById: actorId,
       },
       include: ENTRY_INCLUDE,
     });
     return serializeEntry(row);
+  }
+
+  /** `POST /:id/dismiss` — a coordinator soft-deleting an entry that should not exist at all. */
+  async dismiss(
+    id: string,
+    actorId: string,
+    dto: DismissVolunteerHoursDto,
+  ): Promise<VolunteerHoursEntryShape> {
+    const existing = await this.prisma.volunteerHoursEntry.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('No such volunteer-hours entry.');
+    if (existing.deletedAt) throw new BadRequestException('This entry was already dismissed.');
+
+    const row = await this.prisma.volunteerHoursEntry.update({
+      where: { id },
+      data: {
+        deletedAt: new Date(),
+        deletedById: actorId,
+        deletionReason: dto.reason.trim(),
+      },
+      include: ENTRY_INCLUDE,
+    });
+    return serializeEntry(row);
+  }
+
+  /** `POST /:id/restore` — undo a `dismiss`. */
+  async restore(id: string): Promise<VolunteerHoursEntryShape> {
+    const existing = await this.prisma.volunteerHoursEntry.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('No such volunteer-hours entry.');
+    if (!existing.deletedAt) throw new BadRequestException('This entry is not dismissed.');
+
+    const row = await this.prisma.volunteerHoursEntry.update({
+      where: { id },
+      data: { deletedAt: null, deletedById: null, deletionReason: null },
+      include: ENTRY_INCLUDE,
+    });
+    return serializeEntry(row);
+  }
+
+  /**
+   * `DELETE /:id` — a volunteer deleting their own mistake. Mirrors
+   * `updateMine`'s ownership guard exactly: the same 404 whether the entry is
+   * missing or someone else's.
+   */
+  async deleteMine(id: string, userId: string): Promise<void> {
+    const existing = await this.prisma.volunteerHoursEntry.findUnique({ where: { id } });
+    if (!existing || existing.userId !== userId) {
+      throw new NotFoundException('No such volunteer-hours entry.');
+    }
+    if (
+      !canDeleteOwnVolunteerHours(
+        {
+          userId: existing.userId,
+          source: existing.source as VolunteerHoursSource,
+          status: existing.status as VolunteerHoursStatus,
+          deletedAt: existing.deletedAt ? existing.deletedAt.toISOString() : null,
+        },
+        userId,
+      )
+    ) {
+      throw new BadRequestException('Only your own pending manual entry can be deleted.');
+    }
+
+    await this.prisma.volunteerHoursEntry.update({
+      where: { id },
+      data: { deletedAt: new Date(), deletedById: userId },
+    });
+  }
+
+  /**
+   * Shared body behind `approve` and `approveBatch`, run inside a
+   * transaction so a batch item's read-then-write can't race a colleague's.
+   */
+  private async approveOne(
+    tx: Prisma.TransactionClient,
+    id: string,
+    approverId: string,
+    minutes: number | undefined,
+    correctionReason: string | undefined,
+  ) {
+    const existing = await tx.volunteerHoursEntry.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('No such volunteer-hours entry.');
+    if (existing.deletedAt) throw new BadRequestException('This entry was dismissed.');
+    if (existing.status === VolunteerHoursStatus.APPROVED) {
+      throw new BadRequestException('This entry is already approved.');
+    }
+
+    const resolvedMinutes = minutes ?? existing.proposedMinutes;
+    const corrected = resolvedMinutes !== existing.proposedMinutes;
+    if (corrected && !correctionReason?.trim()) {
+      throw new BadRequestException('Correcting the minutes needs a reason.');
+    }
+
+    return tx.volunteerHoursEntry.update({
+      where: { id },
+      data: {
+        minutes: resolvedMinutes,
+        status: VolunteerHoursStatus.APPROVED,
+        approvedById: approverId,
+        approvedAt: new Date(),
+        autoApproved: false,
+        correctionReason: corrected ? correctionReason!.trim() : null,
+      },
+      include: ENTRY_INCLUDE,
+    });
   }
 
   // ── Generation ────────────────────────────────────────────────────────────
@@ -224,6 +528,10 @@ export class VolunteerHoursService {
    * something-plus-a-flag.
    */
   private async ensureGenerated(today = toIsoDate(new Date())): Promise<void> {
+    // Deliberately not filtered on `deletedAt` here: a dismissed entry is a
+    // retained row, so `volunteerHoursEntry: null` already excludes its
+    // assignment from "pending" — that retained row is exactly what stops a
+    // dismissed SCHEDULED entry from being regenerated on the next read.
     const pending = await this.prisma.scheduleAssignment.findMany({
       where: {
         volunteerHoursEntry: null,
@@ -467,8 +775,20 @@ export class VolunteerHoursService {
     // the query's own filter back as fact would make this silently wrong the
     // moment the `where` below is ever loosened.
     const candidates = await this.prisma.volunteerHoursEntry.findMany({
-      where: { source: VolunteerHoursSource.SCHEDULED, status: VolunteerHoursStatus.PENDING },
-      select: { id: true, date: true, flags: true, source: true, status: true },
+      where: {
+        source: VolunteerHoursSource.SCHEDULED,
+        status: VolunteerHoursStatus.PENDING,
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        date: true,
+        flags: true,
+        source: true,
+        status: true,
+        reopenedAt: true,
+        deletedAt: true,
+      },
     });
     const eligibleIds = candidates
       .filter((entry) =>
@@ -478,6 +798,8 @@ export class VolunteerHoursService {
             status: entry.status as VolunteerHoursStatus,
             flags: entry.flags as VolunteerHoursFlag[],
             date: toIsoDate(entry.date),
+            reopenedAt: entry.reopenedAt ? entry.reopenedAt.toISOString() : null,
+            deletedAt: entry.deletedAt ? entry.deletedAt.toISOString() : null,
           },
           today,
         ),
@@ -504,6 +826,35 @@ function toActor(actor: { id: string; firstName: string; lastName: string } | nu
   return actor ? { id: actor.id, firstName: actor.firstName, lastName: actor.lastName } : null;
 }
 
+/** Inclusive `[from, to]` on `date`, or `undefined` when neither bound is given. */
+function buildDateRangeFilter(from?: string, to?: string): Prisma.DateTimeFilter | undefined {
+  if (!from && !to) return undefined;
+  return {
+    ...(from ? { gte: parseIsoDate(from) } : {}),
+    ...(to ? { lte: parseIsoDate(to) } : {}),
+  };
+}
+
+function buildReviewOrderBy(
+  sort: 'date' | 'person' | 'minutes',
+  order: 'asc' | 'desc',
+): Prisma.VolunteerHoursEntryOrderByWithRelationInput | Prisma.VolunteerHoursEntryOrderByWithRelationInput[] {
+  switch (sort) {
+    case 'person':
+      return [{ user: { firstName: order } }, { user: { lastName: order } }];
+    case 'minutes':
+      return { proposedMinutes: order };
+    case 'date':
+    default:
+      return { date: order };
+  }
+}
+
+/** Every failure `approveOne` throws is a Nest `HttpException`, which carries a `.message`. */
+function messageOf(error: unknown): string {
+  return error instanceof Error ? error.message : 'Could not approve this entry.';
+}
+
 export function serializeEntry(row: EntryRow): VolunteerHoursEntryShape {
   return {
     id: row.id,
@@ -528,6 +879,13 @@ export function serializeEntry(row: EntryRow): VolunteerHoursEntryShape {
     correctionReason: row.correctionReason,
     loggedById: row.loggedById,
     loggedBy: toActor(row.loggedBy),
+    reopenedAt: row.reopenedAt ? row.reopenedAt.toISOString() : null,
+    reopenedById: row.reopenedById,
+    reopenedBy: toActor(row.reopenedBy),
+    deletedAt: row.deletedAt ? row.deletedAt.toISOString() : null,
+    deletedById: row.deletedById,
+    deletedBy: toActor(row.deletedBy),
+    deletionReason: row.deletionReason,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

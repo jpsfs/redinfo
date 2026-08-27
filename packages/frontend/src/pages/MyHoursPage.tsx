@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Title } from 'react-admin';
+import { Title, useGetIdentity } from 'react-admin';
 import {
   Alert,
   Box,
@@ -19,7 +19,9 @@ import {
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import EditIcon from '@mui/icons-material/Edit';
+import DeleteIcon from '@mui/icons-material/Delete';
 import {
+  canDeleteOwnVolunteerHours,
   CreateManualVolunteerHoursRequest,
   formatMinutes,
   MANUAL_VOLUNTEER_ACTIVITY_TYPES,
@@ -55,10 +57,14 @@ const editFormFor = (entry: VolunteerHoursEntry): UpdateVolunteerHoursRequest =>
 
 const EntryRow = ({
   entry,
+  viewerId,
   onEdit,
+  onDelete,
 }: {
   entry: VolunteerHoursEntry;
+  viewerId: string;
   onEdit: (entry: VolunteerHoursEntry) => void;
+  onDelete: (entry: VolunteerHoursEntry) => void;
 }) => {
   const t = useT();
   return (
@@ -92,6 +98,16 @@ const EntryRow = ({
           {t('myHours.editButton')}
         </Button>
       )}
+      {canDeleteOwnVolunteerHours(entry, viewerId) && (
+        <Button
+          size="small"
+          color="error"
+          startIcon={<DeleteIcon fontSize="small" />}
+          onClick={() => onDelete(entry)}
+        >
+          {t('volunteerHoursReview.deleteMineButton')}
+        </Button>
+      )}
       {entry.correctionReason && (
         <Typography variant="caption" color="text.secondary" sx={{ width: '100%' }}>
           {t('myHours.correctedNotice', { reason: entry.correctionReason })}
@@ -115,6 +131,8 @@ const EntryRow = ({
  */
 export const MyHoursPage = () => {
   const t = useT();
+  const { identity } = useGetIdentity();
+  const viewerId = String(identity?.id ?? '');
   const [hours, setHours] = useState<MyVolunteerHoursResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -128,6 +146,10 @@ export const MyHoursPage = () => {
   const [editForm, setEditForm] = useState<UpdateVolunteerHoursRequest>({ minutes: 0, description: '' });
   const [editSaving, setEditSaving] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+
+  const [deleting, setDeleting] = useState<VolunteerHoursEntry | null>(null);
+  const [deleteSaving, setDeleteSaving] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -194,6 +216,21 @@ export const MyHoursPage = () => {
     }
   };
 
+  const handleDeleteConfirm = async () => {
+    if (!deleting) return;
+    setDeleteSaving(true);
+    setDeleteError(null);
+    try {
+      await apiFetch(`/volunteer-hours/${deleting.id}`, { method: 'DELETE' });
+      setDeleting(null);
+      await load();
+    } catch (e) {
+      setDeleteError(e instanceof Error ? e.message : t('volunteerHoursReview.deleteMineFailed'));
+    } finally {
+      setDeleteSaving(false);
+    }
+  };
+
   const isManualEdit = editing?.source === VolunteerHoursSource.MANUAL;
 
   const pending = hours?.entries.filter((e) => e.status === VolunteerHoursStatus.PENDING) ?? [];
@@ -235,7 +272,7 @@ export const MyHoursPage = () => {
             </Typography>
             <Stack component="ul" spacing={1} sx={{ p: 0, my: 1 }}>
               {pending.map((entry) => (
-                <EntryRow key={entry.id} entry={entry} onEdit={openEdit} />
+                <EntryRow key={entry.id} entry={entry} viewerId={viewerId} onEdit={openEdit} onDelete={setDeleting} />
               ))}
             </Stack>
           </>
@@ -248,7 +285,7 @@ export const MyHoursPage = () => {
             </Typography>
             <Stack component="ul" spacing={1} sx={{ p: 0, my: 1 }}>
               {approved.map((entry) => (
-                <EntryRow key={entry.id} entry={entry} onEdit={openEdit} />
+                <EntryRow key={entry.id} entry={entry} viewerId={viewerId} onEdit={openEdit} onDelete={setDeleting} />
               ))}
             </Stack>
           </>
@@ -376,6 +413,26 @@ export const MyHoursPage = () => {
           </Button>
           <Button onClick={handleEditSave} variant="contained" disabled={editSaving}>
             {t('myHours.editSave')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={deleting !== null} onClose={() => setDeleting(null)} fullWidth maxWidth="xs">
+        <DialogTitle>{t('volunteerHoursReview.deleteMineDialogTitle')}</DialogTitle>
+        <DialogContent>
+          {deleteError && (
+            <Alert severity="error" sx={{ mb: 2 }}>
+              {deleteError}
+            </Alert>
+          )}
+          <Typography variant="body2">{t('volunteerHoursReview.deleteMineDialogBody')}</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleting(null)} disabled={deleteSaving}>
+            {t('volunteerHoursReview.deleteMineCancel')}
+          </Button>
+          <Button onClick={handleDeleteConfirm} variant="contained" color="error" disabled={deleteSaving}>
+            {t('volunteerHoursReview.deleteMineConfirm')}
           </Button>
         </DialogActions>
       </Dialog>

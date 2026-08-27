@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -24,6 +25,10 @@ import { VolunteerHoursSummaryService } from './volunteer-hours-summary.service'
 import { CreateManualVolunteerHoursDto } from './dto/create-manual-hours.dto';
 import { UpdateVolunteerHoursDto } from './dto/update-hours.dto';
 import { ApproveVolunteerHoursDto } from './dto/approve-hours.dto';
+import { ReviewVolunteerHoursQueryDto } from './dto/review-query.dto';
+import { ApproveVolunteerHoursBatchDto } from './dto/approve-hours-batch.dto';
+import { SweepApproveVolunteerHoursDto } from './dto/sweep-approve.dto';
+import { DismissVolunteerHoursDto } from './dto/dismiss-hours.dto';
 import { isIsoDate, toIsoDate } from '../utils/date.util';
 
 @ApiTags('Volunteer hours')
@@ -74,10 +79,41 @@ export class VolunteerHoursController {
     return this.volunteerHours.updateMine(id, user.id, dto);
   }
 
-  @Get('pending')
+  /**
+   * A volunteer deleting their own mistake — ungated for the same reason as
+   * the rest of the self-service routes; the service enforces ownership and
+   * that only a PENDING MANUAL entry qualifies.
+   */
+  @Delete(':id')
+  deleteMine(@Param('id') id: string, @CurrentUser() user: { id: string }) {
+    return this.volunteerHours.deleteMine(id, user.id);
+  }
+
+  // Static segments (`approve-batch`, `approve-sweep`) are declared before
+  // any `:id/...` route so Nest never matches them as an id.
+
+  @Get('review')
   @Actions(Action.VIEW_VOLUNTEER_HOURS)
-  getPendingQueue() {
-    return this.volunteerHours.getPendingQueue();
+  getReviewQueue(@Query() query: ReviewVolunteerHoursQueryDto) {
+    return this.volunteerHours.getReviewQueue(query);
+  }
+
+  @Post('approve-batch')
+  @Actions(Action.MANAGE_VOLUNTEER_HOURS)
+  approveBatch(
+    @CurrentUser() user: { id: string },
+    @Body() dto: ApproveVolunteerHoursBatchDto,
+  ) {
+    return this.volunteerHours.approveBatch(dto, user.id);
+  }
+
+  @Post('approve-sweep')
+  @Actions(Action.MANAGE_VOLUNTEER_HOURS)
+  sweepApprove(
+    @CurrentUser() user: { id: string },
+    @Body() dto: SweepApproveVolunteerHoursDto,
+  ) {
+    return this.volunteerHours.sweepApprove(dto, user.id);
   }
 
   @Post(':id/approve')
@@ -88,6 +124,28 @@ export class VolunteerHoursController {
     @Body() dto: ApproveVolunteerHoursDto,
   ) {
     return this.volunteerHours.approve(id, user.id, dto);
+  }
+
+  @Post(':id/reopen')
+  @Actions(Action.MANAGE_VOLUNTEER_HOURS)
+  reopen(@Param('id') id: string, @CurrentUser() user: { id: string }) {
+    return this.volunteerHours.reopen(id, user.id);
+  }
+
+  @Post(':id/dismiss')
+  @Actions(Action.MANAGE_VOLUNTEER_HOURS)
+  dismiss(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string },
+    @Body() dto: DismissVolunteerHoursDto,
+  ) {
+    return this.volunteerHours.dismiss(id, user.id, dto);
+  }
+
+  @Post(':id/restore')
+  @Actions(Action.MANAGE_VOLUNTEER_HOURS)
+  restore(@Param('id') id: string) {
+    return this.volunteerHours.restore(id);
   }
 
   @Get('summary')

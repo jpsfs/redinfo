@@ -2039,6 +2039,20 @@ export interface VolunteerHoursEntry {
   correctionReason?: string | null;
   loggedById?: string | null;
   loggedBy?: VolunteerHoursActor | null;
+  /** Set when a coordinator sent an APPROVED entry back to PENDING. Suppresses
+   *  auto-approval forever after — a reopened entry is one a person wants to
+   *  look at, and the grace-period sweep must not quietly undo that. */
+  reopenedAt?: string | null;
+  reopenedById?: string | null;
+  reopenedBy?: VolunteerHoursActor | null;
+  /** Soft delete. The row is retained rather than removed because
+   *  `ensureGenerated` treats an assignment with no entry as one still to
+   *  generate — a hard delete of a SCHEDULED entry resurrects it on the very
+   *  next read. */
+  deletedAt?: string | null;
+  deletedById?: string | null;
+  deletedBy?: VolunteerHoursActor | null;
+  deletionReason?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -2282,13 +2296,19 @@ export const VOLUNTEER_HOURS_AUTO_APPROVE_GRACE_DAYS = 30;
 
 /**
  * Whether a PENDING entry is due to auto-approve: SCHEDULED (a MANUAL entry
- * always needs a person, per `VolunteerHoursSource` above), unflagged, and
- * past the grace period counted from its own `date`.
+ * always needs a person, per `VolunteerHoursSource` above), unflagged, past
+ * the grace period counted from its own `date`, never reopened, and not
+ * deleted. `reopenedAt` and `deletedAt` are checked here (not just at the
+ * query site) so the grace-period sweep never quietly re-approves an entry a
+ * coordinator deliberately sent back to PENDING, or resurrects one that was
+ * dismissed.
  */
 export function isEligibleForAutoApproval(
-  entry: Pick<VolunteerHoursEntry, 'source' | 'status' | 'flags' | 'date'>,
+  entry: Pick<VolunteerHoursEntry, 'source' | 'status' | 'flags' | 'date' | 'reopenedAt' | 'deletedAt'>,
   today: string,
 ): boolean {
+  if (entry.deletedAt) return false;
+  if (entry.reopenedAt) return false;
   if (entry.source !== VolunteerHoursSource.SCHEDULED) return false;
   if (entry.status !== VolunteerHoursStatus.PENDING) return false;
   if (entry.flags.length > 0) return false;
@@ -2296,6 +2316,130 @@ export function isEligibleForAutoApproval(
     Date.parse(`${entry.date}T00:00:00.000Z`) + VOLUNTEER_HOURS_AUTO_APPROVE_GRACE_DAYS * 86_400_000,
   );
   return graceEnds.getTime() <= Date.parse(`${today}T00:00:00.000Z`);
+}
+
+/** Chip filters on the review queue. `'NONE'` means "no flags at all". */
+export type VolunteerHoursFlagFilter = VolunteerHoursFlag | 'NONE';
+
+/** `GET /volunteer-hours/review` query. */
+export interface VolunteerHoursReviewQuery {
+  status?: VolunteerHoursStatus;   // default PENDING
+  flag?: VolunteerHoursFlagFilter;
+  source?: VolunteerHoursSource;
+  /** Matches the volunteer's first/last name or the entry description. */
+  search?: string;
+  from?: string;                   // ISO date, inclusive, on `date`
+  to?: string;
+  page?: number;                   // 1-based, default 1
+  perPage?: number;                // default 25, max 100
+  sort?: 'date' | 'person' | 'minutes';
+  order?: 'asc' | 'desc';          // default: date asc — oldest waiting first
+}
+
+/**
+ * Counts for the filter chips and the stats header. Computed over the current
+ * `status` + `from`/`to` + `search` scope but *ignoring* `flag`/`source`, so each
+ * chip can show how many entries it would reveal.
+ */
+export interface VolunteerHoursReviewCounts {
+  all: number;
+  noFlags: number;
+  ranOver: number;
+  possiblyLeftEarly: number;
+  manual: number;
+  /** How many the sweep action would approve right now. */
+  sweepable: number;
+  /** Sum of `proposedMinutes` across `all`. */
+  totalProposedMinutes: number;
+  /** Earliest `date` in scope, for the "oldest waiting" stat. Null when empty. */
+  oldestDate: string | null;
+}
+
+export interface VolunteerHoursReviewResponse {
+  data: VolunteerHoursEntry[];
+  total: number;
+  page: number;
+  perPage: number;
+  counts: VolunteerHoursReviewCounts;
+}
+
+export const VOLUNTEER_HOURS_REVIEW_MAX_PER_PAGE = 100;
+
+/** `POST /volunteer-hours/approve-batch`. */
+export interface ApproveVolunteerHoursBatchItem {
+  id: string;
+  /** Omit to approve the entry's own proposed minutes. */
+  minutes?: number;
+  /** Required exactly when `minutes` differs from the entry's proposed value. */
+  correctionReason?: string;
+}
+export interface ApproveVolunteerHoursBatchRequest {
+  entries: ApproveVolunteerHoursBatchItem[];
+}
+/**
+ * Deliberately tolerant: one entry a colleague approved a second earlier must
+ * not fail the other 39.
+ */
+export interface ApproveVolunteerHoursBatchResponse {
+  approved: VolunteerHoursEntry[];
+  failed: { id: string; message: string }[];
+}
+export const MAX_APPROVE_BATCH_SIZE = 200;
+
+/** `POST /volunteer-hours/approve-sweep` — the "no exceptions" quick action. */
+export interface SweepApproveVolunteerHoursRequest {
+  from?: string;
+  to?: string;
+}
+export interface SweepApproveVolunteerHoursResponse {
+  approvedCount: number;
+  totalMinutes: number;
+}
+
+/** `POST /volunteer-hours/:id/dismiss`. */
+export interface DismissVolunteerHoursRequest {
+  reason: string;
+}
+export const MAX_DISMISSAL_REASON_LENGTH = 500;
+
+/**
+ * Whether the "approve all without exceptions" sweep may take this entry
+ * without anyone reading it: auto-generated from a shift, unflagged, still
+ * pending, never reopened, not deleted. A MANUAL entry never qualifies — there
+ * is no shift to validate it against, which is the whole reason it is queued.
+ */
+export function isSweepApprovable(
+  entry: Pick<VolunteerHoursEntry, 'source' | 'status' | 'flags' | 'reopenedAt' | 'deletedAt'>,
+): boolean {
+  if (entry.deletedAt) return false;
+  if (entry.reopenedAt) return false;
+  if (entry.source !== VolunteerHoursSource.SCHEDULED) return false;
+  if (entry.status !== VolunteerHoursStatus.PENDING) return false;
+  if (entry.flags.length > 0) return false;
+  return true;
+}
+
+/** An APPROVED, non-deleted entry can be sent back to PENDING. */
+export function canReopenVolunteerHours(
+  entry: Pick<VolunteerHoursEntry, 'status' | 'deletedAt'>,
+): boolean {
+  if (entry.deletedAt) return false;
+  return entry.status === VolunteerHoursStatus.APPROVED;
+}
+
+/**
+ * A volunteer may delete their own mistake, but only before anyone has acted on
+ * it and only when they filed it by hand: MANUAL, PENDING, owned, not already
+ * deleted. Anything else is a coordinator's `dismiss`.
+ */
+export function canDeleteOwnVolunteerHours(
+  entry: Pick<VolunteerHoursEntry, 'userId' | 'source' | 'status' | 'deletedAt'>,
+  viewerId: string,
+): boolean {
+  if (entry.deletedAt) return false;
+  if (entry.userId !== viewerId) return false;
+  if (entry.source !== VolunteerHoursSource.MANUAL) return false;
+  return entry.status === VolunteerHoursStatus.PENDING;
 }
 
 /** e.g. "7h 30m", "45m". */

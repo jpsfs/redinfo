@@ -1382,9 +1382,9 @@ const MESSAGES = {
   'myHours.editSave': { pt: 'Guardar', en: 'Save' },
   'myHours.editFailed': { pt: 'Não foi possível corrigir as horas.', en: 'Could not correct the hours.' },
 
-  // ── Volunteer hours review (#164) ──
+  // ── Volunteer hours review (#164, redesigned per docs/plans/volunteer-hours-review-redesign.md) ──
   'volunteerHoursReview.pageTitle': { pt: 'Rever horas de voluntariado', en: 'Review Volunteer Hours' },
-  'volunteerHoursReview.heading': { pt: 'Rever horas de voluntariado', en: 'Review Volunteer Hours' },
+  'volunteerHoursReview.heading': { pt: 'Rever horas', en: 'Review hours' },
   'volunteerHoursReview.subheading': {
     pt: 'Entradas geradas automaticamente com um sinal de exceção, e tudo o que foi registado manualmente. O resto aprova-se sozinho passado um mês.',
     en: 'Auto-generated entries carrying an exception signal, plus everything logged by hand. Everything else approves itself after a month.',
@@ -1393,35 +1393,186 @@ const MESSAGES = {
     pt: 'Não foi possível carregar a fila de revisão.',
     en: 'Could not load the review queue.',
   },
+  'volunteerHoursReview.retryButton': { pt: 'Tentar novamente', en: 'Retry' },
   'volunteerHoursReview.noneToReview': {
     pt: 'Não há nada por rever de momento.',
     en: 'Nothing to review right now.',
   },
-  'volunteerHoursReview.columnPerson': { pt: 'Pessoa', en: 'Person' },
-  'volunteerHoursReview.columnActivity': { pt: 'Atividade', en: 'Activity' },
-  'volunteerHoursReview.columnDate': { pt: 'Data', en: 'Date' },
-  'volunteerHoursReview.columnProposed': { pt: 'Proposto', en: 'Proposed' },
-  'volunteerHoursReview.columnFlags': { pt: 'Sinais', en: 'Flags' },
-  'volunteerHoursReview.reviewButton': { pt: 'Rever', en: 'Review' },
-  'volunteerHoursReview.reviewDialogTitle': { pt: 'Rever horas', en: 'Review hours' },
-  'volunteerHoursReview.reviewDialogMinutes': { pt: 'Minutos a contar', en: 'Minutes to credit' },
-  'volunteerHoursReview.reviewDialogReason': {
-    pt: 'Motivo da correção',
-    en: 'Reason for the correction',
+  'volunteerHoursReview.noneAfterFilter': {
+    pt: 'Nenhuma entrada corresponde a estes filtros.',
+    en: 'No entries match these filters.',
   },
-  'volunteerHoursReview.reviewDialogReasonRequired': {
+  'volunteerHoursReview.clearFiltersButton': { pt: 'Limpar filtros', en: 'Clear filters' },
+
+  // Tabs
+  'volunteerHoursReview.tabPending': { pt: 'Pendentes (%{count})', en: 'Pending (%{count})' },
+  'volunteerHoursReview.tabApproved': { pt: 'Aprovadas', en: 'Approved' },
+
+  // Stats header
+  'volunteerHoursReview.statsWaiting': { pt: '%{count} por rever', en: '%{count} to review' },
+  'volunteerHoursReview.statsPendingMinutes': { pt: '%{minutes} pendentes', en: '%{minutes} pending' },
+  'volunteerHoursReview.statsExceptions': { pt: '%{count} com exceções', en: '%{count} with exceptions' },
+  'volunteerHoursReview.statsOldest': { pt: 'mais antiga há %{days} dias', en: 'oldest %{days} days ago' },
+  'volunteerHoursReview.statsOldestToday': { pt: 'mais antiga é de hoje', en: 'oldest is from today' },
+
+  // Filter chips + search
+  'volunteerHoursReview.filterAll': { pt: 'Todas (%{count})', en: 'All (%{count})' },
+  'volunteerHoursReview.filterNoFlags': { pt: 'Sem exceções (%{count})', en: 'No exceptions (%{count})' },
+  'volunteerHoursReview.filterRanOver': { pt: 'Excedeu (%{count})', en: 'Ran over (%{count})' },
+  'volunteerHoursReview.filterPossiblyLeftEarly': {
+    pt: 'Saída antecipada (%{count})',
+    en: 'Possibly left early (%{count})',
+  },
+  'volunteerHoursReview.filterManual': { pt: 'Manuais (%{count})', en: 'Manual (%{count})' },
+  'volunteerHoursReview.searchPlaceholder': { pt: 'Procurar voluntário…', en: 'Search volunteer…' },
+
+  // Sweep ("approve all without exceptions")
+  'volunteerHoursReview.sweepButton': {
+    pt: 'Aprovar tudo sem exceções (%{count})',
+    en: 'Approve all without exceptions (%{count})',
+  },
+  'volunteerHoursReview.sweepDialogTitle': { pt: 'Aprovar sem exceções', en: 'Approve without exceptions' },
+  'volunteerHoursReview.sweepDialogBody': {
+    pt: 'Isto aprova %{count} entradas geradas automaticamente (%{minutes}), sem sinais. Entradas manuais e com exceções não são incluídas — a fila não fica vazia.',
+    en: 'This approves %{count} auto-generated entries (%{minutes}), carrying no exception. Manual and flagged entries are not included — the queue will not be empty.',
+  },
+  'volunteerHoursReview.sweepDialogConfirm': { pt: 'Aprovar', en: 'Approve' },
+  'volunteerHoursReview.sweepDialogCancel': { pt: 'Cancelar', en: 'Cancel' },
+  'volunteerHoursReview.sweepSuccess': {
+    pt: '%{count} entradas aprovadas (%{minutes}).',
+    en: '%{count} entries approved (%{minutes}).',
+  },
+  'volunteerHoursReview.sweepFailed': {
+    pt: 'Não foi possível aprovar as entradas sem exceções.',
+    en: 'Could not approve the entries without exceptions.',
+  },
+
+  // Row / card content
+  'volunteerHoursReview.approveButton': { pt: 'Aprovar', en: 'Approve' },
+  'volunteerHoursReview.adjustButton': { pt: 'Ajustar', en: 'Adjust' },
+  'volunteerHoursReview.dismissButton': { pt: 'Descartar', en: 'Dismiss' },
+  'volunteerHoursReview.reopenButton': { pt: 'Reabrir', en: 'Reopen' },
+  'volunteerHoursReview.moreActions': { pt: 'Mais ações', en: 'More actions' },
+  'volunteerHoursReview.flagsPopoverTitle': { pt: 'Sinais desta entrada', en: 'Exceptions on this entry' },
+  'volunteerHoursReview.flagsPopoverReportLink': { pt: 'Ver relatório', en: 'View report' },
+  'volunteerHoursReview.ago': { pt: 'há %{days} dias', en: '%{days} days ago' },
+
+  // Approve (single)
+  'volunteerHoursReview.approveSuccess': { pt: 'Horas aprovadas.', en: 'Hours approved.' },
+  'volunteerHoursReview.approveFailed': {
+    pt: 'Não foi possível aprovar as horas.',
+    en: 'Could not approve the hours.',
+  },
+  'volunteerHoursReview.undoButton': { pt: 'Anular', en: 'Undo' },
+
+  // Selection + bulk approve
+  'volunteerHoursReview.bulkSelectedLabel': {
+    pt: '%{count} selecionadas · %{minutes}',
+    en: '%{count} selected · %{minutes}',
+  },
+  'volunteerHoursReview.bulkApproveButton': { pt: 'Aprovar selecionadas', en: 'Approve selected' },
+  'volunteerHoursReview.bulkClearButton': { pt: 'Limpar', en: 'Clear' },
+  'volunteerHoursReview.bulkApproveDialogTitle': { pt: 'Aprovar selecionadas', en: 'Approve selected' },
+  'volunteerHoursReview.bulkApproveDialogFlaggedNote': {
+    pt: 'Estas incluem entradas com exceções: %{names}.',
+    en: 'These include flagged entries: %{names}.',
+  },
+  'volunteerHoursReview.bulkApproveDialogConfirm': { pt: 'Aprovar', en: 'Approve' },
+  'volunteerHoursReview.bulkApproveDialogCancel': { pt: 'Cancelar', en: 'Cancel' },
+  'volunteerHoursReview.bulkApproveSuccess': {
+    pt: '%{count} entradas aprovadas.',
+    en: '%{count} entries approved.',
+  },
+  'volunteerHoursReview.bulkApprovePartialFailure': {
+    pt: '%{count} não puderam ser aprovadas: %{messages}',
+    en: '%{count} could not be approved: %{messages}',
+  },
+
+  // Adjust dialog
+  'volunteerHoursReview.adjustDialogTitle': { pt: 'Ajustar horas', en: 'Adjust hours' },
+  'volunteerHoursReview.adjustBaseline': { pt: 'Agendado', en: 'Scheduled' },
+  'volunteerHoursReview.adjustProposed': { pt: 'Proposto', en: 'Proposed' },
+  'volunteerHoursReview.adjustYourValue': { pt: 'O teu valor', en: 'Your value' },
+  'volunteerHoursReview.adjustPresetProposed': { pt: 'Aprovar o proposto', en: 'Approve as proposed' },
+  'volunteerHoursReview.adjustPresetScheduled': { pt: 'Repor o agendado', en: 'Reset to scheduled' },
+  'volunteerHoursReview.adjustPresetZero': { pt: 'Não contar (0)', en: "Don't count (0)" },
+  'volunteerHoursReview.adjustReasonLabel': { pt: 'Motivo da correção', en: 'Reason for the correction' },
+  'volunteerHoursReview.adjustReasonRequired': {
     pt: 'Corrigir o valor exige um motivo.',
     en: 'Correcting the value needs a reason.',
   },
-  'volunteerHoursReview.reviewDialogCancel': { pt: 'Cancelar', en: 'Cancel' },
-  'volunteerHoursReview.reviewDialogApprove': { pt: 'Aprovar', en: 'Approve' },
-  'volunteerHoursReview.approveSuccess': { pt: 'Horas aprovadas.', en: 'Hours approved.' },
-  'volunteerHoursReview.approveFailed': { pt: 'Não foi possível aprovar as horas.', en: 'Could not approve the hours.' },
+  'volunteerHoursReview.adjustReasonChipLeftEarly': { pt: 'Saiu mais cedo', en: 'Left early' },
+  'volunteerHoursReview.adjustReasonChipConfirmed': {
+    pt: 'Confirmado com a equipa',
+    en: 'Confirmed with the team',
+  },
+  'volunteerHoursReview.adjustReasonChipDuplicate': { pt: 'Duplicado', en: 'Duplicate' },
+  'volunteerHoursReview.adjustCancel': { pt: 'Cancelar', en: 'Cancel' },
+  'volunteerHoursReview.adjustSave': { pt: 'Aprovar', en: 'Approve' },
+
+  // Dismiss / restore
+  'volunteerHoursReview.dismissDialogTitle': { pt: 'Descartar entrada', en: 'Dismiss entry' },
+  'volunteerHoursReview.dismissReasonLabel': { pt: 'Motivo', en: 'Reason' },
+  'volunteerHoursReview.dismissReasonRequired': { pt: 'Descartar exige um motivo.', en: 'Dismissing needs a reason.' },
+  'volunteerHoursReview.dismissCancel': { pt: 'Cancelar', en: 'Cancel' },
+  'volunteerHoursReview.dismissConfirm': { pt: 'Descartar', en: 'Dismiss' },
+  'volunteerHoursReview.dismissSuccess': { pt: 'Entrada descartada.', en: 'Entry dismissed.' },
+  'volunteerHoursReview.dismissFailed': {
+    pt: 'Não foi possível descartar a entrada.',
+    en: 'Could not dismiss the entry.',
+  },
+  'volunteerHoursReview.restoreButton': { pt: 'Repor', en: 'Restore' },
+  'volunteerHoursReview.restoreSuccess': { pt: 'Entrada reposta.', en: 'Entry restored.' },
+  'volunteerHoursReview.restoreFailed': {
+    pt: 'Não foi possível repor a entrada.',
+    en: 'Could not restore the entry.',
+  },
+
+  // Reopen
+  'volunteerHoursReview.reopenSuccess': { pt: 'Entrada reaberta.', en: 'Entry reopened.' },
+  'volunteerHoursReview.reopenFailed': {
+    pt: 'Não foi possível reabrir a entrada.',
+    en: 'Could not reopen the entry.',
+  },
+
+  // Pagination
+  'volunteerHoursReview.paginationRange': { pt: '%{from}–%{to} de %{total}', en: '%{from}–%{to} of %{total}' },
+  'volunteerHoursReview.perPageLabel': { pt: 'Por página', en: 'Per page' },
+  'volunteerHoursReview.prevPage': { pt: 'Anterior', en: 'Previous' },
+  'volunteerHoursReview.nextPage': { pt: 'Seguinte', en: 'Next' },
+
+  // Approved tab
+  'volunteerHoursReview.colVolunteer': { pt: 'Voluntário', en: 'Volunteer' },
+  'volunteerHoursReview.colFlags': { pt: 'Exceções', en: 'Exceptions' },
+  'volunteerHoursReview.colActivity': { pt: 'Atividade', en: 'Activity' },
+  'volunteerHoursReview.colDate': { pt: 'Data', en: 'Date' },
+  'volunteerHoursReview.colCredited': { pt: 'Creditado', en: 'Credited' },
+  'volunteerHoursReview.colApprovedBy': { pt: 'Aprovado por', en: 'Approved by' },
+  'volunteerHoursReview.colWhen': { pt: 'Quando', en: 'When' },
+  'volunteerHoursReview.autoApprovedChip': { pt: 'Automático', en: 'Automatic' },
+  'volunteerHoursReview.reopenedNotice': { pt: 'Reaberta em %{date}', en: 'Reopened on %{date}' },
+
+  // Export
   'volunteerHoursReview.exportHeading': { pt: 'Exportar resumo', en: 'Export summary' },
+  'volunteerHoursReview.exportMenuButton': { pt: 'Exportar CSV', en: 'Export CSV' },
   'volunteerHoursReview.exportFrom': { pt: 'De', en: 'From' },
   'volunteerHoursReview.exportTo': { pt: 'Até', en: 'To' },
   'volunteerHoursReview.exportButton': { pt: 'Transferir CSV', en: 'Download CSV' },
   'volunteerHoursReview.exportFailed': { pt: 'Não foi possível exportar o CSV.', en: 'Could not export the CSV.' },
+
+  // Self-service delete (MyHoursPage)
+  'volunteerHoursReview.deleteMineButton': { pt: 'Eliminar', en: 'Delete' },
+  'volunteerHoursReview.deleteMineDialogTitle': { pt: 'Eliminar entrada', en: 'Delete entry' },
+  'volunteerHoursReview.deleteMineDialogBody': {
+    pt: 'Tens a certeza que queres eliminar este registo? Esta ação não pode ser desfeita.',
+    en: 'Delete this entry? This cannot be undone.',
+  },
+  'volunteerHoursReview.deleteMineCancel': { pt: 'Cancelar', en: 'Cancel' },
+  'volunteerHoursReview.deleteMineConfirm': { pt: 'Eliminar', en: 'Delete' },
+  'volunteerHoursReview.deleteMineFailed': {
+    pt: 'Não foi possível eliminar o registo.',
+    en: 'Could not delete the entry.',
+  },
 
   'volunteerHoursStatus.PENDING': { pt: 'Por aprovar', en: 'Pending' },
   'volunteerHoursStatus.APPROVED': { pt: 'Aprovado', en: 'Approved' },
