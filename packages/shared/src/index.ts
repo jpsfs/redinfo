@@ -2039,6 +2039,21 @@ export interface CreateManualVolunteerHoursRequest {
   description: string;
 }
 
+/**
+ * `PATCH /volunteer-hours/:id` — the owner correcting their own entry while it
+ * is still PENDING, whether it was auto-generated (SCHEDULED) or logged by
+ * hand (MANUAL). `activityType`/`date` only take effect for a MANUAL entry —
+ * a SCHEDULED entry's activity and date belong to the shift it came from, not
+ * to the person correcting its minutes.
+ */
+export interface UpdateVolunteerHoursRequest {
+  activityType?: VolunteerActivityType;
+  /** ISO date, `YYYY-MM-DD`. */
+  date?: string;
+  minutes: number;
+  description?: string | null;
+}
+
 /** `POST /volunteer-hours/:id/approve` — approve as proposed, or correct the number. */
 export interface ApproveVolunteerHoursRequest {
   /** Omit to approve the entry's own `proposedMinutes` unchanged. */
@@ -2095,6 +2110,37 @@ export function validateManualVolunteerHours(
   }
   const description = request.description?.trim() ?? '';
   if (!description) return 'Describe what the activity was.';
+  if (description.length > MAX_MANUAL_HOURS_DESCRIPTION_LENGTH) {
+    return `The description may be at most ${MAX_MANUAL_HOURS_DESCRIPTION_LENGTH} characters.`;
+  }
+  return null;
+}
+
+/**
+ * The rule for whether a self-edit of an existing entry is coherent. A
+ * MANUAL entry is re-validated exactly like a fresh one (per
+ * `validateManualVolunteerHours`) since the person owns every field on it; a
+ * SCHEDULED entry only has its `minutes` (and an optional note) up for
+ * correction — its activity and date are the shift's, not editable here.
+ */
+export function validateVolunteerHoursEdit(
+  request: UpdateVolunteerHoursRequest,
+  source: VolunteerHoursSource,
+): string | null {
+  if (!Number.isInteger(request.minutes) || request.minutes <= 0) {
+    return 'Duration must be a whole number of minutes greater than zero.';
+  }
+  if (request.minutes > MAX_MANUAL_HOURS_MINUTES) {
+    return `A single entry cannot claim more than ${MAX_MANUAL_HOURS_MINUTES / 60} hours.`;
+  }
+  const description = request.description?.trim() ?? '';
+  if (source === VolunteerHoursSource.MANUAL) {
+    if (request.activityType && !MANUAL_VOLUNTEER_ACTIVITY_TYPES.includes(request.activityType)) {
+      return 'Choose Meeting, Training, or Other.';
+    }
+    if (request.date !== undefined && !isIsoDateLike(request.date)) return 'Enter a valid date.';
+    if (!description) return 'Describe what the activity was.';
+  }
   if (description.length > MAX_MANUAL_HOURS_DESCRIPTION_LENGTH) {
     return `The description may be at most ${MAX_MANUAL_HOURS_DESCRIPTION_LENGTH} characters.`;
   }

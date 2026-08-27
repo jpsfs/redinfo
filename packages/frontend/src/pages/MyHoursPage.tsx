@@ -18,6 +18,7 @@ import {
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import EditIcon from '@mui/icons-material/Edit';
 import {
   CreateManualVolunteerHoursRequest,
   formatMinutes,
@@ -25,9 +26,12 @@ import {
   MAX_MANUAL_HOURS_DESCRIPTION_LENGTH,
   MAX_MANUAL_HOURS_MINUTES,
   MyVolunteerHoursResponse,
+  UpdateVolunteerHoursRequest,
   validateManualVolunteerHours,
+  validateVolunteerHoursEdit,
   VolunteerActivityType,
   VolunteerHoursEntry,
+  VolunteerHoursSource,
   VolunteerHoursStatus,
 } from '@redinfo/shared';
 import { apiFetch } from '../api';
@@ -42,7 +46,20 @@ const emptyForm = (): CreateManualVolunteerHoursRequest => ({
   description: '',
 });
 
-const EntryRow = ({ entry }: { entry: VolunteerHoursEntry }) => {
+const editFormFor = (entry: VolunteerHoursEntry): UpdateVolunteerHoursRequest => ({
+  activityType: entry.activityType,
+  date: entry.date,
+  minutes: entry.minutes,
+  description: entry.description ?? '',
+});
+
+const EntryRow = ({
+  entry,
+  onEdit,
+}: {
+  entry: VolunteerHoursEntry;
+  onEdit: (entry: VolunteerHoursEntry) => void;
+}) => {
   const t = useT();
   return (
     <Stack
@@ -70,6 +87,11 @@ const EntryRow = ({ entry }: { entry: VolunteerHoursEntry }) => {
       {entry.flags.includes('POSSIBLY_LEFT_EARLY') && (
         <Chip size="small" color="warning" variant="outlined" label={t('myHours.flagPossiblyLeftEarly')} />
       )}
+      {entry.status === VolunteerHoursStatus.PENDING && (
+        <Button size="small" startIcon={<EditIcon fontSize="small" />} onClick={() => onEdit(entry)}>
+          {t('myHours.editButton')}
+        </Button>
+      )}
       {entry.correctionReason && (
         <Typography variant="caption" color="text.secondary" sx={{ width: '100%' }}>
           {t('myHours.correctedNotice', { reason: entry.correctionReason })}
@@ -87,8 +109,9 @@ const EntryRow = ({ entry }: { entry: VolunteerHoursEntry }) => {
 /**
  * Someone's own volunteer hours (#164): entries auto-generated from their
  * published duties, plus anything logged by hand for an activity that never
- * had a shift. The default is silent — a clean entry needs no action — so
- * this page is read-mostly, with logging the one thing a volunteer does here.
+ * had a shift. The default is silent — a clean entry needs no action — but
+ * either the auto-generated default or a manual entry can still be corrected
+ * by its owner for as long as it is PENDING, alongside logging a new one.
  */
 export const MyHoursPage = () => {
   const t = useT();
@@ -100,6 +123,11 @@ export const MyHoursPage = () => {
   const [form, setForm] = useState<CreateManualVolunteerHoursRequest>(emptyForm());
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+
+  const [editing, setEditing] = useState<VolunteerHoursEntry | null>(null);
+  const [editForm, setEditForm] = useState<UpdateVolunteerHoursRequest>({ minutes: 0, description: '' });
+  const [editSaving, setEditSaving] = useState(false);
+  const [editError, setEditError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -141,6 +169,33 @@ export const MyHoursPage = () => {
     }
   };
 
+  const openEdit = (entry: VolunteerHoursEntry) => {
+    setEditing(entry);
+    setEditForm(editFormFor(entry));
+    setEditError(null);
+  };
+
+  const handleEditSave = async () => {
+    if (!editing) return;
+    const validationError = validateVolunteerHoursEdit(editForm, editing.source);
+    if (validationError) {
+      setEditError(validationError);
+      return;
+    }
+    setEditSaving(true);
+    try {
+      await apiFetch(`/volunteer-hours/${editing.id}`, { method: 'PATCH', body: editForm });
+      setEditing(null);
+      await load();
+    } catch (e) {
+      setEditError(e instanceof Error ? e.message : t('myHours.editFailed'));
+    } finally {
+      setEditSaving(false);
+    }
+  };
+
+  const isManualEdit = editing?.source === VolunteerHoursSource.MANUAL;
+
   const pending = hours?.entries.filter((e) => e.status === VolunteerHoursStatus.PENDING) ?? [];
   const approved = hours?.entries.filter((e) => e.status === VolunteerHoursStatus.APPROVED) ?? [];
 
@@ -180,7 +235,7 @@ export const MyHoursPage = () => {
             </Typography>
             <Stack component="ul" spacing={1} sx={{ p: 0, my: 1 }}>
               {pending.map((entry) => (
-                <EntryRow key={entry.id} entry={entry} />
+                <EntryRow key={entry.id} entry={entry} onEdit={openEdit} />
               ))}
             </Stack>
           </>
@@ -193,7 +248,7 @@ export const MyHoursPage = () => {
             </Typography>
             <Stack component="ul" spacing={1} sx={{ p: 0, my: 1 }}>
               {approved.map((entry) => (
-                <EntryRow key={entry.id} entry={entry} />
+                <EntryRow key={entry.id} entry={entry} onEdit={openEdit} />
               ))}
             </Stack>
           </>
@@ -250,6 +305,67 @@ export const MyHoursPage = () => {
           </Button>
           <Button onClick={handleSave} variant="contained" disabled={saving}>
             {t('myHours.logSave')}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      <Dialog open={editing !== null} onClose={() => setEditing(null)} fullWidth maxWidth="xs">
+        <DialogTitle>{t('myHours.editDialogTitle')}</DialogTitle>
+        <DialogContent>
+          <Stack spacing={2} sx={{ mt: 1 }}>
+            {editError && <Alert severity="error">{editError}</Alert>}
+            {isManualEdit && (
+              <TextField
+                select
+                label={t('myHours.activityTypeLabel')}
+                value={editForm.activityType}
+                onChange={(e) =>
+                  setEditForm((prev) => ({
+                    ...prev,
+                    activityType: e.target.value as VolunteerActivityType,
+                  }))
+                }
+              >
+                {MANUAL_VOLUNTEER_ACTIVITY_TYPES.map((type) => (
+                  <MenuItem key={type} value={type}>
+                    {activityTypeLabel(t, type)}
+                  </MenuItem>
+                ))}
+              </TextField>
+            )}
+            {isManualEdit && (
+              <TextField
+                type="date"
+                label={t('myHours.dateLabel')}
+                value={editForm.date}
+                onChange={(e) => setEditForm((prev) => ({ ...prev, date: e.target.value }))}
+                InputLabelProps={{ shrink: true }}
+              />
+            )}
+            <TextField
+              type="number"
+              label={t('myHours.minutesLabel')}
+              value={editForm.minutes}
+              inputProps={{ min: 1, max: MAX_MANUAL_HOURS_MINUTES }}
+              onChange={(e) => setEditForm((prev) => ({ ...prev, minutes: Number(e.target.value) }))}
+            />
+            <TextField
+              label={t('myHours.descriptionLabel')}
+              placeholder={t('myHours.descriptionPlaceholder')}
+              value={editForm.description ?? ''}
+              onChange={(e) => setEditForm((prev) => ({ ...prev, description: e.target.value }))}
+              multiline
+              minRows={2}
+              inputProps={{ maxLength: MAX_MANUAL_HOURS_DESCRIPTION_LENGTH }}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setEditing(null)} disabled={editSaving}>
+            {t('myHours.editCancel')}
+          </Button>
+          <Button onClick={handleEditSave} variant="contained" disabled={editSaving}>
+            {t('myHours.editSave')}
           </Button>
         </DialogActions>
       </Dialog>

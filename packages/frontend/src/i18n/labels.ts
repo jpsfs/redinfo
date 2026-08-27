@@ -1375,6 +1375,11 @@ const MESSAGES = {
   'myHours.logSave': { pt: 'Guardar', en: 'Save' },
   'myHours.logSuccess': { pt: 'Horas registadas — aguardam aprovação.', en: 'Hours logged — awaiting approval.' },
   'myHours.logFailed': { pt: 'Não foi possível registar as horas.', en: 'Could not log the hours.' },
+  'myHours.editButton': { pt: 'Editar', en: 'Edit' },
+  'myHours.editDialogTitle': { pt: 'Corrigir horas', en: 'Correct hours' },
+  'myHours.editCancel': { pt: 'Cancelar', en: 'Cancel' },
+  'myHours.editSave': { pt: 'Guardar', en: 'Save' },
+  'myHours.editFailed': { pt: 'Não foi possível corrigir as horas.', en: 'Could not correct the hours.' },
 
   // ── Volunteer hours review (#164) ──
   'volunteerHoursReview.pageTitle': { pt: 'Rever horas de voluntariado', en: 'Review Volunteer Hours' },

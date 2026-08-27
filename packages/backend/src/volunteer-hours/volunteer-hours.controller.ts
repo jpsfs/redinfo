@@ -4,6 +4,7 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   Res,
@@ -21,6 +22,7 @@ import { AuditInterceptor } from '../auth/interceptors/audit.interceptor';
 import { VolunteerHoursService } from './volunteer-hours.service';
 import { VolunteerHoursSummaryService } from './volunteer-hours-summary.service';
 import { CreateManualVolunteerHoursDto } from './dto/create-manual-hours.dto';
+import { UpdateVolunteerHoursDto } from './dto/update-hours.dto';
 import { ApproveVolunteerHoursDto } from './dto/approve-hours.dto';
 import { isIsoDate, toIsoDate } from '../utils/date.util';
 
@@ -55,6 +57,21 @@ export class VolunteerHoursController {
     @Body() dto: CreateManualVolunteerHoursDto,
   ) {
     return this.volunteerHours.createManualEntry(user.id, dto);
+  }
+
+  /**
+   * Correct your own entry — auto-generated or logged by hand — while it is
+   * still pending. Ungated for the same reason `GET /me` and `POST /` are;
+   * the service itself refuses anything not owned by the caller or no longer
+   * PENDING.
+   */
+  @Patch(':id')
+  updateMine(
+    @Param('id') id: string,
+    @CurrentUser() user: { id: string },
+    @Body() dto: UpdateVolunteerHoursDto,
+  ) {
+    return this.volunteerHours.updateMine(id, user.id, dto);
   }
 
   @Get('pending')

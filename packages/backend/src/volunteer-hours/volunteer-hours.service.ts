@@ -8,6 +8,7 @@ import {
   ShiftExceptionAssignment,
   ShiftExceptionReport,
   ShiftTimes,
+  UpdateVolunteerHoursRequest,
   VolunteerActivityType,
   VolunteerHoursActor,
   VolunteerHoursEntry as VolunteerHoursEntryShape,
@@ -21,6 +22,7 @@ import {
   proposeScheduledHours,
   shiftMandatoryRolesFilled,
   validateManualVolunteerHours,
+  validateVolunteerHoursEdit,
 } from '@redinfo/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { ShiftScheduleService } from '../availability/shift-schedule.service';
@@ -28,6 +30,7 @@ import { shiftKey } from '../schedules/schedules.service';
 import { parseIsoDate, toIsoDate } from '../utils/date.util';
 import { shiftBoundaryToInstant } from '../utils/timezone.util';
 import { CreateManualVolunteerHoursDto } from './dto/create-manual-hours.dto';
+import { UpdateVolunteerHoursDto } from './dto/update-hours.dto';
 import { ApproveVolunteerHoursDto } from './dto/approve-hours.dto';
 
 const ACTOR_SELECT = { select: { id: true, firstName: true, lastName: true } } as const;
@@ -99,6 +102,54 @@ export class VolunteerHoursService {
         proposedMinutes: dto.minutes,
         minutes: dto.minutes,
         loggedById: userId,
+      },
+      include: ENTRY_INCLUDE,
+    });
+    return serializeEntry(row);
+  }
+
+  /**
+   * The owner correcting their own entry — auto-generated or logged by hand
+   * — while it is still PENDING. Once a coordinator (or auto-approval) has
+   * moved it to APPROVED it is final, per the same "approve or correct the
+   * number" design the review queue uses: there is no re-opening an entry
+   * from here, only from `approve`.
+   */
+  async updateMine(
+    id: string,
+    userId: string,
+    dto: UpdateVolunteerHoursDto,
+  ): Promise<VolunteerHoursEntryShape> {
+    const existing = await this.prisma.volunteerHoursEntry.findUnique({ where: { id } });
+    // Same 404 whether the entry doesn't exist or belongs to someone else —
+    // this is a self-service endpoint, not a lookup one.
+    if (!existing || existing.userId !== userId) {
+      throw new NotFoundException('No such volunteer-hours entry.');
+    }
+    if (existing.status !== VolunteerHoursStatus.PENDING) {
+      throw new BadRequestException('Only a pending entry can still be edited.');
+    }
+
+    const source = existing.source as VolunteerHoursSource;
+    const request: UpdateVolunteerHoursRequest = dto;
+    const error = validateVolunteerHoursEdit(request, source);
+    if (error) throw new BadRequestException(error);
+
+    const isManual = source === VolunteerHoursSource.MANUAL;
+    const row = await this.prisma.volunteerHoursEntry.update({
+      where: { id },
+      data: {
+        minutes: dto.minutes,
+        ...(isManual
+          ? {
+              activityType: dto.activityType ?? existing.activityType,
+              date: dto.date ? parseIsoDate(dto.date) : existing.date,
+              description: (dto.description ?? existing.description ?? '').trim(),
+            }
+          : {
+              description:
+                dto.description !== undefined ? dto.description.trim() || null : existing.description,
+            }),
       },
       include: ENTRY_INCLUDE,
     });

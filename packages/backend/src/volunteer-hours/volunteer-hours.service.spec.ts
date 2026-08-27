@@ -341,6 +341,93 @@ describe('approve', () => {
   });
 });
 
+describe('updateMine', () => {
+  it('lets the owner correct a SCHEDULED entry’s minutes', async () => {
+    const { service } = makeService();
+    const [entry] = (await service.getMyHours('u-ana')).entries;
+
+    const updated = await service.updateMine(entry.id, 'u-ana', { minutes: 180 });
+    expect(updated.minutes).toBe(180);
+    expect(updated.status).toBe(VolunteerHoursStatus.PENDING);
+  });
+
+  it('lets the owner attach a note to a SCHEDULED entry without touching its activity or date', async () => {
+    const { service } = makeService();
+    const [entry] = (await service.getMyHours('u-ana')).entries;
+
+    const updated = await service.updateMine(entry.id, 'u-ana', {
+      minutes: entry.minutes,
+      description: 'Left an hour early, cleared with the team leader.',
+    });
+    expect(updated.description).toBe('Left an hour early, cleared with the team leader.');
+    expect(updated.activityType).toBe(entry.activityType);
+    expect(updated.date).toBe(entry.date);
+  });
+
+  it('lets the owner correct every field of their own MANUAL entry', async () => {
+    const { service } = makeService();
+    const entry = await service.createManualEntry('u-ana', {
+      activityType: VolunteerActivityType.MEETING,
+      date: '2026-10-05',
+      minutes: 90,
+      description: 'Monthly meeting.',
+    });
+
+    const updated = await service.updateMine(entry.id, 'u-ana', {
+      activityType: VolunteerActivityType.TRAINING,
+      date: '2026-10-06',
+      minutes: 120,
+      description: 'Actually a training session.',
+    });
+    expect(updated).toMatchObject({
+      activityType: VolunteerActivityType.TRAINING,
+      date: '2026-10-06',
+      minutes: 120,
+      description: 'Actually a training session.',
+    });
+  });
+
+  it('rejects a MANUAL edit that empties the description', async () => {
+    const { service } = makeService();
+    const entry = await service.createManualEntry('u-ana', {
+      activityType: VolunteerActivityType.MEETING,
+      date: '2026-10-05',
+      minutes: 90,
+      description: 'Monthly meeting.',
+    });
+
+    await expect(
+      service.updateMine(entry.id, 'u-ana', { minutes: 90, description: '   ' }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('404s for someone else’s entry', async () => {
+    const { service } = makeService();
+    const [entry] = (await service.getMyHours('u-ana')).entries;
+
+    await expect(service.updateMine(entry.id, 'u-someone-else', { minutes: 60 })).rejects.toThrow(
+      NotFoundException,
+    );
+  });
+
+  it('404s for an unknown entry', async () => {
+    const { service } = makeService();
+    await expect(service.updateMine('missing', 'u-ana', { minutes: 60 })).rejects.toThrow(
+      NotFoundException,
+    );
+  });
+
+  it('refuses to edit an entry that is already approved', async () => {
+    const { service } = makeService();
+    const [entry] = (await service.getMyHours('u-ana')).entries;
+    await service.approve(entry.id, 'u-coord', {});
+
+    await expect(service.updateMine(entry.id, 'u-ana', { minutes: 60 })).rejects.toThrow(
+      BadRequestException,
+    );
+  });
+});
+
 describe('auto-approval sweep', () => {
   it('auto-approves a clean SCHEDULED entry once the grace period has passed', async () => {
     // Well over a month before "today" (the real system clock the service

@@ -169,4 +169,111 @@ describe('MyHoursPage', () => {
     expect(await screen.findByText(/Describe what the activity was/)).toBeInTheDocument();
     expect(mockApiFetch).not.toHaveBeenCalledWith('/volunteer-hours', expect.anything());
   });
+
+  it('offers no edit action once an entry is approved', async () => {
+    mockApiFetch.mockResolvedValue({
+      entries: [{ ...ENTRY, status: VolunteerHoursStatus.APPROVED }],
+      totalApprovedMinutes: 240,
+      totalPendingMinutes: 0,
+    });
+    renderPage();
+    await screen.findByText('Emergency');
+    expect(screen.queryByRole('button', { name: 'Edit' })).not.toBeInTheDocument();
+  });
+
+  it('corrects a pending SCHEDULED entry, without offering to change its activity or date', async () => {
+    const user = userEvent.setup();
+    mockApiFetch.mockImplementation((path: string) => {
+      if (path === `/volunteer-hours/${ENTRY.id}`) return Promise.resolve({ ...ENTRY, minutes: 180 });
+      return Promise.resolve({ entries: [ENTRY], totalApprovedMinutes: 0, totalPendingMinutes: 240 });
+    });
+    renderPage();
+    await screen.findByText('Emergency');
+
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(screen.queryByLabelText('Activity')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('Date')).not.toBeInTheDocument();
+
+    const minutesField = screen.getByLabelText('Duration (minutes)');
+    await user.clear(minutesField);
+    await user.type(minutesField, '180');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() =>
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        `/volunteer-hours/${ENTRY.id}`,
+        expect.objectContaining({
+          method: 'PATCH',
+          body: expect.objectContaining({ minutes: 180 }),
+        }),
+      ),
+    );
+  });
+
+  it('lets a MANUAL entry be corrected on every field', async () => {
+    const user = userEvent.setup();
+    const manualEntry = {
+      ...ENTRY,
+      id: 'e-manual',
+      source: VolunteerHoursSource.MANUAL,
+      activityType: VolunteerActivityType.MEETING,
+      assignmentId: null,
+      scheduleId: null,
+      description: 'Monthly meeting.',
+    };
+    mockApiFetch.mockImplementation((path: string) => {
+      if (path === `/volunteer-hours/${manualEntry.id}`) return Promise.resolve(manualEntry);
+      return Promise.resolve({ entries: [manualEntry], totalApprovedMinutes: 0, totalPendingMinutes: 240 });
+    });
+    renderPage();
+    await screen.findByText('Manual');
+
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(screen.getByLabelText('Activity')).toBeInTheDocument();
+    expect(screen.getByLabelText('Date')).toBeInTheDocument();
+
+    await user.clear(screen.getByLabelText('Description'));
+    await user.type(screen.getByLabelText('Description'), 'Corrected description.');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() =>
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        `/volunteer-hours/${manualEntry.id}`,
+        expect.objectContaining({
+          method: 'PATCH',
+          body: expect.objectContaining({ description: 'Corrected description.' }),
+        }),
+      ),
+    );
+  });
+
+  it('blocks a MANUAL edit that empties the description before it reaches the API', async () => {
+    const user = userEvent.setup();
+    const manualEntry = {
+      ...ENTRY,
+      id: 'e-manual',
+      source: VolunteerHoursSource.MANUAL,
+      activityType: VolunteerActivityType.MEETING,
+      assignmentId: null,
+      scheduleId: null,
+      description: 'Monthly meeting.',
+    };
+    mockApiFetch.mockResolvedValue({
+      entries: [manualEntry],
+      totalApprovedMinutes: 0,
+      totalPendingMinutes: 240,
+    });
+    renderPage();
+    await screen.findByText('Manual');
+
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
+    await user.clear(screen.getByLabelText('Description'));
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    expect(await screen.findByText(/Describe what the activity was/)).toBeInTheDocument();
+    expect(mockApiFetch).not.toHaveBeenCalledWith(
+      `/volunteer-hours/${manualEntry.id}`,
+      expect.anything(),
+    );
+  });
 });
