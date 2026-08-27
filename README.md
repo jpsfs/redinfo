@@ -47,6 +47,10 @@ docker compose up --build
 docker compose exec backend pnpm prisma:migrate   # creates tables
 docker compose exec backend pnpm prisma:seed      # creates admin user
 
+# 4b. Optional — a full imagined delegation (volunteers, vehicles, schedules,
+#     volunteer hours, filed reports) to click around instead of an empty app
+docker compose exec backend pnpm prisma:seed:dev
+
 # 5. Open the app
 #    Frontend  →  http://localhost:5173
 #    API docs  →  http://localhost:3000/api/docs
@@ -54,6 +58,13 @@ docker compose exec backend pnpm prisma:seed      # creates admin user
 ```
 
 Default admin credentials (seed): **admin@redcross.local** / **Admin1234!**
+
+`prisma:seed:dev` also creates a password-protected volunteer for every role —
+see the script's own output for the shared password. It only ever runs
+against `DATABASE_URL` (the dev database above); integration tests
+(`pnpm --filter backend test:integration`) run against a separate database
+(`postgres-test`, via `TEST_DATABASE_URL`) that gets wiped on every run, so
+the two never collide.
 
 ## Production
 
@@ -78,6 +89,7 @@ See [`.env.example`](.env.example) for the full list.
 | Variable                               | Description                     |
 | -------------------------------------- | ------------------------------- |
 | `DATABASE_URL`                         | PostgreSQL connection string    |
+| `TEST_DATABASE_URL`                    | Dedicated database for `pnpm test:integration` — dev only, wiped every run |
 | `JWT_SECRET`                           | Long random secret (≥ 64 chars) |
 | `JWT_ACCESS_EXPIRES_IN`                | e.g. `15m`                      |
 | `JWT_REFRESH_EXPIRES_IN`               | e.g. `7d`                       |

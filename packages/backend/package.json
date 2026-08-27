@@ -9,12 +9,13 @@
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
     "typecheck": "tsc --noEmit -p tsconfig.build.json",
     "test": "jest",
-    "test:integration": "jest --runInBand -t integration",
+    "test:integration": "bash scripts/test-integration.sh",
     "prisma:migrate": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:generate": "prisma generate",
     "prisma:studio": "prisma studio",
-    "prisma:seed": "ts-node prisma/seed.ts"
+    "prisma:seed": "ts-node prisma/seed.ts",
+    "prisma:seed:dev": "ts-node prisma/seed.ts && ts-node prisma/seed-dev.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
