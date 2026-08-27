@@ -160,7 +160,7 @@ export const EmergencyWindowDialog = ({
             value={month}
             onChange={(event) => setMonth(Number(event.target.value))}
             SelectProps={{ native: true, inputProps: { 'aria-label': t('emergencyDialog.month') } }}
-            sx={{ flex: 1 }}
+            sx={{ flex: 1, minWidth: 0 }}
             InputLabelProps={{ shrink: true }}
           >
             {monthNames().map((name, index) => (
