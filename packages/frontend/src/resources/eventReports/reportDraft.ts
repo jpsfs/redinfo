@@ -27,6 +27,7 @@ export type StepId =
   | 'crew'
   | 'vehicles'
   | 'victims'
+  | 'inemSupport'
   | 'clinical'
   | 'narrative'
   | 'review';
@@ -47,6 +48,9 @@ export function stepsForType(type: EventReportType | string): StepId[] {
     'crew',
     'vehicles',
     'victims',
+    // Present only on an emergency: additional INEM support (VMER/SIV/UMIP) is
+    // something CODU dispatches, and a support job has no CODU call behind it.
+    ...(rules.hasInemSupportUnits ? (['inemSupport'] as StepId[]) : []),
     // Present only where the type has a clinical record, which is what makes an
     // emergency eight steps and a support report six. ADO #151 removed vital
     // signs from the report; live mode puts them back, because the crew is now
@@ -159,6 +163,7 @@ export function emptyDraft(type: EventReportType, now: Date = new Date()): Event
     crew: [],
     vehicles: [],
     victims: [],
+    inemSupportUnits: [],
     chamuCircumstances: null,
     chamuHistory: null,
     chamuAllergies: null,
@@ -211,6 +216,10 @@ export function draftFromReport(report: EventReport): EventReportInput {
       destinationKind: victim.destinationKind,
       destinationHospitalId: victim.destinationHospitalId ?? null,
     })),
+    inemSupportUnits: report.inemSupportUnits.map((unit) => ({
+      unitType: unit.unitType,
+      hospitalId: unit.hospitalId,
+    })),
     // The clinical record travels with the report. Leaving it out here would
     // mean opening a report from a live run and saving it threw away every vital
     // the crew took — the save sends the whole document, so an absent field is a
@@ -250,6 +259,11 @@ export function retypeDraft(
     for (const field of CHAMU_FIELDS) next[field] = null;
     next.abcde = null;
     next.assessments = [];
+  }
+  // Same reasoning again: additional INEM support belongs to a CODU-dispatched
+  // emergency, and a support report has no CODU behind it to have dispatched one.
+  if (!rules.hasInemSupportUnits) {
+    next.inemSupportUnits = [];
   }
   return {
     ...next,

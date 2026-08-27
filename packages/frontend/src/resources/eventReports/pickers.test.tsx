@@ -301,4 +301,25 @@ describe('the hospital picker', () => {
 
     expect(screen.getByText('Hospital de Évora')).toBeInTheDocument();
   });
+
+  it('hides the "no transport" buttons for a use that is not a victim\'s destination', async () => {
+    render(
+      <AdminContext dataProvider={testDataProvider()} i18nProvider={i18nProvider}>
+        <HospitalPicker
+          open
+          locality={TAVEIRO}
+          reportType={EventReportType.EMERGENCY}
+          hospitalsOnly
+          title="Hospital de origem"
+          onClose={() => undefined}
+          onPick={onPick}
+        />
+      </AdminContext>,
+    );
+
+    expect(await screen.findByText('CHUC — Hospital Geral')).toBeInTheDocument();
+    expect(screen.getByText('Hospital de origem')).toBeInTheDocument();
+    expect(screen.queryByText('SEM TRANSPORTE')).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Recusou transporte' })).not.toBeInTheDocument();
+  });
 });

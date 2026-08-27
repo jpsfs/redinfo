@@ -21,11 +21,14 @@ import {
   EventLocationType,
   EventReportType,
   Gender,
+  INEM_SUPPORT_UNIT_TYPES,
+  InemSupportUnitType,
   MAX_ASSESSMENTS_PER_REPORT,
   MAX_ASSESSMENT_POSITION_LENGTH,
   MAX_CHAMU_LENGTH,
   MAX_CREW_PER_REPORT,
   MAX_EXTERNAL_REFERENCE_LENGTH,
+  MAX_INEM_SUPPORT_UNITS_PER_TYPE,
   MAX_OPERATIONAL_REPORT_LENGTH,
   MAX_ROLE_NAME_ON_REPORT,
   MAX_VEHICLE_KILOMETRES,
@@ -127,6 +130,17 @@ export class EventReportVictimDto {
   @IsOptional()
   @IsString()
   destinationHospitalId?: string | null;
+}
+
+export class EventReportInemSupportUnitDto {
+  @ApiProperty({ enum: InemSupportUnitType })
+  @IsEnum(InemSupportUnitType)
+  unitType: InemSupportUnitType;
+
+  @ApiProperty({ description: 'The base the unit was dispatched from.' })
+  @IsString()
+  @IsNotEmpty()
+  hospitalId: string;
 }
 
 /**
@@ -304,6 +318,19 @@ export class CreateEventReportDto {
   @ValidateNested({ each: true })
   @Type(() => EventReportVictimDto)
   victims: EventReportVictimDto[];
+
+  // ── INEM support units ─────────────────────────────────────────────────────
+  // Emergency reports only. `validateEventReport` refuses these on a type whose
+  // rules say `hasInemSupportUnits: false`. The cap here is the permissive
+  // outer bound (3 per type, 3 types); the real per-type cap is enforced there.
+
+  @ApiPropertyOptional({ type: [EventReportInemSupportUnitDto] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MAX_INEM_SUPPORT_UNITS_PER_TYPE * INEM_SUPPORT_UNIT_TYPES.length)
+  @ValidateNested({ each: true })
+  @Type(() => EventReportInemSupportUnitDto)
+  inemSupportUnits?: EventReportInemSupportUnitDto[];
 
   // ── Clinical record ────────────────────────────────────────────────────────
   // Emergency reports only. `validateEventReport` refuses these on a type whose

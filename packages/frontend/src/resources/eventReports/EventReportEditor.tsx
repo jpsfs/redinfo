@@ -44,6 +44,7 @@ import { PendingPhotosBanner } from '../liveRuns';
 import {
   ClinicalSection,
   CrewSection,
+  InemSupportSection,
   NarrativeSection,
   ReviewSection,
   SectionProps,
@@ -71,6 +72,8 @@ const stepTitle = (t: Translate, step: StepId, type: EventReportType | string): 
       return rules.maxVehicles === 1 ? t('step.vehicles') : t('step.vehiclesPlural');
     case 'victims':
       return rules.maxVictims === 1 ? t('step.victims') : t('step.victimsPlural');
+    case 'inemSupport':
+      return t('step.inemSupport');
     case 'clinical':
       return t('live.vitals');
     case 'narrative':
@@ -321,6 +324,8 @@ export const EventReportEditor = ({ form, report = null }: EventReportEditorProp
         return <VehiclesSection {...sectionProps} />;
       case 'victims':
         return <VictimsSection {...sectionProps} />;
+      case 'inemSupport':
+        return <InemSupportSection {...sectionProps} />;
       case 'clinical':
         return <ClinicalSection {...sectionProps} />;
       case 'narrative':

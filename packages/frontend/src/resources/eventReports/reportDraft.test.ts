@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { EventReportType, Gender, VictimDestinationKind } from '@redinfo/shared';
+import { EventReportType, Gender, InemSupportUnitType, VictimDestinationKind } from '@redinfo/shared';
 import {
   DRAFT_STORAGE_KEY,
   clearDraft,
@@ -18,26 +18,29 @@ import {
 // ── The report form, as data ───────────────────────────────────────────────────
 
 describe('stepsForType', () => {
-  it('gives an emergency the chronology and the clinical record', () => {
+  it('gives an emergency the chronology, INEM support units and the clinical record', () => {
     expect(stepsForType(EventReportType.EMERGENCY)).toEqual([
       'whenWhere',
       'times',
       'crew',
       'vehicles',
       'victims',
+      'inemSupport',
       'clinical',
       'narrative',
       'review',
     ]);
   });
 
-  it('gives a support report neither', () => {
-    // A standby at a village fair has no chronology and no victim to have
-    // vitals, so both steps are absent rather than empty.
+  it('gives a support report none of the three', () => {
+    // A standby at a village fair has no chronology, no CODU to have dispatched
+    // a VMER/SIV/UMIP, and no victim to have vitals — all three are absent
+    // rather than empty.
     for (const type of [EventReportType.LOCAL_SUPPORT, EventReportType.SALOP_SUPPORT]) {
       const steps = stepsForType(type);
       expect(steps).toHaveLength(6);
       expect(steps).not.toContain('times');
+      expect(steps).not.toContain('inemSupport');
       expect(steps).not.toContain('clinical');
     }
   });
@@ -140,6 +143,7 @@ describe('emptyDraft', () => {
     expect(draft.crew).toEqual([]);
     expect(draft.vehicles).toEqual([]);
     expect(draft.victims).toEqual([]);
+    expect(draft.inemSupportUnits).toEqual([]);
     expect(draft.operationalReport).toBe('');
   });
 
@@ -162,6 +166,7 @@ describe('retypeDraft', () => {
         destinationHospitalId: 'hosp-1',
       },
     ],
+    inemSupportUnits: [{ unitType: InemSupportUnitType.VMER, hospitalId: 'hosp-1' }],
   };
 
   it('drops the chronology when the new type has none', () => {
@@ -175,6 +180,16 @@ describe('retypeDraft', () => {
   it('keeps the chronology when it moves between two types that have one', () => {
     const next = retypeDraft(emergencyDraft, EventReportType.EMERGENCY);
     expect(next.activationAt).toBe(emergencyDraft.activationAt);
+  });
+
+  it('drops INEM support units when the new type has no CODU involvement', () => {
+    const next = retypeDraft(emergencyDraft, EventReportType.LOCAL_SUPPORT);
+    expect(next.inemSupportUnits).toEqual([]);
+  });
+
+  it('keeps INEM support units on an emergency', () => {
+    const next = retypeDraft(emergencyDraft, EventReportType.EMERGENCY);
+    expect(next.inemSupportUnits).toEqual(emergencyDraft.inemSupportUnits);
   });
 
   it('trims vehicles and victims down to what the new type allows', () => {
@@ -235,6 +250,7 @@ describe('draftFromReport', () => {
           destinationHospitalId: 'hosp-1',
         },
       ],
+      inemSupportUnits: [],
       attachments: [],
       createdById: 'u1',
       createdAt: '2026-08-16T19:00:00.000Z',
@@ -272,6 +288,7 @@ describe('draftFromReport', () => {
           destinationHospitalId: 'hosp-1',
         },
       ],
+      inemSupportUnits: [],
       // The clinical record round-trips too. Leaving it out would mean opening a
       // report from a live run and saving it threw away every vital taken — the
       // save sends the whole document, so an absent field is a deletion.
@@ -302,6 +319,7 @@ describe('draftFromReport', () => {
       crew: [],
       vehicles: [],
       victims: [],
+      inemSupportUnits: [],
       attachments: [],
       chamuHistory: 'HTA',
       abcde: { C: { status: 'ALTERED', note: 'Hemorragia' } },
@@ -320,6 +338,45 @@ describe('draftFromReport', () => {
     // the form's — sending them back would be sending back a primary key.
     expect(draft.assessments).toEqual([
       { takenAt: '2026-08-22T20:31:00.000Z', spo2: 94, systolic: 88 },
+    ]);
+  });
+
+  it('carries the INEM support units of an emergency back into the form', () => {
+    const report = {
+      id: 'rep-3',
+      type: EventReportType.EMERGENCY,
+      number: 129,
+      year: 2026,
+      occurredOn: '2026-08-22',
+      startedAt: '2026-08-22T20:14:00.000Z',
+      endedAt: null,
+      externalReference: '2608 4471',
+      locationType: 'HOME',
+      localityId: 'loc-1',
+      operationalReport: '',
+      shift: null,
+      crew: [],
+      vehicles: [],
+      victims: [],
+      inemSupportUnits: [
+        {
+          id: 'ius1',
+          position: 0,
+          unitType: InemSupportUnitType.VMER,
+          hospitalId: 'hosp-1',
+          hospital: { id: 'hosp-1', name: 'Hospital Central' },
+        },
+      ],
+      attachments: [],
+      createdById: 'u1',
+      createdAt: '2026-08-22T22:00:00.000Z',
+      updatedAt: '2026-08-22T22:00:00.000Z',
+    } as never;
+
+    // The unit's own id, position and resolved hospital name are the server's
+    // business, not the form's — sending them back would be sending a primary key.
+    expect(draftFromReport(report).inemSupportUnits).toEqual([
+      { unitType: InemSupportUnitType.VMER, hospitalId: 'hosp-1' },
     ]);
   });
 });

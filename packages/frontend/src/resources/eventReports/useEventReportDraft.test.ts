@@ -38,13 +38,13 @@ describe('starting a report', () => {
     expect(result.current.draft.occurredOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
-  it('has eight steps for an emergency and six for a support report', () => {
-    // Eight rather than seven: an emergency carries a chronology *and* a
-    // clinical record, and a support report carries neither.
+  it('has nine steps for an emergency and six for a support report', () => {
+    // Nine rather than six: an emergency carries a chronology, INEM support
+    // units *and* a clinical record, and a support report carries none of them.
     const emergency = renderHook(() =>
       useEventReportDraft({ type: EventReportType.EMERGENCY }),
     );
-    expect(emergency.result.current.steps).toHaveLength(8);
+    expect(emergency.result.current.steps).toHaveLength(9);
 
     const support = renderHook(() =>
       useEventReportDraft({ type: EventReportType.LOCAL_SUPPORT }),
@@ -288,6 +288,7 @@ describe('editing a filed report', () => {
     crew: [],
     vehicles: [],
     victims: [],
+    inemSupportUnits: [],
     attachments: [],
     createdById: 'u1',
     createdAt: '2026-08-16T19:00:00.000Z',

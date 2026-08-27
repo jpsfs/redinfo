@@ -11,6 +11,7 @@ import {
   EventReportInput,
   EventReportType,
   Gender,
+  InemSupportUnitType,
   ScheduleStatus,
   UserRole,
   VictimDestinationKind,
@@ -584,6 +585,17 @@ describeIntegration('Event reports (integration)', () => {
 
       await expect(prisma.vehicle.delete({ where: { id: vehicleA.id } })).rejects.toThrow();
     });
+
+    it('keeps a hospital from being deleted out from under an INEM support unit', async () => {
+      const base = await prisma.hospital.create({
+        data: { name: `Hospital Base ${RUN}`, municipalityId: nearMunicipality.id },
+      });
+      await file({
+        inemSupportUnits: [{ unitType: InemSupportUnitType.VMER, hospitalId: base.id }],
+      });
+
+      await expect(prisma.hospital.delete({ where: { id: base.id } })).rejects.toThrow();
+    });
   });
 
   // ── Round trip ──────────────────────────────────────────────────────────────
@@ -706,6 +718,57 @@ describeIntegration('Event reports (integration)', () => {
         const read = await reports.findOne(report.id, coordinatorUser);
         expect(read.locationType).toBe(locationType);
       }
+    });
+
+    it('records several INEM support units, in order, with their base hospital', async () => {
+      const report = await file({
+        inemSupportUnits: [
+          { unitType: InemSupportUnitType.VMER, hospitalId: nearHospital.id },
+          { unitType: InemSupportUnitType.VMER, hospitalId: farHospital.id },
+          { unitType: InemSupportUnitType.SIV, hospitalId: nearHospital.id },
+        ],
+      });
+
+      const read = await reports.findOne(report.id, coordinatorUser);
+      expect(read.inemSupportUnits).toHaveLength(3);
+      expect(read.inemSupportUnits.map((unit) => unit.unitType)).toEqual([
+        InemSupportUnitType.VMER,
+        InemSupportUnitType.VMER,
+        InemSupportUnitType.SIV,
+      ]);
+      expect(read.inemSupportUnits[1].hospital?.name).toBe(`Hospital Far ${RUN}`);
+
+      // Editing it down replaces the set wholesale, same as crew/vehicles/victims.
+      const updated = await reports.update(
+        report.id,
+        input({
+          inemSupportUnits: [{ unitType: InemSupportUnitType.UMIP, hospitalId: nearHospital.id }],
+        }),
+        coordinatorUser,
+      );
+      expect(updated.inemSupportUnits).toHaveLength(1);
+      expect(updated.inemSupportUnits[0].unitType).toBe(InemSupportUnitType.UMIP);
+    });
+
+    it('refuses a fourth INEM support unit of the same type', async () => {
+      await expect(
+        file({
+          inemSupportUnits: Array.from({ length: 4 }, () => ({
+            unitType: InemSupportUnitType.VMER,
+            hospitalId: nearHospital.id,
+          })),
+        }),
+      ).rejects.toThrow(/at most 3 VMER/);
+    });
+
+    it('refuses an INEM support unit on a report type with no CODU involvement', async () => {
+      await expect(
+        file({
+          type: EventReportType.LOCAL_SUPPORT,
+          externalReference: null,
+          inemSupportUnits: [{ unitType: InemSupportUnitType.SIV, hospitalId: nearHospital.id }],
+        }),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 

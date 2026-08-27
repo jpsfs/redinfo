@@ -8,6 +8,7 @@ import {
   EventReport,
   EventReportType,
   Gender,
+  InemSupportUnitType,
   VictimDestinationKind,
 } from '@redinfo/shared';
 import { EventReportShow } from './EventReportShow';
@@ -97,6 +98,7 @@ const report = (overrides: Partial<EventReport> = {}): EventReport =>
         destinationHospital: { id: 'hosp-1', name: 'CHUC — Hospital Geral' },
       },
     ],
+    inemSupportUnits: [],
     attachments: [],
     createdById: 'u-tiago',
     createdBy: { id: 'u-tiago', firstName: 'Tiago', lastName: 'Lourenço' },
@@ -235,6 +237,32 @@ describe('the facts', () => {
   it('says so when there was no victim', async () => {
     renderShow(report({ victims: [] }));
     expect(await screen.findByText(/não houve vítima/i)).toBeInTheDocument();
+  });
+
+  it('shows the additional INEM support units, with their base hospital', async () => {
+    renderShow(
+      report({
+        inemSupportUnits: [
+          {
+            id: 'ius1',
+            position: 0,
+            unitType: InemSupportUnitType.VMER,
+            hospitalId: 'hosp-1',
+            hospital: { id: 'hosp-1', name: 'CHUC — Hospital Geral' },
+          },
+        ],
+      }),
+    );
+
+    expect(await screen.findByText('Meios INEM de apoio')).toBeInTheDocument();
+    expect(screen.getByText('VMER')).toBeInTheDocument();
+    expect(screen.getAllByText('CHUC — Hospital Geral')).not.toHaveLength(0);
+  });
+
+  it('is absent on a report type with no CODU involvement', async () => {
+    renderShow(report({ type: EventReportType.LOCAL_SUPPORT, externalReference: null }));
+    await screen.findByText('Habitação');
+    expect(screen.queryByText('Meios INEM de apoio')).not.toBeInTheDocument();
   });
 });
 

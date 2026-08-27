@@ -226,6 +226,7 @@ export class EventReportsService {
           crew: { create: this.toCrewRows(clean) },
           vehicles: { create: this.toVehicleRows(clean) },
           victims: { create: this.toVictimRows(clean) },
+          inemSupportUnits: { create: this.toInemSupportUnitRows(clean) },
           assessments: { create: this.toAssessmentRows(clean) },
         },
         select: { id: true },
@@ -335,10 +336,10 @@ export class EventReportsService {
    * a filed report keeps the number it was given, and a report that turns out
    * to be the wrong kind of activity is a new report, not an edited one.
    *
-   * Crew, vehicles and victims are replaced wholesale rather than diffed. They
-   * are ordered lists the form owns end to end, and "delete then insert inside
-   * one transaction" is both simpler to reason about and immune to the
-   * half-applied states a diff can leave behind.
+   * Crew, vehicles, victims and INEM support units are replaced wholesale
+   * rather than diffed. They are ordered lists the form owns end to end, and
+   * "delete then insert inside one transaction" is both simpler to reason
+   * about and immune to the half-applied states a diff can leave behind.
    */
   async update(id: string, input: EventReportInput, user: RequestUser): Promise<EventReport> {
     const existing = await this.loadRow(id);
@@ -350,6 +351,7 @@ export class EventReportsService {
       await tx.eventReportCrewMember.deleteMany({ where: { reportId: id } });
       await tx.eventReportVehicle.deleteMany({ where: { reportId: id } });
       await tx.eventReportVictim.deleteMany({ where: { reportId: id } });
+      await tx.eventReportInemSupportUnit.deleteMany({ where: { reportId: id } });
       await tx.eventReportAssessment.deleteMany({ where: { reportId: id } });
 
       return tx.eventReport.update({
@@ -359,6 +361,7 @@ export class EventReportsService {
           crew: { create: this.toCrewRows(clean) },
           vehicles: { create: this.toVehicleRows(clean) },
           victims: { create: this.toVictimRows(clean) },
+          inemSupportUnits: { create: this.toInemSupportUnitRows(clean) },
           assessments: { create: this.toAssessmentRows(clean) },
         },
         include: EVENT_REPORT_INCLUDE,
@@ -511,11 +514,7 @@ export class EventReportsService {
       throw new BadRequestException('One of the people on this crew no longer exists.');
     }
 
-    const wantedHospitals = new Set(
-      input.victims
-        .map((victim) => victim.destinationHospitalId)
-        .filter((id): id is string => Boolean(id)),
-    );
+    const wantedHospitals = this.wantedHospitalIds(input);
     if (hospitals.length !== wantedHospitals.size) {
       throw new BadRequestException('One of the hospitals on this report no longer exists.');
     }
@@ -531,15 +530,23 @@ export class EventReportsService {
   }
 
   private hospitalIdsIn(input: EventReportInput) {
-    const ids = [
-      ...new Set(
-        input.victims
-          .map((victim) => victim.destinationHospitalId)
-          .filter((id): id is string => Boolean(id)),
-      ),
-    ];
+    const ids = [...this.wantedHospitalIds(input)];
     if (ids.length === 0) return Promise.resolve([] as Array<{ id: string }>);
     return this.prisma.hospital.findMany({ where: { id: { in: ids } }, select: { id: true } });
+  }
+
+  /**
+   * Every hospital the payload names — a victim's destination or a support
+   * unit's base — so both places that check hospitals against the database
+   * agree on what "named" means.
+   */
+  private wantedHospitalIds(input: EventReportInput): Set<string> {
+    return new Set([
+      ...input.victims
+        .map((victim) => victim.destinationHospitalId)
+        .filter((id): id is string => Boolean(id)),
+      ...(input.inemSupportUnits ?? []).map((unit) => unit.hospitalId).filter(Boolean),
+    ]);
   }
 
   /** Scalar columns, shared by create and update so neither can drift. */
@@ -640,6 +647,17 @@ export class EventReportsService {
       age: victim.age,
       destinationKind: victim.destinationKind as never,
       destinationHospitalId: victim.destinationHospitalId ?? null,
+    }));
+  }
+
+  private toInemSupportUnitRows(input: EventReportInput) {
+    const rules = eventReportRules(input.type);
+    if (!rules.hasInemSupportUnits) return [];
+
+    return (input.inemSupportUnits ?? []).map((unit, position) => ({
+      position,
+      unitType: unit.unitType as never,
+      hospitalId: unit.hospitalId,
     }));
   }
 

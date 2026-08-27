@@ -4,6 +4,7 @@ import {
   EventReportInput,
   EventReportType,
   Gender,
+  InemSupportUnitType,
   UserRole,
   VictimDestinationKind,
 } from '@redinfo/shared';
@@ -55,6 +56,7 @@ const row = (overrides: Record<string, unknown> = {}) =>
     crew: [{ id: 'c1', userId: 'user-tiago', roleName: 'Driver', position: 0, user: null }],
     vehicles: [],
     victims: [],
+    inemSupportUnits: [],
     attachments: [],
     assessments: [],
     legacyNumber: null,
@@ -148,6 +150,7 @@ function makePrisma(overrides: Record<string, unknown> = {}) {
     eventReportAssessment: { deleteMany: jest.fn(() => Promise.resolve({ count: 0 })) },
     eventReportVehicle: { deleteMany: jest.fn(() => Promise.resolve({ count: 1 })) },
     eventReportVictim: { deleteMany: jest.fn(() => Promise.resolve({ count: 1 })) },
+    eventReportInemSupportUnit: { deleteMany: jest.fn(() => Promise.resolve({ count: 0 })) },
     $transaction: jest.fn((arg: unknown) =>
       typeof arg === 'function'
         ? (arg as (tx: unknown) => unknown)(prisma)
@@ -285,6 +288,71 @@ describe('changing a report', () => {
     expect(prisma.eventReportVictim.deleteMany).toHaveBeenCalledWith({
       where: { reportId: 'rep-1' },
     });
+    expect(prisma.eventReportInemSupportUnit.deleteMany).toHaveBeenCalledWith({
+      where: { reportId: 'rep-1' },
+    });
+  });
+
+  it('replaces the INEM support units wholesale rather than merging them', async () => {
+    const prisma = makePrisma();
+    prisma.eventReport.findUnique = jest.fn(() => Promise.resolve(row())) as never;
+    const { service } = makeService(prisma);
+
+    await service.update(
+      'rep-1',
+      input({ inemSupportUnits: [{ unitType: InemSupportUnitType.VMER, hospitalId: 'hosp-1' }] }),
+      COORDINATOR,
+    );
+
+    expect(prisma.eventReportInemSupportUnit.deleteMany).toHaveBeenCalledWith({
+      where: { reportId: 'rep-1' },
+    });
+    expect(prisma.eventReport.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          inemSupportUnits: {
+            create: [{ position: 0, unitType: InemSupportUnitType.VMER, hospitalId: 'hosp-1' }],
+          },
+        }),
+      }),
+    );
+  });
+
+  it('refuses INEM support units on a report type with no CODU involvement', async () => {
+    const prisma = makePrisma();
+    prisma.eventReport.findUnique = jest.fn(() =>
+      Promise.resolve(row({ type: EventReportType.LOCAL_SUPPORT, crew: [] })),
+    ) as never;
+    const { service } = makeService(prisma);
+
+    await expect(
+      service.update(
+        'rep-1',
+        input({
+          type: EventReportType.LOCAL_SUPPORT,
+          externalReference: null,
+          inemSupportUnits: [{ unitType: InemSupportUnitType.SIV, hospitalId: 'hosp-1' }],
+        }),
+        COORDINATOR,
+      ),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('refuses a payload naming a hospital that does not exist', async () => {
+    const prisma = makePrisma();
+    prisma.eventReport.findUnique = jest.fn(() => Promise.resolve(row())) as never;
+    prisma.hospital.findMany = jest.fn(() => Promise.resolve([])) as never;
+    const { service } = makeService(prisma);
+
+    await expect(
+      service.update(
+        'rep-1',
+        input({
+          inemSupportUnits: [{ unitType: InemSupportUnitType.VMER, hospitalId: 'hosp-ghost' }],
+        }),
+        COORDINATOR,
+      ),
+    ).rejects.toThrow(BadRequestException);
   });
 });
 

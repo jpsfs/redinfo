@@ -635,8 +635,9 @@ model Hospital {
   /// must keep naming it. False hides it from new pickers only.
   isActive Boolean @default(true)
 
-  victims  EventReportVictim[]
-  liveRuns LiveRun[]
+  victims          EventReportVictim[]
+  inemSupportUnits EventReportInemSupportUnit[]
+  liveRuns         LiveRun[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -687,6 +688,13 @@ enum VictimDestinationKind {
   REFUSED_TRANSPORT
   DECEASED_ON_SCENE
   CANCELLED
+}
+
+/// Additional INEM means that responded alongside the crew's own vehicle.
+enum InemSupportUnitType {
+  VMER
+  SIV
+  UMIP
 }
 
 /// A completed account of one activity: an emergency, a local-support event, or
@@ -796,11 +804,12 @@ model EventReport {
   /// INEM's to change rather than ours.
   abcde Json?
 
-  crew        EventReportCrewMember[]
-  vehicles    EventReportVehicle[]
-  victims     EventReportVictim[]
-  attachments EventReportAttachment[]
-  assessments EventReportAssessment[]
+  crew             EventReportCrewMember[]
+  vehicles         EventReportVehicle[]
+  victims          EventReportVictim[]
+  inemSupportUnits EventReportInemSupportUnit[]
+  attachments      EventReportAttachment[]
+  assessments      EventReportAssessment[]
 
   /// The run this report was closed out of, if there was one. The run owns the
   /// link, so this side is read-only provenance.
@@ -968,6 +977,41 @@ model EventReportVictim {
   @@index([reportId])
   @@index([destinationHospitalId])
   @@index([destinationKind])
+}
+
+/// One VMER, SIV or UMIP that responded alongside the crew's own vehicle, and
+/// the base it was dispatched from — captured only on emergencies (see
+/// `EventReportTypeRules.hasInemSupportUnits` in `@redinfo/shared`), and only
+/// in the report editor, after the fact.
+///
+/// Neither the per-type cap of 3 nor the "emergency only" rule is a database
+/// constraint: the cap is an aggregate over sibling rows and "emergency only"
+/// would need this row to know its parent's `type`, so both stay in
+/// `validateInemSupportUnits` (shared), same call as `EventReportAssessment`'s
+/// range checks. `hospitalId` being required and FK'd is the one rule the
+/// schema *can* express.
+model EventReportInemSupportUnit {
+  id       String      @id @default(cuid())
+  reportId String
+  report   EventReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  unitType InemSupportUnitType
+
+  /// The base the unit was dispatched from — not a destination. Restrict, not
+  /// Cascade: a hospital is retired via `isActive`, never deleted, so a filed
+  /// report never loses the name of it.
+  hospitalId String
+  hospital   Hospital @relation(fields: [hospitalId], references: [id], onDelete: Restrict)
+
+  /// Display order within the report, 0-based. Not unique per `(reportId,
+  /// unitType)` — two VMER from different bases on the same report is exactly
+  /// the case this table exists for.
+  position Int
+
+  @@unique([reportId, position])
+  @@index([reportId])
+  @@index([hospitalId])
+  @@index([unitType])
 }
 
 /// A photo or document attached to a report.

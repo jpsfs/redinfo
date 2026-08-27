@@ -8,6 +8,7 @@ import {
   EventReportType,
   EventReportWarningCode,
   Gender,
+  InemSupportUnitType,
   UserRole,
   VictimDestinationKind,
 } from '@redinfo/shared';
@@ -58,6 +59,7 @@ const MESSAGES = {
   'step.vehiclesPlural': { pt: 'Viaturas e quilómetros', en: 'Vehicles and kilometres' },
   'step.victims': { pt: 'Vítima e transporte', en: 'Victim and transport' },
   'step.victimsPlural': { pt: 'Vítimas e transporte', en: 'Victims and transport' },
+  'step.inemSupport': { pt: 'Meios INEM de apoio', en: 'INEM support units' },
   'step.narrative': { pt: 'Relato e anexos', en: 'Report and attachments' },
   'step.review': { pt: 'Revisão', en: 'Review' },
   'step.of': { pt: 'de', en: 'of' },
@@ -96,6 +98,9 @@ const MESSAGES = {
   'field.crew': { pt: 'Equipa', en: 'Crew' },
   'field.shift': { pt: 'Turno', en: 'Shift' },
   'field.victims': { pt: 'Vítimas assistidas', en: 'Victims assisted' },
+  'field.inemSupportUnits': { pt: 'Meios INEM de apoio', en: 'INEM support units' },
+  'field.inemSupportRecorded': { pt: 'Registados', en: 'Recorded' },
+  'field.inemSupportBaseHospital': { pt: 'Hospital de origem', en: 'Base hospital' },
 
   // ── Filters (report list) ──
   'filter.allDates': { pt: 'Todas as datas', en: 'All dates' },
@@ -180,6 +185,14 @@ const MESSAGES = {
     en: 'distance to the municipality',
   },
   'hint.noVictim': { pt: 'Não houve vítima a registar', en: 'No victim to record' },
+  'hint.inemSupportUnitsCap': {
+    pt: 'No máximo 3 de cada tipo — VMER, SIV e UMIP contam à parte.',
+    en: 'At most 3 of each type — VMER, SIV and UMIP are counted separately.',
+  },
+  'hint.noInemSupportUnits': {
+    pt: 'Nenhum meio INEM de apoio registado',
+    en: 'No INEM support units recorded',
+  },
   'hint.recent': { pt: 'RECENTES', en: 'RECENT' },
   'hint.noTransport': { pt: 'SEM TRANSPORTE', en: 'NOT TRANSPORTED' },
   'hint.chooseDestination': { pt: 'Escolher desfecho', en: 'Choose an outcome' },
@@ -1656,6 +1669,11 @@ const ENUM_MESSAGES = {
   },
   [`destination.${VictimDestinationKind.CANCELLED}`]: { pt: 'Cancelado', en: 'Cancelled' },
 
+  // Portuguese-origin acronyms, same in both locales.
+  [`inemUnit.${InemSupportUnitType.VMER}`]: { pt: 'VMER', en: 'VMER' },
+  [`inemUnit.${InemSupportUnitType.SIV}`]: { pt: 'SIV', en: 'SIV' },
+  [`inemUnit.${InemSupportUnitType.UMIP}`]: { pt: 'UMIP', en: 'UMIP' },
+
   // The five stamps of an emergency, in the order they happen.
   'time.activationAt': { pt: 'Ativação', en: 'Activation' },
   'time.sceneArrivalAt': { pt: 'Chegada ao local', en: 'Arrival on scene' },
@@ -1751,6 +1769,26 @@ const ENUM_MESSAGES = {
   'problem.DESTINATION_NOT_FOR_TYPE': {
     pt: '"Tratado no local" só existe num relatório de apoio.',
     en: 'Treated on scene is only recorded on a support report.',
+  },
+  'problem.INEM_UNITS_NOT_A_LIST': {
+    pt: 'Os meios INEM de apoio não são uma lista.',
+    en: 'The INEM support units are not a list.',
+  },
+  'problem.INEM_UNITS_NOT_FOR_TYPE': {
+    pt: 'Meios INEM de apoio só existem num relatório de emergência.',
+    en: 'Additional INEM support units are only recorded on an emergency report.',
+  },
+  'problem.INEM_UNIT_INVALID_TYPE': {
+    pt: 'Todos os meios INEM de apoio precisam de um tipo válido.',
+    en: 'Every INEM support unit needs a valid type.',
+  },
+  'problem.INEM_UNIT_HOSPITAL_REQUIRED': {
+    pt: 'Escolhe de que hospital veio o meio INEM de apoio.',
+    en: 'Choose which hospital the INEM support unit came from.',
+  },
+  'problem.TOO_MANY_INEM_UNITS': {
+    pt: 'Já atingiste o limite de meios deste tipo.',
+    en: 'The limit for this unit type has been reached.',
   },
   'problem.NARRATIVE_TOO_LONG': {
     pt: 'O relato é demasiado longo.',
@@ -2053,6 +2091,9 @@ export const genderLabel = (t: Translate, value: Gender | string): string => t(`
 
 export const destinationLabel = (t: Translate, value: VictimDestinationKind | string): string =>
   t(`destination.${value}`);
+
+export const inemUnitLabel = (t: Translate, value: InemSupportUnitType | string): string =>
+  t(`inemUnit.${value}`);
 
 export const occurrenceTimeLabel = (t: Translate, field: string): string => t(`time.${field}`);
 

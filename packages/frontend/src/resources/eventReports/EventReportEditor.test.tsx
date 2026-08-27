@@ -159,11 +159,11 @@ beforeEach(() => {
 });
 
 describe('the wizard on a phone', () => {
-  it('starts on the first of eight steps for an emergency', async () => {
+  it('starts on the first of nine steps for an emergency', async () => {
     renderEditor();
 
     expect(await screen.findByText('Quando e onde')).toBeInTheDocument();
-    expect(screen.getByText('1 de 8')).toBeInTheDocument();
+    expect(screen.getByText('1 de 9')).toBeInTheDocument();
   });
 
   it('has six steps for a support report, and no chronology', async () => {
@@ -183,7 +183,7 @@ describe('the wizard on a phone', () => {
     // Emergencies stamp their chronology second, while the crew still
     // remembers it.
     expect(await screen.findByText(/^Tempos/)).toBeInTheDocument();
-    expect(screen.getByText('2 de 8')).toBeInTheDocument();
+    expect(screen.getByText('2 de 9')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /seguinte/i }));
     expect(await screen.findByText('Equipa')).toBeInTheDocument();
@@ -443,6 +443,100 @@ describe('the victim step', () => {
   });
 });
 
+describe('the INEM support units step', () => {
+  const goToInemSupport = async (user: ReturnType<typeof userEvent.setup>) => {
+    renderEditor();
+    await screen.findByText('Quando e onde');
+    const index = stepsForType(EventReportType.EMERGENCY).indexOf('inemSupport');
+    for (let step = 0; step < index; step += 1) {
+      await user.click(screen.getByRole('button', { name: /seguinte/i }));
+    }
+    await screen.findByText('Meios INEM de apoio');
+  };
+
+  /**
+   * The hospital picker is a MUI Dialog, portalled to the end of the DOM —
+   * picked by taking the last match rather than the one already on the page
+   * for an earlier entry. Waits for the dialog to actually close afterwards,
+   * since its exit transition can leave the hospital's name in the DOM twice
+   * for a moment.
+   */
+  const pickHospital = async (user: ReturnType<typeof userEvent.setup>) => {
+    const options = await screen.findAllByText(CHUC.name);
+    await user.click(options[options.length - 1]);
+    await waitFor(() => expect(screen.queryByText('Hospital de origem')).not.toBeInTheDocument());
+  };
+
+  it('is absent on a support report', async () => {
+    const user = userEvent.setup();
+    renderEditor({ type: EventReportType.LOCAL_SUPPORT });
+    await screen.findByText('Quando e onde');
+
+    const stepCount = stepsForType(EventReportType.LOCAL_SUPPORT).length;
+    for (let step = 0; step < stepCount - 1; step += 1) {
+      await user.click(screen.getByRole('button', { name: /seguinte/i }));
+      expect(screen.queryByText('Meios INEM de apoio')).not.toBeInTheDocument();
+    }
+  });
+
+  it('starts empty, and only records an entry once a hospital is chosen', async () => {
+    const user = userEvent.setup();
+    await goToInemSupport(user);
+
+    expect(screen.getByText('Nenhum meio INEM de apoio registado')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'VMER' }));
+    expect(await screen.findByText('Hospital de origem')).toBeInTheDocument();
+    // Not recorded yet — the picker is open, nothing has been chosen.
+    expect(screen.getByText('Nenhum meio INEM de apoio registado')).toBeInTheDocument();
+
+    await pickHospital(user);
+    expect(screen.queryByText('Nenhum meio INEM de apoio registado')).not.toBeInTheDocument();
+    expect(screen.getByText(CHUC.name)).toBeInTheDocument();
+  });
+
+  it('allows a second entry of the same type', async () => {
+    const user = userEvent.setup();
+    await goToInemSupport(user);
+
+    await user.click(screen.getByRole('button', { name: 'VMER' }));
+    await pickHospital(user);
+    await user.click(screen.getByRole('button', { name: 'VMER' }));
+    await pickHospital(user);
+
+    // Two recorded entries, plus the "add another" button itself.
+    expect(screen.getAllByText('VMER')).toHaveLength(3);
+    expect(screen.getByText('Registados')).toBeInTheDocument();
+    expect(screen.getByText('2')).toBeInTheDocument();
+  });
+
+  it('disables adding a fourth unit of the same type', async () => {
+    const user = userEvent.setup();
+    await goToInemSupport(user);
+
+    for (let entry = 0; entry < 3; entry += 1) {
+      await user.click(screen.getByRole('button', { name: 'VMER' }));
+      await pickHospital(user);
+    }
+
+    expect(screen.getByRole('button', { name: 'VMER' })).toBeDisabled();
+    // The other two types are unaffected — the cap is per type, not combined.
+    expect(screen.getByRole('button', { name: 'SIV' })).toBeEnabled();
+  });
+
+  it('removes an entry', async () => {
+    const user = userEvent.setup();
+    await goToInemSupport(user);
+
+    await user.click(screen.getByRole('button', { name: 'VMER' }));
+    await pickHospital(user);
+    expect(await screen.findByText(CHUC.name)).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /remover/i }));
+    expect(screen.getByText('Nenhum meio INEM de apoio registado')).toBeInTheDocument();
+  });
+});
+
 describe('the desktop layout', () => {
   beforeEach(() => mockUseIsMobile.mockReturnValue(false));
 
@@ -453,8 +547,15 @@ describe('the desktop layout', () => {
     expect(screen.getByText('Equipa')).toBeInTheDocument();
     expect(screen.getByText('Viatura e quilómetros')).toBeInTheDocument();
     expect(screen.getByText('Vítima e transporte')).toBeInTheDocument();
+    expect(screen.getByText('Meios INEM de apoio')).toBeInTheDocument();
     expect(screen.getByText('Relato e anexos')).toBeInTheDocument();
     expect(screen.queryByText('1 de 7')).not.toBeInTheDocument();
+  });
+
+  it('hides INEM support units on a report type with no CODU involvement', async () => {
+    renderEditor({ type: EventReportType.SALOP_SUPPORT });
+    await screen.findByText('Quando e onde');
+    expect(screen.queryByText('Meios INEM de apoio')).not.toBeInTheDocument();
   });
 
   it('shows the number the report will get, before it has one', async () => {
@@ -495,6 +596,7 @@ const existingReport = (overrides: Partial<EventReport> = {}): EventReport =>
     crew: [],
     vehicles: [],
     victims: [],
+    inemSupportUnits: [],
     attachments: [],
     createdById: 'u-tiago',
     createdAt: new Date(2026, 7, 22, 20, 14).toISOString(),

@@ -2061,6 +2061,12 @@ export interface EventReportTypeRules {
   /** A slot for the paper INEM *Verbete de Socorro* the crew was handed. */
   hasVerbete: boolean;
   /**
+   * Additional INEM means (VMER, SIV, UMIP) that responded alongside the
+   * crew's own vehicle. Emergency only: a support job has no CODU to dispatch
+   * anyone else, so there is nothing here to record.
+   */
+  hasInemSupportUnits: boolean;
+  /**
    * "Treated and left on scene" is an outcome this kind of report may record.
    * False only for an emergency: a CODU-dispatched victim is transported,
    * refuses transport, dies on scene, or the run is cancelled — being treated
@@ -2076,6 +2082,12 @@ export const MAX_VICTIMS_PER_REPORT = 50;
 /** How many vehicles a support report may carry — a guard, not a domain rule. */
 export const MAX_VEHICLES_PER_REPORT = 20;
 
+/**
+ * Per unit type, not combined: a report may carry up to 3 VMER *and* up to 3
+ * SIV *and* up to 3 UMIP entries.
+ */
+export const MAX_INEM_SUPPORT_UNITS_PER_TYPE = 3;
+
 export const EVENT_REPORT_TYPE_RULES: Record<EventReportType, EventReportTypeRules> = {
   [EventReportType.EMERGENCY]: {
     codePrefix: 'EMG',
@@ -2089,6 +2101,7 @@ export const EVENT_REPORT_TYPE_RULES: Record<EventReportType, EventReportTypeRul
     supportsLiveRun: true,
     hasClinicalRecord: true,
     hasVerbete: true,
+    hasInemSupportUnits: true,
     allowsTreatedOnScene: false,
   },
   [EventReportType.LOCAL_SUPPORT]: {
@@ -2102,6 +2115,7 @@ export const EVENT_REPORT_TYPE_RULES: Record<EventReportType, EventReportTypeRul
     supportsLiveRun: false,
     hasClinicalRecord: false,
     hasVerbete: false,
+    hasInemSupportUnits: false,
     allowsTreatedOnScene: true,
   },
   [EventReportType.SALOP_SUPPORT]: {
@@ -2115,6 +2129,7 @@ export const EVENT_REPORT_TYPE_RULES: Record<EventReportType, EventReportTypeRul
     supportsLiveRun: false,
     hasClinicalRecord: false,
     hasVerbete: false,
+    hasInemSupportUnits: false,
     allowsTreatedOnScene: true,
   },
 };
@@ -2260,6 +2275,20 @@ export function noTransportDestinationsFor(
     : NO_TRANSPORT_DESTINATIONS.filter((kind) => kind !== VictimDestinationKind.TREATED_ON_SCENE);
 }
 
+/**
+ * Additional INEM means that responded alongside the crew's own vehicle — a
+ * VMER or SIV backing up the ambulance, or a UMIP. Emergency-only, and paired
+ * with the base hospital it was dispatched from (see `EventReportInemSupportUnit`).
+ */
+export enum InemSupportUnitType {
+  VMER = 'VMER',
+  SIV = 'SIV',
+  UMIP = 'UMIP',
+}
+
+/** Declaration order, which is the order every picker offers them in. */
+export const INEM_SUPPORT_UNIT_TYPES = Object.values(InemSupportUnitType);
+
 export const MIN_VICTIM_AGE = 0;
 export const MAX_VICTIM_AGE = 130;
 export const MAX_OPERATIONAL_REPORT_LENGTH = 20000;
@@ -2338,6 +2367,18 @@ export interface EventReportVictim {
   destinationKind: VictimDestinationKind;
   destinationHospitalId?: string | null;
   destinationHospital?: Pick<Hospital, 'id' | 'name'> | null;
+}
+
+/**
+ * One VMER/SIV/UMIP that backed up the crew, and the base it was dispatched
+ * from. Emergency-only — see `EventReportTypeRules.hasInemSupportUnits`.
+ */
+export interface EventReportInemSupportUnit {
+  id: string;
+  position: number;
+  unitType: InemSupportUnitType;
+  hospitalId: string;
+  hospital?: Pick<Hospital, 'id' | 'name'> | null;
 }
 
 /**
@@ -2636,6 +2677,7 @@ export interface EventReport extends EventReportClinical {
   crew: EventReportCrewMember[];
   vehicles: EventReportVehicle[];
   victims: EventReportVictim[];
+  inemSupportUnits: EventReportInemSupportUnit[];
   attachments: EventReportAttachment[];
   assessments: EventReportAssessment[];
 
@@ -2696,6 +2738,12 @@ export interface EventReportVictimInput {
   destinationHospitalId?: string | null;
 }
 
+export interface EventReportInemSupportUnitInput {
+  unitType: InemSupportUnitType;
+  /** Required at the time the entry is added — there is no half-built entry. */
+  hospitalId: string;
+}
+
 export interface EventReportShiftInput {
   scheduleId: string;
   /** ISO date, `YYYY-MM-DD`. */
@@ -2735,6 +2783,11 @@ export interface EventReportInput extends EventReportClinical {
   crew: EventReportCrewInput[];
   vehicles: EventReportVehicleInput[];
   victims: EventReportVictimInput[];
+  /**
+   * Optional, unlike `crew`/`vehicles`/`victims`: a report from before this
+   * feature existed, or one closed straight from a live run, carries none.
+   */
+  inemSupportUnits?: EventReportInemSupportUnitInput[];
 }
 
 /** `GET /event-reports/crew-suggestion` — the shift and crew to pre-fill with. */
@@ -2810,6 +2863,12 @@ export type EventReportProblemCode =
   | 'DESTINATION_HOSPITAL_REQUIRED'
   | 'DESTINATION_HOSPITAL_NOT_ALLOWED'
   | 'DESTINATION_NOT_FOR_TYPE'
+  // ── INEM support units ──
+  | 'INEM_UNITS_NOT_A_LIST'
+  | 'INEM_UNITS_NOT_FOR_TYPE'
+  | 'INEM_UNIT_INVALID_TYPE'
+  | 'INEM_UNIT_HOSPITAL_REQUIRED'
+  | 'TOO_MANY_INEM_UNITS'
   | 'NARRATIVE_TOO_LONG'
   | 'SHIFT_MISSING_SCHEDULE'
   | 'SHIFT_MISSING_DATE'
@@ -2978,6 +3037,9 @@ export function validateEventReport(input: EventReportInput): EventReportProblem
 
   const victimsProblem = validateVictims(input.victims, rules);
   if (victimsProblem) return victimsProblem;
+
+  const inemUnitsProblem = validateInemSupportUnits(input.inemSupportUnits, rules);
+  if (inemUnitsProblem) return inemUnitsProblem;
 
   const clinicalProblem = validateClinicalRecord(input, rules);
   if (clinicalProblem) return clinicalProblem;
@@ -3340,6 +3402,48 @@ export function validateVictimDestination(
       'DESTINATION_NOT_FOR_TYPE',
       'Treated on scene is only recorded on a support report — an emergency victim is transported, refuses transport, dies on scene, or the run is cancelled.',
     );
+  }
+  return null;
+}
+
+/**
+ * Additional INEM support units: refused outright on a type that carries none
+ * (a support job has no CODU to dispatch anyone else), otherwise checked entry
+ * by entry with the cap enforced per unit type — up to 3 VMER *and* up to 3
+ * SIV *and* up to 3 UMIP, not one combined total.
+ */
+export function validateInemSupportUnits(
+  units: EventReportInemSupportUnitInput[] | undefined,
+  rules: EventReportTypeRules,
+): EventReportProblem | null {
+  if (units === undefined) return null;
+  if (!Array.isArray(units)) {
+    return problem('INEM_UNITS_NOT_A_LIST', 'The INEM support units are not a list.');
+  }
+  if (!rules.hasInemSupportUnits && units.length > 0) {
+    return problem(
+      'INEM_UNITS_NOT_FOR_TYPE',
+      'Additional INEM support units are only recorded on an emergency report.',
+    );
+  }
+  const counts: Record<string, number> = {};
+  for (const unit of units) {
+    if (!INEM_SUPPORT_UNIT_TYPES.includes(unit.unitType)) {
+      return problem('INEM_UNIT_INVALID_TYPE', 'Every INEM support unit needs a valid type.');
+    }
+    if (!unit.hospitalId) {
+      return problem(
+        'INEM_UNIT_HOSPITAL_REQUIRED',
+        'Choose which hospital the INEM support unit came from.',
+      );
+    }
+    counts[unit.unitType] = (counts[unit.unitType] ?? 0) + 1;
+    if (counts[unit.unitType] > MAX_INEM_SUPPORT_UNITS_PER_TYPE) {
+      return problem(
+        'TOO_MANY_INEM_UNITS',
+        `A report may list at most ${MAX_INEM_SUPPORT_UNITS_PER_TYPE} ${unit.unitType} units.`,
+      );
+    }
   }
   return null;
 }

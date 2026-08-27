@@ -53,6 +53,8 @@ export const HospitalPicker = ({
   open,
   locality,
   reportType,
+  title,
+  hospitalsOnly = false,
   onClose,
   onPick,
 }: {
@@ -61,6 +63,14 @@ export const HospitalPicker = ({
   locality?: Locality | null;
   /** Which report this destination is for — an emergency has no "treated on scene". */
   reportType: EventReportType;
+  /** Defaults to "Destination" — overridden by a caller this sheet is not one for. */
+  title?: string;
+  /**
+   * Hides the "no transport" buttons below the list. For a use that is not a
+   * victim's destination — e.g. the base an INEM support unit came from —
+   * "refused transport" and "deceased on scene" have no meaning.
+   */
+  hospitalsOnly?: boolean;
   onClose: () => void;
   onPick: (choice: DestinationChoice) => void;
 }) => {
@@ -109,7 +119,7 @@ export const HospitalPicker = ({
   return (
     <Dialog open={open} onClose={onClose} fullScreen={isMobile} fullWidth maxWidth="sm">
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, pr: 1 }}>
-        <Box sx={{ flex: 1 }}>{t('field.destination')}</Box>
+        <Box sx={{ flex: 1 }}>{title ?? t('field.destination')}</Box>
         <IconButton onClick={onClose} aria-label={t('action.cancel')}>
           <CloseIcon />
         </IconButton>
@@ -181,36 +191,40 @@ export const HospitalPicker = ({
           </Typography>
         )}
 
-        <Divider sx={{ my: 2 }} />
+        {!hospitalsOnly && (
+          <>
+            <Divider sx={{ my: 2 }} />
 
-        <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
-          {t('hint.noTransport')}
-        </Typography>
-        <Box
-          sx={{
-            mt: 1,
-            display: 'grid',
-            gridTemplateColumns: {
-              xs: '1fr 1fr',
-              sm: `repeat(${noTransportDestinations.length}, 1fr)`,
-            },
-            gap: 1,
-          }}
-        >
-          {noTransportDestinations.map((kind) => (
-            <Button
-              key={kind}
-              variant="outlined"
-              color="secondary"
-              onClick={() =>
-                onPick({ destinationKind: kind, destinationHospitalId: null })
-              }
-              sx={{ minHeight: 52 }}
+            <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 700 }}>
+              {t('hint.noTransport')}
+            </Typography>
+            <Box
+              sx={{
+                mt: 1,
+                display: 'grid',
+                gridTemplateColumns: {
+                  xs: '1fr 1fr',
+                  sm: `repeat(${noTransportDestinations.length}, 1fr)`,
+                },
+                gap: 1,
+              }}
             >
-              {destinationLabel(t, kind)}
-            </Button>
-          ))}
-        </Box>
+              {noTransportDestinations.map((kind) => (
+                <Button
+                  key={kind}
+                  variant="outlined"
+                  color="secondary"
+                  onClick={() =>
+                    onPick({ destinationKind: kind, destinationHospitalId: null })
+                  }
+                  sx={{ minHeight: 52 }}
+                >
+                  {destinationLabel(t, kind)}
+                </Button>
+              ))}
+            </Box>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );

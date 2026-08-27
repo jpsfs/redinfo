@@ -57,7 +57,7 @@ Model index by domain (names only — grep for fields/relations):
 - **Availability**: `Holiday`, `AvailabilityWindow`, `AvailabilityWindowShift`, `AvailabilityWindowRole`, `AvailabilitySubmission`, `AvailabilityResponse`
 - **Schedules**: `Schedule`, `ScheduleAssignment`, `ScheduleShiftOverride`
 - **Geography**: `Municipality`, `Locality`, `Hospital`
-- **Event reports**: `EventReport`, `EventReportAssessment`, `EventReportCrewMember`, `EventReportVehicle`, `EventReportVictim`, `EventReportAttachment`
+- **Event reports**: `EventReport`, `EventReportAssessment`, `EventReportCrewMember`, `EventReportVehicle`, `EventReportVictim`, `EventReportInemSupportUnit`, `EventReportAttachment`
 - **Live**: `LiveRun`, `LiveRunCrewMember`
 - **Config**: `DelegationSettings`
 

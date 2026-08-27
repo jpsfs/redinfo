@@ -10,8 +10,10 @@ import {
   EventReportType,
   Gender,
   HospitalWithDistance,
+  InemSupportUnitType,
   MAX_ATTACHMENT_BYTES,
   MAX_EXTERNAL_REFERENCE_LENGTH,
+  MAX_INEM_SUPPORT_UNITS_PER_TYPE,
   MAX_OPERATIONAL_REPORT_LENGTH,
   MAX_VEHICLE_KILOMETRES,
   MAX_VICTIM_AGE,
@@ -165,24 +167,85 @@ describe('formatEventReportCode', () => {
 });
 
 describe('the clinical type flags', () => {
-  it('gives an emergency a live run, a clinical record and a verbete slot', () => {
+  it('gives an emergency a live run, a clinical record, a verbete slot and INEM support units', () => {
     expect(eventReportRules(EMERGENCY)).toMatchObject({
       supportsLiveRun: true,
       hasClinicalRecord: true,
       hasVerbete: true,
+      hasInemSupportUnits: true,
     });
   });
 
-  it('gives a support report none of the three', () => {
+  it('gives a support report none of the four', () => {
     // Live mode is emergency-only, and so is the clinical record: a stall at a
-    // village fair has no vitals to take and no Verbete to attach.
+    // village fair has no vitals to take, no Verbete to attach, and no CODU to
+    // have dispatched a VMER, SIV or UMIP alongside it.
     for (const type of [LOCAL_SUPPORT, SALOP_SUPPORT]) {
       expect(eventReportRules(type)).toMatchObject({
         supportsLiveRun: false,
         hasClinicalRecord: false,
         hasVerbete: false,
+        hasInemSupportUnits: false,
       });
     }
+  });
+});
+
+describe('INEM support units', () => {
+  const { VMER, SIV, UMIP } = InemSupportUnitType;
+
+  it('accepts zero entries on every report type', () => {
+    expect(validateEventReport(emergency({ inemSupportUnits: [] }))).toBeNull();
+    expect(validateEventReport(support({ inemSupportUnits: [] }))).toBeNull();
+    expect(validateEventReport(emergency())).toBeNull();
+  });
+
+  it('accepts up to 3 of the same unit type', () => {
+    const units = Array.from({ length: MAX_INEM_SUPPORT_UNITS_PER_TYPE }, (_, i) => ({
+      unitType: VMER,
+      hospitalId: `hosp-${i}`,
+    }));
+    expect(validateEventReport(emergency({ inemSupportUnits: units }))).toBeNull();
+  });
+
+  it('refuses a fourth entry of the same unit type', () => {
+    const units = Array.from({ length: MAX_INEM_SUPPORT_UNITS_PER_TYPE + 1 }, (_, i) => ({
+      unitType: VMER,
+      hospitalId: `hosp-${i}`,
+    }));
+    expect(codeOf(validateEventReport(emergency({ inemSupportUnits: units })))).toBe(
+      'TOO_MANY_INEM_UNITS',
+    );
+  });
+
+  it('caps per type, not combined — 3 VMER + 3 SIV + 3 UMIP is fine', () => {
+    const units = [VMER, SIV, UMIP].flatMap((unitType) =>
+      Array.from({ length: MAX_INEM_SUPPORT_UNITS_PER_TYPE }, (_, i) => ({
+        unitType,
+        hospitalId: `hosp-${unitType}-${i}`,
+      })),
+    );
+    expect(validateEventReport(emergency({ inemSupportUnits: units }))).toBeNull();
+  });
+
+  it('requires a hospital on every entry', () => {
+    expect(
+      codeOf(
+        validateEventReport(
+          emergency({ inemSupportUnits: [{ unitType: VMER, hospitalId: '' }] }),
+        ),
+      ),
+    ).toBe('INEM_UNIT_HOSPITAL_REQUIRED');
+  });
+
+  it('refuses any entry on a report type with no CODU involvement', () => {
+    expect(
+      codeOf(
+        validateEventReport(
+          support({ inemSupportUnits: [{ unitType: SIV, hospitalId: 'hosp-1' }] }),
+        ),
+      ),
+    ).toBe('INEM_UNITS_NOT_FOR_TYPE');
   });
 });
 

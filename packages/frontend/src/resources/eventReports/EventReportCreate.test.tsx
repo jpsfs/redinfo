@@ -72,13 +72,13 @@ describe('the type chooser', () => {
     expect(screen.getByText('1 de 6')).toBeInTheDocument();
   });
 
-  it('opens an emergency with its eight steps', async () => {
+  it('opens an emergency with its nine steps', async () => {
     const user = userEvent.setup();
     renderCreate();
 
     await user.click(screen.getByTestId(`choose-${EventReportType.EMERGENCY}`));
 
-    expect(await screen.findByText('1 de 8')).toBeInTheDocument();
+    expect(await screen.findByText('1 de 9')).toBeInTheDocument();
   });
 
   it('does not offer a draft when there is none', () => {
@@ -136,6 +136,6 @@ describe('an unfinished draft', () => {
 
     await user.click(screen.getByTestId(`choose-${EventReportType.EMERGENCY}`));
 
-    expect(await screen.findByText('1 de 8')).toBeInTheDocument();
+    expect(await screen.findByText('1 de 9')).toBeInTheDocument();
   });
 });

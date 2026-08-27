@@ -38,7 +38,10 @@ import {
   EventReportWarningCode,
   GENDERS,
   Gender,
+  INEM_SUPPORT_UNIT_TYPES,
+  InemSupportUnitType,
   Locality,
+  MAX_INEM_SUPPORT_UNITS_PER_TYPE,
   MAX_VICTIM_AGE,
   MIN_VICTIM_AGE,
   OCCURRENCE_TIME_FIELDS,
@@ -55,6 +58,7 @@ import {
   chamuLabel,
   destinationLabel,
   genderLabel,
+  inemUnitLabel,
   locationTypeLabel,
   occurrenceTimeLabel,
   roleLabel,
@@ -797,6 +801,105 @@ export const VictimsSection = ({ draft, patch, lookups }: SectionProps) => {
   );
 };
 
+// ── Additional INEM support (VMER / SIV / UMIP) ───────────────────────────────
+
+/**
+ * Emergency-only: additional INEM means that responded alongside the crew's
+ * own vehicle. Captured only here, in the report editor, after the fact — not
+ * part of live-run capture.
+ *
+ * A hospital is required at the time an entry is added rather than afterwards,
+ * so the picker opens as part of adding one and the draft never holds a
+ * half-built entry: `INEM_UNIT_HOSPITAL_REQUIRED` becomes something structurally
+ * avoided rather than something the crew can trip.
+ */
+export const InemSupportSection = ({ draft, patch, lookups }: SectionProps) => {
+  const t = useT();
+  const [pendingType, setPendingType] = useState<InemSupportUnitType | null>(null);
+
+  const countByType = (type: InemSupportUnitType) =>
+    draft.inemSupportUnits.filter((unit) => unit.unitType === type).length;
+
+  return (
+    <Stack spacing={2}>
+      <Stack direction="row" alignItems="baseline">
+        <SectionLabel>{t('field.inemSupportRecorded')}</SectionLabel>
+        <Box sx={{ flex: 1 }} />
+        <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.disabled' }}>
+          {draft.inemSupportUnits.length}
+        </Typography>
+      </Stack>
+
+      {draft.inemSupportUnits.length === 0 && (
+        <Typography variant="body2" color="text.disabled">
+          {t('hint.noInemSupportUnits')}
+        </Typography>
+      )}
+
+      {draft.inemSupportUnits.map((unit, index) => (
+        <Paper key={index} variant="outlined" sx={{ p: 1.5 }}>
+          <Stack direction="row" spacing={1.5} alignItems="center">
+            <Chip label={inemUnitLabel(t, unit.unitType)} sx={{ fontWeight: 700 }} />
+            <Typography sx={{ flex: 1 }}>
+              {lookups.hospitalsById[unit.hospitalId]?.name ?? unit.hospitalId}
+            </Typography>
+            <IconButton
+              onClick={() =>
+                patch({
+                  inemSupportUnits: draft.inemSupportUnits.filter((_, at) => at !== index),
+                })
+              }
+              aria-label={t('action.remove')}
+            >
+              <CloseIcon />
+            </IconButton>
+          </Stack>
+        </Paper>
+      ))}
+
+      <Stack direction="row" spacing={1}>
+        {INEM_SUPPORT_UNIT_TYPES.map((type) => (
+          <Button
+            key={type}
+            variant="outlined"
+            startIcon={<AddIcon />}
+            disabled={countByType(type) >= MAX_INEM_SUPPORT_UNITS_PER_TYPE}
+            onClick={() => setPendingType(type)}
+            sx={{ flex: 1, minHeight: 48 }}
+          >
+            {inemUnitLabel(t, type)}
+          </Button>
+        ))}
+      </Stack>
+
+      <Typography variant="caption" color="text.disabled">
+        {t('hint.inemSupportUnitsCap')}
+      </Typography>
+
+      <HospitalPicker
+        open={pendingType !== null}
+        locality={lookups.locality}
+        reportType={draft.type}
+        title={t('field.inemSupportBaseHospital')}
+        hospitalsOnly
+        onClose={() => setPendingType(null)}
+        onPick={(choice: DestinationChoice) => {
+          const hospitalId = choice.destinationHospitalId;
+          if (pendingType && hospitalId) {
+            patch({
+              inemSupportUnits: [
+                ...draft.inemSupportUnits,
+                { unitType: pendingType, hospitalId },
+              ],
+            });
+          }
+          setPendingType(null);
+        }}
+      />
+    </Stack>
+  );
+};
+
 // ── Narrative and attachments ─────────────────────────────────────────────────
 
 export interface NarrativeSectionProps extends SectionProps {
@@ -1081,6 +1184,25 @@ export const ReviewSection = ({
               })
               .join(' | '),
     },
+    ...(rules.hasInemSupportUnits
+      ? [
+          {
+            step: 'inemSupport' as StepId,
+            label: t('field.inemSupportUnits'),
+            value:
+              draft.inemSupportUnits.length === 0
+                ? '—'
+                : draft.inemSupportUnits
+                    .map(
+                      (unit) =>
+                        `${inemUnitLabel(t, unit.unitType)} · ${
+                          lookups.hospitalsById[unit.hospitalId]?.name ?? unit.hospitalId
+                        }`,
+                    )
+                    .join(' | '),
+          },
+        ]
+      : []),
     {
       step: 'narrative',
       label: t('step.narrative'),

@@ -7,11 +7,13 @@ import {
   EventReportAttachment,
   EventReportAttachmentKind,
   EventReportCrewMember,
+  EventReportInemSupportUnit,
   EventReportInput,
   EventReportType,
   EventReportVehicle,
   EventReportVictim,
   Gender,
+  InemSupportUnitType,
   RouteLeg,
   VITAL_KEYS,
   VictimDestinationKind,
@@ -42,6 +44,10 @@ export const EVENT_REPORT_INCLUDE = {
   },
   victims: {
     include: { destinationHospital: { select: { id: true, name: true } } },
+    orderBy: { position: 'asc' },
+  },
+  inemSupportUnits: {
+    include: { hospital: { select: { id: true, name: true } } },
     orderBy: { position: 'asc' },
   },
   attachments: {
@@ -124,6 +130,18 @@ function serializeVictim(row: EventReportRow['victims'][number]): EventReportVic
   };
 }
 
+function serializeInemSupportUnit(
+  row: EventReportRow['inemSupportUnits'][number],
+): EventReportInemSupportUnit {
+  return {
+    id: row.id,
+    position: row.position,
+    unitType: row.unitType as InemSupportUnitType,
+    hospitalId: row.hospitalId,
+    hospital: row.hospital,
+  };
+}
+
 function serializeAttachment(
   row: EventReportRow['attachments'][number],
 ): EventReportAttachment {
@@ -201,6 +219,7 @@ export function serializeEventReport(row: EventReportRow, shiftLabel?: string): 
     crew: row.crew.map(serializeCrewMember),
     vehicles: row.vehicles.map(serializeVehicle),
     victims: row.victims.map(serializeVictim),
+    inemSupportUnits: row.inemSupportUnits.map(serializeInemSupportUnit),
     attachments: row.attachments.map(serializeAttachment),
     assessments: row.assessments.map(serializeAssessment),
 
@@ -264,6 +283,10 @@ export function reportRowToInput(row: EventReportRow): EventReportInput {
       age: victim.age,
       destinationKind: victim.destinationKind,
       destinationHospitalId: victim.destinationHospitalId ?? null,
+    })),
+    inemSupportUnits: report.inemSupportUnits.map((unit) => ({
+      unitType: unit.unitType,
+      hospitalId: unit.hospitalId,
     })),
     chamuCircumstances: report.chamuCircumstances ?? null,
     chamuHistory: report.chamuHistory ?? null,

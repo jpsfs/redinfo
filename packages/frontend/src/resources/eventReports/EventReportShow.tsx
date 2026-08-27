@@ -40,6 +40,7 @@ import {
   chamuLabel,
   destinationLabel,
   genderLabel,
+  inemUnitLabel,
   locationTypeLabel,
   occurrenceTimeLabel,
   reportTypeLabel,
@@ -368,6 +369,34 @@ export const EventReportShow = () => {
             </Stack>
           )}
         </Card>
+
+        {rules.hasInemSupportUnits && (
+          <Card title={t('field.inemSupportUnits')}>
+            {report.inemSupportUnits.length === 0 ? (
+              <Typography color="text.secondary">{t('hint.noInemSupportUnits')}</Typography>
+            ) : (
+              <Stack divider={<Divider flexItem />} spacing={1.5}>
+                {report.inemSupportUnits.map((unit, index) => (
+                  <Stack
+                    key={unit.id}
+                    direction="row"
+                    spacing={1.5}
+                    alignItems="center"
+                    sx={{ pt: index === 0 ? 0 : 1.5 }}
+                  >
+                    <Chip label={inemUnitLabel(t, unit.unitType)} sx={{ fontWeight: 700 }} />
+                    <Stack direction="row" spacing={0.75} alignItems="center" sx={{ flex: 1 }}>
+                      <LocalHospitalIcon fontSize="small" sx={{ color: 'text.disabled' }} />
+                      <Typography variant="body2" color="text.secondary">
+                        {unit.hospital?.name ?? unit.hospitalId}
+                      </Typography>
+                    </Stack>
+                  </Stack>
+                ))}
+              </Stack>
+            )}
+          </Card>
+        )}
 
         {rules.hasClinicalRecord && <ClinicalCard report={report} />}
 
