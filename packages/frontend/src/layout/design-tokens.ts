@@ -119,7 +119,7 @@ export const colorCategorySalopSupport = '#6B4FA0'; // violet
 
 // ─── Logo assets ──────────────────────────────────────────────────────────────
 /** Primary local path for the full Delegação de Campo logotype (/public). */
-export const logoDelegacaoCampoUrl = '/logo-delegacao-campo.jpg';
+export const logoDelegacaoCampoUrl = '/logo-delegacao.jpg';
 
 /** Remote URL fallback for the full Delegação de Campo logotype (HTTPS). */
 export const logoDelegacaoCampoRemoteUrl =
