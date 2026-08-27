@@ -148,6 +148,33 @@ export function formatDateRange(t: Translate, from: string, to: string): string 
   return `${formatDate(t, from)} – ${formatDate(t, to)}`;
 }
 
+/** The Monday on or before `date` — the key a day groups under for a weekly agenda. */
+export function weekStartOf(date: string): string {
+  const weekday = (parseIsoDate(date).getUTCDay() + 6) % 7; // 0 = Monday
+  return addIsoDays(date, -weekday);
+}
+
+/**
+ * A compact week-range header, year omitted (the screen it labels already
+ * shows the window's own date range with a year once at the top): e.g.
+ * "22 – 28 Sep", or "29 Sep – 5 Oct" when the group crosses a month.
+ */
+export function formatWeekRangeLabel(t: Translate, from: string, to: string): string {
+  const start = parseIsoDate(from);
+  const end = parseIsoDate(to);
+  const startMonth = t(`date.monthAbbr.${MONTH_KEYS[start.getUTCMonth()]}`);
+  const endMonth = t(`date.monthAbbr.${MONTH_KEYS[end.getUTCMonth()]}`);
+  // A window edge can leave a "week" with a single day in it (e.g. a window
+  // that ends on a Monday) — a "5 – 5 Oct" range would just look like a typo.
+  if (from === to) {
+    return `${start.getUTCDate()} ${startMonth}`;
+  }
+  if (startMonth === endMonth) {
+    return `${start.getUTCDate()} – ${end.getUTCDate()} ${endMonth}`;
+  }
+  return `${start.getUTCDate()} ${startMonth} – ${end.getUTCDate()} ${endMonth}`;
+}
+
 /** Day-of-month, for calendar cells. */
 export function dayOfMonth(date: string): number {
   return parseIsoDate(date).getUTCDate();

@@ -9,12 +9,11 @@ import {
   Checkbox,
   Chip,
   CircularProgress,
-  Collapse,
-  Divider,
   FormControlLabel,
   IconButton,
   Paper,
   Stack,
+  Switch,
   TextField,
   Typography,
 } from '@mui/material';
@@ -22,8 +21,6 @@ import CheckIcon from '@mui/icons-material/Check';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
-import ExpandLessIcon from '@mui/icons-material/ExpandLess';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import FlagIcon from '@mui/icons-material/Flag';
 import SaveIcon from '@mui/icons-material/Save';
 import {
@@ -45,9 +42,11 @@ import {
   formatDateRange,
   formatDayLabel,
   formatMonthLabel,
+  formatWeekRangeLabel,
   isoMonth,
   monthGrid,
   weekdayLabels,
+  weekStartOf,
 } from '../utils/dates';
 
 /** Which shift slots the volunteer has ticked, per date. */
@@ -345,9 +344,156 @@ const MonthCalendar = ({
   );
 };
 
-// ─── Day cards (mobile) ────────────────────────────────────────────────────────
+// ─── Day list (mobile) ─────────────────────────────────────────────────────────
 
-const DayAgenda = ({
+/**
+ * One row per day, always showing its shift(s) — no expand/collapse. Most
+ * days carry exactly one shift, so that case gets a full-row switch (one tap
+ * to answer); a day with several shifts falls back to a chip per shift.
+ */
+const rowSx = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 1,
+  px: 1.5,
+  py: 1.25,
+  borderBottom: '1px solid',
+  borderColor: 'divider',
+  '&:last-of-type': { borderBottom: 0 },
+} as const;
+
+const DayMeta = ({ day }: { day: DayShiftPattern }) => {
+  const t = useT();
+  return (
+    <Stack direction="row" spacing={0.75} alignItems="center" flexWrap="wrap" useFlexGap>
+      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+        {formatDayLabel(t, day.date)}
+      </Typography>
+      {day.isHoliday && (
+        <FlagIcon
+          sx={{ fontSize: 14, color: 'warning.main' }}
+          titleAccess={day.holidayName ?? t('dayType.holiday')}
+        />
+      )}
+      {day.isWeekend && !day.isHoliday && (
+        <Typography variant="caption" color="text.secondary">
+          ({t('dayType.weekend')})
+        </Typography>
+      )}
+    </Stack>
+  );
+};
+
+const DayRow = ({
+  day,
+  selected,
+  editable,
+  onToggle,
+}: {
+  day: DayShiftPattern;
+  selected: number[];
+  editable: boolean;
+  onToggle: (date: string, slot: number) => void;
+}) => {
+  const t = useT();
+
+  if (day.shifts.length === 0) {
+    return (
+      <Box sx={rowSx}>
+        <DayMeta day={day} />
+        <Typography variant="caption" color="text.disabled">
+          {t('myAvailability.noShiftsOnDay')}
+        </Typography>
+      </Box>
+    );
+  }
+
+  if (editable && day.shifts.length === 1) {
+    const shift = day.shifts[0];
+    const checked = selected.includes(shift.slot);
+    return (
+      <Box
+        component="button"
+        type="button"
+        onClick={() => onToggle(day.date, shift.slot)}
+        role="switch"
+        aria-checked={checked}
+        aria-label={`${formatDayLabel(t, day.date)} ${shift.label}`}
+        sx={{
+          ...rowSx,
+          width: '100%',
+          border: 0,
+          backgroundColor: 'transparent',
+          cursor: 'pointer',
+          textAlign: 'left',
+          font: 'inherit',
+        }}
+      >
+        <Box>
+          <DayMeta day={day} />
+          <Typography variant="caption" color="text.secondary">
+            {shift.label}
+          </Typography>
+        </Box>
+        {/* Purely visual: the surrounding button carries the click and the a11y state. */}
+        <Switch checked={checked} tabIndex={-1} aria-hidden sx={{ pointerEvents: 'none' }} />
+      </Box>
+    );
+  }
+
+  return (
+    <Box sx={{ ...rowSx, flexDirection: 'column', alignItems: 'stretch', gap: 0.75 }}>
+      <DayMeta day={day} />
+      <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+        {day.shifts.map((shift) =>
+          editable ? (
+            <ShiftToggle
+              key={shift.slot}
+              shift={shift}
+              date={day.date}
+              checked={selected.includes(shift.slot)}
+              onToggle={() => onToggle(day.date, shift.slot)}
+            />
+          ) : (
+            <ReadOnlyShift key={shift.slot} shift={shift} available={selected.includes(shift.slot)} />
+          ),
+        )}
+      </Stack>
+    </Box>
+  );
+};
+
+const WeekHeader = ({ label }: { label: string }) => (
+  <Typography
+    variant="overline"
+    sx={{
+      display: 'block',
+      px: 1.5,
+      py: 0.75,
+      color: 'text.secondary',
+      backgroundColor: 'grey.50',
+      borderBottom: '1px solid',
+      borderColor: 'divider',
+    }}
+  >
+    {label}
+  </Typography>
+);
+
+/** Consecutive days chunked Monday-to-Sunday, in the order they arrived. */
+function groupByWeek(days: DayShiftPattern[]): DayShiftPattern[][] {
+  const weeks = new Map<string, DayShiftPattern[]>();
+  for (const day of days) {
+    const key = weekStartOf(day.date);
+    const week = weeks.get(key);
+    if (week) week.push(day);
+    else weeks.set(key, [day]);
+  }
+  return [...weeks.values()];
+}
+
+const DayList = ({
   days,
   selection,
   editable,
@@ -359,103 +505,25 @@ const DayAgenda = ({
   onToggle: (date: string, slot: number) => void;
 }) => {
   const t = useT();
-  const [expanded, setExpanded] = useState<string | null>(days[0]?.date ?? null);
+  const weeks = useMemo(() => groupByWeek(days), [days]);
 
   return (
-    <Stack spacing={1}>
-      {days.map((day) => {
-        const selected = selection[day.date] ?? [];
-        const isExpanded = expanded === day.date;
-        const summary =
-          selected.length === 0
-            ? t('myAvailability.notSelected')
-            : selected.length === day.shifts.length
-              ? t('myAvailability.allShifts')
-              : t('myAvailability.selectedOfTotal', { selected: selected.length, total: day.shifts.length });
-
-        return (
-          <Card key={day.date} variant="outlined">
-            <CardContent>
-              <Box
-                onClick={() => setExpanded(isExpanded ? null : day.date)}
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  gap: 1,
-                  cursor: 'pointer',
-                }}
-              >
-                <Box>
-                  <Typography variant="subtitle2">{formatDayLabel(t, day.date)}</Typography>
-                  <Stack direction="row" spacing={0.5} sx={{ mt: 0.5 }} flexWrap="wrap" useFlexGap>
-                    {day.isHoliday && (
-                      <Chip
-                        size="small"
-                        color="warning"
-                        variant="outlined"
-                        label={day.holidayName ?? t('dayType.holiday')}
-                      />
-                    )}
-                    {day.isWeekend && !day.isHoliday && (
-                      <Chip size="small" variant="outlined" label={t('dayType.weekend')} />
-                    )}
-                    {!isExpanded && (
-                      <Chip
-                        size="small"
-                        variant="outlined"
-                        color={selected.length ? 'success' : 'default'}
-                        label={summary}
-                      />
-                    )}
-                  </Stack>
-                </Box>
-                <IconButton size="small" aria-label={isExpanded ? t('common.collapse') : t('common.expand')}>
-                  {isExpanded ? <ExpandLessIcon /> : <ExpandMoreIcon />}
-                </IconButton>
-              </Box>
-
-              <Collapse in={isExpanded} unmountOnExit>
-                <Stack sx={{ mt: 1 }} divider={<Divider flexItem />}>
-                  {day.shifts.length === 0 && (
-                    <Typography variant="body2" color="text.secondary" sx={{ py: 0.5 }}>
-                      {t('myAvailability.noShiftsOnDay')}
-                    </Typography>
-                  )}
-                  {day.shifts.map((shift) => (
-                    <Box
-                      key={shift.slot}
-                      sx={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        py: 0.5,
-                      }}
-                    >
-                      <Typography variant="body2">{shift.label}</Typography>
-                      {editable ? (
-                        <Checkbox
-                          checked={selected.includes(shift.slot)}
-                          onChange={() => onToggle(day.date, shift.slot)}
-                          inputProps={{
-                            'aria-label': `${formatDayLabel(t, day.date)} ${shift.label}`,
-                          }}
-                        />
-                      ) : (
-                        <ReadOnlyShift
-                          shift={shift}
-                          available={selected.includes(shift.slot)}
-                        />
-                      )}
-                    </Box>
-                  ))}
-                </Stack>
-              </Collapse>
-            </CardContent>
-          </Card>
-        );
-      })}
-    </Stack>
+    <Paper variant="outlined">
+      {weeks.map((week) => (
+        <Box key={week[0].date}>
+          <WeekHeader label={formatWeekRangeLabel(t, week[0].date, week[week.length - 1].date)} />
+          {week.map((day) => (
+            <DayRow
+              key={day.date}
+              day={day}
+              selected={selection[day.date] ?? []}
+              editable={editable}
+              onToggle={onToggle}
+            />
+          ))}
+        </Box>
+      ))}
+    </Paper>
   );
 };
 
@@ -608,6 +676,36 @@ export const MyAvailabilityPage = () => {
       return { ...current, [date]: next };
     });
   }, []);
+
+  // `data.calendar` is already scoped to the window in play, so a bulk action
+  // never reaches outside it.
+  const calendarDays = data?.calendar ?? [];
+
+  const handleSetAll = useCallback(
+    (available: boolean) => {
+      setSelection((current) => {
+        const next = { ...current };
+        for (const day of calendarDays) {
+          next[day.date] = available ? day.shifts.map((shift) => shift.slot) : [];
+        }
+        return next;
+      });
+    },
+    [calendarDays],
+  );
+
+  // Shifts, not days: a day with two shifts only half-answered should read as
+  // half-answered, not as a fully ticked day.
+  const shiftsSummary = useMemo(() => {
+    let total = 0;
+    let selected = 0;
+    for (const day of calendarDays) {
+      total += day.shifts.length;
+      const picked = selection[day.date] ?? [];
+      selected += day.shifts.filter((shift) => picked.includes(shift.slot)).length;
+    }
+    return { selected, total };
+  }, [calendarDays, selection]);
 
   const handleSave = async () => {
     setSaving(true);
@@ -775,12 +873,24 @@ export const MyAvailabilityPage = () => {
           {!isMobile && <CalendarLegend />}
 
           {isMobile ? (
-            <DayAgenda
-              days={data?.calendar ?? []}
-              selection={selection}
-              editable={editable}
-              onToggle={handleToggle}
-            />
+            <>
+              {editable && (
+                <Stack direction="row" spacing={1} sx={{ mb: 1.5 }}>
+                  <Button size="small" variant="outlined" onClick={() => handleSetAll(true)}>
+                    {t('myAvailability.markAllLabel')}
+                  </Button>
+                  <Button size="small" variant="outlined" onClick={() => handleSetAll(false)}>
+                    {t('myAvailability.clearAllLabel')}
+                  </Button>
+                </Stack>
+              )}
+              <DayList
+                days={calendarDays}
+                selection={selection}
+                editable={editable}
+                onToggle={handleToggle}
+              />
+            </>
           ) : (
             month && (
               <MonthCalendar
@@ -804,10 +914,27 @@ export const MyAvailabilityPage = () => {
                 gap: 2,
                 mt: 2,
                 flexWrap: 'wrap',
+                // On mobile the list can run long: pin the summary and Save
+                // to the bottom of the viewport rather than the end of the scroll.
+                ...(isMobile && {
+                  position: 'sticky',
+                  bottom: 0,
+                  backgroundColor: 'background.paper',
+                  borderTop: '1px solid',
+                  borderColor: 'divider',
+                  mx: -2,
+                  px: 2,
+                  py: 1.5,
+                }),
               }}
             >
               <Typography variant="body2" color="text.secondary" sx={{ mr: 'auto' }}>
-                {t('myAvailability.saveHint')}
+                {isMobile
+                  ? t('myAvailability.shiftsSummary', {
+                      selected: shiftsSummary.selected,
+                      total: shiftsSummary.total,
+                    })
+                  : t('myAvailability.saveHint')}
               </Typography>
               <Button
                 variant="contained"

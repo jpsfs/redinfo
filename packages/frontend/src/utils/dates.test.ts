@@ -8,12 +8,14 @@ import {
   formatDateRange,
   formatDayLabel,
   formatMonthLabel,
+  formatWeekRangeLabel,
   isoDateRange,
   isoMonth,
   monthEnd,
   monthGrid,
   monthStart,
   weekdayLabels,
+  weekStartOf,
 } from './dates';
 
 /** A plain key lookup — no %{…} interpolation, none of these keys need it. */
@@ -102,6 +104,20 @@ describe('labels', () => {
     expect(formatDayLabel(t, '2026-09-28')).toBe('Mon, 28 Sep');
     expect(formatDate(t, '2026-10-05')).toBe('5 Oct 2026');
     expect(formatDateRange(t, '2026-09-28', '2026-10-05')).toBe('28 Sep 2026 – 5 Oct 2026');
+  });
+
+  it('finds the Monday a date falls in, even when the date is a Sunday', () => {
+    expect(weekStartOf('2026-09-28')).toBe('2026-09-28'); // already a Monday
+    expect(weekStartOf('2026-10-04')).toBe('2026-09-28'); // a Sunday
+  });
+
+  it('formats a week range, omitting the year and the month when it repeats', () => {
+    expect(formatWeekRangeLabel(t, '2026-09-22', '2026-09-28')).toBe('22 – 28 Sep');
+    expect(formatWeekRangeLabel(t, '2026-09-29', '2026-10-05')).toBe('29 Sep – 5 Oct');
+  });
+
+  it('collapses a single-day week to just that date', () => {
+    expect(formatWeekRangeLabel(t, '2026-10-05', '2026-10-05')).toBe('5 Oct');
   });
 
   it('turns over with locale, the same labels a real translate would give', () => {

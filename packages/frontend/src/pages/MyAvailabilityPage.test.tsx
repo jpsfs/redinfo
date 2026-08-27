@@ -334,7 +334,7 @@ describe('MyAvailabilityPage', () => {
       mockUseIsMobile.mockReturnValue(true);
     });
 
-    it('swaps the calendar for a day-card agenda of the window only', async () => {
+    it('swaps the calendar for a flat day list of the window only', async () => {
       renderPage();
 
       expect(await screen.findByText('Mon, 28 Sep')).toBeInTheDocument();
@@ -355,14 +355,19 @@ describe('MyAvailabilityPage', () => {
       ).toBe(false);
     });
 
-    it('toggles a shift from the expanded day card', async () => {
+    it('groups the days under a header per week', async () => {
       renderPage();
 
-      // The first day is expanded by default.
-      const card = (await screen.findByText('Mon, 28 Sep')).closest(
-        '.MuiCard-root',
-      ) as HTMLElement;
-      await userEvent.click(within(card).getByLabelText('Mon, 28 Sep 20:00–24:00'));
+      await screen.findByText('Mon, 28 Sep');
+      // The window runs Mon 28 Sep – Mon 5 Oct: a full week, then a lone Monday.
+      expect(screen.getByText('28 Sep – 4 Oct')).toBeInTheDocument();
+      expect(screen.getByText('5 Oct')).toBeInTheDocument();
+    });
+
+    it('toggles a single-shift day with one tap on the row, no expand needed', async () => {
+      renderPage();
+
+      await userEvent.click(await screen.findByLabelText('Mon, 28 Sep 20:00–24:00'));
       await userEvent.click(screen.getByRole('button', { name: /save availability/i }));
 
       await waitFor(() => expect(lastSaveBody()).toBeDefined());
@@ -372,7 +377,7 @@ describe('MyAvailabilityPage', () => {
       });
     });
 
-    it('summarises each collapsed day', async () => {
+    it('shows every shift on a multi-shift day at once, with the holiday name alongside', async () => {
       stubApi({
         me: myAvailability({
           entries: [{ date: WINDOW_END, slots: [1] }],
@@ -381,11 +386,32 @@ describe('MyAvailabilityPage', () => {
 
       renderPage();
 
-      const holidayCard = (await screen.findByText('Mon, 5 Oct')).closest(
-        '.MuiCard-root',
-      ) as HTMLElement;
-      expect(within(holidayCard).getByText('Implantação da República')).toBeInTheDocument();
-      expect(within(holidayCard).getByText('1 of 2')).toBeInTheDocument();
+      await screen.findByText('Implantação da República');
+      expect(screen.getByLabelText('Mon, 5 Oct 08:00–16:00')).toHaveAttribute(
+        'aria-pressed',
+        'true',
+      );
+      expect(screen.getByLabelText('Mon, 5 Oct 16:00–24:00')).toHaveAttribute(
+        'aria-pressed',
+        'false',
+      );
+    });
+
+    it('marks or clears every shift in the window with one tap', async () => {
+      renderPage();
+
+      await screen.findByText('Mon, 28 Sep');
+      expect(screen.getByText('0 of 11 shifts marked available')).toBeInTheDocument();
+
+      await userEvent.click(screen.getByRole('button', { name: 'Mark all available' }));
+      expect(await screen.findByText('11 of 11 shifts marked available')).toBeInTheDocument();
+      expect(screen.getByLabelText('Mon, 28 Sep 20:00–24:00')).toHaveAttribute(
+        'aria-checked',
+        'true',
+      );
+
+      await userEvent.click(screen.getByRole('button', { name: 'Clear all' }));
+      expect(await screen.findByText('0 of 11 shifts marked available')).toBeInTheDocument();
     });
   });
 
@@ -567,17 +593,14 @@ describe('MyAvailabilityPage', () => {
       );
     });
 
-    it('tells a volunteer on a phone that a day has no shifts', async () => {
+    it('tells a volunteer on a phone that a day has no shifts, with no click needed', async () => {
       mockUseIsMobile.mockReturnValue(true);
       stubCustomApi();
 
       renderPage();
 
-      const card = (await screen.findByText('Tue, 29 Sep')).closest(
-        '.MuiCard-root',
-      ) as HTMLElement;
-      await userEvent.click(within(card).getByLabelText('Expand'));
-      expect(within(card).getByText('No shifts on this day.')).toBeInTheDocument();
+      await screen.findByText('Tue, 29 Sep');
+      expect(screen.getByText('No shifts on this day.')).toBeInTheDocument();
     });
   });
 });

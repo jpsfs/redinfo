@@ -1594,10 +1594,13 @@ const MESSAGES = {
   'myAvailability.windowPickerLabel': { pt: 'Janela de disponibilidade', en: 'Availability window' },
   'myAvailability.prevMonth': { pt: 'Mês anterior', en: 'Previous month' },
   'myAvailability.nextMonth': { pt: 'Mês seguinte', en: 'Next month' },
-  'myAvailability.notSelected': { pt: 'Não selecionado', en: 'Not selected' },
-  'myAvailability.allShifts': { pt: 'Todos os turnos', en: 'All shifts' },
-  'myAvailability.selectedOfTotal': { pt: '%{selected} de %{total}', en: '%{selected} of %{total}' },
   'myAvailability.noShiftsOnDay': { pt: 'Sem turnos neste dia.', en: 'No shifts on this day.' },
+  'myAvailability.markAllLabel': { pt: 'Marcar tudo disponível', en: 'Mark all available' },
+  'myAvailability.clearAllLabel': { pt: 'Limpar tudo', en: 'Clear all' },
+  'myAvailability.shiftsSummary': {
+    pt: '%{selected} de %{total} turnos marcados como disponíveis',
+    en: '%{selected} of %{total} shifts marked available',
+  },
   'myAvailability.windowOpenChip': { pt: 'Janela aberta', en: 'Window open' },
   'myAvailability.windowClosedChip': { pt: 'Janela fechada', en: 'Window closed' },
   'myAvailability.noWindowHeading': {
