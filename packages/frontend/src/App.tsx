@@ -44,9 +44,11 @@ import { HospitalList, HospitalCreate, HospitalEdit } from './resources/hospital
 import { LiveEntryPage, LiveRunGate, LiveRunPage } from './resources/liveRuns';
 import { MyAvailabilityPage } from './pages/MyAvailabilityPage';
 import { MyDutiesPage } from './pages/MyDutiesPage';
+import { MyHoursPage } from './pages/MyHoursPage';
 import { MyReportsPage } from './pages/MyReportsPage';
 import { MyProfilePage } from './pages/MyProfilePage';
 import { LiveRunsPage } from './pages/LiveRunsPage';
+import { VolunteerHoursReviewPage } from './pages/VolunteerHoursReviewPage';
 import PeopleIcon from '@mui/icons-material/People';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import BuildIcon from '@mui/icons-material/Build';
@@ -125,6 +127,10 @@ export default function App() {
         {/* Duties span every rota someone is on, so this is not scoped to a
             single window the way My Availability is. */}
         <Route path="/my-duties" element={<MyDutiesPage />} />
+        {/* Hours generated from those duties, plus anything logged by hand
+            (#164). Ungated, like /my-duties above — scoped to the caller by
+            the API, not by capability. */}
+        <Route path="/my-hours" element={<MyHoursPage />} />
         {/* Reading the whole archive needs VIEW_EVENT_REPORTS, so an
             operational reaches their own reports — and the form to file a new
             one — through here rather than the resource list. */}
@@ -138,6 +144,9 @@ export default function App() {
             VIEW_LIVE_RUNS in the drawer manifest (layout/navigation.tsx). It
             also still appears on the Dashboard — unrelated to this route. */}
         <Route path="/live-runs" element={<LiveRunsPage />} />
+        {/* The coordinator's review queue for volunteer hours (#164), gated
+            by VIEW_VOLUNTEER_HOURS in the drawer manifest. */}
+        <Route path="/volunteer-hours/review" element={<VolunteerHoursReviewPage />} />
       </CustomRoutes>
 
       <Resource

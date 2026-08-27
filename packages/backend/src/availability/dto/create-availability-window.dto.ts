@@ -103,6 +103,22 @@ export class WindowRoleDto {
   maxPeople: number;
 
   @ApiPropertyOptional({
+    example: 1,
+    minimum: 0,
+    maximum: MAX_ROLE_PEOPLE,
+    description:
+      "Fewest people this post needs filled for a shift to count as properly crewed " +
+      '— read by volunteer-hours generation (#164). 0 (the default) means the post is ' +
+      "optional: someone may fill it, or not, or leave mid-shift, without that blocking " +
+      'anything.',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(MAX_ROLE_PEOPLE)
+  mandatoryCount?: number;
+
+  @ApiPropertyOptional({
     enum: CertificationType,
     nullable: true,
     description:

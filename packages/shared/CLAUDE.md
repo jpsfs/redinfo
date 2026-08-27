@@ -37,6 +37,7 @@ Don't ask for a list of all exports — grep them.
 | Availability | Windows, shifts, submissions, responses |
 | Window roles | Roles within an availability window |
 | Schedules | Schedule, assignment, shift-override shapes and rules |
+| Volunteer hours | `VolunteerHoursEntry`, exception detection, auto-approval rules |
 | Geography | Municipality, locality, hospital location shapes |
 | Hospitals | Hospital shapes |
 | Event Reports | Top-level event report shapes |

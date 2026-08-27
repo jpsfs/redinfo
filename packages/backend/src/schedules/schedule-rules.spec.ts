@@ -27,6 +27,7 @@ const role = (
 ): AvailabilityWindowRole => ({
   windowId: 'w1',
   maxPeople: 1,
+  mandatoryCount: 0,
   requiredCertification: overrides.name === 'Driver' ? CertificationType.DRIVER : null,
   order: 0,
   ...overrides,

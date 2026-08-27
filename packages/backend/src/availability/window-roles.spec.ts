@@ -29,10 +29,32 @@ const role = (
 describe('default roles', () => {
   it('gives an Emergency window a crew of three, each with its own required certification', () => {
     expect(defaultRolesForCategory(AvailabilityWindowCategory.EMERGENCY)).toEqual([
-      { name: 'Driver', maxPeople: 1, requiredCertification: CertificationType.DRIVER },
-      { name: 'Team Leader', maxPeople: 1, requiredCertification: CertificationType.TAS },
-      { name: 'Team Member', maxPeople: 1, requiredCertification: CertificationType.TAT },
+      {
+        name: 'Driver',
+        maxPeople: 1,
+        mandatoryCount: 1,
+        requiredCertification: CertificationType.DRIVER,
+      },
+      {
+        name: 'Team Leader',
+        maxPeople: 1,
+        mandatoryCount: 1,
+        requiredCertification: CertificationType.TAS,
+      },
+      {
+        name: 'Team Member',
+        maxPeople: 1,
+        mandatoryCount: 0,
+        requiredCertification: CertificationType.TAT,
+      },
     ]);
+  });
+
+  it('Driver and Team Leader are mandatory; Team Member is the pool seat', () => {
+    const roles = defaultRolesForCategory(AvailabilityWindowCategory.EMERGENCY);
+    expect(roles.find((r) => r.name === 'Driver')?.mandatoryCount).toBe(1);
+    expect(roles.find((r) => r.name === 'Team Leader')?.mandatoryCount).toBe(1);
+    expect(roles.find((r) => r.name === 'Team Member')?.mandatoryCount).toBe(0);
   });
 
   it.each([
@@ -129,18 +151,54 @@ describe('validateWindowRoles', () => {
     const invalid = [{ name: 'Driver', maxPeople: 1, requiredCertification: 'PILOT' }] as never;
     expect(validateWindowRoles(invalid)).toMatch(/not a certification/);
   });
+
+  it('accepts mandatoryCount left unset (defaults to optional)', () => {
+    expect(validateWindowRoles([{ name: 'Driver', maxPeople: 1 }])).toBeNull();
+  });
+
+  it('accepts a role required to its own maxPeople', () => {
+    expect(
+      validateWindowRoles([{ name: 'Driver', maxPeople: 1, mandatoryCount: 1 }]),
+    ).toBeNull();
+  });
+
+  it('accepts an unlimited role requiring at least one, with no ceiling to check', () => {
+    expect(
+      validateWindowRoles([
+        { name: 'Volunteer', maxPeople: UNLIMITED_ROLE_PEOPLE, mandatoryCount: 1 },
+      ]),
+    ).toBeNull();
+  });
+
+  it('rejects a negative mandatoryCount', () => {
+    expect(
+      validateWindowRoles([{ name: 'Driver', maxPeople: 1, mandatoryCount: -1 }]),
+    ).toMatch(/whole number, 0 or more/);
+  });
+
+  it('rejects requiring more people than the role may hold', () => {
+    expect(
+      validateWindowRoles([{ name: 'Driver', maxPeople: 1, mandatoryCount: 2 }]),
+    ).toMatch(/cannot require more people/);
+  });
 });
 
 describe('toWindowRoles', () => {
   it('a role named "Driver" with no explicit choice falls back to the DRIVER suggestion', () => {
     expect(toWindowRoles([role(' Driver ')])).toEqual([
-      { name: 'Driver', maxPeople: 1, order: 0, requiredCertification: CertificationType.DRIVER },
+      {
+        name: 'Driver',
+        maxPeople: 1,
+        mandatoryCount: 0,
+        order: 0,
+        requiredCertification: CertificationType.DRIVER,
+      },
     ]);
   });
 
   it('any other role with no explicit choice gets no requirement', () => {
     expect(toWindowRoles([role('Radio', 0)])).toEqual([
-      { name: 'Radio', maxPeople: 0, order: 0, requiredCertification: null },
+      { name: 'Radio', maxPeople: 0, mandatoryCount: 0, order: 0, requiredCertification: null },
     ]);
   });
 
@@ -151,14 +209,38 @@ describe('toWindowRoles', () => {
         role('Team Leader', 1, CertificationType.TAT),
       ]),
     ).toEqual([
-      { name: 'Driver', maxPeople: 1, order: 0, requiredCertification: CertificationType.TAS },
-      { name: 'Team Leader', maxPeople: 1, order: 1, requiredCertification: CertificationType.TAT },
+      {
+        name: 'Driver',
+        maxPeople: 1,
+        mandatoryCount: 0,
+        order: 0,
+        requiredCertification: CertificationType.TAS,
+      },
+      {
+        name: 'Team Leader',
+        maxPeople: 1,
+        mandatoryCount: 0,
+        order: 1,
+        requiredCertification: CertificationType.TAT,
+      },
     ]);
   });
 
   it('an explicit null (deliberately no requirement) is kept, even for a role named "Driver"', () => {
     expect(toWindowRoles([role('Driver', 1, null)])).toEqual([
-      { name: 'Driver', maxPeople: 1, order: 0, requiredCertification: null },
+      { name: 'Driver', maxPeople: 1, mandatoryCount: 0, order: 0, requiredCertification: null },
+    ]);
+  });
+
+  it('keeps an explicit mandatoryCount', () => {
+    expect(toWindowRoles([{ name: 'Driver', maxPeople: 1, mandatoryCount: 1 }])).toEqual([
+      {
+        name: 'Driver',
+        maxPeople: 1,
+        mandatoryCount: 1,
+        order: 0,
+        requiredCertification: CertificationType.DRIVER,
+      },
     ]);
   });
 

@@ -55,6 +55,7 @@ export const EMERGENCY_ROLES: AvailabilityWindowRole[] = DEFAULT_EMERGENCY_WINDO
     id: `role-${index + 1}`,
     windowId: 'win-1',
     order: index,
+    mandatoryCount: role.mandatoryCount ?? 0,
     requiredCertification: role.name === 'Driver' ? CertificationType.DRIVER : null,
   }),
 );

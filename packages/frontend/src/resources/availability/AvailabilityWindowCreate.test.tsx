@@ -345,9 +345,9 @@ describe('AvailabilityWindowCreate', () => {
 
     await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
     expect(savedWindow(create).roles).toEqual([
-      { name: 'Driver', maxPeople: 1, requiredCertification: 'DRIVER' },
-      { name: 'Team Leader', maxPeople: 1, requiredCertification: 'TAS' },
-      { name: 'Team Member', maxPeople: 1, requiredCertification: 'TAT' },
+      { name: 'Driver', maxPeople: 1, mandatoryCount: 1, requiredCertification: 'DRIVER' },
+      { name: 'Team Leader', maxPeople: 1, mandatoryCount: 1, requiredCertification: 'TAS' },
+      { name: 'Team Member', maxPeople: 1, mandatoryCount: 0, requiredCertification: 'TAT' },
     ]);
   });
 
@@ -387,11 +387,11 @@ describe('AvailabilityWindowCreate', () => {
 
     await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
     expect(savedWindow(create).roles).toEqual([
-      { name: 'Driver', maxPeople: 1, requiredCertification: 'DRIVER' },
-      { name: 'Team Leader', maxPeople: 1, requiredCertification: 'TAS' },
+      { name: 'Driver', maxPeople: 1, mandatoryCount: 1, requiredCertification: 'DRIVER' },
+      { name: 'Team Leader', maxPeople: 1, mandatoryCount: 1, requiredCertification: 'TAS' },
       // A freshly added role has no explicit choice — left unset, for the API
       // to resolve the same way `toWindowRoles` does (shared).
-      { name: 'Stretcher bearer', maxPeople: 0 },
+      { name: 'Stretcher bearer', maxPeople: 0, mandatoryCount: undefined },
     ]);
     expect(screen.getByText('unlimited')).toBeInTheDocument();
   });

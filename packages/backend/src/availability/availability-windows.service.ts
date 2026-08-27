@@ -41,6 +41,7 @@ type RoleRow = {
   windowId: string;
   name: string;
   maxPeople: number;
+  mandatoryCount: number;
   // Template-literal form so Prisma's own string-union enum type-checks
   // against the shared TS enum without a cast at every call site.
   requiredCertification: `${CertificationType}` | null;
@@ -407,7 +408,7 @@ export class AvailabilityWindowsService {
   private resolveRoles(
     category: AvailabilityWindowCategory,
     roles?: WindowRoleSpec[],
-  ): Array<WindowRoleSpec & { order: number }> {
+  ): Array<WindowRoleSpec & { order: number; mandatoryCount: number }> {
     const requested = roles ?? defaultRolesForCategory(category);
     const error = validateWindowRoles(requested);
     if (error) throw new BadRequestException(error);
@@ -500,6 +501,7 @@ function serializeRole(row: RoleRow): AvailabilityWindowRole {
     windowId: row.windowId,
     name: row.name,
     maxPeople: row.maxPeople,
+    mandatoryCount: row.mandatoryCount,
     requiredCertification: row.requiredCertification as CertificationType | null,
     order: row.order,
   };

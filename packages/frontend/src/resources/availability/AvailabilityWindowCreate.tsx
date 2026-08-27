@@ -225,6 +225,7 @@ export const AvailabilityWindowCreate = () => {
           roles: roles.map((role) => ({
             name: role.name.trim(),
             maxPeople: role.maxPeople,
+            mandatoryCount: role.mandatoryCount,
             requiredCertification: role.requiredCertification,
           })),
           acknowledgeOverlap: acknowledged || undefined,

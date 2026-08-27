@@ -15,9 +15,9 @@ import { buildPrintRows, choosePrintLayout } from './printLayout';
 // ─── Fixtures ────────────────────────────────────────────────────────────────
 
 const EMERGENCY_ROLES: AvailabilityWindowRole[] = [
-  { id: 'r-driver', windowId: 'w1', order: 0, name: 'Driver', maxPeople: 1, requiredCertification: CertificationType.DRIVER },
-  { id: 'r-leader', windowId: 'w1', order: 1, name: 'Team Leader', maxPeople: 1, requiredCertification: CertificationType.TAS },
-  { id: 'r-member', windowId: 'w1', order: 2, name: 'Team Member', maxPeople: 1, requiredCertification: CertificationType.TAT },
+  { id: 'r-driver', windowId: 'w1', order: 0, name: 'Driver', maxPeople: 1, mandatoryCount: 1, requiredCertification: CertificationType.DRIVER },
+  { id: 'r-leader', windowId: 'w1', order: 1, name: 'Team Leader', maxPeople: 1, mandatoryCount: 1, requiredCertification: CertificationType.TAS },
+  { id: 'r-member', windowId: 'w1', order: 2, name: 'Team Member', maxPeople: 1, mandatoryCount: 0, requiredCertification: CertificationType.TAT },
 ];
 
 let assignmentCounter = 0;

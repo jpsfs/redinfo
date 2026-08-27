@@ -126,11 +126,28 @@ describe('hasPermission', () => {
     expect(hasPermission(UserRole.EMERGENCY_COORDINATOR, Action.SUBMIT_AVAILABILITY)).toBe(true);
   });
 
+  it('EMERGENCY_COORDINATOR can manage and view volunteer hours', () => {
+    expect(hasPermission(UserRole.EMERGENCY_COORDINATOR, Action.MANAGE_VOLUNTEER_HOURS)).toBe(true);
+    expect(hasPermission(UserRole.EMERGENCY_COORDINATOR, Action.VIEW_VOLUNTEER_HOURS)).toBe(true);
+  });
+
+  it.each([Action.MANAGE_VOLUNTEER_HOURS, Action.VIEW_VOLUNTEER_HOURS])(
+    // Logging and viewing your own hours needs no action at all — those
+    // routes are self-scoped, like `GET /schedules/me`. This is about the
+    // review queue and the cross-volunteer summary specifically.
+    'EMERGENCY_OPERATIONAL cannot %s (only the review queue and summary, not their own hours)',
+    (action) => {
+      expect(hasPermission(UserRole.EMERGENCY_OPERATIONAL, action)).toBe(false);
+    },
+  );
+
   it.each([
     Action.SUBMIT_AVAILABILITY,
     Action.MANAGE_AVAILABILITY_WINDOWS,
     Action.MANAGE_HOLIDAYS,
     Action.VIEW_AVAILABILITY_MATRIX,
+    Action.MANAGE_VOLUNTEER_HOURS,
+    Action.VIEW_VOLUNTEER_HOURS,
   ])('LOGISTICS_COORDINATOR cannot %s (cross-domain denied)', (action) => {
     expect(hasPermission(UserRole.LOGISTICS_COORDINATOR, action)).toBe(false);
   });

@@ -3,6 +3,8 @@ import BoltIcon from '@mui/icons-material/Bolt';
 import HomeIcon from '@mui/icons-material/Home';
 import EventAvailableIcon from '@mui/icons-material/EventAvailable';
 import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
+import AccessTimeIcon from '@mui/icons-material/AccessTime';
+import FactCheckIcon from '@mui/icons-material/FactCheck';
 import ArticleIcon from '@mui/icons-material/Article';
 import MonitorHeartIcon from '@mui/icons-material/MonitorHeart';
 import DescriptionIcon from '@mui/icons-material/Description';
@@ -78,6 +80,11 @@ export const NAV_SECTIONS: NavSection[] = [
         icon: <AssignmentIndIcon />,
       },
       {
+        to: '/my-hours',
+        label: 'nav.myHours',
+        icon: <AccessTimeIcon />,
+      },
+      {
         to: '/my-reports',
         label: 'nav.myReports',
         icon: <ArticleIcon />,
@@ -111,6 +118,12 @@ export const NAV_SECTIONS: NavSection[] = [
         label: 'nav.availabilityWindows',
         icon: <DateRangeIcon />,
         requires: [Action.MANAGE_AVAILABILITY_WINDOWS, Action.VIEW_AVAILABILITY_MATRIX],
+      },
+      {
+        to: '/volunteer-hours/review',
+        label: 'nav.volunteerHoursReview',
+        icon: <FactCheckIcon />,
+        requires: [Action.VIEW_VOLUNTEER_HOURS, Action.MANAGE_VOLUNTEER_HOURS],
       },
     ],
   },

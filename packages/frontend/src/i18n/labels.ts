@@ -11,6 +11,9 @@ import {
   InemSupportUnitType,
   UserRole,
   VictimDestinationKind,
+  VOLUNTEER_ACTIVITY_TYPE_LABEL,
+  VolunteerActivityType,
+  VolunteerHoursStatus,
 } from '@redinfo/shared';
 
 export type { Locale };
@@ -452,7 +455,9 @@ const MESSAGES = {
   'nav.home': { pt: 'Início', en: 'Home' },
   'nav.myAvailability': { pt: 'A minha disponibilidade', en: 'My Availability' },
   'nav.myDuties': { pt: 'As minhas escalas', en: 'My Duties' },
+  'nav.myHours': { pt: 'As minhas horas', en: 'My Hours' },
   'nav.myReports': { pt: 'Os meus relatórios', en: 'My Reports' },
+  'nav.volunteerHoursReview': { pt: 'Rever horas de voluntariado', en: 'Review Volunteer Hours' },
   'nav.liveEmergencies': { pt: 'Emergências em curso', en: 'Live Emergencies' },
   'nav.eventReports': { pt: 'Relatórios de evento', en: 'Event Reports' },
   'nav.schedules': { pt: 'Escalas', en: 'Schedules' },
@@ -1331,6 +1336,97 @@ const MESSAGES = {
   'myDuties.pastDuties': { pt: 'Serviços passados', en: 'Past duties' },
   'myDuties.vehicleCountOne': { pt: '%{count} viatura', en: '%{count} vehicle' },
   'myDuties.vehicleCountMany': { pt: '%{count} viaturas', en: '%{count} vehicles' },
+
+  // ── My hours (#164) ──
+  'myHours.pageTitle': { pt: 'As minhas horas', en: 'My Hours' },
+  'myHours.heading': { pt: 'As minhas horas', en: 'My Hours' },
+  'myHours.subheading': {
+    pt: 'As horas dos teus turnos escalados são registadas automaticamente. Corrige as que precisarem, ou regista horas de algo que não teve turno.',
+    en: 'Hours from your scheduled shifts are recorded automatically. Correct any that need it, or log hours for something that never had a shift.',
+  },
+  'myHours.loadFailed': { pt: 'Não foi possível carregar as tuas horas.', en: 'Could not load your hours.' },
+  'myHours.pendingHeading': { pt: 'Por aprovar', en: 'Pending review' },
+  'myHours.approvedHeading': { pt: 'Aprovadas', en: 'Approved' },
+  'myHours.noneYet': {
+    pt: 'Ainda não há horas registadas.',
+    en: 'No hours recorded yet.',
+  },
+  'myHours.manualBadge': { pt: 'Manual', en: 'Manual' },
+  'myHours.correctedNotice': {
+    pt: 'Corrigido por um coordenador: %{reason}',
+    en: 'Corrected by a coordinator: %{reason}',
+  },
+  'myHours.flagRanOver': { pt: 'Passou do horário previsto', en: 'Ran past the scheduled end' },
+  'myHours.flagPossiblyLeftEarly': {
+    pt: 'Pode ter saído mais cedo',
+    en: 'May have left early',
+  },
+  'myHours.logButton': { pt: 'Registar horas', en: 'Log hours' },
+  'myHours.logDialogTitle': { pt: 'Registar horas', en: 'Log hours' },
+  'myHours.activityTypeLabel': { pt: 'Atividade', en: 'Activity' },
+  'myHours.dateLabel': { pt: 'Data', en: 'Date' },
+  'myHours.minutesLabel': { pt: 'Duração (minutos)', en: 'Duration (minutes)' },
+  'myHours.descriptionLabel': { pt: 'Descrição', en: 'Description' },
+  'myHours.descriptionPlaceholder': {
+    pt: 'Do que se tratou a atividade?',
+    en: 'What was the activity?',
+  },
+  'myHours.logCancel': { pt: 'Cancelar', en: 'Cancel' },
+  'myHours.logSave': { pt: 'Guardar', en: 'Save' },
+  'myHours.logSuccess': { pt: 'Horas registadas — aguardam aprovação.', en: 'Hours logged — awaiting approval.' },
+  'myHours.logFailed': { pt: 'Não foi possível registar as horas.', en: 'Could not log the hours.' },
+
+  // ── Volunteer hours review (#164) ──
+  'volunteerHoursReview.pageTitle': { pt: 'Rever horas de voluntariado', en: 'Review Volunteer Hours' },
+  'volunteerHoursReview.heading': { pt: 'Rever horas de voluntariado', en: 'Review Volunteer Hours' },
+  'volunteerHoursReview.subheading': {
+    pt: 'Entradas geradas automaticamente com um sinal de exceção, e tudo o que foi registado manualmente. O resto aprova-se sozinho passado um mês.',
+    en: 'Auto-generated entries carrying an exception signal, plus everything logged by hand. Everything else approves itself after a month.',
+  },
+  'volunteerHoursReview.loadFailed': {
+    pt: 'Não foi possível carregar a fila de revisão.',
+    en: 'Could not load the review queue.',
+  },
+  'volunteerHoursReview.noneToReview': {
+    pt: 'Não há nada por rever de momento.',
+    en: 'Nothing to review right now.',
+  },
+  'volunteerHoursReview.columnPerson': { pt: 'Pessoa', en: 'Person' },
+  'volunteerHoursReview.columnActivity': { pt: 'Atividade', en: 'Activity' },
+  'volunteerHoursReview.columnDate': { pt: 'Data', en: 'Date' },
+  'volunteerHoursReview.columnProposed': { pt: 'Proposto', en: 'Proposed' },
+  'volunteerHoursReview.columnFlags': { pt: 'Sinais', en: 'Flags' },
+  'volunteerHoursReview.reviewButton': { pt: 'Rever', en: 'Review' },
+  'volunteerHoursReview.reviewDialogTitle': { pt: 'Rever horas', en: 'Review hours' },
+  'volunteerHoursReview.reviewDialogMinutes': { pt: 'Minutos a contar', en: 'Minutes to credit' },
+  'volunteerHoursReview.reviewDialogReason': {
+    pt: 'Motivo da correção',
+    en: 'Reason for the correction',
+  },
+  'volunteerHoursReview.reviewDialogReasonRequired': {
+    pt: 'Corrigir o valor exige um motivo.',
+    en: 'Correcting the value needs a reason.',
+  },
+  'volunteerHoursReview.reviewDialogCancel': { pt: 'Cancelar', en: 'Cancel' },
+  'volunteerHoursReview.reviewDialogApprove': { pt: 'Aprovar', en: 'Approve' },
+  'volunteerHoursReview.approveSuccess': { pt: 'Horas aprovadas.', en: 'Hours approved.' },
+  'volunteerHoursReview.approveFailed': { pt: 'Não foi possível aprovar as horas.', en: 'Could not approve the hours.' },
+  'volunteerHoursReview.exportHeading': { pt: 'Exportar resumo', en: 'Export summary' },
+  'volunteerHoursReview.exportFrom': { pt: 'De', en: 'From' },
+  'volunteerHoursReview.exportTo': { pt: 'Até', en: 'To' },
+  'volunteerHoursReview.exportButton': { pt: 'Transferir CSV', en: 'Download CSV' },
+  'volunteerHoursReview.exportFailed': { pt: 'Não foi possível exportar o CSV.', en: 'Could not export the CSV.' },
+
+  'volunteerHoursStatus.PENDING': { pt: 'Por aprovar', en: 'Pending' },
+  'volunteerHoursStatus.APPROVED': { pt: 'Aprovado', en: 'Approved' },
+
+  'activityType.EMERGENCY': { pt: 'Emergência', en: 'Emergency' },
+  'activityType.LOCAL_SUPPORT': { pt: 'Apoio Local', en: 'Local Support' },
+  'activityType.SALOP_SUPPORT': { pt: 'Apoio SALOP', en: 'SALOP Support' },
+  'activityType.MEETING': { pt: 'Reunião', en: 'Meeting' },
+  'activityType.TRAINING': { pt: 'Formação', en: 'Training' },
+  'activityType.OTHER': { pt: 'Outro', en: 'Other' },
+
   'myAvailability.pageTitle': { pt: 'A minha disponibilidade', en: 'My availability' },
   'myAvailability.heading': { pt: 'A minha disponibilidade', en: 'My availability' },
   'myAvailability.weekendHoliday': { pt: 'Fim de semana / feriado', en: 'Weekend / holiday' },
@@ -2181,6 +2277,23 @@ export const windowCategoryDescription = (
     String(category)
   );
 };
+
+/**
+ * A volunteer-hours activity type's display label (#164), falling back to
+ * `@redinfo/shared`'s English `VOLUNTEER_ACTIVITY_TYPE_LABEL` the same way
+ * `windowCategoryLabel` falls back to its own shared map.
+ */
+export const activityTypeLabel = (t: Translate, type: VolunteerActivityType | string): string => {
+  const key = `activityType.${type}`;
+  return key in ALL_MESSAGES
+    ? t(key)
+    : (VOLUNTEER_ACTIVITY_TYPE_LABEL[type as VolunteerActivityType] ?? String(type));
+};
+
+export const volunteerHoursStatusLabel = (
+  t: Translate,
+  status: VolunteerHoursStatus | string,
+): string => t(`volunteerHoursStatus.${status}`);
 
 /**
  * A backend `ApiErrorBody` (#180 phase 4), in the reader's language.

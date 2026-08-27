@@ -68,6 +68,14 @@ export enum Action {
    * capability, and a live run is the report before it is finished.
    */
   VIEW_LIVE_RUNS = 'VIEW_LIVE_RUNS',
+  /**
+   * Review the queue: approve or correct anyone's volunteer-hours entry.
+   * Logging and viewing your *own* hours needs no action at all — those
+   * routes are self-scoped, the same way `GET /schedules/me` is.
+   */
+  MANAGE_VOLUNTEER_HOURS = 'MANAGE_VOLUNTEER_HOURS',
+  /** Read the aggregated volunteer-hours summary, without the review queue. */
+  VIEW_VOLUNTEER_HOURS = 'VIEW_VOLUNTEER_HOURS',
 }
 
 export const ROLE_PERMISSIONS: Record<UserRole, Action[]> = {
@@ -103,6 +111,10 @@ export const ROLE_PERMISSIONS: Record<UserRole, Action[]> = {
     // Watching runs in progress is the coordinator's half of live mode; the
     // crew's half needs no new capability.
     Action.VIEW_LIVE_RUNS,
+    // Reviewing hours is the coordinator's half of the same job that builds
+    // the schedule those hours are generated from.
+    Action.MANAGE_VOLUNTEER_HOURS,
+    Action.VIEW_VOLUNTEER_HOURS,
   ],
   [UserRole.LOGISTICS_COORDINATOR]: [
     Action.MANAGE_LOGISTICS,
@@ -960,6 +972,14 @@ export interface WindowRoleSpec {
    */
   maxPeople: number;
   /**
+   * Fewest people this post needs filled for a shift to count as properly
+   * crewed, read by volunteer-hours generation (#164) via
+   * `shiftMandatoryRolesFilled`. `0` means the post is optional — someone may
+   * fill it, or not, or leave mid-shift, without that blocking anything.
+   * Defaults to `0` when omitted on input; once stored it is always given.
+   */
+  mandatoryCount?: number;
+  /**
    * The certification someone must hold to be assigned here, or `null` for a
    * post with no requirement. A coordinator's choice, not derived — though
    * the editor suggests `DRIVER` for a role named "Driver" (see
@@ -979,6 +999,8 @@ export interface AvailabilityWindowRole extends WindowRoleSpec {
   windowId: string;
   /** Position in the window's own list, 0-based — the order it is offered in. */
   order: number;
+  /** Always resolved once stored — see the doc comment on `WindowRoleSpec`. */
+  mandatoryCount: number;
   /** Always resolved once stored — see the doc comment on `WindowRoleSpec`. */
   requiredCertification: CertificationType | null;
 }
@@ -1008,11 +1030,31 @@ export function roleRequiresDriverCertification(name: string): boolean {
  * The roles an Emergency window has unless the coordinator changes them: one
  * crew, one person each, as confirmed with the PO. Condutor needs the driver
  * certification, Chefe de Equipa needs TAS, Socorrista needs TAT.
+ *
+ * Driver and Team Leader are mandatory — a shift missing either most likely
+ * did not run, so volunteer-hours generation (#164) skips it entirely. Team
+ * Member is the pool seat: it may go unfilled, or be filled and then leave
+ * mid-shift, without that blocking anything (see `shiftMandatoryRolesFilled`).
  */
 export const DEFAULT_EMERGENCY_WINDOW_ROLES: readonly WindowRoleSpec[] = [
-  { name: DRIVER_ROLE_NAME, maxPeople: 1, requiredCertification: CertificationType.DRIVER },
-  { name: 'Team Leader', maxPeople: 1, requiredCertification: CertificationType.TAS },
-  { name: 'Team Member', maxPeople: 1, requiredCertification: CertificationType.TAT },
+  {
+    name: DRIVER_ROLE_NAME,
+    maxPeople: 1,
+    mandatoryCount: 1,
+    requiredCertification: CertificationType.DRIVER,
+  },
+  {
+    name: 'Team Leader',
+    maxPeople: 1,
+    mandatoryCount: 1,
+    requiredCertification: CertificationType.TAS,
+  },
+  {
+    name: 'Team Member',
+    maxPeople: 1,
+    mandatoryCount: 0,
+    requiredCertification: CertificationType.TAT,
+  },
 ];
 
 /**
@@ -1062,6 +1104,15 @@ export function validateWindowRoles(roles: WindowRoleSpec[]): string | null {
     if (role.maxPeople > MAX_ROLE_PEOPLE) {
       return `A role may take at most ${MAX_ROLE_PEOPLE} people (got ${role.maxPeople}), or 0 for unlimited.`;
     }
+    const mandatoryCount = role.mandatoryCount ?? 0;
+    if (!Number.isInteger(mandatoryCount) || mandatoryCount < 0) {
+      return 'The mandatory count must be a whole number, 0 or more.';
+    }
+    // An unlimited role (maxPeople === 0) has no ceiling to check against —
+    // "at least N, no cap" is a coherent thing to ask for there.
+    if (role.maxPeople !== UNLIMITED_ROLE_PEOPLE && mandatoryCount > role.maxPeople) {
+      return `"${name}" cannot require more people (${mandatoryCount}) than it can hold (${role.maxPeople}).`;
+    }
     if (
       role.requiredCertification !== null &&
       role.requiredCertification !== undefined &&
@@ -1085,7 +1136,7 @@ export function validateWindowRoles(roles: WindowRoleSpec[]): string | null {
  */
 export function toWindowRoles(
   roles: WindowRoleSpec[],
-): Array<WindowRoleSpec & { order: number }> {
+): Array<WindowRoleSpec & { order: number; mandatoryCount: number }> {
   return roles.map((role, index) => {
     const name = role.name.trim();
     const requiredCertification =
@@ -1097,6 +1148,7 @@ export function toWindowRoles(
     return {
       name,
       maxPeople: role.maxPeople,
+      mandatoryCount: role.mandatoryCount ?? 0,
       order: index,
       requiredCertification,
     };
@@ -1838,6 +1890,357 @@ export function formatGap(gap: ScheduleGap): string {
     default:
       return 'Not fully crewed';
   }
+}
+
+/**
+ * Whether a shift's mandatory posts are filled — the bar for auto-generating
+ * volunteer-hours entries from it (#164). A shift short of this most likely
+ * did not run at all, so nothing is generated for anyone on it, flagged or
+ * otherwise — this is a stricter, narrower question than `shiftGaps()`, which
+ * still judges every finite role against its full `maxPeople` for the
+ * schedule board's own gap chips and is unaffected by `mandatoryCount`.
+ *
+ * A window with no roles at all is judged on headcount alone: it ran if
+ * anyone at all was assigned.
+ */
+export function shiftMandatoryRolesFilled({
+  roles,
+  assignments,
+}: {
+  roles: Array<Pick<AvailabilityWindowRole, 'id' | 'mandatoryCount'>>;
+  assignments: Array<{ roleId?: string | null }>;
+}): boolean {
+  if (roles.length === 0) return assignments.length > 0;
+  return roles.every((role) => {
+    if (role.mandatoryCount <= 0) return true;
+    const filled = assignments.filter((a) => a.roleId === role.id).length;
+    return filled >= role.mandatoryCount;
+  });
+}
+
+// ─── Volunteer hours ────────────────────────────────────────────────────────────
+
+/**
+ * Where an entry's default came from (#164). `SCHEDULED` is proposed by the
+ * system from a `ScheduleAssignment`; `MANUAL` has no shift behind it at all
+ * (a meeting, training, or anything else logged by hand) and always needs a
+ * coordinator's eyes — nothing to auto-validate it against.
+ */
+export enum VolunteerHoursSource {
+  SCHEDULED = 'SCHEDULED',
+  MANUAL = 'MANUAL',
+}
+
+/**
+ * What the hours were for. The rota categories double as activity types for
+ * `SCHEDULED` entries; the other three exist only for `MANUAL` ones.
+ */
+export enum VolunteerActivityType {
+  EMERGENCY = 'EMERGENCY',
+  LOCAL_SUPPORT = 'LOCAL_SUPPORT',
+  SALOP_SUPPORT = 'SALOP_SUPPORT',
+  MEETING = 'MEETING',
+  TRAINING = 'TRAINING',
+  OTHER = 'OTHER',
+}
+
+/** The three `MANUAL`-only activity types, offered by the "log hours" form. */
+export const MANUAL_VOLUNTEER_ACTIVITY_TYPES: readonly VolunteerActivityType[] = [
+  VolunteerActivityType.MEETING,
+  VolunteerActivityType.TRAINING,
+  VolunteerActivityType.OTHER,
+];
+
+export const VOLUNTEER_ACTIVITY_TYPE_LABEL: Record<VolunteerActivityType, string> = {
+  [VolunteerActivityType.EMERGENCY]: 'Emergency',
+  [VolunteerActivityType.LOCAL_SUPPORT]: 'Local Support',
+  [VolunteerActivityType.SALOP_SUPPORT]: 'SALOP Support',
+  [VolunteerActivityType.MEETING]: 'Meeting',
+  [VolunteerActivityType.TRAINING]: 'Training',
+  [VolunteerActivityType.OTHER]: 'Other',
+};
+
+/**
+ * Two states, not four: an entry is either still waiting on someone (a
+ * coordinator, or the grace-period sweep), or it counts. There is no
+ * separate "rejected" — disputing an entry is done by approving it with
+ * `minutes` corrected down (to zero, if nothing should count) and a
+ * `correctionReason`.
+ */
+export enum VolunteerHoursStatus {
+  PENDING = 'PENDING',
+  APPROVED = 'APPROVED',
+}
+
+/**
+ * An exception worth a coordinator's attention. `RAN_OVER` is confident —
+ * derived from a submitted emergency report's own chronology — and is
+ * auto-credited on top of the scheduled minutes as well as flagged.
+ * `POSSIBLY_LEFT_EARLY` is inferential — an optional-seat person absent from
+ * every report on the shift — and is flag-only, never adjusting `minutes`
+ * itself.
+ */
+export type VolunteerHoursFlag = 'RAN_OVER' | 'POSSIBLY_LEFT_EARLY';
+
+export interface VolunteerHoursFlagDetail {
+  flag: VolunteerHoursFlag;
+  /** Set for `RAN_OVER`: how many minutes past the shift's own end. */
+  minutesOver?: number;
+  /** Report(s) the flag was raised from. */
+  reportIds?: string[];
+}
+
+export interface VolunteerHoursActor {
+  id: string;
+  firstName: string;
+  lastName: string;
+}
+
+/** One volunteer's credited time for one activity (#164). */
+export interface VolunteerHoursEntry {
+  id: string;
+  userId: string;
+  user?: VolunteerHoursActor | null;
+  source: VolunteerHoursSource;
+  activityType: VolunteerActivityType;
+  assignmentId?: string | null;
+  scheduleId?: string | null;
+  /** ISO date, `YYYY-MM-DD`. */
+  date: string;
+  /** Required for a MANUAL entry; unused for SCHEDULED. */
+  description?: string | null;
+  /** The shift's own duration in minutes, snapshotted at generation. Null for MANUAL. */
+  baselineMinutes?: number | null;
+  /** What the system proposed crediting. */
+  proposedMinutes: number;
+  /** What actually counts towards totals. */
+  minutes: number;
+  flags: VolunteerHoursFlag[];
+  flagDetails?: VolunteerHoursFlagDetail[] | null;
+  status: VolunteerHoursStatus;
+  approvedById?: string | null;
+  approvedBy?: VolunteerHoursActor | null;
+  approvedAt?: string | null;
+  autoApproved: boolean;
+  /** Present exactly when `minutes` differs from `proposedMinutes`. */
+  correctionReason?: string | null;
+  loggedById?: string | null;
+  loggedBy?: VolunteerHoursActor | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** `POST /volunteer-hours` — logging a MANUAL entry for yourself. */
+export interface CreateManualVolunteerHoursRequest {
+  activityType: VolunteerActivityType;
+  /** ISO date, `YYYY-MM-DD`. */
+  date: string;
+  minutes: number;
+  description: string;
+}
+
+/** `POST /volunteer-hours/:id/approve` — approve as proposed, or correct the number. */
+export interface ApproveVolunteerHoursRequest {
+  /** Omit to approve the entry's own `proposedMinutes` unchanged. */
+  minutes?: number;
+  /** Required exactly when `minutes` is given and differs from `proposedMinutes`. */
+  correctionReason?: string;
+}
+
+/** `GET /volunteer-hours/me`. */
+export interface MyVolunteerHoursResponse {
+  entries: VolunteerHoursEntry[];
+  totalApprovedMinutes: number;
+  totalPendingMinutes: number;
+}
+
+/** One row of `GET /volunteer-hours/summary`. */
+export interface VolunteerHoursSummaryRow {
+  userId: string;
+  firstName: string;
+  lastName: string;
+  approvedMinutes: number;
+  pendingMinutes: number;
+  byActivityType: Partial<Record<VolunteerActivityType, number>>;
+}
+
+/** `GET /volunteer-hours/summary` — approved vs pending, per volunteer, over a period. */
+export interface VolunteerHoursSummaryResponse {
+  /** ISO date, `YYYY-MM-DD`, inclusive. */
+  from: string;
+  to: string;
+  rows: VolunteerHoursSummaryRow[];
+}
+
+export const MAX_MANUAL_HOURS_DESCRIPTION_LENGTH = 500;
+/** A single manual entry may not claim more than this many minutes (18h). */
+export const MAX_MANUAL_HOURS_MINUTES = 18 * 60;
+
+/**
+ * The one rule for whether a manual-entry request is coherent, mirroring
+ * `validateWindowRoles`'s role as the shared gate between the form and the API.
+ */
+export function validateManualVolunteerHours(
+  request: CreateManualVolunteerHoursRequest,
+): string | null {
+  if (!MANUAL_VOLUNTEER_ACTIVITY_TYPES.includes(request.activityType)) {
+    return 'Choose Meeting, Training, or Other.';
+  }
+  if (!isIsoDateLike(request.date)) return 'Enter a valid date.';
+  if (!Number.isInteger(request.minutes) || request.minutes <= 0) {
+    return 'Duration must be a whole number of minutes greater than zero.';
+  }
+  if (request.minutes > MAX_MANUAL_HOURS_MINUTES) {
+    return `A single entry cannot claim more than ${MAX_MANUAL_HOURS_MINUTES / 60} hours.`;
+  }
+  const description = request.description?.trim() ?? '';
+  if (!description) return 'Describe what the activity was.';
+  if (description.length > MAX_MANUAL_HOURS_DESCRIPTION_LENGTH) {
+    return `The description may be at most ${MAX_MANUAL_HOURS_DESCRIPTION_LENGTH} characters.`;
+  }
+  return null;
+}
+
+/** Loose `YYYY-MM-DD` shape check — the full calendar validity check lives with the DTOs. */
+function isIsoDateLike(value: unknown): value is string {
+  return typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+/**
+ * One report's evidence for one shift's exception detection — already
+ * resolved by the caller to plain numbers, so this stays pure: no `Date`
+ * arithmetic and no timezone handling here (see `shiftBoundaryToInstant` on
+ * the backend for the DST-aware part).
+ */
+export interface ShiftExceptionReport {
+  /** Only a submitted report's timestamps are hard enough evidence to auto-credit minutes. */
+  submitted: boolean;
+  /**
+   * The latest of the report's own end-of-involvement timestamps
+   * (`availableAt`, `endedAt`, `hospitalArrivalAt`), minus the shift's own
+   * end instant, in minutes. Zero or negative when the report ended at or
+   * before the shift did.
+   */
+  minutesPastShiftEnd: number;
+  crewUserIds: string[];
+}
+
+export interface ShiftExceptionAssignment {
+  userId: string;
+  /**
+   * The assigned role's `mandatoryCount`, or `null` when the window defines
+   * no roles at all — absence detection does not apply then, since there is
+   * no "optional seat" to tell apart from a required one.
+   */
+  roleMandatoryCount: number | null;
+}
+
+export interface ShiftExceptionResult {
+  /** Extra minutes to auto-credit, keyed by userId — only crew of a report that ran over. */
+  extraMinutesByUser: Map<string, number>;
+  /** userIds flagged `POSSIBLY_LEFT_EARLY`. */
+  possiblyLeftEarly: Set<string>;
+}
+
+/**
+ * The two exception signals for one Emergency shift (#164): a report running
+ * past the shift's own end, and an optional-seat person absent from every
+ * report filed on it.
+ *
+ * Absence is judged against *every* report on the shift, submitted or still
+ * a draft — a draft is real evidence someone was there even though nobody
+ * has filed it yet, so its crew list still clears people of "possibly
+ * absent". It is only the *crediting* of extra minutes that is restricted to
+ * submitted reports, since an unfiled draft's timestamps are not yet a
+ * statement anyone has made. Absence is judged not at all when the shift has
+ * no report whatsoever — there is nothing to tell "absent" apart from
+ * "nobody has filed anything yet".
+ */
+export function detectShiftExceptions({
+  assignments,
+  reports,
+}: {
+  assignments: ShiftExceptionAssignment[];
+  reports: ShiftExceptionReport[];
+}): ShiftExceptionResult {
+  const extraMinutesByUser = new Map<string, number>();
+  for (const report of reports) {
+    if (!report.submitted || report.minutesPastShiftEnd <= 0) continue;
+    for (const userId of report.crewUserIds) {
+      const current = extraMinutesByUser.get(userId) ?? 0;
+      if (report.minutesPastShiftEnd > current) {
+        extraMinutesByUser.set(userId, report.minutesPastShiftEnd);
+      }
+    }
+  }
+
+  const possiblyLeftEarly = new Set<string>();
+  if (reports.length > 0) {
+    const knownCrewUserIds = new Set(reports.flatMap((report) => report.crewUserIds));
+    for (const assignment of assignments) {
+      if (assignment.roleMandatoryCount !== 0) continue;
+      if (!knownCrewUserIds.has(assignment.userId)) possiblyLeftEarly.add(assignment.userId);
+    }
+  }
+
+  return { extraMinutesByUser, possiblyLeftEarly };
+}
+
+/** What one SCHEDULED assignment's entry proposes, from its baseline and its exceptions. */
+export function proposeScheduledHours({
+  baselineMinutes,
+  extraMinutes,
+  possiblyLeftEarly,
+}: {
+  baselineMinutes: number;
+  extraMinutes: number;
+  possiblyLeftEarly: boolean;
+}): { proposedMinutes: number; flags: VolunteerHoursFlag[] } {
+  const flags: VolunteerHoursFlag[] = [];
+  let proposedMinutes = baselineMinutes;
+  if (extraMinutes > 0) {
+    flags.push('RAN_OVER');
+    proposedMinutes += extraMinutes;
+  }
+  if (possiblyLeftEarly) flags.push('POSSIBLY_LEFT_EARLY');
+  return { proposedMinutes, flags };
+}
+
+/**
+ * Days after a SCHEDULED shift's own date before a clean, untouched entry
+ * auto-approves. A month gives the volunteer a real window to correct the
+ * default before it becomes final, without leaving the review queue holding
+ * routine, unflagged entries forever.
+ */
+export const VOLUNTEER_HOURS_AUTO_APPROVE_GRACE_DAYS = 30;
+
+/**
+ * Whether a PENDING entry is due to auto-approve: SCHEDULED (a MANUAL entry
+ * always needs a person, per `VolunteerHoursSource` above), unflagged, and
+ * past the grace period counted from its own `date`.
+ */
+export function isEligibleForAutoApproval(
+  entry: Pick<VolunteerHoursEntry, 'source' | 'status' | 'flags' | 'date'>,
+  today: string,
+): boolean {
+  if (entry.source !== VolunteerHoursSource.SCHEDULED) return false;
+  if (entry.status !== VolunteerHoursStatus.PENDING) return false;
+  if (entry.flags.length > 0) return false;
+  const graceEnds = new Date(
+    Date.parse(`${entry.date}T00:00:00.000Z`) + VOLUNTEER_HOURS_AUTO_APPROVE_GRACE_DAYS * 86_400_000,
+  );
+  return graceEnds.getTime() <= Date.parse(`${today}T00:00:00.000Z`);
+}
+
+/** e.g. "7h 30m", "45m". */
+export function formatMinutes(minutes: number): string {
+  const sign = minutes < 0 ? '-' : '';
+  const abs = Math.abs(minutes);
+  const hours = Math.floor(abs / 60);
+  const mins = abs % 60;
+  if (hours === 0) return `${sign}${mins}m`;
+  if (mins === 0) return `${sign}${hours}h`;
+  return `${sign}${hours}h ${mins}m`;
 }
 
 // ─── Geography ────────────────────────────────────────────────────────────────

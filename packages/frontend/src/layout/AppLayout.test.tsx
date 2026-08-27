@@ -55,14 +55,15 @@ describe('RedInfoMenu', () => {
       '/',
       '/my-availability',
       '/my-duties',
+      '/my-hours',
       '/my-reports',
       '/vehicles',
     ]);
   });
 
-  it('gives a Logistics Coordinator exactly four entries and no live mode', async () => {
+  it('gives a Logistics Coordinator exactly five entries and no live mode', async () => {
     const links = await renderMenuAs(UserRole.LOGISTICS_COORDINATOR);
-    expect(links).toEqual(['/', '/my-duties', '/vehicles', '/inventory-templates']);
+    expect(links).toEqual(['/', '/my-duties', '/my-hours', '/vehicles', '/inventory-templates']);
   });
 
   it('gives an Emergency Coordinator every operational and configuration entry, including Holidays', async () => {
@@ -72,11 +73,13 @@ describe('RedInfoMenu', () => {
       '/',
       '/my-availability',
       '/my-duties',
+      '/my-hours',
       '/my-reports',
       '/live-runs',
       '/event-reports',
       '/schedules',
       '/availability-windows',
+      '/volunteer-hours/review',
       '/users',
       '/vehicles',
       // Not '/inventory-templates': ROLE_PERMISSIONS does not give this role
@@ -94,11 +97,13 @@ describe('RedInfoMenu', () => {
       '/',
       '/my-availability',
       '/my-duties',
+      '/my-hours',
       '/my-reports',
       '/live-runs',
       '/event-reports',
       '/schedules',
       '/availability-windows',
+      '/volunteer-hours/review',
       '/users',
       '/vehicles',
       '/inventory-templates',

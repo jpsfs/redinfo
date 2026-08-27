@@ -35,14 +35,15 @@ describe('NAV_SECTIONS', () => {
       '/',
       '/my-availability',
       '/my-duties',
+      '/my-hours',
       '/my-reports',
       '/vehicles',
     ]);
   });
 
-  it('gives a Logistics Coordinator exactly four entries and no live mode', () => {
+  it('gives a Logistics Coordinator exactly five entries and no live mode', () => {
     const routes = visibleRoutes(UserRole.LOGISTICS_COORDINATOR);
-    expect(routes).toEqual(['/', '/my-duties', '/vehicles', '/inventory-templates']);
+    expect(routes).toEqual(['/', '/my-duties', '/my-hours', '/vehicles', '/inventory-templates']);
     expect(routes).not.toContain('/live');
   });
 

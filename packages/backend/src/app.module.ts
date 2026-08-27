@@ -12,6 +12,7 @@ import { GeographyModule } from './geography/geography.module';
 import { HospitalsModule } from './hospitals/hospitals.module';
 import { EventReportsModule } from './event-reports/event-reports.module';
 import { LiveRunsModule } from './live-runs/live-runs.module';
+import { VolunteerHoursModule } from './volunteer-hours/volunteer-hours.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { LiveRunsModule } from './live-runs/live-runs.module';
     HospitalsModule,
     EventReportsModule,
     LiveRunsModule,
+    VolunteerHoursModule,
   ],
 })
 export class AppModule {}

@@ -14,9 +14,9 @@ NestJS + Prisma. Read `../shared/CLAUDE.md` first if the feature touches shared 
 **`src/schedules/` is the richest exemplar — copy its shape for a new feature module.**
 
 Current modules: `auth`, `availability`, `event-reports`, `geography`, `health`, `hospitals`,
-`inventory`, `live-runs`, `schedules`, `storage`, `users`, `vehicles`, `prisma`. New modules
-are wired into `src/app.module.ts`. Bootstrap (global `ValidationPipe`, global `ApiErrorFilter`,
-port 3000) is in `src/main.ts`.
+`inventory`, `live-runs`, `schedules`, `storage`, `users`, `vehicles`, `volunteer-hours`,
+`prisma`. New modules are wired into `src/app.module.ts`. Bootstrap (global `ValidationPipe`,
+global `ApiErrorFilter`, port 3000) is in `src/main.ts`.
 
 ## Controller pattern
 
@@ -56,6 +56,7 @@ Model index by domain (names only — grep for fields/relations):
 - **Inventory**: `InventoryTemplate`, `InventoryTemplateItem`, `VehicleInventoryItem`, `VehicleInventoryAudit`
 - **Availability**: `Holiday`, `AvailabilityWindow`, `AvailabilityWindowShift`, `AvailabilityWindowRole`, `AvailabilitySubmission`, `AvailabilityResponse`
 - **Schedules**: `Schedule`, `ScheduleAssignment`, `ScheduleShiftOverride`
+- **Volunteer hours**: `VolunteerHoursEntry`
 - **Geography**: `Municipality`, `Locality`, `Hospital`
 - **Event reports**: `EventReport`, `EventReportAssessment`, `EventReportCrewMember`, `EventReportVehicle`, `EventReportVictim`, `EventReportInemSupportUnit`, `EventReportAttachment`
 - **Live**: `LiveRun`, `LiveRunCrewMember`

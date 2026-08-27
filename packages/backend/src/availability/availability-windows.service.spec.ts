@@ -276,9 +276,27 @@ describe('AvailabilityWindowsService', () => {
       const result = await open();
 
       expect(createdRoles(prisma)).toEqual([
-        { name: 'Driver', maxPeople: 1, order: 0, requiredCertification: 'DRIVER' },
-        { name: 'Team Leader', maxPeople: 1, order: 1, requiredCertification: 'TAS' },
-        { name: 'Team Member', maxPeople: 1, order: 2, requiredCertification: 'TAT' },
+        {
+          name: 'Driver',
+          maxPeople: 1,
+          mandatoryCount: 1,
+          order: 0,
+          requiredCertification: 'DRIVER',
+        },
+        {
+          name: 'Team Leader',
+          maxPeople: 1,
+          mandatoryCount: 1,
+          order: 1,
+          requiredCertification: 'TAS',
+        },
+        {
+          name: 'Team Member',
+          maxPeople: 1,
+          mandatoryCount: 0,
+          order: 2,
+          requiredCertification: 'TAT',
+        },
       ]);
       expect(result.roles?.map((role) => role.name)).toEqual([
         'Driver',
@@ -305,12 +323,14 @@ describe('AvailabilityWindowsService', () => {
         {
           name: 'Radio operator',
           maxPeople: 2,
+          mandatoryCount: 0,
           order: 0,
           requiredCertification: null,
         },
         {
           name: 'Stretcher bearer',
           maxPeople: 0,
+          mandatoryCount: 0,
           order: 1,
           requiredCertification: null,
         },
@@ -321,7 +341,13 @@ describe('AvailabilityWindowsService', () => {
       await open({ category: LOCAL_SUPPORT, roles: [{ name: '  driver ', maxPeople: 1 }] });
 
       expect(createdRoles(prisma)).toEqual([
-        { name: 'driver', maxPeople: 1, order: 0, requiredCertification: 'DRIVER' },
+        {
+          name: 'driver',
+          maxPeople: 1,
+          mandatoryCount: 0,
+          order: 0,
+          requiredCertification: 'DRIVER',
+        },
       ]);
     });
 
@@ -332,7 +358,13 @@ describe('AvailabilityWindowsService', () => {
       });
 
       expect(createdRoles(prisma)).toEqual([
-        { name: 'Team Leader', maxPeople: 1, order: 0, requiredCertification: 'TAS' },
+        {
+          name: 'Team Leader',
+          maxPeople: 1,
+          mandatoryCount: 0,
+          order: 0,
+          requiredCertification: 'TAS',
+        },
       ]);
     });
 
@@ -343,7 +375,13 @@ describe('AvailabilityWindowsService', () => {
       });
 
       expect(createdRoles(prisma)).toEqual([
-        { name: 'Driver', maxPeople: 1, order: 0, requiredCertification: null },
+        {
+          name: 'Driver',
+          maxPeople: 1,
+          mandatoryCount: 0,
+          order: 0,
+          requiredCertification: null,
+        },
       ]);
     });
 

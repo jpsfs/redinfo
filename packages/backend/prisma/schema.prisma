@@ -116,6 +116,10 @@ model User {
   profileAudits         UserProfileAudit[]  @relation("UserProfileAuditSubject")
   profileChangesMade    UserProfileAudit[]  @relation("UserProfileAuditChangedBy")
 
+  volunteerHoursEntries  VolunteerHoursEntry[] @relation("VolunteerHoursOwner")
+  volunteerHoursApproved VolunteerHoursEntry[] @relation("VolunteerHoursApprovedBy")
+  volunteerHoursLogged   VolunteerHoursEntry[] @relation("VolunteerHoursLoggedBy")
+
   @@index([email])
   @@index([provider, providerId])
   @@index([isActive, role])
@@ -406,6 +410,16 @@ model AvailabilityWindowRole {
   name                  String
   /// Most people the schedule may put in this role on one shift. 0 = unlimited.
   maxPeople             Int
+  /// Fewest people this post needs filled for the shift to count as properly
+  /// crewed — 0 for a role that is a "pool" seat rather than a required post
+  /// (a Team Member can fill it, or not, or leave mid-shift, without that
+  /// blocking anything). Never more than `maxPeople` unless `maxPeople` is the
+  /// unlimited sentinel (`0`), in which case a positive count still means "at
+  /// least this many", with no cap. Read by volunteer-hours generation
+  /// (`#164`) to decide whether a shift's default hours may be auto-created;
+  /// unrelated to `shiftGaps()`, which still judges every finite role against
+  /// its `maxPeople` for the schedule board's own gap chips.
+  mandatoryCount        Int                @default(0)
   /// The certification someone must hold to be assigned here, or null for no
   /// requirement. A coordinator's choice — the editor suggests DRIVER for a
   /// role named "Driver", but nothing forces it, and every requirement is
@@ -471,6 +485,8 @@ model Schedule {
   /// Runs in progress whose crew came from a shift of this schedule.
   liveRuns       LiveRun[]
   shiftOverrides ScheduleShiftOverride[]
+  /// Volunteer-hours entries generated from this schedule's assignments.
+  volunteerHoursEntries VolunteerHoursEntry[]
 
   @@index([status])
 }
@@ -502,6 +518,10 @@ model ScheduleAssignment {
   assignedById                String
   assignedBy                  User                    @relation("ScheduleAssignedBy", fields: [assignedById], references: [id])
   assignedAt                  DateTime                @default(now())
+
+  /// The volunteer-hours entry generated from this assignment, if any. Not
+  /// every assignment has one yet — generation is lazy, on read (#164).
+  volunteerHoursEntry VolunteerHoursEntry?
 
   /// One person at most once per shift — the same person in two roles on one
   /// shift is a data error, not a conflict to report.
@@ -556,6 +576,121 @@ model AvailabilityResponse {
 
   @@unique([windowId, userId])
   @@index([windowId])
+}
+
+// ─── Volunteer hours ────────────────────────────────────────────────────────────
+
+/// Where an entry's default came from. A `SCHEDULED` entry is proposed by the
+/// system from a `ScheduleAssignment`; a `MANUAL` one has no shift behind it
+/// at all (a meeting, training, or anything else a volunteer logs by hand)
+/// and always needs a coordinator's eyes — there is nothing to auto-validate
+/// it against.
+enum VolunteerHoursSource {
+  SCHEDULED
+  MANUAL
+}
+
+/// What the hours were for. The rota categories double as activity types for
+/// `SCHEDULED` entries (one per `AvailabilityWindowCategory`); the other
+/// three exist only for `MANUAL` entries.
+enum VolunteerActivityType {
+  EMERGENCY
+  LOCAL_SUPPORT
+  SALOP_SUPPORT
+  MEETING
+  TRAINING
+  OTHER
+}
+
+/// Two states, not four: an entry is either still waiting on someone (a
+/// coordinator, or the grace-period sweep), or it counts. There is no
+/// separate "rejected" — disputing a `MANUAL` entry or a `SCHEDULED` one that
+/// overclaims is done by approving it with `minutes` corrected down (to zero,
+/// if nothing should count at all) and a `correctionReason`.
+enum VolunteerHoursStatus {
+  PENDING
+  APPROVED
+}
+
+/// One volunteer's credited time for one activity — either derived from a
+/// shift they were scheduled on, or logged by hand for something that never
+/// had one (#164).
+///
+/// Generation is lazy (on read), not a timer sweep: a `SCHEDULED` entry is
+/// materialised the first time anything asks about a past assignment, which
+/// means "does this entry exist yet" is never itself a correctness question
+/// (see `identity-purge.service.ts` for the same argument made about a
+/// different cleanup job).
+model VolunteerHoursEntry {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation("VolunteerHoursOwner", fields: [userId], references: [id], onDelete: Cascade)
+
+  source       VolunteerHoursSource
+  activityType VolunteerActivityType
+
+  /// The assignment this was generated from. Null for a MANUAL entry, and
+  /// SetNull rather than Cascade when the assignment itself is later removed
+  /// — unassigning someone must not erase an approval already on record, only
+  /// the live link back to the roster.
+  assignmentId String?              @unique
+  assignment   ScheduleAssignment?  @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
+  /// Denormalised alongside `assignmentId` so the schedule this came from is
+  /// still known after the assignment link itself is gone.
+  scheduleId   String?
+  schedule     Schedule?            @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
+  /// The shift's own date for a SCHEDULED entry, or the date logged for a
+  /// MANUAL one. Drives grace-period timing and every aggregation view.
+  date         DateTime             @db.Date
+
+  /// Required for a MANUAL entry (what the meeting/training/other activity
+  /// was); unused for SCHEDULED, where the shift itself is the description.
+  description String? @db.Text
+
+  /// The shift's own duration in minutes, snapshotted at generation time so a
+  /// later `ScheduleShiftOverride` never silently rewrites an entry already
+  /// reviewed. Null for MANUAL, which has no shift to snapshot.
+  baselineMinutes Int?
+  /// What the system proposes crediting: `baselineMinutes` plus any
+  /// auto-credited run-over for SCHEDULED, or exactly what the volunteer
+  /// typed for MANUAL.
+  proposedMinutes Int
+  /// What actually counts towards totals. Equal to `proposedMinutes` until a
+  /// coordinator corrects it.
+  minutes Int
+
+  /// Exception codes raised by detection — e.g. `RAN_OVER`,
+  /// `POSSIBLY_LEFT_EARLY`. Always empty for MANUAL, and for a SCHEDULED
+  /// entry with nothing to flag. Never generated at all for a shift whose
+  /// mandatory roles were not filled — that shift most likely did not run, so
+  /// there is nothing to flag rather than something to credit and flag.
+  flags       String[] @default([])
+  /// Evidence behind each flag (which report, how many minutes over, …), read
+  /// only by the review screen — nothing queries into it, so it is one block
+  /// rather than a child table.
+  flagDetails Json?
+
+  status       VolunteerHoursStatus @default(PENDING)
+  approvedById String?
+  approvedBy   User?                @relation("VolunteerHoursApprovedBy", fields: [approvedById], references: [id])
+  approvedAt   DateTime?
+  /// True when PENDING became APPROVED through the grace-period sweep rather
+  /// than a person's own action. Never true for MANUAL, or once corrected.
+  autoApproved     Boolean @default(false)
+  /// Present exactly when `minutes` differs from `proposedMinutes`.
+  correctionReason String?
+
+  /// Who logged this, for a MANUAL entry — null for SCHEDULED, which nobody
+  /// files by hand.
+  loggedById String?
+  loggedBy   User?    @relation("VolunteerHoursLoggedBy", fields: [loggedById], references: [id])
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@index([userId, date])
+  @@index([status])
+  @@index([scheduleId])
+  @@index([date])
 }
 
 // ─── Geography ────────────────────────────────────────────────────────────────
