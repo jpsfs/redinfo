@@ -1341,8 +1341,8 @@ const MESSAGES = {
   'myHours.pageTitle': { pt: 'As minhas horas', en: 'My Hours' },
   'myHours.heading': { pt: 'As minhas horas', en: 'My Hours' },
   'myHours.subheading': {
-    pt: 'As horas dos teus turnos escalados são registadas automaticamente. Corrige as que precisarem, ou regista horas de algo que não teve turno.',
-    en: 'Hours from your scheduled shifts are recorded automatically. Correct any that need it, or log hours for something that never had a shift.',
+    pt: 'As horas dos teus turnos escalados são registadas automaticamente. Corrige as que precisarem, regista um turno que o horário não apanhou, ou regista horas de algo que não teve turno.',
+    en: 'Hours from your scheduled shifts are recorded automatically. Correct any that need it, log a shift the schedule missed, or log hours for something that never had a shift.',
   },
   'myHours.loadFailed': { pt: 'Não foi possível carregar as tuas horas.', en: 'Could not load your hours.' },
   'myHours.pendingHeading': { pt: 'Por aprovar', en: 'Pending review' },

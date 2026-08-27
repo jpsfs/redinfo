@@ -8,10 +8,12 @@ import {
 } from '@redinfo/shared';
 
 /**
- * Logging hours for something that never had a shift — a meeting, training,
- * or anything else. Always lands `PENDING` and always needs a coordinator,
- * per `validateManualVolunteerHours` (shared): there is no schedule to
- * auto-validate it against.
+ * Logging hours for something the schedule never captured — a shift worked
+ * outside the rota (covering a gap in auto-generation, or without ever being
+ * scheduled), or something that was never a shift at all (a meeting,
+ * training, or anything else). Always lands `PENDING` and always needs a
+ * coordinator, per `validateManualVolunteerHours` (shared): there is no
+ * schedule to auto-validate it against.
  */
 export class CreateManualVolunteerHoursDto {
   @ApiProperty({ enum: MANUAL_VOLUNTEER_ACTIVITY_TYPES, example: VolunteerActivityType.MEETING })

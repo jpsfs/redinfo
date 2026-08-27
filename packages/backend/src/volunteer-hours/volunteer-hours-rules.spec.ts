@@ -212,10 +212,10 @@ describe('validateManualVolunteerHours', () => {
     expect(validateManualVolunteerHours(valid())).toBeNull();
   });
 
-  it('rejects an activity type that is not one of the manual three', () => {
+  it('accepts a rota activity type, for a shift the schedule never captured', () => {
     expect(
       validateManualVolunteerHours({ ...valid(), activityType: VolunteerActivityType.EMERGENCY }),
-    ).toMatch(/Meeting, Training, or Other/);
+    ).toBeNull();
   });
 
   it('rejects a non-positive duration', () => {

@@ -158,6 +158,32 @@ describe('MyHoursPage', () => {
     );
   });
 
+  it('logs a manual entry for a rota activity type, not just Meeting/Training/Other', async () => {
+    const user = userEvent.setup();
+    mockApiFetch.mockImplementation((path: string) => {
+      if (path === '/volunteer-hours') return Promise.resolve(ENTRY);
+      return Promise.resolve({ entries: [ENTRY], totalApprovedMinutes: 0, totalPendingMinutes: 240 });
+    });
+    renderPage();
+    await screen.findByText('Emergency');
+
+    await user.click(screen.getByRole('button', { name: 'Log hours' }));
+    await user.click(screen.getByLabelText('Activity'));
+    await user.click(await screen.findByRole('option', { name: 'Emergency' }));
+    await user.type(screen.getByLabelText('Description'), 'Covered a shift the schedule missed.');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() =>
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        '/volunteer-hours',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.objectContaining({ activityType: VolunteerActivityType.EMERGENCY }),
+        }),
+      ),
+    );
+  });
+
   it('blocks an empty description before it ever reaches the API', async () => {
     const user = userEvent.setup();
     renderPage();

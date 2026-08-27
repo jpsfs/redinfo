@@ -1923,8 +1923,10 @@ export function shiftMandatoryRolesFilled({
 /**
  * Where an entry's default came from (#164). `SCHEDULED` is proposed by the
  * system from a `ScheduleAssignment`; `MANUAL` has no shift behind it at all
- * (a meeting, training, or anything else logged by hand) and always needs a
- * coordinator's eyes — nothing to auto-validate it against.
+ * — a meeting, training, an emergency/support shift worked outside the
+ * schedule (covering a gap the auto-generation missed, or without ever being
+ * on the rota), or anything else logged by hand — and always needs a
+ * coordinator's eyes: there is no shift to auto-validate it against.
  */
 export enum VolunteerHoursSource {
   SCHEDULED = 'SCHEDULED',
@@ -1932,8 +1934,11 @@ export enum VolunteerHoursSource {
 }
 
 /**
- * What the hours were for. The rota categories double as activity types for
- * `SCHEDULED` entries; the other three exist only for `MANUAL` ones.
+ * What the hours were for. The rota categories (`EMERGENCY`,
+ * `LOCAL_SUPPORT`, `SALOP_SUPPORT`) double as `SCHEDULED` activity types and
+ * can also be logged `MANUAL`ly (for shift work the schedule never captured);
+ * the other three (`MEETING`, `TRAINING`, `OTHER`) only ever appear on
+ * `MANUAL` entries.
  */
 export enum VolunteerActivityType {
   EMERGENCY = 'EMERGENCY',
@@ -1944,8 +1949,16 @@ export enum VolunteerActivityType {
   OTHER = 'OTHER',
 }
 
-/** The three `MANUAL`-only activity types, offered by the "log hours" form. */
+/**
+ * Every activity type is offered on the "log hours" form: the rota
+ * categories let someone report a shift the schedule never captured (a gap
+ * in auto-generation, or work done without ever being on the rota), while
+ * `MEETING`/`TRAINING`/`OTHER` cover everything that was never a shift.
+ */
 export const MANUAL_VOLUNTEER_ACTIVITY_TYPES: readonly VolunteerActivityType[] = [
+  VolunteerActivityType.EMERGENCY,
+  VolunteerActivityType.LOCAL_SUPPORT,
+  VolunteerActivityType.SALOP_SUPPORT,
   VolunteerActivityType.MEETING,
   VolunteerActivityType.TRAINING,
   VolunteerActivityType.OTHER,
@@ -2099,7 +2112,7 @@ export function validateManualVolunteerHours(
   request: CreateManualVolunteerHoursRequest,
 ): string | null {
   if (!MANUAL_VOLUNTEER_ACTIVITY_TYPES.includes(request.activityType)) {
-    return 'Choose Meeting, Training, or Other.';
+    return 'Choose a valid activity type.';
   }
   if (!isIsoDateLike(request.date)) return 'Enter a valid date.';
   if (!Number.isInteger(request.minutes) || request.minutes <= 0) {
@@ -2136,7 +2149,7 @@ export function validateVolunteerHoursEdit(
   const description = request.description?.trim() ?? '';
   if (source === VolunteerHoursSource.MANUAL) {
     if (request.activityType && !MANUAL_VOLUNTEER_ACTIVITY_TYPES.includes(request.activityType)) {
-      return 'Choose Meeting, Training, or Other.';
+      return 'Choose a valid activity type.';
     }
     if (request.date !== undefined && !isIsoDateLike(request.date)) return 'Enter a valid date.';
     if (!description) return 'Describe what the activity was.';
