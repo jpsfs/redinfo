@@ -13,6 +13,9 @@ import {
   Link,
   useSidebarState,
   useGetIdentity,
+  useLocales,
+  LocalesMenuButton,
+  LoadingIndicator,
 } from 'react-admin';
 import { Box, Divider, ListSubheader } from '@mui/material';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
@@ -40,8 +43,28 @@ import {
 const identityRoleLabel = (t: Translate, role?: string | null): string =>
   (role && accountRoleLabel(t, role)) || role || '';
 
+/**
+ * react-admin's default toolbar (language picker + refresh), but dropped on
+ * mobile entirely: language now lives on the My Profile page (see
+ * `MyProfilePage.tsx`), and a manual refresh button is redundant there — the
+ * mobile browser's own pull-to-refresh already reloads the page. Keeps the
+ * mobile header bar down to the sidebar toggle, title, and the user-menu
+ * avatar.
+ */
+const RedInfoAppBarToolbar = () => {
+  const isMobile = useIsMobile();
+  const locales = useLocales();
+  if (isMobile) return null;
+  return (
+    <>
+      {locales && locales.length > 1 && <LocalesMenuButton />}
+      <LoadingIndicator />
+    </>
+  );
+};
+
 const RedInfoAppBar = () => (
-  <AppBar userMenu={<RedInfoUserMenu />}>
+  <AppBar userMenu={<RedInfoUserMenu />} toolbar={<RedInfoAppBarToolbar />}>
     <Box
       component="img"
       src={logoRedCrossEmblemPath}
