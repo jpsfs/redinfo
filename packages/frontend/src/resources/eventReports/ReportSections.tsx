@@ -816,9 +816,10 @@ export const VictimsSection = ({ draft, patch, lookups }: SectionProps) => {
 export const InemSupportSection = ({ draft, patch, lookups }: SectionProps) => {
   const t = useT();
   const [pendingType, setPendingType] = useState<InemSupportUnitType | null>(null);
+  const inemSupportUnits = draft.inemSupportUnits ?? [];
 
   const countByType = (type: InemSupportUnitType) =>
-    draft.inemSupportUnits.filter((unit) => unit.unitType === type).length;
+    inemSupportUnits.filter((unit) => unit.unitType === type).length;
 
   return (
     <Stack spacing={2}>
@@ -826,17 +827,17 @@ export const InemSupportSection = ({ draft, patch, lookups }: SectionProps) => {
         <SectionLabel>{t('field.inemSupportRecorded')}</SectionLabel>
         <Box sx={{ flex: 1 }} />
         <Typography variant="caption" sx={{ fontWeight: 700, color: 'text.disabled' }}>
-          {draft.inemSupportUnits.length}
+          {inemSupportUnits.length}
         </Typography>
       </Stack>
 
-      {draft.inemSupportUnits.length === 0 && (
+      {inemSupportUnits.length === 0 && (
         <Typography variant="body2" color="text.disabled">
           {t('hint.noInemSupportUnits')}
         </Typography>
       )}
 
-      {draft.inemSupportUnits.map((unit, index) => (
+      {inemSupportUnits.map((unit, index) => (
         <Paper key={index} variant="outlined" sx={{ p: 1.5 }}>
           <Stack direction="row" spacing={1.5} alignItems="center">
             <Chip label={inemUnitLabel(t, unit.unitType)} sx={{ fontWeight: 700 }} />
@@ -846,7 +847,7 @@ export const InemSupportSection = ({ draft, patch, lookups }: SectionProps) => {
             <IconButton
               onClick={() =>
                 patch({
-                  inemSupportUnits: draft.inemSupportUnits.filter((_, at) => at !== index),
+                  inemSupportUnits: inemSupportUnits.filter((_, at) => at !== index),
                 })
               }
               aria-label={t('action.remove')}
@@ -887,10 +888,7 @@ export const InemSupportSection = ({ draft, patch, lookups }: SectionProps) => {
           const hospitalId = choice.destinationHospitalId;
           if (pendingType && hospitalId) {
             patch({
-              inemSupportUnits: [
-                ...draft.inemSupportUnits,
-                { unitType: pendingType, hospitalId },
-              ],
+              inemSupportUnits: [...inemSupportUnits, { unitType: pendingType, hospitalId }],
             });
           }
           setPendingType(null);
@@ -1190,9 +1188,9 @@ export const ReviewSection = ({
             step: 'inemSupport' as StepId,
             label: t('field.inemSupportUnits'),
             value:
-              draft.inemSupportUnits.length === 0
+              (draft.inemSupportUnits ?? []).length === 0
                 ? '—'
-                : draft.inemSupportUnits
+                : (draft.inemSupportUnits ?? [])
                     .map(
                       (unit) =>
                         `${inemUnitLabel(t, unit.unitType)} · ${
