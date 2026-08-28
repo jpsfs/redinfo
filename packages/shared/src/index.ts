@@ -487,6 +487,46 @@ export enum InventoryItemType {
   UNLIMITED = 'UNLIMITED',
 }
 
+/// The catalogue of physical items that can be stocked on a vehicle or
+/// consumed during an event report. One `MaterialItem` per real-world item
+/// type, shared across every vehicle's template.
+export interface MaterialItem {
+  id: string;
+  namePt: string;
+  nameEn?: string | null;
+  unit: string;
+  type: InventoryItemType;
+  notes?: string | null;
+  isFrequent: boolean;
+  frequentOrder: number;
+  isDeleted: boolean;
+  createdAt: string;
+  updatedAt: string;
+  barcodes?: MaterialItemBarcode[];
+}
+
+/// A barcode (EAN/GS1, etc.) identifying a `MaterialItem`. One item may
+/// carry several codes — different manufacturers or box sizes for the same
+/// catalogue entry.
+export interface MaterialItemBarcode {
+  id: string;
+  materialItemId: string;
+  code: string;
+  label?: string | null;
+}
+
+/**
+ * The single place locale fallback for a material's display name is
+ * decided: `nameEn` for `en` when set, otherwise `namePt`.
+ */
+export function materialItemDisplayName(
+  item: Pick<MaterialItem, 'namePt' | 'nameEn'>,
+  locale: Locale,
+): string {
+  if (locale === 'en' && item.nameEn) return item.nameEn;
+  return item.namePt;
+}
+
 export interface InventoryTemplate {
   id: string;
   vehicleType: VehicleType;
@@ -500,6 +540,10 @@ export interface InventoryTemplate {
 export interface InventoryTemplateItem {
   id: string;
   templateId: string;
+  /// Nullable during the catalogue migration — see `materialItemDisplayName`
+  /// and the `20260828141009_material_catalogue` migration.
+  materialItemId?: string | null;
+  materialItem?: MaterialItem | null;
   name: string;
   type: InventoryItemType;
   recommendedQuantity?: number | null;

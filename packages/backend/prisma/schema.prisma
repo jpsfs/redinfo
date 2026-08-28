@@ -249,6 +249,43 @@ enum InventoryItemType {
   UNLIMITED
 }
 
+/// The catalogue of physical items that can be stocked on a vehicle or
+/// consumed during an event report. One `MaterialItem` per real-world item
+/// type — replaces the old per-template-item name so the same glove/bandage
+/// has a single stable identity across vehicles, barcodes and translations.
+model MaterialItem {
+  id            String            @id @default(cuid())
+  namePt        String
+  nameEn        String?
+  unit          String            @default("pcs")
+  type          InventoryItemType @default(COUNTABLE)
+  notes         String?
+  isFrequent    Boolean           @default(false)
+  frequentOrder Int               @default(0)
+  isDeleted     Boolean           @default(false)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  barcodes      MaterialItemBarcode[]
+  templateItems InventoryTemplateItem[]
+
+  @@index([isFrequent])
+  @@index([isDeleted])
+}
+
+/// A barcode (EAN/GS1, etc.) identifying a `MaterialItem`. One item may carry
+/// several codes — different manufacturers or box sizes for the same
+/// catalogue entry.
+model MaterialItemBarcode {
+  id             String       @id @default(cuid())
+  materialItemId String
+  materialItem   MaterialItem @relation(fields: [materialItemId], references: [id], onDelete: Cascade)
+  code           String       @unique
+  label          String?
+
+  @@index([materialItemId])
+}
+
 model InventoryTemplate {
   id          String      @id @default(cuid())
   vehicleType VehicleType @unique
@@ -266,6 +303,12 @@ model InventoryTemplateItem {
   id                  String            @id @default(cuid())
   templateId          String
   template            InventoryTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  /// Nullable during the catalogue migration; tightened to required once the
+  /// backfill in this same migration has run. `name`/`type`/`unit` below stay
+  /// read-through from `materialItem` for now — dropped once every row has
+  /// been repointed and callers read through the catalogue instead.
+  materialItemId      String?
+  materialItem        MaterialItem?     @relation(fields: [materialItemId], references: [id], onDelete: Restrict)
   name                String
   type                InventoryItemType @default(COUNTABLE)
   recommendedQuantity Int?
@@ -280,6 +323,7 @@ model InventoryTemplateItem {
 
   @@index([templateId])
   @@index([isDeleted])
+  @@index([materialItemId])
 }
 
 model VehicleInventoryItem {

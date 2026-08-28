@@ -98,6 +98,41 @@ async function main() {
     console.log('Transport inventory template already exists — skipping.');
   }
 
+  // ── Material Catalogue ─────────────────────────────────────────────────────
+  // A handful of realistic starter items so the catalogue admin screen and the
+  // consumption picker have something to show (#201). namePt is the working
+  // name in the field; nameEn is the locale fallback. The first two are
+  // pinned as admin favourites so the picker's quick-access grid isn't empty.
+
+  const materialCatalogueSeed: Array<{
+    namePt: string;
+    nameEn: string;
+    unit: string;
+    type: InventoryItemType;
+    isFrequent: boolean;
+    frequentOrder: number;
+  }> = [
+    { namePt: 'Lençol de maca', nameEn: 'Stretcher sheet', unit: 'pcs', type: InventoryItemType.COUNTABLE, isFrequent: true, frequentOrder: 1 },
+    { namePt: 'Luvas', nameEn: 'Gloves', unit: 'box', type: InventoryItemType.COUNTABLE, isFrequent: true, frequentOrder: 2 },
+    { namePt: 'Compressas', nameEn: 'Gauze pads', unit: 'pcs', type: InventoryItemType.COUNTABLE, isFrequent: false, frequentOrder: 0 },
+    { namePt: 'Soro', nameEn: 'Saline solution', unit: 'pcs', type: InventoryItemType.COUNTABLE, isFrequent: false, frequentOrder: 0 },
+    { namePt: 'Máscara O2', nameEn: 'Oxygen mask', unit: 'pcs', type: InventoryItemType.COUNTABLE, isFrequent: false, frequentOrder: 0 },
+  ];
+
+  let materialsSeeded = 0;
+  for (const material of materialCatalogueSeed) {
+    const exists = await prisma.materialItem.findFirst({ where: { namePt: material.namePt } });
+    if (!exists) {
+      await prisma.materialItem.create({ data: material });
+      materialsSeeded++;
+    }
+  }
+  console.log(
+    materialsSeeded > 0
+      ? `✅ ${materialsSeeded} material catalogue item(s) seeded.`
+      : 'Material catalogue already seeded — skipping.',
+  );
+
   // ── Holidays ─────────────────────────────────────────────────────────────────
   // Portuguese public holidays for 2026, as a convenience starting point for the
   // availability shift pattern (a holiday follows the weekend pattern: two
