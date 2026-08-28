@@ -1971,6 +1971,10 @@ const MESSAGES = {
     pt: 'Este horário sobrepõe-se a %{other}.',
     en: 'This overlaps %{other}.',
   },
+  'apiError.MATERIAL_ITEM_BARCODE_CONFLICT': {
+    pt: 'O código de barras %{code} já está a ser usado por outro item.',
+    en: 'Barcode %{code} is already used by another item.',
+  },
 
   // ── Calendar headers (#180 phase 5) ──
   // Hand-spelled rather than delegated to `Intl`/`toLocaleDateString`: ICU

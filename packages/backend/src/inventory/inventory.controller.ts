@@ -16,6 +16,7 @@ import {
 import { ApiTags, ApiBearerAuth, ApiQuery, ApiBody } from '@nestjs/swagger';
 import { Response } from 'express';
 import { InventoryService } from './inventory.service';
+import { MaterialItemsService } from './material-items.service';
 import { CreateInventoryTemplateDto } from './dto/create-inventory-template.dto';
 import { UpdateInventoryTemplateDto } from './dto/update-inventory-template.dto';
 import { CreateInventoryTemplateItemDto } from './dto/create-inventory-template-item.dto';
@@ -24,12 +25,13 @@ import {
   UpsertVehicleInventoryItemDto,
   UpdateVehicleInventoryItemDto,
 } from './dto/vehicle-inventory-item.dto';
+import { CreateMaterialItemDto, UpdateMaterialItemDto } from './dto/material-item.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Actions } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuditInterceptor } from '../auth/interceptors/audit.interceptor';
-import { Action, VehicleType } from '@redinfo/shared';
+import { Action, VehicleType, InventoryItemType } from '@redinfo/shared';
 
 // ─── Inventory Templates ──────────────────────────────────────────────────────
 
@@ -230,5 +232,64 @@ export class LowStockController {
   @ApiQuery({ name: 'vehicleType', required: false, enum: VehicleType })
   findLowStock(@Query('vehicleType') vehicleType?: VehicleType) {
     return this.inventoryService.findLowStockVehicles(vehicleType);
+  }
+}
+
+// ─── Material Catalogue ────────────────────────────────────────────────────────
+
+@ApiTags('Material Items')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
+@UseInterceptors(AuditInterceptor)
+@Controller('material-items')
+export class MaterialItemController {
+  constructor(private readonly materialItemsService: MaterialItemsService) {}
+
+  @Get()
+  @Actions(Action.VIEW_VEHICLES)
+  @ApiQuery({ name: 'q', required: false, type: String, description: 'Matches namePt, nameEn or a barcode' })
+  @ApiQuery({ name: 'frequent', required: false, type: Boolean })
+  @ApiQuery({ name: 'type', required: false, enum: InventoryItemType })
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'perPage', required: false, type: Number })
+  findAll(
+    @Query('q') q?: string,
+    @Query('frequent') frequent?: string,
+    @Query('type') type?: InventoryItemType,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page?: number,
+    @Query('perPage', new DefaultValuePipe(100), ParseIntPipe) perPage?: number,
+  ) {
+    return this.materialItemsService.findAll({ q, frequent: frequent === 'true', type }, page, perPage);
+  }
+
+  // Ahead of `:id` — an unindexed catch-all would swallow this path otherwise.
+  @Get('by-barcode/:code')
+  @Actions(Action.VIEW_VEHICLES)
+  findByBarcode(@Param('code') code: string) {
+    return this.materialItemsService.findByBarcode(code);
+  }
+
+  @Get(':id')
+  @Actions(Action.VIEW_VEHICLES)
+  findOne(@Param('id') id: string) {
+    return this.materialItemsService.findOne(id);
+  }
+
+  @Post()
+  @Actions(Action.MANAGE_VEHICLES)
+  create(@Body() dto: CreateMaterialItemDto) {
+    return this.materialItemsService.create(dto);
+  }
+
+  @Patch(':id')
+  @Actions(Action.MANAGE_VEHICLES)
+  update(@Param('id') id: string, @Body() dto: UpdateMaterialItemDto) {
+    return this.materialItemsService.update(id, dto);
+  }
+
+  @Delete(':id')
+  @Actions(Action.MANAGE_VEHICLES)
+  remove(@Param('id') id: string) {
+    return this.materialItemsService.remove(id);
   }
 }
