@@ -13,6 +13,7 @@ import DateRangeIcon from '@mui/icons-material/DateRange';
 import PeopleIcon from '@mui/icons-material/People';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import InventoryIcon from '@mui/icons-material/Inventory';
+import Inventory2Icon from '@mui/icons-material/Inventory2';
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
 import QueryStatsIcon from '@mui/icons-material/QueryStats';
@@ -161,6 +162,12 @@ export const NAV_SECTIONS: NavSection[] = [
         label: 'nav.inventoryTemplates',
         icon: <InventoryIcon />,
         requires: [Action.MANAGE_LOGISTICS],
+      },
+      {
+        to: '/material-items',
+        label: 'nav.materialItems',
+        icon: <Inventory2Icon />,
+        requires: [Action.MANAGE_VEHICLES],
       },
     ],
   },

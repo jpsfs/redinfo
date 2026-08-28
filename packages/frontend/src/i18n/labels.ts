@@ -466,6 +466,7 @@ const MESSAGES = {
   'nav.personnel': { pt: 'Pessoal', en: 'Personnel' },
   'nav.vehicles': { pt: 'Viaturas', en: 'Vehicles' },
   'nav.inventoryTemplates': { pt: 'Modelos de inventário', en: 'Inventory Templates' },
+  'nav.materialItems': { pt: 'Catálogo de materiais', en: 'Material Catalogue' },
   'nav.hospitals': { pt: 'Hospitais', en: 'Hospitals' },
   'nav.holidays': { pt: 'Feriados', en: 'Holidays' },
   'nav.myProfile': { pt: 'O meu perfil', en: 'My Profile' },
@@ -677,6 +678,10 @@ const MESSAGES = {
 
   'resources.inventory-template-items.fields.templateId': { pt: 'ID do modelo', en: 'Template ID' },
   'resources.inventory-template-items.fields.name': { pt: 'Nome do item', en: 'Item Name' },
+  'resources.inventory-template-items.fields.materialItemId': {
+    pt: 'Item do catálogo',
+    en: 'Catalogue Item',
+  },
   'resources.inventory-template-items.fields.type': { pt: 'Tipo', en: 'Type' },
   'resources.inventory-template-items.fields.recommendedQuantity': {
     pt: 'Quantidade recomendada',
@@ -687,6 +692,39 @@ const MESSAGES = {
   'resources.inventory-template-items.fields.notes': { pt: 'Notas', en: 'Notes' },
 
   'inventoryItemForm.unitHelp': { pt: 'Por exemplo, un, litros, kit', en: 'E.g. pcs, liters, kit' },
+
+  // ── Materials catalogue admin resource (#206) ──
+  'resources.material-items.fields.namePt': { pt: 'Nome (PT)', en: 'Name (PT)' },
+  'resources.material-items.fields.nameEn': { pt: 'Nome (EN)', en: 'Name (EN)' },
+  'resources.material-items.fields.unit': { pt: 'Unidade', en: 'Unit' },
+  'resources.material-items.fields.type': { pt: 'Tipo', en: 'Type' },
+  'resources.material-items.fields.notes': { pt: 'Notas', en: 'Notes' },
+  'resources.material-items.fields.isFrequent': { pt: 'Favorito', en: 'Favourite' },
+  'resources.material-items.fields.frequentOrder': {
+    pt: 'Ordem entre favoritos',
+    en: 'Favourite Order',
+  },
+  'resources.material-items.fields.barcodes': { pt: 'Códigos de barras', en: 'Barcodes' },
+  'resources.material-items.fields.barcodes.code': { pt: 'Código', en: 'Code' },
+  'resources.material-items.fields.barcodes.label': { pt: 'Rótulo', en: 'Label' },
+
+  'materialItemForm.namePtHelp': {
+    pt: 'Nome usado quando não existe tradução para inglês.',
+    en: 'Used whenever no English translation is set.',
+  },
+  'materialItemForm.frequentOrderHelp': {
+    pt: 'Ordena os favoritos no acesso rápido — menor primeiro.',
+    en: 'Orders favourites in the quick-access picker — lowest first.',
+  },
+  'materialItemForm.addBarcode': { pt: 'Adicionar código de barras', en: 'Add Barcode' },
+  'materialItemForm.removeBarcode': { pt: 'Remover código de barras', en: 'Remove Barcode' },
+
+  'materialItemList.searchPlaceholder': {
+    pt: 'Pesquisar por nome ou código de barras…',
+    en: 'Search by name or barcode…',
+  },
+  'materialItemList.favourite': { pt: 'Favorito', en: 'Favourite' },
+  'materialItemList.barcodeCount': { pt: '%{count} código(s)', en: '%{count} barcode(s)' },
 
   'resources.inventory-templates.fields.vehicleType': { pt: 'Tipo de viatura', en: 'Vehicle Type' },
   'resources.inventory-templates.fields.version': { pt: 'Versão', en: 'Version' },

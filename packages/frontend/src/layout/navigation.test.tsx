@@ -42,7 +42,7 @@ describe('NAV_SECTIONS', () => {
     ]);
   });
 
-  it('gives a Logistics Coordinator exactly six entries and no live mode', () => {
+  it('gives a Logistics Coordinator exactly seven entries and no live mode', () => {
     const routes = visibleRoutes(UserRole.LOGISTICS_COORDINATOR);
     expect(routes).toEqual([
       '/',
@@ -51,6 +51,7 @@ describe('NAV_SECTIONS', () => {
       '/statistics',
       '/vehicles',
       '/inventory-templates',
+      '/material-items',
     ]);
     expect(routes).not.toContain('/live');
   });
@@ -74,6 +75,9 @@ describe('NAV_SECTIONS', () => {
     expect(routes).toContain('/holidays');
     expect(routes).toContain('/live-runs');
     expect(routes).not.toContain('/inventory-templates');
+    // Unlike Inventory Templates, the materials catalogue is gated on
+    // MANAGE_VEHICLES (#206), which this role does hold.
+    expect(routes).toContain('/material-items');
   });
 
   it('gives a System Admin every entry in the manifest', () => {

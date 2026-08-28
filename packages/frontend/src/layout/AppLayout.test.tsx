@@ -62,9 +62,17 @@ describe('RedInfoMenu', () => {
     ]);
   });
 
-  it('gives a Logistics Coordinator exactly six entries and no live mode', async () => {
+  it('gives a Logistics Coordinator exactly seven entries and no live mode', async () => {
     const links = await renderMenuAs(UserRole.LOGISTICS_COORDINATOR);
-    expect(links).toEqual(['/', '/my-duties', '/my-hours', '/statistics', '/vehicles', '/inventory-templates']);
+    expect(links).toEqual([
+      '/',
+      '/my-duties',
+      '/my-hours',
+      '/statistics',
+      '/vehicles',
+      '/inventory-templates',
+      '/material-items',
+    ]);
   });
 
   it('gives an Emergency Coordinator every operational and configuration entry, including Holidays', async () => {
@@ -87,6 +95,9 @@ describe('RedInfoMenu', () => {
       // Not '/inventory-templates': ROLE_PERMISSIONS does not give this role
       // MANAGE_LOGISTICS. See navigation.test.tsx for the note on this gap
       // against the approved design's entry-count table.
+      // '/material-items' IS included, unlike '/inventory-templates' above:
+      // it's gated on MANAGE_VEHICLES (#206), which this role does hold.
+      '/material-items',
       '/hospitals',
       '/holidays',
     ]);
@@ -110,6 +121,7 @@ describe('RedInfoMenu', () => {
       '/users',
       '/vehicles',
       '/inventory-templates',
+      '/material-items',
       '/hospitals',
       '/holidays',
     ]);

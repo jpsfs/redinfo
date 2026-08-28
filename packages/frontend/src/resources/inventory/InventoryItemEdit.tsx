@@ -2,33 +2,49 @@ import {
   Edit,
   SimpleForm,
   TextInput,
-  SelectInput,
+  ReferenceInput,
+  AutocompleteInput,
   NumberInput,
   required,
   FormDataConsumer,
+  useGetOne,
+  useLocaleState,
 } from 'react-admin';
-import { useT } from '../../i18n/useT';
+import { InventoryItemType, Locale, MaterialItem, materialItemDisplayName } from '@redinfo/shared';
+
+/**
+ * `recommendedQuantity` only makes sense for a `COUNTABLE` item, and type is
+ * no longer a field on this form — it's read through from the linked
+ * `MaterialItem` (#206) — so this fetches the selected item just to know
+ * whether to show the field at all.
+ */
+const RecommendedQuantityInput = ({ materialItemId }: { materialItemId?: string }) => {
+  const { data } = useGetOne<MaterialItem>(
+    'material-items',
+    { id: materialItemId as string },
+    { enabled: Boolean(materialItemId) },
+  );
+  if (!materialItemId || data?.type === InventoryItemType.UNLIMITED) return null;
+  return <NumberInput source="recommendedQuantity" min={0} validate={required()} fullWidth />;
+};
 
 export const InventoryItemEdit = () => {
-  const t = useT();
-  const itemTypeChoices = [
-    { id: 'COUNTABLE', name: t('itemType.COUNTABLE') },
-    { id: 'UNLIMITED', name: t('itemType.UNLIMITED') },
-  ];
+  const [locale] = useLocaleState();
 
   return (
     <Edit redirect="show">
       <SimpleForm>
-        <TextInput source="name" validate={required()} fullWidth />
-        <SelectInput source="type" choices={itemTypeChoices} validate={required()} fullWidth />
+        <ReferenceInput source="materialItemId" reference="material-items">
+          <AutocompleteInput
+            optionText={(record: MaterialItem) => materialItemDisplayName(record, locale as Locale)}
+            filterToQuery={(searchText: string) => ({ q: searchText })}
+            validate={required()}
+            fullWidth
+          />
+        </ReferenceInput>
         <FormDataConsumer>
-          {({ formData }) =>
-            formData.type !== 'UNLIMITED' && (
-              <NumberInput source="recommendedQuantity" min={0} validate={required()} fullWidth />
-            )
-          }
+          {({ formData }) => <RecommendedQuantityInput materialItemId={formData.materialItemId} />}
         </FormDataConsumer>
-        <TextInput source="unit" validate={required()} helperText={t('inventoryItemForm.unitHelp')} fullWidth />
         <NumberInput source="order" min={0} fullWidth />
         <TextInput source="notes" multiline fullWidth />
       </SimpleForm>
