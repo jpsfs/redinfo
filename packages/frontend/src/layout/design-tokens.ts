@@ -114,8 +114,45 @@ export const elevationAppBar = 2;
  * never the same hue anywhere in the app.
  */
 export const colorCategoryEmergency = colorRedCrossRed;
-export const colorCategoryLocalSupport = '#0E7C86'; // teal
+/**
+ * `#00897B`, not the original `#0E7C86`: the original measures OKLCH chroma
+ * 0.089, under the 0.10 floor the `dataviz` skill's palette checker enforces
+ * — at chart scale (a 14px bar segment, a 10px legend swatch) it drifts
+ * toward grey and stops doing identity work. Confirmed with the delegation
+ * 2026-08-28 alongside the statistics dashboards
+ * (docs/plans/estatisticas-dashboards.md §6) that introduced the check.
+ */
+export const colorCategoryLocalSupport = '#00897B'; // teal
 export const colorCategorySalopSupport = '#6B4FA0'; // violet
+/**
+ * The remaining two `VolunteerActivityType` values that never appear as an
+ * `EventReportType`/`AvailabilityWindowCategory` — only the statistics
+ * dashboards' "hours by activity type" chart needs them. Same palette family
+ * as the three above (validated together, see the design doc §6).
+ */
+export const colorCategoryMeeting = '#B26A00'; // amber
+export const colorCategoryTraining = '#1F6FB2'; // blue
+/** `VolunteerActivityType.OTHER` — de-emphasis grey, not a categorical slot. */
+export const colorCategoryOther = colorGrey500;
+
+// ─── Statistics chart tokens ────────────────────────────────────────────────
+/**
+ * Sequential scale (light → dark, one hue) for the activation heatmap in
+ * `docs/plans/estatisticas-dashboards.md` §6 — the lightest step legitimately
+ * means "near zero", never "no data".
+ */
+export const colorSequentialScale = [
+  '#FDE7E8',
+  '#FAC7C9',
+  '#F59BA0',
+  '#EF6B72',
+  '#ED1B24',
+  '#C41520',
+  '#8C0E13',
+] as const;
+
+/** Single-series ranked bars (localities, hospitals, outcomes, km): one colour for every bar. */
+export const colorChartSingleSeries = colorRedCrossRed;
 
 // ─── Logo assets ──────────────────────────────────────────────────────────────
 /** Primary local path for the full Delegação de Campo logotype (/public). */

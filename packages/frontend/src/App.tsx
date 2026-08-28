@@ -49,6 +49,7 @@ import { MyReportsPage } from './pages/MyReportsPage';
 import { MyProfilePage } from './pages/MyProfilePage';
 import { LiveRunsPage } from './pages/LiveRunsPage';
 import { VolunteerHoursReviewPage } from './pages/VolunteerHoursReviewPage';
+import { StatisticsPage } from './pages/StatisticsPage';
 import PeopleIcon from '@mui/icons-material/People';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import BuildIcon from '@mui/icons-material/Build';
@@ -147,6 +148,9 @@ export default function App() {
         {/* The coordinator's review queue for volunteer hours (#164), gated
             by VIEW_VOLUNTEER_HOURS in the drawer manifest. */}
         <Route path="/volunteer-hours/review" element={<VolunteerHoursReviewPage />} />
+        {/* Aggregate, organisation-wide dashboards (docs/plans/estatisticas-dashboards.md).
+            No `requires` in the drawer manifest — every authenticated member sees it. */}
+        <Route path="/statistics" element={<StatisticsPage />} />
       </CustomRoutes>
 
       <Resource

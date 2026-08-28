@@ -14,8 +14,8 @@ NestJS + Prisma. Read `../shared/CLAUDE.md` first if the feature touches shared 
 **`src/schedules/` is the richest exemplar — copy its shape for a new feature module.**
 
 Current modules: `auth`, `availability`, `event-reports`, `geography`, `health`, `hospitals`,
-`inventory`, `live-runs`, `schedules`, `storage`, `users`, `vehicles`, `volunteer-hours`,
-`prisma`. New modules are wired into `src/app.module.ts`. Bootstrap (global `ValidationPipe`,
+`inventory`, `live-runs`, `schedules`, `statistics`, `storage`, `users`, `vehicles`,
+`volunteer-hours`, `prisma`. New modules are wired into `src/app.module.ts`. Bootstrap (global `ValidationPipe`,
 global `ApiErrorFilter`, port 3000) is in `src/main.ts`.
 
 ## Controller pattern

@@ -4886,6 +4886,154 @@ export interface LiveRunCloseResponse {
   report: EventReport;
 }
 
+// ─── Statistics ─────────────────────────────────────────────────────────────
+//
+// Aggregate, organisation-wide numbers behind `/#/statistics` (design:
+// docs/plans/estatisticas-dashboards.md). Every authenticated member sees all
+// three tabs — nothing here is scoped by role, only by the query range and an
+// optional `EventReportType` filter. Only tab 1 (`PeopleStatistics.roster`)
+// ever names a person; tabs 2 and 3 publish aggregates only, never a
+// per-person cut, per the design doc's re-identification guardrail.
+
+/** Shared query shape for all three `/statistics/*` routes. */
+export interface StatisticsQuery {
+  /** ISO date, inclusive. Defaults to 12 months before `to` when omitted. */
+  from?: string;
+  /** ISO date, inclusive. Defaults to today when omitted. */
+  to?: string;
+  /** Tabs 2 and 3 only — narrows every count to one `EventReportType`. */
+  type?: EventReportType;
+}
+
+export interface StatisticsMonthPoint {
+  /** `YYYY-MM`. */
+  month: string;
+  value: number;
+}
+
+export interface PeopleStatisticsRosterEntry {
+  userId: string;
+  firstName: string;
+  lastName: string;
+  hours: number;
+  events: number;
+  emergencyEvents: number;
+  supportEvents: number;
+  /** ISO date of the volunteer's most recent counted activity, or null. */
+  lastActivityDate: string | null;
+}
+
+/** `GET /statistics/people` */
+export interface PeopleStatistics {
+  from: string;
+  to: string;
+  totalApprovedHours: number;
+  activeVolunteers: number;
+  previousPeriodActiveVolunteers: number;
+  eventsWithParticipation: number;
+  averageHoursPerVolunteer: number;
+  viewer: {
+    hours: number;
+    previousPeriodHours: number;
+    events: number;
+    /** 1-based position in `roster`, or null when the viewer has no hours in range. */
+    rank: number | null;
+    totalVolunteers: number;
+    monthlyHours: StatisticsMonthPoint[];
+  };
+  monthlyHours: StatisticsMonthPoint[];
+  hoursByActivityType: { activityType: VolunteerActivityType; hours: number }[];
+  /** Every volunteer with hours or an event in range, sorted by hours descending. */
+  roster: PeopleStatisticsRosterEntry[];
+}
+
+export interface StatisticsLocalityCount {
+  id: string;
+  name: string;
+  count: number;
+}
+
+export interface StatisticsHospitalCount {
+  id: string;
+  name: string;
+  municipality: string;
+  count: number;
+}
+
+/** `GET /statistics/activity` */
+export interface ActivityStatistics {
+  from: string;
+  to: string;
+  totalEvents: number;
+  previousPeriodEvents: number;
+  victimsAssisted: number;
+  eventsByType: { type: EventReportType; count: number }[];
+  eventsByMonth: { month: string; byType: Record<EventReportType, number>; total: number }[];
+  /**
+   * Emergency `activationAt` (falling back to `startedAt`), bucketed in
+   * `Europe/Lisbon` — see the design doc's timezone trap. `weekday` follows
+   * `Date#getDay()` (0 = Sunday … 6 = Saturday); `band` is the 4-hour block
+   * starting at `band * 4` (0–5).
+   */
+  activationHeatmap: { weekday: number; band: number; count: number }[];
+  /** Top 10 by count. */
+  eventsByLocality: StatisticsLocalityCount[];
+  eventsByLocalityOther: number;
+  eventsByMunicipality: StatisticsLocalityCount[];
+  eventsByMunicipalityOther: number;
+  destinationHospitals: StatisticsHospitalCount[];
+  victimOutcomes: { kind: VictimDestinationKind; count: number }[];
+  inemUnits: { unitType: InemSupportUnitType; hospitalName: string; count: number }[];
+}
+
+/** One gap between two consecutive emergency chronology stamps. */
+export enum ResponseLegKey {
+  ACTIVATION_TO_SCENE = 'ACTIVATION_TO_SCENE',
+  ON_SCENE = 'ON_SCENE',
+  SCENE_TO_HOSPITAL = 'SCENE_TO_HOSPITAL',
+  HOSPITAL_TO_AVAILABLE = 'HOSPITAL_TO_AVAILABLE',
+}
+
+export const RESPONSE_LEG_KEYS: readonly ResponseLegKey[] = [
+  ResponseLegKey.ACTIVATION_TO_SCENE,
+  ResponseLegKey.ON_SCENE,
+  ResponseLegKey.SCENE_TO_HOSPITAL,
+  ResponseLegKey.HOSPITAL_TO_AVAILABLE,
+];
+
+export interface StatisticsFleetVehicle {
+  vehicleId: string;
+  numeroCauda: string;
+  licensePlate: string;
+  totalKilometres: number;
+  monthlyKilometres: StatisticsMonthPoint[];
+}
+
+export interface StatisticsResponseLeg {
+  leg: ResponseLegKey;
+  medianMinutes: number | null;
+  p90Minutes: number | null;
+  /** How many emergencies had both stamps of this leg — the honesty tile's source. */
+  sampleSize: number;
+}
+
+/** `GET /statistics/fleet` */
+export interface FleetStatistics {
+  from: string;
+  to: string;
+  totalKilometres: number;
+  eventCount: number;
+  kmPerEventMean: number;
+  kmPerEventMedian: number;
+  vehicles: StatisticsFleetVehicle[];
+  responseLegs: StatisticsResponseLeg[];
+  /** Median of `activationAt → availableAt` directly — does not equal the sum of `responseLegs`. */
+  totalDurationMedianMinutes: number | null;
+  /** Emergencies with both `activationAt` and `availableAt` set. */
+  timedEmergencies: number;
+  totalEmergencies: number;
+}
+
 // ─── API error codes (#180 phase 4) ───────────────────────────────────────────
 //
 // A machine code for the business-rule failures that are genuinely worth a

@@ -57,13 +57,14 @@ describe('RedInfoMenu', () => {
       '/my-duties',
       '/my-hours',
       '/my-reports',
+      '/statistics',
       '/vehicles',
     ]);
   });
 
-  it('gives a Logistics Coordinator exactly five entries and no live mode', async () => {
+  it('gives a Logistics Coordinator exactly six entries and no live mode', async () => {
     const links = await renderMenuAs(UserRole.LOGISTICS_COORDINATOR);
-    expect(links).toEqual(['/', '/my-duties', '/my-hours', '/vehicles', '/inventory-templates']);
+    expect(links).toEqual(['/', '/my-duties', '/my-hours', '/statistics', '/vehicles', '/inventory-templates']);
   });
 
   it('gives an Emergency Coordinator every operational and configuration entry, including Holidays', async () => {
@@ -80,6 +81,7 @@ describe('RedInfoMenu', () => {
       '/schedules',
       '/availability-windows',
       '/volunteer-hours/review',
+      '/statistics',
       '/users',
       '/vehicles',
       // Not '/inventory-templates': ROLE_PERMISSIONS does not give this role
@@ -104,6 +106,7 @@ describe('RedInfoMenu', () => {
       '/schedules',
       '/availability-windows',
       '/volunteer-hours/review',
+      '/statistics',
       '/users',
       '/vehicles',
       '/inventory-templates',
@@ -122,10 +125,13 @@ describe('RedInfoMenu', () => {
 
   it('draws no subheader for a section left with zero visible entries', async () => {
     await renderMenuAs(UserRole.EMERGENCY_OPERATIONAL);
-    expect(screen.queryByText('Operations')).not.toBeInTheDocument();
+    // Not 'Operations': Statistics carries no `requires` (every authenticated
+    // member sees it — docs/plans/estatisticas-dashboards.md §5), so that
+    // section is never empty any more.
     expect(screen.queryByText('People')).not.toBeInTheDocument();
     expect(screen.queryByText('Configuration')).not.toBeInTheDocument();
     // Sections the role does have entries in still get their subheader.
     expect(screen.getByText('My work')).toBeInTheDocument();
+    expect(screen.getByText('Operations')).toBeInTheDocument();
   });
 });

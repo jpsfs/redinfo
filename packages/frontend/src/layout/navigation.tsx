@@ -15,6 +15,7 @@ import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import InventoryIcon from '@mui/icons-material/Inventory';
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
+import QueryStatsIcon from '@mui/icons-material/QueryStats';
 import { Action } from '@redinfo/shared';
 import { MessageKey } from '../i18n/labels';
 
@@ -124,6 +125,14 @@ export const NAV_SECTIONS: NavSection[] = [
         label: 'nav.volunteerHoursReview',
         icon: <FactCheckIcon />,
         requires: [Action.VIEW_VOLUNTEER_HOURS, Action.MANAGE_VOLUNTEER_HOURS],
+      },
+      {
+        // Aggregate, organisation-wide dashboards — every authenticated
+        // member sees this, so deliberately no `requires`
+        // (docs/plans/estatisticas-dashboards.md §5).
+        to: '/statistics',
+        label: 'nav.statistics',
+        icon: <QueryStatsIcon />,
       },
     ],
   },

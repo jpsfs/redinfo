@@ -13,6 +13,7 @@ import { HospitalsModule } from './hospitals/hospitals.module';
 import { EventReportsModule } from './event-reports/event-reports.module';
 import { LiveRunsModule } from './live-runs/live-runs.module';
 import { VolunteerHoursModule } from './volunteer-hours/volunteer-hours.module';
+import { StatisticsModule } from './statistics/statistics.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { VolunteerHoursModule } from './volunteer-hours/volunteer-hours.module';
     EventReportsModule,
     LiveRunsModule,
     VolunteerHoursModule,
+    StatisticsModule,
   ],
 })
 export class AppModule {}
