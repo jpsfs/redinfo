@@ -74,6 +74,7 @@ describeIntegration('Live runs (integration)', () => {
 
   const createdRunIds: string[] = [];
   const createdReportIds: string[] = [];
+  const createdMaterialItemIds: string[] = [];
 
   let sequence = 0;
   const nextRunId = () => {
@@ -110,6 +111,12 @@ describeIntegration('Live runs (integration)', () => {
     },
     ...overrides,
   });
+
+  const createMaterialItem = async (namePt: string, type: 'COUNTABLE' | 'UNLIMITED' = 'COUNTABLE') => {
+    const item = await prisma.materialItem.create({ data: { namePt: `${namePt} ${RUN}`, type: type as never } });
+    createdMaterialItemIds.push(item.id);
+    return item;
+  };
 
   /** The raw bytes in the column, bypassing every serializer. */
   const rawIdentity = async (runId: string): Promise<Buffer | null> => {
@@ -197,6 +204,13 @@ describeIntegration('Live runs (integration)', () => {
     await prisma.liveRun.deleteMany({ where: { id: { in: createdRunIds } } });
     if (createdReportIds.length) {
       await prisma.eventReport.deleteMany({ where: { id: { in: createdReportIds } } });
+    }
+    // After the reports: a filed material line or a stock movement holds a
+    // Restrict FK to its item, so the item can only go once nothing points at
+    // it any more.
+    if (createdMaterialItemIds.length) {
+      await prisma.stockMovement.deleteMany({ where: { materialItemId: { in: createdMaterialItemIds } } });
+      await prisma.materialItem.deleteMany({ where: { id: { in: createdMaterialItemIds } } });
     }
     await prisma.vehicle.deleteMany({ where: { id: vehicle?.id } });
     await prisma.hospital.deleteMany({ where: { name: { contains: RUN } } });
@@ -592,6 +606,42 @@ describeIntegration('Live runs (integration)', () => {
         destinationHospitalId: hospital.id,
       });
     });
+
+    it('carries what was tapped live onto the draft report, with no stock moved yet', async () => {
+      const bandage = await createMaterialItem('Ligadura');
+      const oxygen = await createMaterialItem('Oxigénio', 'UNLIMITED');
+
+      const input = draft({
+        capture: {
+          notes: 'Consciente e orientada.',
+          materials: [
+            { materialItemId: bandage.id, quantity: 1, at: '2024-08-22T20:20:00.000Z' },
+            { materialItemId: bandage.id, quantity: 1, at: '2024-08-22T20:25:00.000Z' },
+            { materialItemId: oxygen.id, at: '2024-08-22T20:30:00.000Z' },
+          ],
+        },
+      });
+      await runs.sync(input, tiagoUser);
+
+      const { report } = await runs.close(input.id, tiagoUser);
+      createdReportIds.push(report.id);
+
+      expect(report.materials).toHaveLength(2);
+      expect(report.materials.find((line) => line.materialItemId === bandage.id)).toMatchObject({
+        vehicleId: vehicle.id,
+        quantity: 2,
+      });
+      expect(report.materials.find((line) => line.materialItemId === oxygen.id)).toMatchObject({
+        vehicleId: vehicle.id,
+        quantity: null,
+      });
+
+      // A draft's materials are logged, not consumed — stock only ever moves
+      // for a filed report, and this one is never submitted.
+      await expect(
+        prisma.stockMovement.count({ where: { materialItemId: { in: [bandage.id, oxygen.id] } } }),
+      ).resolves.toBe(0);
+    });
   });
 
   // ── The sweep ──────────────────────────────────────────────────────────────
@@ -629,6 +679,29 @@ describeIntegration('Live runs (integration)', () => {
       const row = await prisma.liveRun.findUniqueOrThrow({ where: { id: input.id } });
       expect(row.state).toBe(LiveRunState.CLOSED);
       expect(row.closedAt).not.toBeNull();
+    });
+
+    it('never moves stock for materials tapped on a run that force-closes without becoming a report', async () => {
+      const bandage = await createMaterialItem('Ligadura Abandonada');
+      const input = draft({
+        capture: {
+          notes: 'Consciente e orientada.',
+          materials: [{ materialItemId: bandage.id, quantity: 3, at: '2024-08-22T20:20:00.000Z' }],
+        },
+      });
+      await runs.sync(input, tiagoUser);
+      await prisma.$executeRaw`
+        UPDATE "LiveRun" SET "updatedAt" = now() - interval '30 hours' WHERE "id" = ${input.id}
+      `;
+
+      await purge.sweep();
+
+      const row = await prisma.liveRun.findUniqueOrThrow({ where: { id: input.id } });
+      expect(row.state).toBe(LiveRunState.CLOSED);
+      // Force-closed, not filed: no report ever came out of this run, so the
+      // materials sitting in `capture` were never even looked at.
+      expect(row.reportId).toBeNull();
+      await expect(prisma.stockMovement.count({ where: { materialItemId: bandage.id } })).resolves.toBe(0);
     });
 
     it('leaves an open run that is merely quiet alone', async () => {

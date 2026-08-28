@@ -4513,6 +4513,21 @@ export interface LiveRunSupportAction {
 }
 
 /**
+ * One tap of the material picker while the run is live.
+ *
+ * One entry per tap, not a running total — the phone does no arithmetic live,
+ * it just appends. The same item tapped three times is three entries; turning
+ * that into a single report line (summed for `COUNTABLE`, collapsed for
+ * `UNLIMITED`) is `liveRunToEventReportInput`'s job, on close.
+ */
+export interface LiveRunMaterialEntry {
+  materialItemId: string;
+  /** Omitted (or null) means one unit — a bare tap, not a counted amount. */
+  quantity?: number | null;
+  at: string;
+}
+
+/**
  * The fields that identify a person, held only while the run is live.
  *
  * Stored as one AES-256-GCM blob rather than columns: nothing sorts, filters or
@@ -4568,6 +4583,7 @@ export interface LiveRunCapture extends EventReportClinical {
   /** The narrative as it is being drafted. Plain text — dictation goes here. */
   notes?: string | null;
   supportActions?: LiveRunSupportAction[];
+  materials?: LiveRunMaterialEntry[];
 }
 
 /**
@@ -4931,7 +4947,16 @@ export function canCloseLiveRun(run: LiveRunInput): boolean {
  */
 export function liveRunToEventReportInput(
   run: LiveRunInput,
-  options: { now?: Date } = {},
+  options: {
+    now?: Date;
+    /**
+     * The catalogue's item type for every id tapped live, keyed by
+     * `materialItemId` — looked up by the caller (a database read) so this
+     * stays a pure function. An id with no entry here, because the catalogue
+     * no longer knows it, is dropped rather than failing the close.
+     */
+    materialItemTypes?: Map<string, InventoryItemType>;
+  } = {},
 ): EventReportInput {
   const now = options.now ?? new Date();
   const startedAt = run.activationAt || run.startedAt;
@@ -5009,7 +5034,50 @@ export function liveRunToEventReportInput(
     chamuLastMeal: capture.chamuLastMeal ?? null,
     abcde: capture.abcde ?? null,
     assessments: capture.assessments ?? [],
+    materials: materialLinesFromCapture(capture.materials, options.materialItemTypes, run.vehicleId ?? null),
   };
+}
+
+/**
+ * Live-tapped materials, folded into report lines.
+ *
+ * Repeats of the same item aggregate — summed for `COUNTABLE`, collapsed to
+ * one logged line for `UNLIMITED`, which has no quantity to sum — in the
+ * order each item was first tapped, and every line is attributed to the
+ * run's own vehicle. An id the catalogue lookup could not resolve (deleted
+ * since the tap, or no lookup supplied at all) is dropped: a report the crew
+ * is about to finish by hand must never fail to appear over one bad line.
+ */
+function materialLinesFromCapture(
+  entries: LiveRunMaterialEntry[] | undefined,
+  itemTypes: Map<string, InventoryItemType> | undefined,
+  vehicleId: string | null,
+): EventReportMaterialInput[] {
+  if (!entries?.length || !itemTypes) return [];
+
+  const order: string[] = [];
+  const totals = new Map<string, number>();
+  for (const entry of entries) {
+    const itemType = itemTypes.get(entry.materialItemId);
+    if (!itemType) continue;
+    if (!totals.has(entry.materialItemId)) order.push(entry.materialItemId);
+    totals.set(
+      entry.materialItemId,
+      itemType === InventoryItemType.UNLIMITED
+        ? 1
+        : (totals.get(entry.materialItemId) ?? 0) + (entry.quantity ?? 1),
+    );
+  }
+
+  return order.map((materialItemId) => {
+    const itemType = itemTypes.get(materialItemId)!;
+    return {
+      materialItemId,
+      itemType,
+      vehicleId,
+      quantity: itemType === InventoryItemType.UNLIMITED ? null : totals.get(materialItemId)!,
+    };
+  });
 }
 
 /** `YYYY-MM-DD` of an instant, in the device's own timezone. */

@@ -9,12 +9,14 @@ import { Prisma } from '@prisma/client';
 import {
   Action,
   EventReport,
+  InventoryItemType,
   LIVE_RUN_IDENTITY_FIELDS,
   LIVE_RUN_RETENTION_HOURS,
   LiveRun,
   LiveRunBoardEntry,
   LiveRunCloseResponse,
   LiveRunIdentity,
+  LiveRunMaterialEntry,
   LiveRunState,
   LiveRunSyncResponse,
   hasPermission,
@@ -307,8 +309,11 @@ export class LiveRunsService {
       include: LIVE_RUN_INCLUDE,
     });
 
+    const closedInput = this.rowToInput(closed);
+    const materialItemTypes = await this.materialItemTypesFor(closedInput.capture?.materials);
+
     const report = await this.reports.create(
-      liveRunToEventReportInput(this.rowToInput(closed), { now }),
+      liveRunToEventReportInput(closedInput, { now, materialItemTypes }),
       user.id,
       // A draft, not a filing. The crew finishes it and files it, which is what
       // gives the number its place in the activation-ordered sequence.
@@ -585,6 +590,25 @@ export class LiveRunsService {
     };
   }
 
+  /**
+   * The catalogue's item type for every material tapped live, keyed by id.
+   *
+   * `liveRunToEventReportInput` needs this to decide COUNTABLE aggregation vs
+   * UNLIMITED collapse, and to drop any id the catalogue no longer knows —
+   * the lookup is a database read, which is why it happens here rather than
+   * inside that pure function.
+   */
+  private async materialItemTypesFor(
+    entries: LiveRunMaterialEntry[] | undefined,
+  ): Promise<Map<string, InventoryItemType>> {
+    const ids = [...new Set((entries ?? []).map((entry) => entry.materialItemId))];
+    if (ids.length === 0) return new Map();
+    const rows = await this.prisma.materialItem.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, type: true },
+    });
+    return new Map(rows.map((row) => [row.id, row.type as InventoryItemType]));
+  }
 }
 
 const toDate = (value: string | null | undefined): Date | null =>
