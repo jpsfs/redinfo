@@ -2986,6 +2986,8 @@ export const MAX_EXTERNAL_REFERENCE_LENGTH = 80;
 export const MAX_VEHICLE_KILOMETRES = 5000;
 export const MAX_CREW_PER_REPORT = 20;
 export const MAX_ROLE_NAME_ON_REPORT = MAX_ROLE_NAME_LENGTH;
+/** How many material lines one report may carry — a guard, not a domain rule. */
+export const MAX_MATERIALS_PER_REPORT = 100;
 
 // ─── Event report shapes ──────────────────────────────────────────────────────
 
@@ -3046,6 +3048,25 @@ export interface EventReportVehicle {
    * an edit rather than silently replacing a measurement.
    */
   isOverridden: boolean;
+}
+
+/**
+ * One item consumed on the activity, and by which vehicle — the report's
+ * material consumption line. `quantity` is null only for an `UNLIMITED`
+ * item: logged as used, with nothing to count and no stock effect (see
+ * `StockMovementsService` on the backend).
+ *
+ * `materialItem`/`vehicle` are resolved so the show view needs no second
+ * fetch — the same reason `EventReportVehicle.vehicle` above is a `Pick`.
+ */
+export interface EventReportMaterial {
+  id: string;
+  materialItemId: string;
+  materialItem?: Pick<MaterialItem, 'id' | 'namePt' | 'nameEn' | 'unit' | 'type'>;
+  vehicleId: string;
+  vehicle?: Pick<Vehicle, 'id' | 'licensePlate' | 'numeroCauda'>;
+  quantity: number | null;
+  position: number;
 }
 
 export interface EventReportVictim {
@@ -3367,6 +3388,7 @@ export interface EventReport extends EventReportClinical {
   vehicles: EventReportVehicle[];
   victims: EventReportVictim[];
   inemSupportUnits: EventReportInemSupportUnit[];
+  materials: EventReportMaterial[];
   attachments: EventReportAttachment[];
   assessments: EventReportAssessment[];
 
@@ -3433,6 +3455,26 @@ export interface EventReportInemSupportUnitInput {
   hospitalId: string;
 }
 
+/**
+ * One material consumption line, as the crew enters it.
+ *
+ * `itemType` travels with the line rather than being looked up: the picker
+ * already has the full `MaterialItem` in hand when a line is added, and
+ * carrying its type here is what lets `validateEventReport` decide whether
+ * `quantity` is required without a database round trip.
+ */
+export interface EventReportMaterialInput {
+  materialItemId: string;
+  itemType: InventoryItemType;
+  /**
+   * Defaulted server-side to the report's first vehicle when omitted — a
+   * crew logging what one ambulance used should not have to pick it twice.
+   */
+  vehicleId?: string | null;
+  /** Required (whole, > 0) for a COUNTABLE item; refused for UNLIMITED. */
+  quantity?: number | null;
+}
+
 export interface EventReportShiftInput {
   scheduleId: string;
   /** ISO date, `YYYY-MM-DD`. */
@@ -3477,6 +3519,11 @@ export interface EventReportInput extends EventReportClinical {
    * feature existed, or one closed straight from a live run, carries none.
    */
   inemSupportUnits?: EventReportInemSupportUnitInput[];
+  /**
+   * Optional, matching `inemSupportUnits` above — but allowed on *every*
+   * report type, unlike INEM units, which are emergency-only.
+   */
+  materials?: EventReportMaterialInput[];
 }
 
 /** `GET /event-reports/crew-suggestion` — the shift and crew to pre-fill with. */
@@ -3544,6 +3591,14 @@ export type EventReportProblemCode =
   | 'VEHICLE_MISSING_ID'
   | 'VEHICLE_DUPLICATE'
   | 'KILOMETRES_INVALID'
+  // ── Materials ──
+  | 'MATERIALS_NOT_A_LIST'
+  | 'TOO_MANY_MATERIALS'
+  | 'MATERIAL_MISSING_ITEM'
+  | 'MATERIAL_DUPLICATE'
+  | 'MATERIAL_VEHICLE_NOT_ON_REPORT'
+  | 'MATERIAL_QUANTITY_INVALID'
+  | 'MATERIAL_QUANTITY_NOT_ALLOWED'
   | 'VICTIMS_NOT_A_LIST'
   | 'TOO_MANY_VICTIMS'
   | 'VICTIM_GENDER_MISSING'
@@ -3723,6 +3778,9 @@ export function validateEventReport(input: EventReportInput): EventReportProblem
 
   const vehiclesProblem = validateVehicles(input.vehicles, rules);
   if (vehiclesProblem) return vehiclesProblem;
+
+  const materialsProblem = validateMaterials(input.materials, input.vehicles);
+  if (materialsProblem) return materialsProblem;
 
   const victimsProblem = validateVictims(input.victims, rules);
   if (victimsProblem) return victimsProblem;
@@ -4014,6 +4072,65 @@ function validateVehicles(
         'KILOMETRES_INVALID',
         `Kilometres must be a whole number between 0 and ${MAX_VEHICLE_KILOMETRES}.`,
       );
+    }
+  }
+  return null;
+}
+
+/**
+ * Material consumption lines: allowed on every report type, unlike INEM
+ * support units — so there is no `rules` gate here, only structural checks.
+ *
+ * `itemType` travels on each line (see `EventReportMaterialInput`), which is
+ * what lets this decide "quantity required" vs "quantity refused" without a
+ * database round trip — the same reason `validateVictimDestination` never
+ * needs to look a hospital up to know one is required.
+ */
+function validateMaterials(
+  materials: EventReportMaterialInput[] | undefined,
+  vehicles: EventReportVehicleInput[],
+): EventReportProblem | null {
+  if (materials === undefined) return null;
+  if (!Array.isArray(materials)) {
+    return problem('MATERIALS_NOT_A_LIST', 'The materials are not a list.');
+  }
+  if (materials.length > MAX_MATERIALS_PER_REPORT) {
+    return problem(
+      'TOO_MANY_MATERIALS',
+      `A report may list at most ${MAX_MATERIALS_PER_REPORT} materials (got ${materials.length}).`,
+    );
+  }
+
+  const vehicleIds = new Set(vehicles.map((vehicle) => vehicle.vehicleId));
+  const seen = new Set<string>();
+  for (const material of materials) {
+    if (!material.materialItemId) {
+      return problem('MATERIAL_MISSING_ITEM', 'Every material line needs an item.');
+    }
+    if (!material.vehicleId || !vehicleIds.has(material.vehicleId)) {
+      return problem(
+        'MATERIAL_VEHICLE_NOT_ON_REPORT',
+        'A material line can only be attributed to a vehicle already on this report.',
+      );
+    }
+    const key = `${material.materialItemId}#${material.vehicleId}`;
+    if (seen.has(key)) {
+      return problem(
+        'MATERIAL_DUPLICATE',
+        'The same item is listed twice for the same vehicle.',
+      );
+    }
+    seen.add(key);
+
+    if (material.itemType === InventoryItemType.UNLIMITED) {
+      if (material.quantity !== null && material.quantity !== undefined) {
+        return problem(
+          'MATERIAL_QUANTITY_NOT_ALLOWED',
+          'An unlimited item is logged with no quantity.',
+        );
+      }
+    } else if (!Number.isInteger(material.quantity) || (material.quantity as number) <= 0) {
+      return problem('MATERIAL_QUANTITY_INVALID', 'Enter how many units were used.');
     }
   }
   return null;

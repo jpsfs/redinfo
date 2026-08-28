@@ -5,12 +5,14 @@ import {
   EventReportType,
   Gender,
   InemSupportUnitType,
+  InventoryItemType,
   UserRole,
   VictimDestinationKind,
 } from '@redinfo/shared';
 import { EventReportsService, RequestUser } from './event-reports.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { ShiftScheduleService } from '../availability/shift-schedule.service';
+import { StockMovementsService } from '../inventory/stock-movements.service';
 
 // ── Filing, reading and changing a report ──────────────────────────────────────
 //
@@ -57,6 +59,7 @@ const row = (overrides: Record<string, unknown> = {}) =>
     vehicles: [],
     victims: [],
     inemSupportUnits: [],
+    materials: [],
     attachments: [],
     assessments: [],
     legacyNumber: null,
@@ -144,6 +147,7 @@ function makePrisma(overrides: Record<string, unknown> = {}) {
     vehicle: { findMany: jest.fn(() => Promise.resolve([{ id: 'veh-1' }])) },
     user: { findMany: jest.fn(() => Promise.resolve([{ id: 'user-tiago' }])) },
     hospital: { findMany: jest.fn(() => Promise.resolve([{ id: 'hosp-1' }])) },
+    materialItem: { findMany: jest.fn(() => Promise.resolve([{ id: 'item-gauze' }])) },
     schedule: { count: jest.fn(() => Promise.resolve(1)) },
     liveRun: { updateMany: jest.fn(() => Promise.resolve({ count: 0 })) },
     eventReportCrewMember: { deleteMany: jest.fn(() => Promise.resolve({ count: 1 })) },
@@ -151,6 +155,7 @@ function makePrisma(overrides: Record<string, unknown> = {}) {
     eventReportVehicle: { deleteMany: jest.fn(() => Promise.resolve({ count: 1 })) },
     eventReportVictim: { deleteMany: jest.fn(() => Promise.resolve({ count: 1 })) },
     eventReportInemSupportUnit: { deleteMany: jest.fn(() => Promise.resolve({ count: 0 })) },
+    eventReportMaterial: { deleteMany: jest.fn(() => Promise.resolve({ count: 0 })) },
     $transaction: jest.fn((arg: unknown) =>
       typeof arg === 'function'
         ? (arg as (tx: unknown) => unknown)(prisma)
@@ -183,11 +188,31 @@ function makeNumbering() {
   };
 }
 
-function makeService(prisma = makePrisma(), numbering = makeNumbering()) {
+/**
+ * A stock-movements stand-in.
+ *
+ * Stubbed rather than real for the same reason `numbering` is: what
+ * `applyReportConsumption`/`reverseReportConsumption` actually do is proved
+ * by `stock-movements.service.spec.ts` and the inventory integration suite.
+ * What these tests are about is *when* `EventReportsService` reaches for it.
+ */
+function makeStockMovements() {
   return {
-    service: new EventReportsService(prisma, shiftSchedule, numbering as never),
+    applyReportConsumption: jest.fn(() => Promise.resolve()),
+    reverseReportConsumption: jest.fn(() => Promise.resolve()),
+  };
+}
+
+function makeService(
+  prisma = makePrisma(),
+  numbering = makeNumbering(),
+  stockMovements = makeStockMovements(),
+) {
+  return {
+    service: new EventReportsService(prisma, shiftSchedule, numbering as never, stockMovements as never),
     prisma,
     numbering,
+    stockMovements,
   };
 }
 
@@ -291,6 +316,72 @@ describe('changing a report', () => {
     expect(prisma.eventReportInemSupportUnit.deleteMany).toHaveBeenCalledWith({
       where: { reportId: 'rep-1' },
     });
+    expect(prisma.eventReportMaterial.deleteMany).toHaveBeenCalledWith({
+      where: { reportId: 'rep-1' },
+    });
+  });
+
+  it('replaces the materials wholesale, defaulting an omitted vehicle to the report’s first one', async () => {
+    const prisma = makePrisma();
+    prisma.eventReport.findUnique = jest.fn(() => Promise.resolve(row())) as never;
+    const { service } = makeService(prisma);
+
+    await service.update(
+      'rep-1',
+      input({
+        vehicles: [{ vehicleId: 'veh-1', kilometres: 42 }],
+        materials: [
+          { materialItemId: 'item-gauze', itemType: InventoryItemType.COUNTABLE, quantity: 4 },
+        ],
+      }),
+      COORDINATOR,
+    );
+
+    expect(prisma.eventReport.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          materials: {
+            create: [{ materialItemId: 'item-gauze', vehicleId: 'veh-1', quantity: 4, position: 0 }],
+          },
+        }),
+      }),
+    );
+  });
+
+  it('applies stock consumption when an already-filed report is edited', async () => {
+    const prisma = makePrisma();
+    prisma.eventReport.findUnique = jest.fn(() => Promise.resolve(row())) as never; // submittedAt set
+    const { service, stockMovements } = makeService(prisma);
+
+    await service.update(
+      'rep-1',
+      input({
+        vehicles: [{ vehicleId: 'veh-1', kilometres: 42 }],
+        materials: [
+          { materialItemId: 'item-gauze', itemType: InventoryItemType.COUNTABLE, quantity: 4 },
+        ],
+      }),
+      COORDINATOR,
+    );
+
+    expect(stockMovements.applyReportConsumption).toHaveBeenCalledWith(
+      'rep-1',
+      [{ materialItemId: 'item-gauze', vehicleId: 'veh-1', quantity: 4 }],
+      COORDINATOR.id,
+      expect.anything(),
+    );
+  });
+
+  it('leaves stock alone when a draft is edited', async () => {
+    const prisma = makePrisma();
+    prisma.eventReport.findUnique = jest.fn(() =>
+      Promise.resolve(row({ submittedAt: null, submittedById: null })),
+    ) as never;
+    const { service, stockMovements } = makeService(prisma);
+
+    await service.update('rep-1', input(), COORDINATOR);
+
+    expect(stockMovements.applyReportConsumption).not.toHaveBeenCalled();
   });
 
   it('replaces the INEM support units wholesale rather than merging them', async () => {
@@ -384,6 +475,31 @@ describe('deleting a report', () => {
     });
     expect(prisma.eventReport.delete).toHaveBeenCalledWith({ where: { id: 'rep-1' } });
   });
+
+  it('reverses stock consumption before deleting a filed report', async () => {
+    const prisma = makePrisma();
+    prisma.eventReport.findUnique = jest.fn(() => Promise.resolve(row())) as never; // submittedAt set
+    const { service, stockMovements } = makeService(prisma);
+
+    await service.remove('rep-1', COORDINATOR);
+
+    expect(stockMovements.reverseReportConsumption).toHaveBeenCalledWith(
+      'rep-1',
+      expect.anything(),
+    );
+  });
+
+  it('leaves stock alone when the deleted report was only ever a draft', async () => {
+    const prisma = makePrisma();
+    prisma.eventReport.findUnique = jest.fn(() =>
+      Promise.resolve(row({ submittedAt: null, submittedById: null })),
+    ) as never;
+    const { service, stockMovements } = makeService(prisma);
+
+    await service.remove('rep-1', COORDINATOR);
+
+    expect(stockMovements.reverseReportConsumption).not.toHaveBeenCalled();
+  });
 });
 
 describe('filing a draft', () => {
@@ -439,6 +555,54 @@ describe('filing a draft', () => {
 
     await expect(service.submit('rep-1', OPERATIONAL)).rejects.toThrow(BadRequestException);
     expect(prisma.eventReport.update).not.toHaveBeenCalled();
+  });
+
+  it('applies the stored materials’ stock consumption in the same transaction as filing', async () => {
+    const prisma = makePrisma();
+    prisma.eventReport.findUnique = jest.fn(() =>
+      Promise.resolve(
+        draft({
+          vehicles: [
+            {
+              id: 'ev-1',
+              vehicleId: 'veh-1',
+              vehicle: null,
+              kilometres: 42,
+              position: 0,
+              routeLegs: null,
+              isOverridden: false,
+            },
+          ],
+          materials: [
+            {
+              id: 'm1',
+              materialItemId: 'item-gauze',
+              materialItem: {
+                id: 'item-gauze',
+                namePt: 'Compressas',
+                nameEn: null,
+                unit: 'pcs',
+                type: InventoryItemType.COUNTABLE,
+              },
+              vehicleId: 'veh-1',
+              vehicle: null,
+              quantity: 4,
+              position: 0,
+            },
+          ],
+        }),
+      ),
+    ) as never;
+    const { service, stockMovements } = makeService(prisma);
+
+    await service.submit('rep-1', OPERATIONAL);
+
+    expect(stockMovements.applyReportConsumption).toHaveBeenCalledWith(
+      'rep-1',
+      [{ materialItemId: 'item-gauze', vehicleId: 'veh-1', quantity: 4 }],
+      OPERATIONAL.id,
+      expect.anything(),
+    );
   });
 });
 
@@ -519,6 +683,37 @@ describe('filing a report', () => {
     expect(data.submittedAt).toBeUndefined();
     expect(numbering.lockPartition).not.toHaveBeenCalled();
     expect(numbering.resequence).not.toHaveBeenCalled();
+  });
+
+  it('applies stock consumption when a report is created already filed', async () => {
+    const prisma = makePrisma();
+    const { service, stockMovements } = makeService(prisma);
+
+    await service.create(
+      input({
+        vehicles: [{ vehicleId: 'veh-1', kilometres: 42 }],
+        materials: [
+          { materialItemId: 'item-gauze', itemType: InventoryItemType.COUNTABLE, quantity: 4 },
+        ],
+      }),
+      'user-filer',
+    );
+
+    expect(stockMovements.applyReportConsumption).toHaveBeenCalledWith(
+      'rep-1',
+      [{ materialItemId: 'item-gauze', vehicleId: 'veh-1', quantity: 4 }],
+      'user-filer',
+      expect.anything(),
+    );
+  });
+
+  it('leaves stock alone when a report is created as a draft', async () => {
+    const prisma = makePrisma();
+    const { service, stockMovements } = makeService(prisma);
+
+    await service.create(input(), 'user-filer', { submit: false });
+
+    expect(stockMovements.applyReportConsumption).not.toHaveBeenCalled();
   });
 
   it('refuses a filing that would renumber reports already on paper', async () => {
@@ -646,6 +841,23 @@ describe('filing a report', () => {
       const { service } = makeService(prisma);
       await expect(service.create(input(), 'user-filer')).rejects.toThrow(message);
     }
+  });
+
+  it('refuses a material line naming an item that does not exist', async () => {
+    const prisma = makePrisma({ materialItem: { findMany: jest.fn(() => Promise.resolve([])) } });
+    const { service } = makeService(prisma);
+
+    await expect(
+      service.create(
+        input({
+          vehicles: [{ vehicleId: 'veh-1', kilometres: 42 }],
+          materials: [
+            { materialItemId: 'item-ghost', itemType: InventoryItemType.COUNTABLE, quantity: 1 },
+          ],
+        }),
+        'user-filer',
+      ),
+    ).rejects.toThrow(/materials/i);
   });
 
   it('checks a shift reference points at a real schedule', async () => {

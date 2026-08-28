@@ -15,6 +15,7 @@ import { ShiftScheduleService } from '../availability/shift-schedule.service';
 import { HolidaysService } from '../availability/holidays.service';
 import { EventReportsService } from '../event-reports/event-reports.service';
 import { EventReportNumbering } from '../event-reports/event-report-numbering';
+import { StockMovementsService } from '../inventory/stock-movements.service';
 import { VolunteerHoursService } from '../volunteer-hours/volunteer-hours.service';
 import { StatisticsPeopleService } from './statistics-people.service';
 import { StatisticsActivityService } from './statistics-activity.service';
@@ -56,7 +57,7 @@ describeIntegration('Statistics module (integration)', () => {
   beforeAll(async () => {
     const holidays = new HolidaysService(prisma);
     const shiftSchedule = new ShiftScheduleService(holidays, prisma);
-    reports = new EventReportsService(prisma, shiftSchedule, new EventReportNumbering());
+    reports = new EventReportsService(prisma, shiftSchedule, new EventReportNumbering(), new StockMovementsService(prisma));
 
     const noopVolunteerHours = { refreshGeneration: async () => undefined } as unknown as VolunteerHoursService;
     people = new StatisticsPeopleService(prisma, noopVolunteerHours);

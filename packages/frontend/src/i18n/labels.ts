@@ -2163,6 +2163,34 @@ const ENUM_MESSAGES = {
     pt: 'Os quilómetros têm de ser um número inteiro.',
     en: 'Kilometres must be a whole number.',
   },
+  'problem.MATERIALS_NOT_A_LIST': {
+    pt: 'Os materiais não são uma lista.',
+    en: 'The materials are not a list.',
+  },
+  'problem.TOO_MANY_MATERIALS': {
+    pt: 'Já atingiste o limite de linhas de material.',
+    en: 'The limit for material lines has been reached.',
+  },
+  'problem.MATERIAL_MISSING_ITEM': {
+    pt: 'Falta escolher o material.',
+    en: 'Choose the material.',
+  },
+  'problem.MATERIAL_DUPLICATE': {
+    pt: 'O mesmo material está registado duas vezes na mesma viatura.',
+    en: 'The same item is listed twice for the same vehicle.',
+  },
+  'problem.MATERIAL_VEHICLE_NOT_ON_REPORT': {
+    pt: 'A viatura do material tem de estar no relatório.',
+    en: 'The material’s vehicle has to be on this report.',
+  },
+  'problem.MATERIAL_QUANTITY_INVALID': {
+    pt: 'Indica quantas unidades foram usadas.',
+    en: 'Enter how many units were used.',
+  },
+  'problem.MATERIAL_QUANTITY_NOT_ALLOWED': {
+    pt: 'Um material ilimitado não leva quantidade.',
+    en: 'An unlimited item is logged with no quantity.',
+  },
   'problem.TOO_MANY_VICTIMS': {
     pt: 'Numa emergência registas uma só vítima.',
     en: 'An emergency records a single victim.',

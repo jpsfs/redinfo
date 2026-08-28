@@ -58,7 +58,7 @@ Model index by domain (names only — grep for fields/relations):
 - **Schedules**: `Schedule`, `ScheduleAssignment`, `ScheduleShiftOverride`
 - **Volunteer hours**: `VolunteerHoursEntry`
 - **Geography**: `Municipality`, `Locality`, `Hospital`
-- **Event reports**: `EventReport`, `EventReportAssessment`, `EventReportCrewMember`, `EventReportVehicle`, `EventReportVictim`, `EventReportInemSupportUnit`, `EventReportAttachment`
+- **Event reports**: `EventReport`, `EventReportAssessment`, `EventReportCrewMember`, `EventReportVehicle`, `EventReportMaterial`, `EventReportVictim`, `EventReportInemSupportUnit`, `EventReportAttachment`
 - **Live**: `LiveRun`, `LiveRunCrewMember`
 - **Config**: `DelegationSettings`
 

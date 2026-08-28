@@ -12,6 +12,7 @@ import {
   EventReportType,
   Gender,
   InemSupportUnitType,
+  InventoryItemType,
   ScheduleStatus,
   UserRole,
   VictimDestinationKind,
@@ -29,6 +30,7 @@ import { EventReportNumbering } from './event-report-numbering';
 import { EventReportCrewService } from './event-report-crew.service';
 import { EventReportAttachmentsService } from './event-report-attachments.service';
 import { DiskAttachmentStorage } from '../storage/attachment-storage';
+import { StockMovementsService } from '../inventory/stock-movements.service';
 
 /**
  * Integration coverage for event reports (ADO #151), against a real Postgres —
@@ -80,6 +82,8 @@ describeIntegration('Event reports (integration)', () => {
 
   let vehicleA: { id: string };
   let vehicleB: { id: string };
+  let materialA: { id: string };
+  let materialUnlimited: { id: string };
 
   const createdReportIds: string[] = [];
 
@@ -121,7 +125,12 @@ describeIntegration('Event reports (integration)', () => {
     const shiftSchedule = new ShiftScheduleService(holidays, prisma);
     geography = new GeographyService(prisma);
     hospitals = new HospitalsService(prisma, geography);
-    reports = new EventReportsService(prisma, shiftSchedule, new EventReportNumbering());
+    reports = new EventReportsService(
+      prisma,
+      shiftSchedule,
+      new EventReportNumbering(),
+      new StockMovementsService(prisma),
+    );
     crewService = new EventReportCrewService(prisma, shiftSchedule);
 
     attachmentRoot = await mkdtemp(join(tmpdir(), 'redinfo-it-attachments-'));
@@ -215,6 +224,13 @@ describeIntegration('Event reports (integration)', () => {
 
     vehicleA = await makeVehicle('A');
     vehicleB = await makeVehicle('B');
+
+    materialA = await prisma.materialItem.create({
+      data: { namePt: `Compressas ${RUN}`, unit: 'pcs', type: 'COUNTABLE' },
+    });
+    materialUnlimited = await prisma.materialItem.create({
+      data: { namePt: `Oxigénio ${RUN}`, unit: 'L', type: 'UNLIMITED' },
+    });
   });
 
   afterAll(async () => {
@@ -228,8 +244,13 @@ describeIntegration('Event reports (integration)', () => {
     await prisma.hospital.deleteMany({ where: { name: { contains: RUN } } });
     // Localities cascade from their municipality.
     await prisma.municipality.deleteMany({ where: { district: `District ${RUN}` } });
+    // Vehicles cascade their `StockMovement` rows — after this, nothing
+    // still points at `materialA`/`materialUnlimited`.
     await prisma.vehicle.deleteMany({
       where: { id: { in: [vehicleA?.id, vehicleB?.id].filter(Boolean) as string[] } },
+    });
+    await prisma.materialItem.deleteMany({
+      where: { id: { in: [materialA?.id, materialUnlimited?.id].filter(Boolean) as string[] } },
     });
     await prisma.user.deleteMany({
       where: {
@@ -1291,6 +1312,84 @@ describeIntegration('Event reports (integration)', () => {
           attachments.add(support.id, verbete, tiagoUser, EventReportAttachmentKind.VERBETE),
         ).rejects.toThrow(/only an emergency/i);
       });
+    });
+  });
+
+  describe('material consumption', () => {
+    const stockMovementsFor = (reportId: string) =>
+      prisma.stockMovement.findMany({ where: { reportId } });
+
+    it('moves no stock while the report is a draft', async () => {
+      const created = await reports.create(
+        input({
+          materials: [
+            { materialItemId: materialA.id, itemType: InventoryItemType.COUNTABLE, quantity: 3 },
+          ],
+        }),
+        tiago.id,
+        { submit: false },
+      );
+      createdReportIds.push(created.id);
+
+      expect(created.materials).toEqual([
+        expect.objectContaining({ materialItemId: materialA.id, quantity: 3, vehicleId: vehicleA.id }),
+      ]);
+      await expect(stockMovementsFor(created.id)).resolves.toHaveLength(0);
+    });
+
+    it('moves stock once the report is filed, and reverses it if the report is deleted', async () => {
+      const created = await reports.create(
+        input({
+          materials: [
+            { materialItemId: materialA.id, itemType: InventoryItemType.COUNTABLE, quantity: 3 },
+          ],
+        }),
+        tiago.id,
+        { submit: false },
+      );
+      createdReportIds.push(created.id);
+
+      const { report } = await reports.submit(created.id, tiagoUser);
+
+      const movements = await stockMovementsFor(report.id);
+      expect(movements).toHaveLength(1);
+      expect(movements[0]).toMatchObject({
+        vehicleId: vehicleA.id,
+        materialItemId: materialA.id,
+        delta: -3,
+        reason: 'CONSUMPTION',
+      });
+
+      await reports.remove(report.id, coordinatorUser);
+      createdReportIds.splice(createdReportIds.indexOf(report.id), 1);
+      await expect(stockMovementsFor(report.id)).resolves.toHaveLength(0);
+    });
+
+    it('re-applies consumption, rather than doubling it, when a filed report is corrected', async () => {
+      const created = await file({
+        materials: [
+          { materialItemId: materialA.id, itemType: InventoryItemType.COUNTABLE, quantity: 3 },
+        ],
+      });
+
+      await reports.update(created.id, input({ materials: [
+        { materialItemId: materialA.id, itemType: InventoryItemType.COUNTABLE, quantity: 5 },
+      ] }), tiagoUser);
+
+      const movements = await stockMovementsFor(created.id);
+      expect(movements).toHaveLength(1);
+      expect(movements[0]).toMatchObject({ delta: -5 });
+    });
+
+    it('logs an unlimited item with no quantity and no stock effect', async () => {
+      const created = await file({
+        materials: [{ materialItemId: materialUnlimited.id, itemType: InventoryItemType.UNLIMITED }],
+      });
+
+      expect(created.materials).toEqual([
+        expect.objectContaining({ materialItemId: materialUnlimited.id, quantity: null }),
+      ]);
+      await expect(stockMovementsFor(created.id)).resolves.toHaveLength(0);
     });
   });
 });

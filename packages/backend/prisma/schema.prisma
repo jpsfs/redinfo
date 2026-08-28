@@ -221,6 +221,7 @@ model Vehicle {
   vehicleInventoryItems VehicleInventoryItem[]
   stockMovements        StockMovement[]
   eventReports          EventReportVehicle[]
+  eventReportMaterials  EventReportMaterial[]
   liveRuns              LiveRun[]
 
   @@index([vehicleType])
@@ -267,9 +268,10 @@ model MaterialItem {
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
 
-  barcodes       MaterialItemBarcode[]
-  templateItems  InventoryTemplateItem[]
-  stockMovements StockMovement[]
+  barcodes             MaterialItemBarcode[]
+  templateItems        InventoryTemplateItem[]
+  stockMovements       StockMovement[]
+  eventReportMaterials EventReportMaterial[]
 
   @@index([isFrequent])
   @@index([isDeleted])
@@ -1055,6 +1057,7 @@ model EventReport {
   vehicles         EventReportVehicle[]
   victims          EventReportVictim[]
   inemSupportUnits EventReportInemSupportUnit[]
+  materials        EventReportMaterial[]
   attachments      EventReportAttachment[]
   assessments      EventReportAssessment[]
   stockMovements   StockMovement[]
@@ -1191,6 +1194,36 @@ model EventReportVehicle {
 
   @@unique([reportId, vehicleId])
   @@index([reportId])
+  @@index([vehicleId])
+}
+
+/// One item consumed on the activity, and by which vehicle — the report's
+/// material consumption line. `quantity` is null only for an `UNLIMITED`
+/// item: logged as used, with nothing to count and no stock effect. Stock
+/// itself only moves when the report is submitted — see
+/// `StockMovementsService.applyReportConsumption`.
+model EventReportMaterial {
+  id       String      @id @default(cuid())
+  reportId String
+  report   EventReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  materialItemId String
+  /// Restrict: a filed report's line must not lose what it points at.
+  materialItem   MaterialItem @relation(fields: [materialItemId], references: [id], onDelete: Restrict)
+  vehicleId      String
+  /// Restrict, matching `EventReportVehicle`: a vehicle is retired via
+  /// `isDeleted`, never removed.
+  vehicle        Vehicle      @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+
+  quantity Int?
+  /// Display order within the report, 0-based.
+  position Int
+
+  /// One line per item per vehicle — using the same item on two vehicles on
+  /// one report is two lines, not a merge.
+  @@unique([reportId, materialItemId, vehicleId])
+  @@index([reportId])
+  @@index([materialItemId])
   @@index([vehicleId])
 }
 

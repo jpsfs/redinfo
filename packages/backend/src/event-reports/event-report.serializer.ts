@@ -9,11 +9,13 @@ import {
   EventReportCrewMember,
   EventReportInemSupportUnit,
   EventReportInput,
+  EventReportMaterial,
   EventReportType,
   EventReportVehicle,
   EventReportVictim,
   Gender,
   InemSupportUnitType,
+  InventoryItemType,
   RouteLeg,
   VITAL_KEYS,
   VictimDestinationKind,
@@ -50,6 +52,13 @@ export const EVENT_REPORT_INCLUDE = {
     include: { hospital: { select: { id: true, name: true } } },
     orderBy: { position: 'asc' },
   },
+  materials: {
+    include: {
+      materialItem: { select: { id: true, namePt: true, nameEn: true, unit: true, type: true } },
+      vehicle: { select: { id: true, licensePlate: true, numeroCauda: true } },
+    },
+    orderBy: { position: 'asc' },
+  },
   attachments: {
     include: { uploadedBy: PERSON_SELECT },
     orderBy: { createdAt: 'asc' },
@@ -84,6 +93,18 @@ function serializeVehicle(row: EventReportRow['vehicles'][number]): EventReportV
     position: row.position,
     routeLegs: (row.routeLegs as RouteLeg[] | null) ?? null,
     isOverridden: row.isOverridden,
+  };
+}
+
+function serializeMaterial(row: EventReportRow['materials'][number]): EventReportMaterial {
+  return {
+    id: row.id,
+    materialItemId: row.materialItemId,
+    materialItem: { ...row.materialItem, type: row.materialItem.type as InventoryItemType },
+    vehicleId: row.vehicleId,
+    vehicle: row.vehicle,
+    quantity: row.quantity,
+    position: row.position,
   };
 }
 
@@ -220,6 +241,7 @@ export function serializeEventReport(row: EventReportRow, shiftLabel?: string): 
     vehicles: row.vehicles.map(serializeVehicle),
     victims: row.victims.map(serializeVictim),
     inemSupportUnits: row.inemSupportUnits.map(serializeInemSupportUnit),
+    materials: row.materials.map(serializeMaterial),
     attachments: row.attachments.map(serializeAttachment),
     assessments: row.assessments.map(serializeAssessment),
 
@@ -287,6 +309,12 @@ export function reportRowToInput(row: EventReportRow): EventReportInput {
     inemSupportUnits: report.inemSupportUnits.map((unit) => ({
       unitType: unit.unitType,
       hospitalId: unit.hospitalId,
+    })),
+    materials: report.materials.map((material) => ({
+      materialItemId: material.materialItemId,
+      itemType: material.materialItem?.type ?? InventoryItemType.COUNTABLE,
+      vehicleId: material.vehicleId,
+      quantity: material.quantity,
     })),
     chamuCircumstances: report.chamuCircumstances ?? null,
     chamuHistory: report.chamuHistory ?? null,

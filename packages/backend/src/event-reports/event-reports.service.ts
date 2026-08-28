@@ -15,6 +15,7 @@ import {
   EventReportDeleteResponse,
   EventReportInput,
   EventReportListFilters,
+  EventReportMaterialInput,
   EventReportSubmitResponse,
   EventReportType,
   ShiftTimes,
@@ -28,6 +29,7 @@ import {
 } from '@redinfo/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { ShiftScheduleService } from '../availability/shift-schedule.service';
+import { ConsumptionLineInput, StockMovementsService } from '../inventory/stock-movements.service';
 import { isIsoDate, parseIsoDate, toIsoDate } from '../utils/date.util';
 import { sanitizeReportHtml } from './sanitize-report';
 import { EventReportNumbering } from './event-report-numbering';
@@ -92,6 +94,7 @@ export class EventReportsService {
     private readonly prisma: PrismaService,
     private readonly shiftSchedule: ShiftScheduleService,
     private readonly numbering: EventReportNumbering,
+    private readonly stockMovements: StockMovementsService,
   ) {}
 
   // ── Reading ────────────────────────────────────────────────────────────────
@@ -227,6 +230,7 @@ export class EventReportsService {
           vehicles: { create: this.toVehicleRows(clean) },
           victims: { create: this.toVictimRows(clean) },
           inemSupportUnits: { create: this.toInemSupportUnitRows(clean) },
+          materials: { create: this.toMaterialRows(clean) },
           assessments: { create: this.toAssessmentRows(clean) },
         },
         select: { id: true },
@@ -235,6 +239,13 @@ export class EventReportsService {
       if (submit) {
         await this.assertMayDisplace(tx, type, year, actor);
         await this.numbering.resequence(tx, type, year);
+        // Stock only ever moves for a filed report — see `update()`.
+        await this.stockMovements.applyReportConsumption(
+          row.id,
+          this.consumptionLinesFor(clean.materials ?? []),
+          createdById,
+          tx,
+        );
       }
 
       return tx.eventReport.findUniqueOrThrow({
@@ -292,6 +303,13 @@ export class EventReportsService {
 
       await this.assertMayDisplace(tx, type, year, user);
       const renumbered = await this.numbering.resequence(tx, type, year);
+
+      await this.stockMovements.applyReportConsumption(
+        id,
+        this.consumptionLinesFor(reportRowToInput(existing).materials ?? []),
+        user.id,
+        tx,
+      );
 
       const row = await tx.eventReport.findUniqueOrThrow({
         where: { id },
@@ -352,9 +370,10 @@ export class EventReportsService {
       await tx.eventReportVehicle.deleteMany({ where: { reportId: id } });
       await tx.eventReportVictim.deleteMany({ where: { reportId: id } });
       await tx.eventReportInemSupportUnit.deleteMany({ where: { reportId: id } });
+      await tx.eventReportMaterial.deleteMany({ where: { reportId: id } });
       await tx.eventReportAssessment.deleteMany({ where: { reportId: id } });
 
-      return tx.eventReport.update({
+      const row = await tx.eventReport.update({
         where: { id },
         data: {
           ...this.toColumns(clean),
@@ -362,10 +381,27 @@ export class EventReportsService {
           vehicles: { create: this.toVehicleRows(clean) },
           victims: { create: this.toVictimRows(clean) },
           inemSupportUnits: { create: this.toInemSupportUnitRows(clean) },
+          materials: { create: this.toMaterialRows(clean) },
           assessments: { create: this.toAssessmentRows(clean) },
         },
         include: EVENT_REPORT_INCLUDE,
       });
+
+      // Stock only ever moves for a *filed* report — a draft's materials are
+      // a plan, not yet a fact. Re-applying on every write to an
+      // already-filed report is what keeps stock right when a coordinator
+      // corrects one after the fact: `applyReportConsumption` is idempotent
+      // for exactly this.
+      if (existing.submittedAt) {
+        await this.stockMovements.applyReportConsumption(
+          id,
+          this.consumptionLinesFor(clean.materials ?? []),
+          user.id,
+          tx,
+        );
+      }
+
+      return row;
     });
 
     return serializeEventReport(updated, await this.resolveShiftLabel(updated));
@@ -392,6 +428,11 @@ export class EventReportsService {
 
     const renumbered = await this.prisma.$transaction(async (tx) => {
       await this.numbering.lockPartition(tx, type, year);
+      // Before the delete: `StockMovement.reportId` is `SetNull` on cascade,
+      // and the reversal needs it intact to find the movements to undo.
+      if (existing.submittedAt) {
+        await this.stockMovements.reverseReportConsumption(id, tx);
+      }
       await tx.eventReport.delete({ where: { id } });
       return this.numbering.resequence(tx, type, year);
     });
@@ -457,6 +498,11 @@ export class EventReportsService {
    * nothing at all.
    */
   private async prepare(input: EventReportInput): Promise<EventReportInput> {
+    // The report's position-0 vehicle — what an omitted material line's
+    // `vehicleId` defaults to. A crew logging what one ambulance used should
+    // not have to pick it twice.
+    const defaultVehicleId = input.vehicles[0]?.vehicleId ?? null;
+
     const clean: EventReportInput = {
       ...input,
       occurredOn: this.assertIsoDate(input.occurredOn),
@@ -468,6 +514,10 @@ export class EventReportsService {
       ...Object.fromEntries(
         CHAMU_FIELDS.map((field) => [field, plainText(input[field])]),
       ),
+      materials: (input.materials ?? []).map((material) => ({
+        ...material,
+        vehicleId: material.vehicleId ?? defaultVehicleId,
+      })),
     };
 
     // The message, not the whole problem: the code is for the wizard to
@@ -487,7 +537,8 @@ export class EventReportsService {
    * midnight.
    */
   private async assertReferencesExist(input: EventReportInput): Promise<void> {
-    const [locality, vehicles, users, hospitals] = await Promise.all([
+    const materials = input.materials ?? [];
+    const [locality, vehicles, users, hospitals, materialItems] = await Promise.all([
       this.prisma.locality.count({ where: { id: input.localityId } }),
       input.vehicles.length
         ? this.prisma.vehicle.findMany({
@@ -502,6 +553,12 @@ export class EventReportsService {
           })
         : Promise.resolve([]),
       this.hospitalIdsIn(input),
+      materials.length
+        ? this.prisma.materialItem.findMany({
+            where: { id: { in: materials.map((material) => material.materialItemId) } },
+            select: { id: true },
+          })
+        : Promise.resolve([]),
     ]);
 
     if (locality === 0) {
@@ -517,6 +574,11 @@ export class EventReportsService {
     const wantedHospitals = this.wantedHospitalIds(input);
     if (hospitals.length !== wantedHospitals.size) {
       throw new BadRequestException('One of the hospitals on this report no longer exists.');
+    }
+
+    const wantedMaterialItems = new Set(materials.map((material) => material.materialItemId));
+    if (materialItems.length !== wantedMaterialItems.size) {
+      throw new BadRequestException('One of the materials on this report no longer exists.');
     }
 
     if (input.shift) {
@@ -659,6 +721,43 @@ export class EventReportsService {
       unitType: unit.unitType as never,
       hospitalId: unit.hospitalId,
     }));
+  }
+
+  /**
+   * `vehicleId` is never null here: `prepare()` already defaulted every line
+   * to the report's first vehicle before `validateEventReport` ran, and
+   * validation refuses a line whose vehicle isn't one of the report's own.
+   */
+  private toMaterialRows(input: EventReportInput) {
+    return (input.materials ?? []).map((material, position) => ({
+      materialItemId: material.materialItemId,
+      vehicleId: material.vehicleId as string,
+      quantity: material.quantity ?? null,
+      position,
+    }));
+  }
+
+  /**
+   * A report's material lines, as the stock engine wants them: `materialId`
+   * + `vehicleId` + a positive `quantity` only — an `UNLIMITED` line (no
+   * quantity) is logged on the report and left out here, exactly as
+   * `StockMovementsService.consumeOne` would skip it anyway.
+   */
+  private consumptionLinesFor(
+    materials: Pick<EventReportMaterialInput, 'materialItemId' | 'vehicleId' | 'quantity'>[],
+  ): ConsumptionLineInput[] {
+    return materials
+      .filter(
+        (material): material is typeof material & { vehicleId: string; quantity: number } =>
+          Boolean(material.vehicleId) &&
+          material.quantity !== null &&
+          material.quantity !== undefined,
+      )
+      .map((material) => ({
+        materialItemId: material.materialItemId,
+        vehicleId: material.vehicleId,
+        quantity: material.quantity,
+      }));
   }
 
   // ── Filtering ──────────────────────────────────────────────────────────────

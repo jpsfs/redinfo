@@ -23,12 +23,14 @@ import {
   Gender,
   INEM_SUPPORT_UNIT_TYPES,
   InemSupportUnitType,
+  InventoryItemType,
   MAX_ASSESSMENTS_PER_REPORT,
   MAX_ASSESSMENT_POSITION_LENGTH,
   MAX_CHAMU_LENGTH,
   MAX_CREW_PER_REPORT,
   MAX_EXTERNAL_REFERENCE_LENGTH,
   MAX_INEM_SUPPORT_UNITS_PER_TYPE,
+  MAX_MATERIALS_PER_REPORT,
   MAX_OPERATIONAL_REPORT_LENGTH,
   MAX_ROLE_NAME_ON_REPORT,
   MAX_VEHICLE_KILOMETRES,
@@ -212,6 +214,34 @@ export class EventReportAssessmentDto {
   painScore?: number | null;
 }
 
+export class EventReportMaterialDto {
+  @ApiProperty()
+  @IsString()
+  @IsNotEmpty()
+  materialItemId: string;
+
+  @ApiProperty({
+    enum: InventoryItemType,
+    description: "The item's type as the picker had it — decides whether `quantity` is required.",
+  })
+  @IsEnum(InventoryItemType)
+  itemType: InventoryItemType;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: "Defaults to the report's first vehicle when omitted.",
+  })
+  @IsOptional()
+  @IsString()
+  vehicleId?: string | null;
+
+  @ApiPropertyOptional({ example: 4, nullable: true, minimum: 1 })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  quantity?: number | null;
+}
+
 export class EventReportShiftDto {
   @ApiProperty()
   @IsString()
@@ -331,6 +361,17 @@ export class CreateEventReportDto {
   @ValidateNested({ each: true })
   @Type(() => EventReportInemSupportUnitDto)
   inemSupportUnits?: EventReportInemSupportUnitDto[];
+
+  // ── Materials ───────────────────────────────────────────────────────────────
+  // Allowed on every report type, unlike INEM support units above.
+
+  @ApiPropertyOptional({ type: [EventReportMaterialDto] })
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(MAX_MATERIALS_PER_REPORT)
+  @ValidateNested({ each: true })
+  @Type(() => EventReportMaterialDto)
+  materials?: EventReportMaterialDto[];
 
   // ── Clinical record ────────────────────────────────────────────────────────
   // Emergency reports only. `validateEventReport` refuses these on a type whose

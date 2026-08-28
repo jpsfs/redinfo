@@ -11,9 +11,11 @@ import {
   Gender,
   HospitalWithDistance,
   InemSupportUnitType,
+  InventoryItemType,
   MAX_ATTACHMENT_BYTES,
   MAX_EXTERNAL_REFERENCE_LENGTH,
   MAX_INEM_SUPPORT_UNITS_PER_TYPE,
+  MAX_MATERIALS_PER_REPORT,
   MAX_OPERATIONAL_REPORT_LENGTH,
   MAX_VEHICLE_KILOMETRES,
   MAX_VICTIM_AGE,
@@ -246,6 +248,118 @@ describe('INEM support units', () => {
         ),
       ),
     ).toBe('INEM_UNITS_NOT_FOR_TYPE');
+  });
+});
+
+describe('materials', () => {
+  const { COUNTABLE, UNLIMITED } = InventoryItemType;
+  const countable = (overrides: Record<string, unknown> = {}) => ({
+    materialItemId: 'item-gauze',
+    itemType: COUNTABLE,
+    vehicleId: 'veh-amb04',
+    quantity: 4,
+    ...overrides,
+  });
+
+  it('accepts zero entries, and is absent altogether, on every report type', () => {
+    expect(validateEventReport(emergency({ materials: [] }))).toBeNull();
+    expect(validateEventReport(support({ materials: [] }))).toBeNull();
+    expect(validateEventReport(emergency())).toBeNull();
+  });
+
+  it('is allowed on every report type, unlike INEM support units', () => {
+    expect(validateEventReport(support({ materials: [countable()] }))).toBeNull();
+  });
+
+  it('accepts a countable line with a positive whole quantity', () => {
+    expect(validateEventReport(emergency({ materials: [countable({ quantity: 1 })] }))).toBeNull();
+  });
+
+  it('refuses a countable line with no quantity, a zero, or a fraction', () => {
+    for (const quantity of [undefined, null, 0, -1, 1.5]) {
+      expect(
+        codeOf(
+          validateEventReport(emergency({ materials: [countable({ quantity })] })),
+        ),
+      ).toBe('MATERIAL_QUANTITY_INVALID');
+    }
+  });
+
+  it('accepts an unlimited line with no quantity', () => {
+    expect(
+      validateEventReport(
+        emergency({ materials: [countable({ itemType: UNLIMITED, quantity: undefined })] }),
+      ),
+    ).toBeNull();
+  });
+
+  it('refuses an unlimited line that carries a quantity', () => {
+    expect(
+      codeOf(
+        validateEventReport(
+          emergency({ materials: [countable({ itemType: UNLIMITED, quantity: 3 })] }),
+        ),
+      ),
+    ).toBe('MATERIAL_QUANTITY_NOT_ALLOWED');
+  });
+
+  it('requires an item on every line', () => {
+    expect(
+      codeOf(
+        validateEventReport(emergency({ materials: [countable({ materialItemId: '' })] })),
+      ),
+    ).toBe('MATERIAL_MISSING_ITEM');
+  });
+
+  it('refuses a vehicle that is not on the report', () => {
+    expect(
+      codeOf(
+        validateEventReport(emergency({ materials: [countable({ vehicleId: 'veh-ghost' })] })),
+      ),
+    ).toBe('MATERIAL_VEHICLE_NOT_ON_REPORT');
+  });
+
+  it('refuses a line with no vehicle at all — defaulting is the caller’s job, not this rule’s', () => {
+    expect(
+      codeOf(
+        validateEventReport(emergency({ materials: [countable({ vehicleId: undefined })] })),
+      ),
+    ).toBe('MATERIAL_VEHICLE_NOT_ON_REPORT');
+  });
+
+  it('refuses the same item listed twice for the same vehicle', () => {
+    expect(
+      codeOf(
+        validateEventReport(emergency({ materials: [countable(), countable()] })),
+      ),
+    ).toBe('MATERIAL_DUPLICATE');
+  });
+
+  it('allows the same item on two different vehicles', () => {
+    expect(
+      validateEventReport(
+        support({
+          vehicles: [
+            { vehicleId: 'veh-amb04', kilometres: 42 },
+            { vehicleId: 'veh-amb05', kilometres: 10 },
+          ],
+          materials: [countable(), countable({ vehicleId: 'veh-amb05' })],
+        }),
+      ),
+    ).toBeNull();
+  });
+
+  it('caps how many lines one report may carry', () => {
+    const materials = Array.from({ length: MAX_MATERIALS_PER_REPORT + 1 }, (_, i) =>
+      countable({ materialItemId: `item-${i}` }),
+    );
+    expect(codeOf(validateEventReport(emergency({ materials })))).toBe('TOO_MANY_MATERIALS');
+  });
+
+  it('refuses a payload where materials is not a list', () => {
+    expect(
+      codeOf(validateEventReport(emergency({ materials: 'nope' as never }))),
+    ).toBe('MATERIALS_NOT_A_LIST');
   });
 });
 

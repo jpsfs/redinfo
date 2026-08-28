@@ -17,6 +17,7 @@ import { HolidaysService } from '../availability/holidays.service';
 import { ShiftScheduleService } from '../availability/shift-schedule.service';
 import { EventReportsService, RequestUser } from '../event-reports/event-reports.service';
 import { EventReportNumbering } from '../event-reports/event-report-numbering';
+import { StockMovementsService } from '../inventory/stock-movements.service';
 import { IdentityCipher } from './identity-cipher';
 import { IdentityPurgeService } from './identity-purge.service';
 import { DelegationSettingsService } from './delegation-settings.service';
@@ -121,7 +122,7 @@ describeIntegration('Live runs (integration)', () => {
   beforeAll(async () => {
     const holidays = new HolidaysService(prisma);
     const shiftSchedule = new ShiftScheduleService(holidays, prisma);
-    reports = new EventReportsService(prisma, shiftSchedule, new EventReportNumbering());
+    reports = new EventReportsService(prisma, shiftSchedule, new EventReportNumbering(), new StockMovementsService(prisma));
 
     // A key made here rather than read from the environment: the suite must not
     // depend on how the developer's `.env` happens to be set, and it must not be
