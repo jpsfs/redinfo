@@ -73,7 +73,6 @@ const RedInfoAppBar = () => (
       sx={{ height: 32, width: 32, mr: 1.5, flexShrink: 0 }}
     />
     <TitlePortal />
-    <Box sx={{ flex: 1 }} />
   </AppBar>
 );
 
