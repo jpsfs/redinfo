@@ -3,7 +3,10 @@ import {
   EventLocationType,
   EventReport,
   EventReportInput,
+  EventReportMaterialInput,
   EventReportType,
+  EventReportVehicleInput,
+  InventoryItemType,
   OCCURRENCE_TIME_FIELDS,
   OccurrenceTimeField,
   eventReportRules,
@@ -26,6 +29,7 @@ export type StepId =
   | 'times'
   | 'crew'
   | 'vehicles'
+  | 'materials'
   | 'victims'
   | 'inemSupport'
   | 'clinical'
@@ -47,6 +51,9 @@ export function stepsForType(type: EventReportType | string): StepId[] {
     ...(rules.hasOccurrenceTimes ? (['times'] as StepId[]) : []),
     'crew',
     'vehicles',
+    // Present on every type, unlike the INEM/clinical steps below: a support
+    // report spends bandages the same as an emergency does.
+    'materials',
     'victims',
     // Present only on an emergency: additional INEM support (VMER/SIV/UMIP) is
     // something CODU dispatches, and a support job has no CODU call behind it.
@@ -162,6 +169,7 @@ export function emptyDraft(type: EventReportType, now: Date = new Date()): Event
     operationalReport: '',
     crew: [],
     vehicles: [],
+    materials: [],
     victims: [],
     inemSupportUnits: [],
     chamuCircumstances: null,
@@ -209,6 +217,17 @@ export function draftFromReport(report: EventReport): EventReportInput {
       // into a typed figure.
       routeLegs: vehicle.routeLegs ?? null,
       isOverridden: vehicle.isOverridden,
+    })),
+    // `itemType` travels with the line rather than being re-looked-up: the
+    // resolved `materialItem` is right here on the stored report (the same
+    // reason `EventReportMaterial.materialItem` is populated at all), and
+    // carrying its type is what lets `validateEventReport` judge `quantity`
+    // without a database round trip.
+    materials: (report.materials ?? []).map((material) => ({
+      materialItemId: material.materialItemId,
+      itemType: material.materialItem?.type ?? InventoryItemType.COUNTABLE,
+      vehicleId: material.vehicleId,
+      quantity: material.quantity,
     })),
     victims: report.victims.map((victim) => ({
       gender: victim.gender,
@@ -265,13 +284,42 @@ export function retypeDraft(
   if (!rules.hasInemSupportUnits) {
     next.inemSupportUnits = [];
   }
+  // Trim rather than refuse: changing an event from a support job to an
+  // emergency should not silently keep three vehicles the API will reject.
+  const vehicles = next.vehicles.slice(0, rules.maxVehicles);
   return {
     ...next,
-    // Trim rather than refuse: changing an event from a support job to an
-    // emergency should not silently keep three vehicles the API will reject.
-    vehicles: next.vehicles.slice(0, rules.maxVehicles),
+    vehicles,
     victims: next.victims.slice(0, rules.maxVictims),
+    // Materials are never dropped by a type change — they are allowed on
+    // every report type, unlike INEM units above — but a line whose vehicle
+    // just got trimmed away needs somewhere to live.
+    materials: reattachOrphanedMaterials(next.materials ?? [], vehicles),
   };
+}
+
+/**
+ * Materials whose vehicle just left the report — trimmed by a type change, or
+ * removed by hand in `VehiclesSection` — reassigned to whatever vehicle is
+ * now first, rather than left pointing at one that no longer exists.
+ *
+ * If no vehicle survives, the lines are left exactly as they were: an
+ * unresolvable `vehicleId` becomes a validation error the crew has to see
+ * (`MATERIAL_VEHICLE_NOT_ON_REPORT`), which beats consumption quietly
+ * disappearing from the report.
+ */
+export function reattachOrphanedMaterials(
+  materials: EventReportMaterialInput[],
+  vehicles: EventReportVehicleInput[],
+): EventReportMaterialInput[] {
+  const fallbackVehicleId = vehicles[0]?.vehicleId;
+  if (!fallbackVehicleId) return materials;
+  const keptVehicleIds = new Set(vehicles.map((vehicle) => vehicle.vehicleId));
+  return materials.map((material) =>
+    material.vehicleId && !keptVehicleIds.has(material.vehicleId)
+      ? { ...material, vehicleId: fallbackVehicleId }
+      : material,
+  );
 }
 
 // ── Surviving a closed app ────────────────────────────────────────────────────

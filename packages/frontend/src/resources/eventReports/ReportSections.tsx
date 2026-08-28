@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react';
+import { useLocaleState } from 'react-admin';
 import {
   Alert,
   Autocomplete,
@@ -34,12 +35,14 @@ import {
   EventReportAttachment,
   EventReportAttachmentKind,
   EventReportInput,
+  EventReportMaterialInput,
   EventReportType,
   EventReportWarningCode,
   GENDERS,
   Gender,
   INEM_SUPPORT_UNIT_TYPES,
   InemSupportUnitType,
+  Locale,
   Locality,
   MAX_INEM_SUPPORT_UNITS_PER_TYPE,
   MAX_VICTIM_AGE,
@@ -49,9 +52,11 @@ import {
   VictimDestinationKind,
   eventReportRules,
   formatEventReportCode,
+  materialItemDisplayName,
   totalKilometres,
 } from '@redinfo/shared';
 import { apiDownload } from '../../api';
+import { MaterialLine, MaterialPicker } from '../../components/MaterialPicker';
 import { RichTextEditor } from '../../components/RichTextEditor';
 import {
   abcdeBandLabel,
@@ -68,7 +73,7 @@ import { useT } from '../../i18n/useT';
 import { NowButton } from './NowButton';
 import { AbcdeStatusPicker, VitalControl } from '../liveRuns/VitalField';
 import { VITAL_FIELDS } from '../liveRuns/vitalsFields';
-import { StepId, composeInstant, minutesBetween, timeOfDay } from './reportDraft';
+import { StepId, composeInstant, minutesBetween, reattachOrphanedMaterials, timeOfDay } from './reportDraft';
 import { ReportLookups, personName, vehicleLabel } from './useReportLookups';
 import { LocalityPicker, localityLabel } from './LocalityPicker';
 import { DestinationChoice, HospitalPicker } from './HospitalPicker';
@@ -491,9 +496,15 @@ export const VehiclesSection = ({ draft, patch, lookups }: SectionProps) => {
               {vehicleLabel(lookups, line.vehicleId) || line.vehicleId}
             </Typography>
             <IconButton
-              onClick={() =>
-                patch({ vehicles: draft.vehicles.filter((_, at) => at !== index) })
-              }
+              onClick={() => {
+                const vehicles = draft.vehicles.filter((_, at) => at !== index);
+                patch({
+                  vehicles,
+                  // A material line tapped for this vehicle needs a new home —
+                  // see `reattachOrphanedMaterials`.
+                  materials: reattachOrphanedMaterials(draft.materials ?? [], vehicles),
+                });
+              }}
               aria-label={t('action.remove')}
             >
               <CloseIcon />
@@ -549,6 +560,108 @@ export const VehiclesSection = ({ draft, patch, lookups }: SectionProps) => {
       <Typography variant="caption" color="text.disabled">
         {single ? t('hint.oneVehicleEmergency') : t('hint.kilometresTotal')}
       </Typography>
+    </Stack>
+  );
+};
+
+// ── Materials ──────────────────────────────────────────────────────────────
+
+/**
+ * What was consumed, and by which vehicle.
+ *
+ * One vehicle: a single picker, its lines silently attached to it — the
+ * report's only vehicle is the only sane choice, and there is nothing to ask.
+ * Two or more: one picker per vehicle, switched with a segmented control,
+ * because nothing about a favourite tile, a search hit or a barcode scan says
+ * which ambulance used it — the vehicle has to be chosen before the item is,
+ * not after.
+ *
+ * `vehicleId` is written on every line, never left blank for the server's own
+ * default (`EventReportsService.prepare`) to fill in: `canSave` runs
+ * `validateEventReport` against this draft directly, before any save
+ * reaches the server, and that same function refuses a material line with no
+ * vehicle. The "silent" attachment has to happen here, client-side.
+ */
+export const MaterialsSection = ({ draft, patch, lookups }: SectionProps) => {
+  const t = useT();
+  const [locale] = useLocaleState();
+  const vehicles = draft.vehicles;
+  const materials = draft.materials ?? [];
+
+  const [pickedVehicleId, setPickedVehicleId] = useState<string | null>(
+    vehicles[0]?.vehicleId ?? null,
+  );
+  // Falls back to the first vehicle if the one on screen was just removed,
+  // rather than pointing at a picker for a vehicle that no longer exists.
+  const activeVehicleId = vehicles.some((vehicle) => vehicle.vehicleId === pickedVehicleId)
+    ? pickedVehicleId
+    : (vehicles[0]?.vehicleId ?? null);
+
+  const linesFor = (vehicleId: string): MaterialLine[] =>
+    materials
+      .filter((material) => material.vehicleId === vehicleId)
+      .map((material) => {
+        const item = lookups.materialItemsById[material.materialItemId];
+        return item ? { materialItem: item, quantity: material.quantity ?? null } : null;
+      })
+      .filter((line): line is MaterialLine => line !== null);
+
+  const setLinesFor = (vehicleId: string, lines: MaterialLine[]) => {
+    const tapped = new Set(lines.map((line) => line.materialItem.id));
+    // Kept as they were: every other vehicle's lines, plus any line for this
+    // vehicle whose full item has not resolved yet. The picker only ever
+    // shows resolved items, so one missing from `lines` for that reason was
+    // never offered to the crew to remove — dropping it here would still be
+    // a silent loss.
+    const untouched = materials.filter(
+      (material) =>
+        material.vehicleId !== vehicleId ||
+        (!tapped.has(material.materialItemId) && !lookups.materialItemsById[material.materialItemId]),
+    );
+    const next: EventReportMaterialInput[] = lines.map((line) => ({
+      materialItemId: line.materialItem.id,
+      itemType: line.materialItem.type,
+      vehicleId,
+      quantity: line.quantity,
+    }));
+    patch({ materials: [...untouched, ...next] });
+  };
+
+  if (vehicles.length === 0) {
+    return (
+      <Typography variant="body2" color="text.secondary">
+        {t('hint.materialsNeedVehicle')}
+      </Typography>
+    );
+  }
+
+  return (
+    <Stack spacing={2}>
+      {vehicles.length >= 2 && (
+        <ToggleButtonGroup
+          exclusive
+          fullWidth
+          value={activeVehicleId}
+          onChange={(_event, value: string | null) => {
+            if (value) setPickedVehicleId(value);
+          }}
+          sx={{ gap: 1, '& .MuiToggleButton-root': { borderRadius: 1 } }}
+        >
+          {vehicles.map((vehicle) => (
+            <ToggleButton key={vehicle.vehicleId} value={vehicle.vehicleId} sx={{ flex: 1 }}>
+              {vehicleLabel(lookups, vehicle.vehicleId) || vehicle.vehicleId}
+            </ToggleButton>
+          ))}
+        </ToggleButtonGroup>
+      )}
+
+      {activeVehicleId && (
+        <MaterialPicker
+          value={linesFor(activeVehicleId)}
+          onChange={(lines) => setLinesFor(activeVehicleId, lines)}
+          locale={locale as Locale}
+        />
+      )}
     </Stack>
   );
 };
@@ -1117,6 +1230,7 @@ export const ReviewSection = ({
   pendingFileCount,
 }: ReviewSectionProps) => {
   const t = useT();
+  const [locale] = useLocaleState();
   const rules = eventReportRules(draft.type);
 
   const rows: Array<{ step: StepId; label: string; value: string }> = [
@@ -1162,6 +1276,20 @@ export const ReviewSection = ({
               .map((line) => vehicleLabel(lookups, line.vehicleId))
               .filter(Boolean)
               .join(' · ')} · ${totalKilometres(draft.vehicles)} km`,
+    },
+    {
+      step: 'materials',
+      label: t('field.materials'),
+      value:
+        (draft.materials ?? []).length === 0
+          ? '—'
+          : (draft.materials ?? [])
+              .map((material) => {
+                const item = lookups.materialItemsById[material.materialItemId];
+                const name = item ? materialItemDisplayName(item, locale as Locale) : material.materialItemId;
+                return material.quantity != null ? `${name} ×${material.quantity}` : name;
+              })
+              .join(' · '),
     },
     {
       step: 'victims',

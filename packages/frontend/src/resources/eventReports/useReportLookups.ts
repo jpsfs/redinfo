@@ -1,10 +1,11 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   CrewSuggestionResponse,
   EventReportInput,
   EventReportType,
   HospitalWithDistance,
   Locality,
+  MaterialItem,
   SchedulePerson,
   Vehicle,
 } from '@redinfo/shared';
@@ -20,6 +21,13 @@ export interface ReportLookups {
   locality: Locality | null;
   /** The shift to pre-fill from, and the recent ones to switch to. */
   crewSuggestion: CrewSuggestionResponse | null;
+  /**
+   * The full catalogue entry behind each material line already on the draft,
+   * keyed by id. `MaterialPicker` resolves the items it shows you (favourites,
+   * search, a scan) on its own — this is only for a line the picker never
+   * fetched itself: one loaded from a filed report, or from a resumed draft.
+   */
+  materialItemsById: Record<string, MaterialItem>;
   loading: boolean;
 }
 
@@ -29,6 +37,7 @@ const EMPTY: ReportLookups = {
   hospitalsById: {},
   locality: null,
   crewSuggestion: null,
+  materialItemsById: {},
   loading: true,
 };
 
@@ -44,7 +53,7 @@ const EMPTY: ReportLookups = {
  * so every fetch here degrades to an empty list rather than blocking the form.
  */
 export function useReportLookups(
-  draft: Pick<EventReportInput, 'localityId' | 'type' | 'startedAt'>,
+  draft: Pick<EventReportInput, 'localityId' | 'type' | 'startedAt' | 'materials'>,
 ): ReportLookups {
   const [lookups, setLookups] = useState<ReportLookups>(EMPTY);
 
@@ -125,6 +134,36 @@ export function useReportLookups(
       cancelled = true;
     };
   }, [draft.type, draft.startedAt]);
+
+  // Resolved one id at a time rather than in bulk — there is no "several ids"
+  // endpoint on the catalogue, only `GET /material-items/:id` — and only for
+  // ids not already resolved, since a quantity edit rebuilds `draft.materials`
+  // on every keystroke and must not refetch the same item each time.
+  const resolvedMaterialIds = useRef(new Set<string>());
+  useEffect(() => {
+    const ids = [...new Set((draft.materials ?? []).map((material) => material.materialItemId))];
+    const missing = ids.filter((id) => !resolvedMaterialIds.current.has(id));
+    if (missing.length === 0) return undefined;
+    missing.forEach((id) => resolvedMaterialIds.current.add(id));
+
+    let cancelled = false;
+    Promise.all(
+      missing.map((id) => apiFetch<MaterialItem>(`/material-items/${id}`).catch(() => null)),
+    ).then((items) => {
+      if (cancelled) return;
+      const resolved = Object.fromEntries(
+        items.filter((item): item is MaterialItem => item !== null).map((item) => [item.id, item]),
+      );
+      if (Object.keys(resolved).length === 0) return;
+      setLookups((current) => ({
+        ...current,
+        materialItemsById: { ...current.materialItemsById, ...resolved },
+      }));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [draft.materials]);
 
   return lookups;
 }

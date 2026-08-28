@@ -9,6 +9,7 @@ import {
   EventReportType,
   Gender,
   InemSupportUnitType,
+  InventoryItemType,
   VictimDestinationKind,
 } from '@redinfo/shared';
 import { EventReportShow } from './EventReportShow';
@@ -87,6 +88,7 @@ const report = (overrides: Partial<EventReport> = {}): EventReport =>
         position: 0,
       },
     ],
+    materials: [],
     victims: [
       {
         id: 'vic1',
@@ -263,6 +265,113 @@ describe('the facts', () => {
     renderShow(report({ type: EventReportType.LOCAL_SUPPORT, externalReference: null }));
     await screen.findByText('Habitação');
     expect(screen.queryByText('Meios INEM de apoio')).not.toBeInTheDocument();
+  });
+});
+
+describe('material consumed', () => {
+  it('says so when nothing was recorded', async () => {
+    renderShow();
+    expect(await screen.findByText('Nenhum material registado')).toBeInTheDocument();
+  });
+
+  it('names the item, its quantity and unit', async () => {
+    renderShow(
+      report({
+        materials: [
+          {
+            id: 'matl-1',
+            materialItemId: 'mat-gloves',
+            materialItem: {
+              id: 'mat-gloves',
+              namePt: 'Luvas',
+              nameEn: 'Gloves',
+              unit: 'pcs',
+              type: InventoryItemType.COUNTABLE,
+            },
+            vehicleId: 'veh-1',
+            vehicle: { id: 'veh-1', licensePlate: 'AA-12-BC', numeroCauda: 'Amb. 04' },
+            quantity: 3,
+            position: 0,
+          },
+        ],
+      }),
+    );
+
+    expect(await screen.findByText('Luvas')).toBeInTheDocument();
+    expect(screen.getByText('3 pcs')).toBeInTheDocument();
+    // One vehicle on the report — naming it on the line would be noise.
+    expect(screen.queryByText('AA-12-BC · Amb. 04')).not.toBeInTheDocument();
+  });
+
+  it('logs an unlimited item with no quantity', async () => {
+    renderShow(
+      report({
+        materials: [
+          {
+            id: 'matl-1',
+            materialItemId: 'mat-oxygen',
+            materialItem: {
+              id: 'mat-oxygen',
+              namePt: 'Oxigénio',
+              nameEn: 'Oxygen',
+              unit: 'L',
+              type: InventoryItemType.UNLIMITED,
+            },
+            vehicleId: 'veh-1',
+            vehicle: { id: 'veh-1', licensePlate: 'AA-12-BC', numeroCauda: 'Amb. 04' },
+            quantity: null,
+            position: 0,
+          },
+        ],
+      }),
+    );
+
+    expect(await screen.findByText('Oxigénio')).toBeInTheDocument();
+    expect(screen.getByText('Registado')).toBeInTheDocument();
+  });
+
+  it('names the vehicle only when the report used more than one', async () => {
+    renderShow(
+      report({
+        vehicles: [
+          {
+            id: 'v1',
+            vehicleId: 'veh-1',
+            vehicle: { id: 'veh-1', licensePlate: 'AA-12-BC', numeroCauda: 'Amb. 04' },
+            kilometres: 20,
+            position: 0,
+            isOverridden: false,
+          },
+          {
+            id: 'v2',
+            vehicleId: 'veh-2',
+            vehicle: { id: 'veh-2', licensePlate: 'BB-34-CD', numeroCauda: 'Amb. 07' },
+            kilometres: 22,
+            position: 1,
+            isOverridden: false,
+          },
+        ],
+        materials: [
+          {
+            id: 'matl-1',
+            materialItemId: 'mat-gloves',
+            materialItem: {
+              id: 'mat-gloves',
+              namePt: 'Luvas',
+              nameEn: 'Gloves',
+              unit: 'pcs',
+              type: InventoryItemType.COUNTABLE,
+            },
+            vehicleId: 'veh-2',
+            vehicle: { id: 'veh-2', licensePlate: 'BB-34-CD', numeroCauda: 'Amb. 07' },
+            quantity: 1,
+            position: 0,
+          },
+        ],
+      }),
+    );
+
+    expect(await screen.findByText('BB-34-CD · Amb. 07')).toBeInTheDocument();
   });
 });
 

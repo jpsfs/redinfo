@@ -69,16 +69,16 @@ describe('the type chooser', () => {
 
     // The form's own chrome, and the step count that belongs to this type.
     expect(await screen.findByText('Quando e onde')).toBeInTheDocument();
-    expect(screen.getByText('1 de 6')).toBeInTheDocument();
+    expect(screen.getByText('1 de 7')).toBeInTheDocument();
   });
 
-  it('opens an emergency with its nine steps', async () => {
+  it('opens an emergency with its ten steps', async () => {
     const user = userEvent.setup();
     renderCreate();
 
     await user.click(screen.getByTestId(`choose-${EventReportType.EMERGENCY}`));
 
-    expect(await screen.findByText('1 de 9')).toBeInTheDocument();
+    expect(await screen.findByText('1 de 10')).toBeInTheDocument();
   });
 
   it('does not offer a draft when there is none', () => {
@@ -115,7 +115,7 @@ describe('an unfinished draft', () => {
     await user.click(screen.getByRole('button', { name: /continuar/i }));
 
     expect(await screen.findByText('Viaturas e quilómetros')).toBeInTheDocument();
-    expect(screen.getByText('3 de 6')).toBeInTheDocument();
+    expect(screen.getByText('3 de 7')).toBeInTheDocument();
   });
 
   it('can be thrown away, leaving the chooser', async () => {
@@ -136,6 +136,6 @@ describe('an unfinished draft', () => {
 
     await user.click(screen.getByTestId(`choose-${EventReportType.EMERGENCY}`));
 
-    expect(await screen.findByText('1 de 9')).toBeInTheDocument();
+    expect(await screen.findByText('1 de 10')).toBeInTheDocument();
   });
 });

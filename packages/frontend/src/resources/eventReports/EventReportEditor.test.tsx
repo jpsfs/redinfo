@@ -11,6 +11,7 @@ import {
   EventReportAttachmentKind,
   EventReportType,
   Gender,
+  InventoryItemType,
   VictimDestinationKind,
 } from '@redinfo/shared';
 import { EventReportEditor } from './EventReportEditor';
@@ -37,6 +38,38 @@ const AMBULANCE = {
   licensePlate: 'AA-12-BC',
   numeroCauda: 'Amb. 04',
   vehicleType: 'EMERGENCY',
+};
+const AMBULANCE_2 = {
+  id: 'veh-2',
+  licensePlate: 'BB-34-CD',
+  numeroCauda: 'Amb. 07',
+  vehicleType: 'EMERGENCY',
+};
+const GLOVES = {
+  id: 'mat-gloves',
+  namePt: 'Luvas',
+  nameEn: 'Gloves',
+  unit: 'pcs',
+  type: InventoryItemType.COUNTABLE,
+  notes: null,
+  isFrequent: true,
+  frequentOrder: 0,
+  isDeleted: false,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+};
+const OXYGEN = {
+  id: 'mat-oxygen',
+  namePt: 'Oxigénio',
+  nameEn: 'Oxygen',
+  unit: 'L',
+  type: InventoryItemType.COUNTABLE,
+  notes: null,
+  isFrequent: false,
+  frequentOrder: 0,
+  isDeleted: false,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
 };
 const TAVEIRO = {
   id: 'loc-taveiro',
@@ -95,10 +128,23 @@ function respondWith(overrides: Record<string, unknown> = {}) {
     if (path.startsWith('/event-reports/crew-suggestion')) {
       return Promise.resolve(overrides.suggestion ?? { suggested: SHIFT, recent: [] });
     }
-    if (path.startsWith('/vehicles')) return Promise.resolve({ data: [AMBULANCE] });
+    if (path.startsWith('/vehicles')) {
+      return Promise.resolve({ data: overrides.vehicles ?? [AMBULANCE, AMBULANCE_2] });
+    }
     if (path.startsWith('/hospitals/picker')) return Promise.resolve([CHUC]);
     if (path.startsWith('/localities/')) return Promise.resolve(TAVEIRO);
     if (path.startsWith('/localities')) return Promise.resolve([TAVEIRO]);
+    if (path.startsWith('/material-items?frequent=true')) {
+      return Promise.resolve({ data: overrides.favourites ?? [GLOVES] });
+    }
+    if (path.startsWith('/material-items?q=')) {
+      return Promise.resolve({ data: overrides.searchResults ?? [OXYGEN] });
+    }
+    if (path.startsWith('/material-items/')) {
+      const id = path.split('/').pop();
+      const item = [GLOVES, OXYGEN].find((material) => material.id === id);
+      return item ? Promise.resolve(item) : Promise.reject(new Error('not found'));
+    }
     return Promise.resolve({});
   });
 }
@@ -159,18 +205,18 @@ beforeEach(() => {
 });
 
 describe('the wizard on a phone', () => {
-  it('starts on the first of nine steps for an emergency', async () => {
+  it('starts on the first of ten steps for an emergency', async () => {
     renderEditor();
 
     expect(await screen.findByText('Quando e onde')).toBeInTheDocument();
-    expect(screen.getByText('1 de 9')).toBeInTheDocument();
+    expect(screen.getByText('1 de 10')).toBeInTheDocument();
   });
 
-  it('has six steps for a support report, and no chronology', async () => {
+  it('has seven steps for a support report, and no chronology', async () => {
     renderEditor({ type: EventReportType.LOCAL_SUPPORT });
 
     expect(await screen.findByText('Quando e onde')).toBeInTheDocument();
-    expect(screen.getByText('1 de 6')).toBeInTheDocument();
+    expect(screen.getByText('1 de 7')).toBeInTheDocument();
   });
 
   it('walks forward through the steps, naming each one', async () => {
@@ -183,7 +229,7 @@ describe('the wizard on a phone', () => {
     // Emergencies stamp their chronology second, while the crew still
     // remembers it.
     expect(await screen.findByText(/^Tempos/)).toBeInTheDocument();
-    expect(screen.getByText('2 de 9')).toBeInTheDocument();
+    expect(screen.getByText('2 de 10')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: /seguinte/i }));
     expect(await screen.findByText('Equipa')).toBeInTheDocument();
@@ -365,6 +411,101 @@ describe('the crew step', () => {
   });
 });
 
+describe('the materials step', () => {
+  const EMPTY_LINES = 'Ainda não foi registado nenhum material.';
+
+  const goToMaterials = async (
+    user: ReturnType<typeof userEvent.setup>,
+    options: { type?: EventReportType; seed?: Record<string, unknown> } = {},
+  ) => {
+    renderEditor({ type: options.type, seed: options.seed });
+    await screen.findByText('Quando e onde');
+    const index = stepsForType(options.type ?? EventReportType.EMERGENCY).indexOf('materials');
+    for (let step = 0; step < index; step += 1) {
+      await user.click(screen.getByRole('button', { name: /seguinte/i }));
+    }
+    await screen.findByText('Material consumido');
+  };
+
+  const oneVehicle = { vehicles: [{ vehicleId: AMBULANCE.id, kilometres: 0 }] };
+
+  it('adds a line by tapping a favourite', async () => {
+    const user = userEvent.setup();
+    await goToMaterials(user, { seed: oneVehicle });
+
+    expect(await screen.findByText(EMPTY_LINES)).toBeInTheDocument();
+    await user.click(await screen.findByRole('button', { name: 'Luvas' }));
+
+    expect(screen.queryByText(EMPTY_LINES)).not.toBeInTheDocument();
+    expect(screen.getAllByText('Luvas').length).toBeGreaterThan(0);
+  });
+
+  it('adds a line by search', async () => {
+    const user = userEvent.setup();
+    await goToMaterials(user, { seed: oneVehicle });
+
+    await user.type(screen.getByPlaceholderText('Procurar material…'), 'Oxig');
+    await user.click(await screen.findByRole('button', { name: 'Oxigénio' }));
+
+    expect(screen.queryByText(EMPTY_LINES)).not.toBeInTheDocument();
+    expect(screen.getAllByText('Oxigénio').length).toBeGreaterThan(0);
+  });
+
+  it('edits the quantity of a line', async () => {
+    const user = userEvent.setup();
+    await goToMaterials(user, { seed: oneVehicle });
+
+    await user.click(await screen.findByRole('button', { name: 'Luvas' }));
+    await user.click(await screen.findByRole('button', { name: 'Luvas +1' }));
+
+    expect(screen.getAllByText('2').length).toBeGreaterThan(0);
+  });
+
+  it('removes a line', async () => {
+    const user = userEvent.setup();
+    await goToMaterials(user, { seed: oneVehicle });
+
+    await user.click(await screen.findByRole('button', { name: 'Luvas' }));
+    await screen.findByRole('button', { name: 'Remover' });
+    await user.click(screen.getByRole('button', { name: 'Remover' }));
+
+    expect(await screen.findByText(EMPTY_LINES)).toBeInTheDocument();
+  });
+
+  it('offers no vehicle selector with a single vehicle — the line attaches to it silently', async () => {
+    const user = userEvent.setup();
+    await goToMaterials(user, { seed: oneVehicle });
+
+    expect(await screen.findByText(EMPTY_LINES)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /AA-12-BC/ })).not.toBeInTheDocument();
+  });
+
+  it('shows a vehicle selector with two or more vehicles', async () => {
+    const user = userEvent.setup();
+    await goToMaterials(user, {
+      seed: {
+        vehicles: [
+          { vehicleId: AMBULANCE.id, kilometres: 0 },
+          { vehicleId: AMBULANCE_2.id, kilometres: 0 },
+        ],
+      },
+    });
+
+    expect(await screen.findByRole('button', { name: /AA-12-BC/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /BB-34-CD/ })).toBeInTheDocument();
+  });
+
+  it('asks for a vehicle before letting the crew log anything', async () => {
+    const user = userEvent.setup();
+    await goToMaterials(user);
+
+    expect(
+      screen.getByText('Escolhe primeiro a viatura para poderes registar material.'),
+    ).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('Procurar material…')).not.toBeInTheDocument();
+  });
+});
+
 describe('the victim step', () => {
   it('offers one victim on an emergency', async () => {
     renderEditor({
@@ -383,7 +524,7 @@ describe('the victim step', () => {
 
     const user = userEvent.setup();
     await screen.findByText('Guardado');
-    for (let step = 0; step < 4; step += 1) {
+    for (let step = 0; step < 5; step += 1) {
       await user.click(screen.getByRole('button', { name: /seguinte/i }));
     }
 
@@ -410,7 +551,7 @@ describe('the victim step', () => {
     });
 
     await screen.findByText('Guardado');
-    for (let step = 0; step < 4; step += 1) {
+    for (let step = 0; step < 5; step += 1) {
       await user.click(screen.getByRole('button', { name: /seguinte/i }));
     }
     await screen.findByText('Vítima e transporte');
@@ -434,7 +575,7 @@ describe('the victim step', () => {
     });
 
     await screen.findByText('Guardado');
-    for (let step = 0; step < 3; step += 1) {
+    for (let step = 0; step < 4; step += 1) {
       await user.click(screen.getByRole('button', { name: /seguinte/i }));
     }
 

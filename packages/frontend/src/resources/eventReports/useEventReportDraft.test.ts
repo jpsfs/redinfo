@@ -4,6 +4,7 @@ import {
   EventLocationType,
   EventReportType,
   Gender,
+  InventoryItemType,
   VictimDestinationKind,
 } from '@redinfo/shared';
 import { useEventReportDraft } from './useEventReportDraft';
@@ -38,18 +39,18 @@ describe('starting a report', () => {
     expect(result.current.draft.occurredOn).toMatch(/^\d{4}-\d{2}-\d{2}$/);
   });
 
-  it('has nine steps for an emergency and six for a support report', () => {
-    // Nine rather than six: an emergency carries a chronology, INEM support
+  it('has ten steps for an emergency and seven for a support report', () => {
+    // Ten rather than seven: an emergency carries a chronology, INEM support
     // units *and* a clinical record, and a support report carries none of them.
     const emergency = renderHook(() =>
       useEventReportDraft({ type: EventReportType.EMERGENCY }),
     );
-    expect(emergency.result.current.steps).toHaveLength(9);
+    expect(emergency.result.current.steps).toHaveLength(10);
 
     const support = renderHook(() =>
       useEventReportDraft({ type: EventReportType.LOCAL_SUPPORT }),
     );
-    expect(support.result.current.steps).toHaveLength(6);
+    expect(support.result.current.steps).toHaveLength(7);
   });
 });
 
@@ -86,7 +87,7 @@ describe('walking the steps', () => {
 
     act(() => result.current.goTo('victims'));
     expect(result.current.stepId).toBe('victims');
-    expect(result.current.stepIndex).toBe(4);
+    expect(result.current.stepIndex).toBe(5);
   });
 });
 
@@ -220,6 +221,20 @@ describe('surviving a closed app', () => {
 
     expect(loadDraft()?.draft.localityId).toBe('loc-taveiro');
     expect(result.current.savedAt).not.toBeNull();
+  });
+
+  it('round-trips material consumption lines through the device', () => {
+    const { result } = renderHook(() =>
+      useEventReportDraft({ type: EventReportType.EMERGENCY }),
+    );
+
+    const materials = [
+      { materialItemId: 'mat-1', itemType: InventoryItemType.COUNTABLE, vehicleId: 'veh-1', quantity: 4 },
+    ];
+    act(() => result.current.patch({ materials }));
+
+    expect(result.current.draft.materials).toEqual(materials);
+    expect(loadDraft()?.draft.materials).toEqual(materials);
   });
 
   it('remembers which step the crew had reached', () => {
