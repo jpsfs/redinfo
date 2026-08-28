@@ -34,6 +34,7 @@ import {
   validateDayShifts,
 } from '@redinfo/shared';
 import { TimeField } from '../../components/TimeField';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { useT } from '../../i18n/useT';
 import { formatDayLabel } from '../../utils/dates';
 
@@ -134,6 +135,83 @@ const VehiclesField = ({
   />
 );
 
+/**
+ * One shift's controls — start, end, vehicles, delete — shared between the
+ * desktop table cell and the mobile day card so the two layouts can never
+ * drift on what a shift row actually edits.
+ */
+const ShiftRow = ({
+  day,
+  shift,
+  index,
+  label,
+  disabled,
+  onUpdate,
+  onRemove,
+}: {
+  day: WindowDayDraft;
+  shift: ShiftSpec;
+  index: number;
+  label: string;
+  disabled: boolean;
+  onUpdate: (shifts: ShiftSpec[]) => void;
+  onRemove: () => void;
+}) => {
+  const t = useT();
+  return (
+    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+      <TimeField
+        ariaLabel={t('dayShift.startAria', { day: label, index: index + 1 })}
+        value={shift.startMinute}
+        disabled={disabled}
+        onChange={(startMinute) =>
+          onUpdate(
+            day.shifts.map((candidate, position) =>
+              position === index ? { ...candidate, startMinute } : candidate,
+            ),
+          )
+        }
+      />
+      <Typography variant="body2" color="text.secondary">
+        –
+      </Typography>
+      <TimeField
+        ariaLabel={t('dayShift.endAria', { day: label, index: index + 1 })}
+        value={shift.endMinute}
+        isEnd
+        disabled={disabled}
+        onChange={(endMinute) =>
+          onUpdate(
+            day.shifts.map((candidate, position) =>
+              position === index ? { ...candidate, endMinute } : candidate,
+            ),
+          )
+        }
+      />
+      <VehiclesField
+        ariaLabel={t('dayShift.vehiclesAria', { day: label, index: index + 1 })}
+        value={shift.vehiclesNeeded}
+        disabled={disabled}
+        onChange={(vehiclesNeeded) =>
+          onUpdate(
+            day.shifts.map((candidate, position) =>
+              position === index ? { ...candidate, vehiclesNeeded } : candidate,
+            ),
+          )
+        }
+      />
+      <IconButton
+        size="small"
+        disabled={disabled}
+        aria-label={t('dayShift.removeAria', { day: label, index: index + 1 })}
+        onClick={onRemove}
+      >
+        <DeleteOutlineIcon fontSize="small" />
+      </IconButton>
+    </Stack>
+  );
+};
+
 const DayTypeChip = ({ day }: { day: WindowDayDraft }) => {
   const t = useT();
   if (day.isHoliday) {
@@ -172,6 +250,7 @@ export const DayShiftEditor = ({
   disabled?: boolean;
 }) => {
   const t = useT();
+  const isMobile = useIsMobile();
   const COPY_TARGETS: Array<{ target: CopyTarget; label: string }> = [
     { target: 'workdays', label: t('dayShift.copyWorkdays') },
     { target: 'nonWorkdays', label: t('dayShift.copyNonWorkdays') },
@@ -206,173 +285,208 @@ export const DayShiftEditor = ({
 
   return (
     <>
-      <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 520 }}>
-        <Table size="small" stickyHeader>
-          <TableHead>
-            <TableRow>
-              <TableCell sx={{ minWidth: 210 }}>
-                <strong>{t('dayShift.colDay')}</strong>
-              </TableCell>
-              <TableCell>
-                <strong>{t('dayShift.colShifts')}</strong>
-                <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
-                  {t('dayShift.colShiftsHint')}
-                </Typography>
-              </TableCell>
-              <TableCell align="right" sx={{ minWidth: 190 }} />
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {days.map((day) => {
-              const label = formatDayLabel(t, day.date);
-              const error = validateDayShifts(day.shifts);
+      {isMobile ? (
+        <Stack spacing={1.5}>
+          {days.map((day) => {
+            const label = formatDayLabel(t, day.date);
+            const error = validateDayShifts(day.shifts);
 
-              return (
-                <TableRow
-                  key={day.date}
-                  sx={{
-                    backgroundColor: day.isHoliday
-                      ? 'rgba(245,124,0,0.05)'
-                      : day.isWeekend
-                        ? 'rgba(0,0,0,0.015)'
-                        : 'inherit',
-                  }}
-                >
-                  <TableCell>
-                    <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                      {label}
-                    </Typography>
-                    <Box sx={{ mt: 0.5 }}>
-                      <DayTypeChip day={day} />
-                    </Box>
-                  </TableCell>
+            return (
+              <Paper
+                key={day.date}
+                variant="outlined"
+                sx={{
+                  p: 1.5,
+                  backgroundColor: day.isHoliday
+                    ? 'rgba(245,124,0,0.05)'
+                    : day.isWeekend
+                      ? 'rgba(0,0,0,0.015)'
+                      : 'inherit',
+                }}
+              >
+                <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {label}
+                  </Typography>
+                  <DayTypeChip day={day} />
+                </Stack>
 
-                  <TableCell>
-                    {day.shifts.length === 0 ? (
-                      <Typography variant="body2" color="text.secondary">
-                        {t('dayShift.noShifts')}
+                {day.shifts.length === 0 ? (
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                    {t('dayShift.noShifts')}
+                  </Typography>
+                ) : (
+                  <Stack spacing={0.75} sx={{ mb: 1 }}>
+                    {day.shifts.map((shift, index) => (
+                      <ShiftRow
+                        // Index-keyed on purpose: rows are positional here, and
+                        // the times themselves are what the user edits.
+                        key={index}
+                        day={day}
+                        shift={shift}
+                        index={index}
+                        label={label}
+                        disabled={disabled}
+                        onUpdate={(shifts) => updateDay(day.date, shifts)}
+                        onRemove={() =>
+                          updateDay(
+                            day.date,
+                            day.shifts.filter((_, position) => position !== index),
+                          )
+                        }
+                      />
+                    ))}
+                  </Stack>
+                )}
+
+                {error && (
+                  <Typography variant="caption" color="error" sx={{ display: 'block', mb: 1 }}>
+                    {error}
+                  </Typography>
+                )}
+
+                <Stack direction="row" spacing={1}>
+                  <Button
+                    size="small"
+                    startIcon={<AddIcon />}
+                    disabled={disabled || day.shifts.length >= MAX_SHIFTS_PER_DAY}
+                    aria-label={t('dayShift.addShiftAria', { day: label })}
+                    onClick={() => addShift(day)}
+                    sx={{ flex: 1 }}
+                  >
+                    {t('dayShift.addShift')}
+                  </Button>
+                  <Button
+                    size="small"
+                    startIcon={<ContentCopyIcon />}
+                    disabled={disabled}
+                    aria-label={t('dayShift.copyToAria', { day: label })}
+                    onClick={(event) =>
+                      setCopyFrom({ date: day.date, anchor: event.currentTarget })
+                    }
+                    sx={{ flex: 1 }}
+                  >
+                    {t('dayShift.copyToButton')}
+                  </Button>
+                </Stack>
+              </Paper>
+            );
+          })}
+        </Stack>
+      ) : (
+        <TableContainer component={Paper} variant="outlined" sx={{ maxHeight: 520 }}>
+          <Table size="small" stickyHeader>
+            <TableHead>
+              <TableRow>
+                <TableCell sx={{ minWidth: 210 }}>
+                  <strong>{t('dayShift.colDay')}</strong>
+                </TableCell>
+                <TableCell>
+                  <strong>{t('dayShift.colShifts')}</strong>
+                  <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                    {t('dayShift.colShiftsHint')}
+                  </Typography>
+                </TableCell>
+                <TableCell align="right" sx={{ minWidth: 190 }} />
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {days.map((day) => {
+                const label = formatDayLabel(t, day.date);
+                const error = validateDayShifts(day.shifts);
+
+                return (
+                  <TableRow
+                    key={day.date}
+                    sx={{
+                      backgroundColor: day.isHoliday
+                        ? 'rgba(245,124,0,0.05)'
+                        : day.isWeekend
+                          ? 'rgba(0,0,0,0.015)'
+                          : 'inherit',
+                    }}
+                  >
+                    <TableCell>
+                      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                        {label}
                       </Typography>
-                    ) : (
-                      <Stack spacing={0.75}>
-                        {day.shifts.map((shift, index) => (
-                          <Stack
-                            // Index-keyed on purpose: rows are positional here,
-                            // and the times themselves are what the user edits.
-                            key={index}
-                            direction="row"
-                            spacing={1}
-                            alignItems="center"
-                            flexWrap="wrap"
-                            useFlexGap
-                          >
-                            <TimeField
-                              ariaLabel={t('dayShift.startAria', { day: label, index: index + 1 })}
-                              value={shift.startMinute}
+                      <Box sx={{ mt: 0.5 }}>
+                        <DayTypeChip day={day} />
+                      </Box>
+                    </TableCell>
+
+                    <TableCell>
+                      {day.shifts.length === 0 ? (
+                        <Typography variant="body2" color="text.secondary">
+                          {t('dayShift.noShifts')}
+                        </Typography>
+                      ) : (
+                        <Stack spacing={0.75}>
+                          {day.shifts.map((shift, index) => (
+                            <ShiftRow
+                              // Index-keyed on purpose: rows are positional
+                              // here, and the times themselves are what the
+                              // user edits.
+                              key={index}
+                              day={day}
+                              shift={shift}
+                              index={index}
+                              label={label}
                               disabled={disabled}
-                              onChange={(startMinute) =>
-                                updateDay(
-                                  day.date,
-                                  day.shifts.map((candidate, position) =>
-                                    position === index
-                                      ? { ...candidate, startMinute }
-                                      : candidate,
-                                  ),
-                                )
-                              }
-                            />
-                            <Typography variant="body2" color="text.secondary">
-                              –
-                            </Typography>
-                            <TimeField
-                              ariaLabel={t('dayShift.endAria', { day: label, index: index + 1 })}
-                              value={shift.endMinute}
-                              isEnd
-                              disabled={disabled}
-                              onChange={(endMinute) =>
-                                updateDay(
-                                  day.date,
-                                  day.shifts.map((candidate, position) =>
-                                    position === index
-                                      ? { ...candidate, endMinute }
-                                      : candidate,
-                                  ),
-                                )
-                              }
-                            />
-                            <VehiclesField
-                              ariaLabel={t('dayShift.vehiclesAria', { day: label, index: index + 1 })}
-                              value={shift.vehiclesNeeded}
-                              disabled={disabled}
-                              onChange={(vehiclesNeeded) =>
-                                updateDay(
-                                  day.date,
-                                  day.shifts.map((candidate, position) =>
-                                    position === index
-                                      ? { ...candidate, vehiclesNeeded }
-                                      : candidate,
-                                  ),
-                                )
-                              }
-                            />
-                            <IconButton
-                              size="small"
-                              disabled={disabled}
-                              aria-label={t('dayShift.removeAria', { day: label, index: index + 1 })}
-                              onClick={() =>
+                              onUpdate={(shifts) => updateDay(day.date, shifts)}
+                              onRemove={() =>
                                 updateDay(
                                   day.date,
                                   day.shifts.filter((_, position) => position !== index),
                                 )
                               }
-                            >
-                              <DeleteOutlineIcon fontSize="small" />
-                            </IconButton>
-                          </Stack>
-                        ))}
+                            />
+                          ))}
+                        </Stack>
+                      )}
+
+                      {error && (
+                        <Typography
+                          variant="caption"
+                          color="error"
+                          sx={{ display: 'block', mt: 0.5 }}
+                        >
+                          {error}
+                        </Typography>
+                      )}
+                    </TableCell>
+
+                    <TableCell align="right">
+                      <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                        <Button
+                          size="small"
+                          startIcon={<AddIcon />}
+                          disabled={disabled || day.shifts.length >= MAX_SHIFTS_PER_DAY}
+                          aria-label={t('dayShift.addShiftAria', { day: label })}
+                          onClick={() => addShift(day)}
+                        >
+                          {t('dayShift.addShift')}
+                        </Button>
+                        <Button
+                          size="small"
+                          startIcon={<ContentCopyIcon />}
+                          disabled={disabled}
+                          aria-label={t('dayShift.copyToAria', { day: label })}
+                          onClick={(event) =>
+                            setCopyFrom({ date: day.date, anchor: event.currentTarget })
+                          }
+                        >
+                          {t('dayShift.copyToButton')}
+                        </Button>
                       </Stack>
-                    )}
-
-                    {error && (
-                      <Typography
-                        variant="caption"
-                        color="error"
-                        sx={{ display: 'block', mt: 0.5 }}
-                      >
-                        {error}
-                      </Typography>
-                    )}
-                  </TableCell>
-
-                  <TableCell align="right">
-                    <Stack direction="row" spacing={0.5} justifyContent="flex-end">
-                      <Button
-                        size="small"
-                        startIcon={<AddIcon />}
-                        disabled={disabled || day.shifts.length >= MAX_SHIFTS_PER_DAY}
-                        aria-label={t('dayShift.addShiftAria', { day: label })}
-                        onClick={() => addShift(day)}
-                      >
-                        {t('dayShift.addShift')}
-                      </Button>
-                      <Button
-                        size="small"
-                        startIcon={<ContentCopyIcon />}
-                        disabled={disabled}
-                        aria-label={t('dayShift.copyToAria', { day: label })}
-                        onClick={(event) =>
-                          setCopyFrom({ date: day.date, anchor: event.currentTarget })
-                        }
-                      >
-                        {t('dayShift.copyToButton')}
-                      </Button>
-                    </Stack>
-                  </TableCell>
-                </TableRow>
-              );
-            })}
-          </TableBody>
-        </Table>
-      </TableContainer>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
 
       <Menu
         open={copyFrom !== null}

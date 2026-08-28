@@ -6,6 +6,7 @@ import { AdminContext, testDataProvider } from 'react-admin';
 import polyglotI18nProvider from 'ra-i18n-polyglot';
 import { MAX_SHIFTS_PER_DAY, MINUTES_PER_DAY, toMinuteOfDay } from '@redinfo/shared';
 import { messages } from '../../i18n/i18nProvider';
+import { renderMobile } from '../../test/renderMobile';
 import {
   copyShiftsTo,
   countCopyTargets,
@@ -477,4 +478,39 @@ describe('DayShiftEditor', () => {
       screen.getByLabelText('Copy Mon, 28 Sep shifts to other days'),
     ).toBeDisabled();
   });
+});
+
+// ─── mobile: cards instead of a table ──────────────────────────────────────────
+
+describe('DayShiftEditor — mobile', () => {
+  it('shows a card per day instead of a table, with the same shift controls', () => {
+    renderMobile(<DayShiftEditor days={drafts()} onChange={vi.fn()} />, { locale: 'en' });
+
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.getByText('Mon, 28 Sep')).toBeInTheDocument();
+    expect(screen.getByText('Holiday · Implantação da República')).toBeInTheDocument();
+    expect(screen.getByLabelText('Mon, 28 Sep shift 1 start')).toHaveValue('20:00');
+  });
+
+  it('adds a shift from a day card', async () => {
+    const onChange = vi.fn();
+    renderMobile(<DayShiftEditor days={drafts()} onChange={onChange} />, { locale: 'en' });
+
+    await userEvent.click(screen.getByLabelText('Add a shift to Mon, 28 Sep'));
+
+    const updated = onChange.mock.calls[0][0] as WindowDayDraft[];
+    expect(shiftsOn(updated, '2026-09-28')).toHaveLength(2);
+  });
+
+  it('still offers the copy menu from a day card', async () => {
+    renderMobile(<DayShiftEditor days={drafts()} onChange={vi.fn()} />, { locale: 'en' });
+
+    await userEvent.click(
+      screen.getByLabelText('Copy Mon, 28 Sep shifts to other days'),
+    );
+
+    const menu = screen.getByRole('menu');
+    expect(within(menu).getByText('All working days (2)')).toBeInTheDocument();
+  });
+});
 });
