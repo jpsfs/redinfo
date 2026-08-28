@@ -726,6 +726,35 @@ const MESSAGES = {
   'materialItemList.favourite': { pt: 'Favorito', en: 'Favourite' },
   'materialItemList.barcodeCount': { pt: '%{count} código(s)', en: '%{count} barcode(s)' },
 
+  // ── MaterialPicker (#207) ──
+  'materialPicker.favouritesTitle': { pt: 'Favoritos', en: 'Favourites' },
+  'materialPicker.searchPlaceholder': { pt: 'Procurar material…', en: 'Search materials…' },
+  'materialPicker.scanButton': { pt: 'Ler código de barras', en: 'Scan barcode' },
+  'materialPicker.scanTitle': { pt: 'A ler código de barras', en: 'Scanning barcode' },
+  'materialPicker.scanHint': {
+    pt: 'Aponte a câmara para o código de barras',
+    en: 'Point the camera at the barcode',
+  },
+  'materialPicker.closeScan': { pt: 'Fechar leitor', en: 'Close scanner' },
+  'materialPicker.cameraDenied': {
+    pt: 'Sem acesso à câmara. Utilize a pesquisa.',
+    en: 'Camera access denied. Use search instead.',
+  },
+  'materialPicker.cameraUnsupported': {
+    pt: 'Leitura de código de barras não suportada neste aparelho. Utilize a pesquisa.',
+    en: "Barcode scanning isn't supported on this device. Use search instead.",
+  },
+  'materialPicker.barcodeNotFound': {
+    pt: 'Nenhum material encontrado para este código.',
+    en: 'No material found for that code.',
+  },
+  'materialPicker.linesEmpty': {
+    pt: 'Ainda não foi registado nenhum material.',
+    en: 'No material recorded yet.',
+  },
+  'materialPicker.unlimitedLogged': { pt: 'Registado', en: 'Logged' },
+  'materialPicker.linesTitle': { pt: 'Material registado', en: 'Material logged' },
+
   'resources.inventory-templates.fields.vehicleType': { pt: 'Tipo de viatura', en: 'Vehicle Type' },
   'resources.inventory-templates.fields.version': { pt: 'Versão', en: 'Version' },
   'resources.inventory-templates.fields.notes': { pt: 'Notas', en: 'Notes' },
