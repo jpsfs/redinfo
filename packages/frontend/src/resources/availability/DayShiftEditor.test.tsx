@@ -513,4 +513,3 @@ describe('DayShiftEditor — mobile', () => {
     expect(within(menu).getByText('All working days (2)')).toBeInTheDocument();
   });
 });
-});

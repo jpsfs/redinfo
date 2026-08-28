@@ -3,11 +3,22 @@ import BadgeIcon from '@mui/icons-material/Badge';
 import {
   AvailabilityWindowCategory,
   AvailabilityWindowRole,
+  AvailabilityWindowStatus,
   formatRoleCapacity,
 } from '@redinfo/shared';
 import { CategoryChip } from '../../components/CategoryChip';
 import { certificationLabel, windowCategoryLabel } from '../../i18n/labels';
 import { useT } from '../../i18n/useT';
+
+/** Whether a window is still collecting answers, colour-coded to skim at a glance. */
+export const WindowStatusChip = ({ status }: { status?: string }) => {
+  const t = useT();
+  return status === AvailabilityWindowStatus.OPEN ? (
+    <Chip size="small" label={t('windowList.statusOpen')} color="success" variant="outlined" />
+  ) : (
+    <Chip size="small" label={t('windowList.statusClosed')} variant="outlined" />
+  );
+};
 
 /**
  * A rota's category, colored so it's recognisable before it's read.

@@ -8,44 +8,48 @@ import {
   SelectInput,
   TextField,
   TopToolbar,
+  useListContext,
 } from 'react-admin';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Alert,
   Box,
   Button,
   Card,
   CardContent,
-  Chip,
+  CircularProgress,
   Stack,
   Typography,
 } from '@mui/material';
 import BoltIcon from '@mui/icons-material/Bolt';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
-import {
-  AVAILABILITY_WINDOW_CATEGORIES,
-  AvailabilityWindow,
-  AvailabilityWindowStatus,
-  Holiday,
-} from '@redinfo/shared';
+import { AVAILABILITY_WINDOW_CATEGORIES, AvailabilityWindow, AvailabilityWindowStatus, Holiday } from '@redinfo/shared';
 import { apiFetch } from '../../api';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { windowCategoryLabel } from '../../i18n/labels';
 import { useT } from '../../i18n/useT';
 import { formatDate, formatDateRange, toIsoDate } from '../../utils/dates';
 import { EmergencyWindowDialog } from './EmergencyWindowDialog';
-import { WindowCategoryChip } from './WindowIdentity';
+import { WindowCategoryChip, WindowStatusChip } from './WindowIdentity';
+import { WindowListCard } from './WindowListCard';
 
 /**
  * Two ways to open a window: pick a month and go, or build the shifts day by
  * day. The month shortcut covers the urgent case, where the standard grid is
  * fine and the only question is which month.
+ *
+ * `TopToolbar`'s own layout never wraps its children, so the three buttons —
+ * two of them multi-word — run off a phone's width if left to it. Below `sm`
+ * they render in a wrapping `Stack` instead, at the cost of `TopToolbar`'s own
+ * chrome, which is desktop-only affordance anyway.
  */
 export const WindowListActions = () => {
   const t = useT();
+  const isMobile = useIsMobile();
   const [emergencyOpen, setEmergencyOpen] = useState(false);
 
-  return (
-    <TopToolbar>
+  const buttons = (
+    <>
       <Button
         component={Link}
         to="/holidays"
@@ -62,20 +66,23 @@ export const WindowListActions = () => {
         {t('windowList.newEmergencyAvailability')}
       </Button>
       <CreateButton label={t('windowList.newWindow')} />
+    </>
+  );
+
+  return (
+    <>
+      {isMobile ? (
+        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ px: 2, pb: 1 }}>
+          {buttons}
+        </Stack>
+      ) : (
+        <TopToolbar>{buttons}</TopToolbar>
+      )}
       <EmergencyWindowDialog
         open={emergencyOpen}
         onClose={() => setEmergencyOpen(false)}
       />
-    </TopToolbar>
-  );
-};
-
-export const WindowStatusChip = ({ status }: { status?: string }) => {
-  const t = useT();
-  return status === AvailabilityWindowStatus.OPEN ? (
-    <Chip size="small" label={t('windowList.statusOpen')} color="success" variant="outlined" />
-  ) : (
-    <Chip size="small" label={t('windowList.statusClosed')} variant="outlined" />
+    </>
   );
 };
 
@@ -134,8 +141,35 @@ const UpcomingHolidays = () => {
   );
 };
 
+/** Stacked cards instead of a table — the mobile replacement for `Datagrid`. */
+const MobileWindowList = () => {
+  const { data, isLoading } = useListContext<AvailabilityWindow>();
+  const navigate = useNavigate();
+
+  if (isLoading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+        <CircularProgress size={24} />
+      </Box>
+    );
+  }
+
+  return (
+    <Stack spacing={1.5}>
+      {(data ?? []).map((window) => (
+        <WindowListCard
+          key={window.id}
+          window={window}
+          onOpen={() => navigate(`/availability-windows/${window.id}/show`)}
+        />
+      ))}
+    </Stack>
+  );
+};
+
 export const AvailabilityWindowList = () => {
   const t = useT();
+  const isMobile = useIsMobile();
 
   /** Categories are independent rotas, so filtering by one is the common view. */
   const windowFilters = [
@@ -170,35 +204,39 @@ export const AvailabilityWindowList = () => {
       <Alert severity="info" sx={{ mb: 2 }}>
         {t('windowList.overlapRuleInfo')}
       </Alert>
-      <Datagrid rowClick="show" bulkActionButtons={false}>
-        <FunctionField
-          label={t('windowList.colWindow')}
-          render={(record: AvailabilityWindow) =>
-            formatDateRange(t, record.startDate, record.endDate)
-          }
-        />
-        <FunctionField
-          source="category"
-          render={(record: AvailabilityWindow) => (
-            <WindowCategoryChip category={record.category} />
-          )}
-        />
-        <TextField source="name" emptyText="—" />
-        <FunctionField
-          source="status"
-          render={(record: AvailabilityWindow) => <WindowStatusChip status={record.status} />}
-        />
-        <FunctionField
-          source="openedBy"
-          render={(record: AvailabilityWindow) => actorName(record.openedBy)}
-        />
-        <DateField source="openedAt" showTime />
-        <FunctionField
-          source="closedBy"
-          render={(record: AvailabilityWindow) => actorName(record.closedBy)}
-        />
-        <DateField source="closedAt" showTime emptyText="—" />
-      </Datagrid>
+      {isMobile ? (
+        <MobileWindowList />
+      ) : (
+        <Datagrid rowClick="show" bulkActionButtons={false}>
+          <FunctionField
+            label={t('windowList.colWindow')}
+            render={(record: AvailabilityWindow) =>
+              formatDateRange(t, record.startDate, record.endDate)
+            }
+          />
+          <FunctionField
+            source="category"
+            render={(record: AvailabilityWindow) => (
+              <WindowCategoryChip category={record.category} />
+            )}
+          />
+          <TextField source="name" emptyText="—" />
+          <FunctionField
+            source="status"
+            render={(record: AvailabilityWindow) => <WindowStatusChip status={record.status} />}
+          />
+          <FunctionField
+            source="openedBy"
+            render={(record: AvailabilityWindow) => actorName(record.openedBy)}
+          />
+          <DateField source="openedAt" showTime />
+          <FunctionField
+            source="closedBy"
+            render={(record: AvailabilityWindow) => actorName(record.closedBy)}
+          />
+          <DateField source="closedAt" showTime emptyText="—" />
+        </Datagrid>
+      )}
     </>
   </List>
   );

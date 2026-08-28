@@ -36,8 +36,7 @@ import { apiErrorLabel } from '../../i18n/labels';
 import { useT } from '../../i18n/useT';
 import { formatDateRange } from '../../utils/dates';
 import { AvailabilityMatrix } from './AvailabilityMatrix';
-import { WindowStatusChip } from './AvailabilityWindowList';
-import { WindowIdentity, WindowRoleChips } from './WindowIdentity';
+import { WindowIdentity, WindowRoleChips, WindowStatusChip } from './WindowIdentity';
 
 /**
  * Closing a window is irreversible and immediately blocks submissions, so the

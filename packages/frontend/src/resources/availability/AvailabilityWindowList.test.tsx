@@ -12,6 +12,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { messages } from '../../i18n/i18nProvider';
 import { WindowListActions } from './AvailabilityWindowList';
 import { apiFetch } from '../../api';
+import { renderMobile } from '../../test/renderMobile';
 
 vi.mock('../../api', () => ({
   apiFetch: vi.fn(),
@@ -23,21 +24,21 @@ const mockApiFetch = apiFetch as unknown as Mock;
 // This screen has not gone through #180 phase 3 yet — English by convention.
 const i18nProvider = polyglotI18nProvider(messages, 'en');
 
+const RESOURCE_DEFINITIONS = {
+  'availability-windows': {
+    name: 'availability-windows',
+    hasList: true,
+    hasCreate: true,
+    hasShow: true,
+  },
+};
+
 /** The toolbar needs the resource to exist for its Create button. */
 function renderActions() {
   render(
     <MemoryRouter>
       <AdminContext dataProvider={testDataProvider()} i18nProvider={i18nProvider}>
-        <ResourceDefinitionContextProvider
-          definitions={{
-            'availability-windows': {
-              name: 'availability-windows',
-              hasList: true,
-              hasCreate: true,
-              hasShow: true,
-            },
-          }}
-        >
+        <ResourceDefinitionContextProvider definitions={RESOURCE_DEFINITIONS}>
           <ResourceContextProvider value="availability-windows">
             <WindowListActions />
           </ResourceContextProvider>
@@ -105,5 +106,31 @@ describe('WindowListActions', () => {
 
     // The dialog unmounts after its exit transition.
     await waitForElementToBeRemoved(() => screen.queryByRole('dialog'));
+  });
+});
+
+describe('WindowListActions — mobile', () => {
+  beforeEach(() => {
+    mockApiFetch.mockReset();
+    mockApiFetch.mockResolvedValue(null);
+  });
+
+  it('wraps its three actions instead of running them off the toolbar', () => {
+    renderMobile(
+      <ResourceDefinitionContextProvider definitions={RESOURCE_DEFINITIONS}>
+        <ResourceContextProvider value="availability-windows">
+          <WindowListActions />
+        </ResourceContextProvider>
+      </ResourceDefinitionContextProvider>,
+      { locale: 'en' },
+    );
+
+    expect(
+      screen.getByRole('button', { name: 'New Emergency Availability' }),
+    ).toBeInTheDocument();
+    expect(screen.getByText('Manage holidays')).toBeInTheDocument();
+    // react-admin's own CreateButton already collapses to an icon-only FAB
+    // below sm — no text label to assert on, just its aria-label.
+    expect(screen.getByLabelText('New availability window')).toBeInTheDocument();
   });
 });
