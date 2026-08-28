@@ -129,8 +129,13 @@ describe('WindowListActions — mobile', () => {
       screen.getByRole('button', { name: 'New Emergency Availability' }),
     ).toBeInTheDocument();
     expect(screen.getByText('Manage holidays')).toBeInTheDocument();
-    // react-admin's own CreateButton already collapses to an icon-only FAB
-    // below sm — no text label to assert on, just its aria-label.
-    expect(screen.getByLabelText('New availability window')).toBeInTheDocument();
+    // A plain Link button, not react-admin's <CreateButton> — that component
+    // collapses to a detached, position:fixed floating FAB below `md`, which
+    // would float off away from the other two buttons instead of wrapping
+    // alongside them.
+    expect(screen.getByText('New availability window').closest('a')).toHaveAttribute(
+      'href',
+      '/availability-windows/create',
+    );
   });
 });

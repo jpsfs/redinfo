@@ -21,6 +21,7 @@ import {
   Stack,
   Typography,
 } from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
 import BoltIcon from '@mui/icons-material/Bolt';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
 import { AVAILABILITY_WINDOW_CATEGORIES, AvailabilityWindow, AvailabilityWindowStatus, Holiday } from '@redinfo/shared';
@@ -42,13 +43,20 @@ import { WindowListCard } from './WindowListCard';
  * two of them multi-word — run off a phone's width if left to it. Below `sm`
  * they render in a wrapping `Stack` instead, at the cost of `TopToolbar`'s own
  * chrome, which is desktop-only affordance anyway.
+ *
+ * The third button can't just be react-admin's `<CreateButton>` on mobile:
+ * that component switches to a `position: fixed` floating action button of
+ * its own accord below the `md` breakpoint (900px — wider than our `sm`
+ * mobile cutoff), so inside our wrapping `Stack` it renders detached from the
+ * other two, floating over the page instead of sitting next to them. Below
+ * `sm` we use a plain `Link` button instead, matching the other two.
  */
 export const WindowListActions = () => {
   const t = useT();
   const isMobile = useIsMobile();
   const [emergencyOpen, setEmergencyOpen] = useState(false);
 
-  const buttons = (
+  const sharedButtons = (
     <>
       <Button
         component={Link}
@@ -65,7 +73,6 @@ export const WindowListActions = () => {
       >
         {t('windowList.newEmergencyAvailability')}
       </Button>
-      <CreateButton label={t('windowList.newWindow')} />
     </>
   );
 
@@ -73,10 +80,21 @@ export const WindowListActions = () => {
     <>
       {isMobile ? (
         <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ px: 2, pb: 1 }}>
-          {buttons}
+          {sharedButtons}
+          <Button
+            component={Link}
+            to="/availability-windows/create"
+            size="small"
+            startIcon={<AddIcon />}
+          >
+            {t('windowList.newWindow')}
+          </Button>
         </Stack>
       ) : (
-        <TopToolbar>{buttons}</TopToolbar>
+        <TopToolbar>
+          {sharedButtons}
+          <CreateButton label={t('windowList.newWindow')} />
+        </TopToolbar>
       )}
       <EmergencyWindowDialog
         open={emergencyOpen}
