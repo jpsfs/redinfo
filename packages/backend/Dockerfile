@@ -57,6 +57,10 @@ RUN pnpm build
 WORKDIR /app/packages/backend
 RUN pnpm prisma:generate
 RUN pnpm build
+# Compiled separately from `pnpm build` (nest build only emits src/**) so the seed
+# Job (deploy/redinfo/templates/job-seed.yaml) can run it in the prod image, which
+# has no ts-node — prisma:seed's `ts-node prisma/seed.ts` only works in dev/build.
+RUN pnpm build:seed
 
 
 # ─── Production stage ─────────────────────────────────────────────────────────
@@ -77,9 +81,19 @@ COPY packages/backend/package.json ./packages/backend/
 # Install only prod deps
 RUN pnpm install --prod
 
-# Copy compiled output and Prisma schema
+# Copy compiled output and Prisma schema. @redinfo/shared's package.json points
+# `main` at ./dist/index.js — without this, the workspace symlink pnpm just
+# created resolves to a package.json with no dist, and the app throws
+# `Cannot find module` on the first import of @redinfo/shared at startup.
+COPY --from=build /app/packages/shared/dist ./packages/shared/dist
 COPY --from=build /app/packages/backend/dist ./packages/backend/dist
 COPY packages/backend/prisma ./packages/backend/prisma
+
+# Compiled seed scripts + the geography JSON they read via __dirname at runtime
+# (packages/backend/prisma/seed-geography.ts resolves ./data/pt-localities.json
+# relative to itself, so the data must sit alongside the compiled output).
+COPY --from=build /app/packages/backend/prisma-dist ./packages/backend/prisma-dist
+COPY packages/backend/prisma/data ./packages/backend/prisma-dist/data
 
 # Generate the Prisma client inside the production node_modules so pnpm
 # places it at the correct virtual-store location that @prisma/client

@@ -1,9 +1,11 @@
+# Branches represent environments: pushing to env/staging or env/production builds
+# images and redeploys that environment via Helm. `dev` is Docker Compose only and
+# is not deployed by this pipeline — see deploy/redinfo/README.md.
 trigger:
   branches:
     include:
-      - dev
-      - staging
-      - prod
+      - env/staging
+      - env/production
 
 variables:
   # Azure DevOps SSH service connection ID or name
@@ -30,7 +32,9 @@ stages:
               Dockerfile: "packages/backend/Dockerfile"
               # Use repository root as build context since the backend Dockerfile copies files from the repo root
               buildContext: "$(Build.SourcesDirectory)"
-              tags: "$(Build.SourceBranchName)"
+              tags: |
+                $(Build.BuildId)
+                $(Build.SourceBranchName)
 
           - task: Docker@2
             displayName: "Build and push frontend image"
@@ -43,76 +47,52 @@ stages:
               # Build only the production stage so the dev stage is never run in CI.
               # The dev stage is used by docker compose locally only.
               arguments: "--target prod"
-              tags: "$(Build.SourceBranchName)"
+              tags: |
+                $(Build.BuildId)
+                $(Build.SourceBranchName)
 
-  - stage: Deploy
-    displayName: Deploy to cluster ($(Build.SourceBranchName))
+  - stage: DeployStaging
+    displayName: Deploy to staging
     dependsOn: BuildAndPush
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/env/staging'))
+    variables:
+      - group: redinfo-staging
     jobs:
-      - job: DeployToMicroK8s
-        displayName: Deploy Helm chart to microk8s ($(Build.SourceBranchName))
-        steps:
-          - checkout: self
+      - deployment: DeployToStaging
+        displayName: Deploy Helm chart to staging
+        pool:
+          vmImage: "ubuntu-latest"
+        environment: redinfo-staging
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - template: templates/deploy-env.yml
+                  parameters:
+                    envName: staging
+                    sshServiceConnection: $(SSH_SERVICE_CONNECTION)
+                    imageTag: $(Build.BuildId)
 
-          - task: Bash@3
-            displayName: "Install prerequisites"
-            inputs:
-              targetType: "inline"
-              script: |
-                set -euo pipefail
-                sudo apt-get update -y
-                sudo apt-get install -y openssh-client tar
-
-          - task: Bash@3
-            displayName: "Package chart ($(Build.SourceBranchName))"
-            inputs:
-              targetType: "inline"
-              script: |
-                set -euo pipefail
-                cd "$(Build.SourcesDirectory)/deploy"
-                tar -czf "$(Build.ArtifactStagingDirectory)/redinfo-chart.tgz" redinfo
-
-          - task: CopyFilesOverSSH@0
-            displayName: "Copy packaged chart to remote host ($(Build.SourceBranchName))"
-            inputs:
-              sshEndpoint: "$(SSH_SERVICE_CONNECTION)"
-              sourceFolder: "$(Build.ArtifactStagingDirectory)"
-              contents: "redinfo-chart.tgz"
-              targetFolder: "/tmp"
-
-          - task: SSH@0
-            displayName: "Extract and deploy chart on remote host ($(Build.SourceBranchName))"
-            inputs:
-              sshEndpoint: "$(SSH_SERVICE_CONNECTION)"
-              runOptions: "inline"
-              inline: |
-                set -euo pipefail
-                cleanup() {
-                  rm -f /tmp/redinfo-chart.tgz || true
-                  rm -rf /tmp/redinfo || true
-                }
-                trap cleanup EXIT
-
-                DEPLOY_ENV="$(Build.SourceBranchName)"
-                VALUES_FILE="/tmp/redinfo/values.${DEPLOY_ENV}.yaml"
-                # force image pull by setting pullPolicy=Always and set the repo/tag to the pushed images
-                IMAGE_OVERRIDES="--set image.backend.repository=jpsfs/redinfo-backend,image.backend.tag=${DEPLOY_ENV},image.backend.pullPolicy=Always,image.frontend.repository=jpsfs/redinfo-frontend,image.frontend.tag=${DEPLOY_ENV},image.frontend.pullPolicy=Always"
-
-                mkdir -p /tmp/redinfo
-                tar -xzf /tmp/redinfo-chart.tgz -C /tmp
-                if command -v microk8s.helm3 >/dev/null 2>&1; then
-                  microk8s.status --wait || true
-                  if [ -f "${VALUES_FILE}" ]; then
-                    microk8s.helm3 upgrade --install redinfo /tmp/redinfo -n "${DEPLOY_ENV}" --create-namespace --dependency-update -f "${VALUES_FILE}" ${IMAGE_OVERRIDES}
-                  else
-                    microk8s.helm3 upgrade --install redinfo /tmp/redinfo -n "${DEPLOY_ENV}" --create-namespace --dependency-update ${IMAGE_OVERRIDES}
-                  fi
-                elif command -v helm >/dev/null 2>&1; then
-                  if [ -f "${VALUES_FILE}" ]; then
-                    helm upgrade --install redinfo /tmp/redinfo -n "${DEPLOY_ENV}" --create-namespace --dependency-update -f "${VALUES_FILE}" ${IMAGE_OVERRIDES}
-                  else
-                    helm upgrade --install redinfo /tmp/redinfo -n "${DEPLOY_ENV}" --create-namespace --dependency-update ${IMAGE_OVERRIDES}
-                  fi
-                else
-                  echo "No helm found on remote host (expected microk8s.helm3 or helm)" >&2; exit 2
-                fi
+  - stage: DeployProduction
+    displayName: Deploy to production
+    dependsOn: BuildAndPush
+    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/env/production'))
+    variables:
+      - group: redinfo-production
+    jobs:
+      - deployment: DeployToProduction
+        displayName: Deploy Helm chart to production
+        pool:
+          vmImage: "ubuntu-latest"
+        # Attach a manual approval check to this ADO Environment when production
+        # goes live — no YAML change needed, it's configured on the Environment itself.
+        environment: redinfo-production
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - template: templates/deploy-env.yml
+                  parameters:
+                    envName: production
+                    sshServiceConnection: $(SSH_SERVICE_CONNECTION)
+                    imageTag: $(Build.BuildId)

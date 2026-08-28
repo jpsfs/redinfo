@@ -1,0 +1,48 @@
+{{- if .Values.seed.enabled -}}
+{{- /*
+  Runs once per install/upgrade to migrate + seed a fresh database (admin user +
+  Portuguese geography reference data — see packages/backend/prisma/seed.ts). Both
+  are idempotent, so re-running on every upgrade is a no-op once the data exists.
+  Retries migrate deploy for a bit since the bundled postgresql pod may still be
+  starting when this hook fires.
+*/ -}}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "redinfo.fullname" . }}-seed-{{ .Release.Revision }}
+  labels:
+    app.kubernetes.io/name: {{ include "redinfo.name" . }}
+    app.kubernetes.io/component: seed
+  annotations:
+    "helm.sh/hook": post-install,post-upgrade
+    "helm.sh/hook-weight": "0"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: 2
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "redinfo.name" . }}
+        app.kubernetes.io/component: seed
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: seed
+          image: "{{ .Values.image.backend.repository }}:{{ .Values.image.backend.tag }}"
+          imagePullPolicy: {{ .Values.image.backend.pullPolicy }}
+          workingDir: /app/packages/backend
+          command:
+            - sh
+            - -c
+            - |
+              set -e
+              for i in $(seq 1 30); do
+                if npx prisma migrate deploy; then break; fi
+                echo "waiting for database, attempt $i/30..."
+                sleep 5
+              done
+              node prisma-dist/seed.js
+          envFrom:
+            - secretRef:
+                name: {{ include "redinfo.fullname" . }}-app-secrets
+{{- end -}}

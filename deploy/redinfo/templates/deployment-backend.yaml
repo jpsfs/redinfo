@@ -6,6 +6,11 @@ metadata:
     app.kubernetes.io/name: {{ include "redinfo.name" . }}
     app.kubernetes.io/component: backend
 spec:
+  # Recreate, not RollingUpdate: the uploads PVC is ReadWriteOnce and the entrypoint
+  # runs `prisma migrate deploy` on boot, so two backend generations must never run
+  # against the volume/schema at once.
+  strategy:
+    type: Recreate
   replicas: {{ .Values.replicaCount }}
   selector:
     matchLabels:
@@ -16,6 +21,8 @@ spec:
       labels:
         app.kubernetes.io/name: {{ include "redinfo.name" . }}
         app.kubernetes.io/component: backend
+      annotations:
+        checksum/secret: {{ include (print $.Template.BasePath "/secret-app.yaml") . | sha256sum }}
     spec:
       containers:
         - name: backend
@@ -23,6 +30,9 @@ spec:
           imagePullPolicy: {{ .Values.image.backend.pullPolicy }}
           ports:
             - containerPort: 3000
+          envFrom:
+            - secretRef:
+                name: {{ include "redinfo.fullname" . }}-app-secrets
           env:
             {{- if kindIs "map" .Values.env.backend }}
             {{- range $name, $value := .Values.env.backend }}
@@ -32,18 +42,32 @@ spec:
             {{- else if kindIs "slice" .Values.env.backend }}
             {{- toYaml .Values.env.backend | nindent 12 }}
             {{- end }}
-            - name: DATABASE_HOST
-              value: "{{ printf "%s-postgresql" (include "redinfo.fullname" .) }}"
-            - name: DATABASE_PORT
-              value: "5432"
-            - name: DATABASE_NAME
-              value: "{{ .Values.postgresql.auth.database | default "redinfo" }}"
-            - name: DATABASE_USER
-              value: "{{ .Values.postgresql.auth.username | default "postgres" }}"
-            - name: DATABASE_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: "{{ printf "%s-postgresql" (include "redinfo.fullname" .) }}"
-                  key: password
+          {{- if .Values.uploads.enabled }}
+          volumeMounts:
+            - name: uploads
+              mountPath: {{ .Values.uploads.mountPath }}
+          {{- end }}
+          {{- if .Values.probes.enabled }}
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: {{ .Values.probes.backend.initialDelaySeconds }}
+            periodSeconds: 10
+            failureThreshold: 6
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 3000
+            initialDelaySeconds: {{ .Values.probes.backend.initialDelaySeconds }}
+            periodSeconds: 20
+            failureThreshold: 6
+          {{- end }}
           resources:
 {{ toYaml .Values.resources.backend | indent 12 }}
+      {{- if .Values.uploads.enabled }}
+      volumes:
+        - name: uploads
+          persistentVolumeClaim:
+            claimName: {{ include "redinfo.fullname" . }}-uploads
+      {{- end }}

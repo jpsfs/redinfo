@@ -1,0 +1,126 @@
+# Shared deploy steps for one environment. The calling stage is responsible for
+# pulling in that environment's `redinfo-<envName>` variable group (secrets referenced
+# below come from there) and for the branch condition that gates the stage.
+parameters:
+  - name: envName # "staging" | "production" — must match values.<envName>.yaml
+    type: string
+  - name: sshServiceConnection
+    type: string
+  - name: imageTag
+    type: string
+
+steps:
+  - checkout: self
+
+  - task: Bash@3
+    displayName: "Install prerequisites"
+    inputs:
+      targetType: "inline"
+      script: |
+        set -euo pipefail
+        sudo apt-get update -y
+        sudo apt-get install -y openssh-client tar
+
+  - task: Bash@3
+    displayName: "Package chart (${{ parameters.envName }})"
+    inputs:
+      targetType: "inline"
+      script: |
+        set -euo pipefail
+        cd "$(Build.SourcesDirectory)/deploy"
+        tar -czf "$(Build.ArtifactStagingDirectory)/redinfo-chart.tgz" redinfo
+
+  - task: Bash@3
+    displayName: "Render secrets values file (${{ parameters.envName }})"
+    inputs:
+      targetType: "inline"
+      script: |
+        set -euo pipefail
+        # Secret variables from the `redinfo-${{ parameters.envName }}` group are not
+        # expanded via $(VAR) macro syntax into free-form script text — they're only
+        # available once explicitly mapped below as process env vars. Writing them to
+        # a values file (rather than `--set` on the remote command line) also keeps
+        # them out of `ps aux`/shell history on the deploy host.
+        cat > "$(Build.ArtifactStagingDirectory)/secrets.yaml" <<EOF
+        secrets:
+          JWT_SECRET: "${JWT_SECRET}"
+          IDENTITY_ENCRYPTION_KEYS: "${IDENTITY_ENCRYPTION_KEYS}"
+          GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID:-}"
+          GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET:-}"
+          GOOGLE_CALLBACK_URL: "${GOOGLE_CALLBACK_URL:-}"
+          MICROSOFT_CLIENT_ID: "${MICROSOFT_CLIENT_ID:-}"
+          MICROSOFT_CLIENT_SECRET: "${MICROSOFT_CLIENT_SECRET:-}"
+          MICROSOFT_TENANT_ID: "${MICROSOFT_TENANT_ID:-}"
+          MICROSOFT_CALLBACK_URL: "${MICROSOFT_CALLBACK_URL:-}"
+          GOOGLE_MAPS_API_KEY: "${GOOGLE_MAPS_API_KEY:-}"
+        postgresql:
+          auth:
+            password: "${POSTGRES_PASSWORD}"
+            postgresPassword: "${POSTGRES_PASSWORD}"
+        EOF
+    env:
+      JWT_SECRET: $(JWT_SECRET)
+      IDENTITY_ENCRYPTION_KEYS: $(IDENTITY_ENCRYPTION_KEYS)
+      GOOGLE_CLIENT_ID: $(GOOGLE_CLIENT_ID)
+      GOOGLE_CLIENT_SECRET: $(GOOGLE_CLIENT_SECRET)
+      GOOGLE_CALLBACK_URL: $(GOOGLE_CALLBACK_URL)
+      MICROSOFT_CLIENT_ID: $(MICROSOFT_CLIENT_ID)
+      MICROSOFT_CLIENT_SECRET: $(MICROSOFT_CLIENT_SECRET)
+      MICROSOFT_TENANT_ID: $(MICROSOFT_TENANT_ID)
+      MICROSOFT_CALLBACK_URL: $(MICROSOFT_CALLBACK_URL)
+      GOOGLE_MAPS_API_KEY: $(GOOGLE_MAPS_API_KEY)
+      POSTGRES_PASSWORD: $(POSTGRES_PASSWORD)
+
+  - task: CopyFilesOverSSH@0
+    displayName: "Copy packaged chart + secrets to remote host (${{ parameters.envName }})"
+    inputs:
+      sshEndpoint: "${{ parameters.sshServiceConnection }}"
+      sourceFolder: "$(Build.ArtifactStagingDirectory)"
+      contents: |
+        redinfo-chart.tgz
+        secrets.yaml
+      targetFolder: "/tmp"
+
+  - task: SSH@0
+    displayName: "Extract and deploy chart on remote host (${{ parameters.envName }})"
+    inputs:
+      sshEndpoint: "${{ parameters.sshServiceConnection }}"
+      runOptions: "inline"
+      inline: |
+        set -euo pipefail
+        cleanup() {
+          rm -f /tmp/redinfo-chart.tgz /tmp/secrets.yaml || true
+          rm -rf /tmp/redinfo || true
+        }
+        trap cleanup EXIT
+
+        ENV_NAME="${{ parameters.envName }}"
+        VALUES_FILE="/tmp/redinfo/values.${ENV_NAME}.yaml"
+        # Tag by immutable Build.BuildId rather than the moving env-name tag used
+        # previously — guarantees a real rollout without relying on pullPolicy=Always.
+        IMAGE_OVERRIDES="--set-string image.backend.repository=jpsfs/redinfo-backend,image.backend.tag=${{ parameters.imageTag }},image.backend.pullPolicy=IfNotPresent,image.frontend.repository=jpsfs/redinfo-frontend,image.frontend.tag=${{ parameters.imageTag }},image.frontend.pullPolicy=IfNotPresent"
+
+        mkdir -p /tmp/redinfo
+        tar -xzf /tmp/redinfo-chart.tgz -C /tmp
+
+        HELM_BIN=""
+        if command -v microk8s.helm3 >/dev/null 2>&1; then
+          microk8s.status --wait || true
+          HELM_BIN="microk8s.helm3"
+        elif command -v helm >/dev/null 2>&1; then
+          HELM_BIN="helm"
+        else
+          echo "No helm found on remote host (expected microk8s.helm3 or helm)" >&2
+          exit 2
+        fi
+
+        if [ ! -f "${VALUES_FILE}" ]; then
+          echo "Missing ${VALUES_FILE} in packaged chart" >&2
+          exit 2
+        fi
+
+        "${HELM_BIN}" upgrade --install redinfo /tmp/redinfo -n "${ENV_NAME}" --create-namespace \
+          --dependency-update \
+          -f "${VALUES_FILE}" -f /tmp/secrets.yaml \
+          ${IMAGE_OVERRIDES} \
+          --history-max 5 --atomic --timeout 10m --wait

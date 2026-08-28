@@ -21,6 +21,7 @@ service:
 
 ingress:
   enabled: false
+  className: ""
   annotations: {}
   hosts: []
   tls: []
@@ -29,9 +30,42 @@ resources:
   backend: {}
   frontend: {}
 
+# Non-secret env vars only (NODE_ENV, FRONTEND_URL, PORT, ATTACHMENTS_DIR, ...).
+# Secret-shaped vars (JWT_SECRET, IDENTITY_ENCRYPTION_KEYS, OAuth, Maps, DATABASE_URL)
+# live under `secrets` below and are rendered into a Secret, not here.
 env:
   backend: {}
   frontend: {}
+
+# Rendered verbatim into a Secret named <fullname>-app-secrets (see
+# templates/secret-app.yaml), keyed to match .env.example. Leave a key unset to
+# omit it entirely rather than shipping an empty value. Populate via
+# `--set-string secrets.<KEY>=...` from the pipeline — never commit real values here.
+secrets: {}
+
+# Set to override DATABASE_URL outright (external DB). Empty composes it from the
+# bundled postgresql subchart's own values instead (see templates/_helpers.tpl).
+database:
+  url: ""
+
+# Persistent volume for ATTACHMENTS_DIR — event report attachments, certification
+# documents, profile photos. Disabling this loses that data on every pod restart.
+uploads:
+  enabled: false
+  size: 5Gi
+  storageClass: ""
+  mountPath: /app/uploads
+
+probes:
+  enabled: true
+  backend:
+    # Generous: the entrypoint runs `prisma migrate deploy` before the app starts listening.
+    initialDelaySeconds: 20
+
+# Post-install/post-upgrade Helm hook that runs migrations + prisma/seed.ts
+# (admin user + PT geography reference data). See templates/job-seed.yaml.
+seed:
+  enabled: false
 
 autoscaling: {}
 nodeSelector: {}
@@ -48,4 +82,3 @@ postgresql:
   primary:
     persistence:
       enabled: false
-

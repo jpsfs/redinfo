@@ -1,17 +1,15 @@
-namespace: staging
+namespace: production
 
-# Single replica: the uploads PVC is ReadWriteOnce and the backend migrates on boot,
-# so a second generation can't safely run alongside the first anyway.
 replicaCount: 1
 
 image:
   backend:
     repository: jpsfs/redinfo-backend
-    tag: "staging"
+    tag: "production"
     pullPolicy: IfNotPresent
   frontend:
     repository: jpsfs/redinfo-frontend
-    tag: "staging"
+    tag: "production"
     pullPolicy: IfNotPresent
 
 service:
@@ -26,14 +24,13 @@ ingress:
   enabled: true
   className: public
   hosts:
-    - host: staging-redcross.jpsfs.com
+    - host: app.cvpcampo.org
       paths:
         - path: /
           service: frontend
           servicePort: 80
-  # HTTP only for now — cert-manager is not enabled on this cluster yet. This means
-  # OAuth login (Google/Microsoft) will not work on staging until TLS is added; use
-  # the seeded local admin account (admin@redcross.local) in the meantime.
+  # TODO: production needs real TLS (cert-manager + ClusterIssuer), not HTTP-only —
+  # OAuth login will not work without it. See deploy/redinfo/README.md.
   tls: []
 
 resources:
@@ -57,32 +54,31 @@ env:
     NODE_ENV: "production"
     PORT: "3000"
     ATTACHMENTS_DIR: "/app/uploads"
-    FRONTEND_URL: "http://staging-redcross.jpsfs.com"
+    FRONTEND_URL: "https://app.cvpcampo.org"
   frontend: {}
 
-# Populated by the pipeline from the `redinfo-staging` ADO variable group via
+# Populated by the pipeline from a `redinfo-production` ADO variable group via
 # --set-string; left empty here so nothing sensitive is ever committed.
 secrets: {}
 
 uploads:
   enabled: true
-  size: 10Gi
+  size: 20Gi
   mountPath: /app/uploads
 
+# TODO: decide whether production seeds an initial admin the same way staging does,
+# or that account is created out-of-band before go-live.
 seed:
-  enabled: true
+  enabled: false
 
-# Enable a bundled Postgres instance for staging, with real persistence.
 postgresql:
   enabled: true
   auth:
     username: redinfo
-    database: redinfo_staging
-    # password/postgresPassword are injected by the pipeline via --set-string;
-    # this placeholder is only ever used if someone runs a manual `helm template`.
+    database: redinfo_production
     password: "changeme"
     postgresPassword: "changeme"
   primary:
     persistence:
       enabled: true
-      size: 10Gi
+      size: 20Gi

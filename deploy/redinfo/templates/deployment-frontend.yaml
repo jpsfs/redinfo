@@ -16,6 +16,8 @@ spec:
       labels:
         app.kubernetes.io/name: {{ include "redinfo.name" . }}
         app.kubernetes.io/component: frontend
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/configmap-nginx.yaml") . | sha256sum }}
     spec:
       containers:
         - name: frontend
@@ -34,5 +36,27 @@ spec:
             {{- toYaml .Values.env.frontend | nindent 12 }}
             {{- end }}
           {{- end }}
+          volumeMounts:
+            - name: nginx-conf
+              mountPath: /etc/nginx/conf.d/default.conf
+              subPath: default.conf
+          {{- if .Values.probes.enabled }}
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          {{- end }}
           resources:
 {{ toYaml .Values.resources.frontend | indent 12 }}
+      volumes:
+        - name: nginx-conf
+          configMap:
+            name: {{ include "redinfo.fullname" . }}-frontend-nginx
