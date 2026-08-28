@@ -17,6 +17,7 @@ import { ApiTags, ApiBearerAuth, ApiQuery, ApiBody } from '@nestjs/swagger';
 import { Response } from 'express';
 import { InventoryService } from './inventory.service';
 import { MaterialItemsService } from './material-items.service';
+import { StockMovementsService } from './stock-movements.service';
 import { CreateInventoryTemplateDto } from './dto/create-inventory-template.dto';
 import { UpdateInventoryTemplateDto } from './dto/update-inventory-template.dto';
 import { CreateInventoryTemplateItemDto } from './dto/create-inventory-template-item.dto';
@@ -147,7 +148,10 @@ export class InventoryTemplateItemController {
 @UseInterceptors(AuditInterceptor)
 @Controller('vehicle-inventory')
 export class VehicleInventoryController {
-  constructor(private readonly inventoryService: InventoryService) {}
+  constructor(
+    private readonly inventoryService: InventoryService,
+    private readonly stockMovementsService: StockMovementsService,
+  ) {}
 
   @Get()
   @Actions(Action.VIEW_VEHICLES)
@@ -166,6 +170,18 @@ export class VehicleInventoryController {
   @Actions(Action.VIEW_VEHICLES)
   getVehicleInventory(@Param('vehicleId') vehicleId: string) {
     return this.inventoryService.getVehicleInventory(vehicleId);
+  }
+
+  @Get('by-vehicle/:vehicleId/movements')
+  @Actions(Action.VIEW_VEHICLES)
+  @ApiQuery({ name: 'page', required: false, type: Number })
+  @ApiQuery({ name: 'perPage', required: false, type: Number })
+  getMovements(
+    @Param('vehicleId') vehicleId: string,
+    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page?: number,
+    @Query('perPage', new DefaultValuePipe(50), ParseIntPipe) perPage?: number,
+  ) {
+    return this.stockMovementsService.findByVehicle(vehicleId, page, perPage);
   }
 
   @Get('by-vehicle/:vehicleId/csv')

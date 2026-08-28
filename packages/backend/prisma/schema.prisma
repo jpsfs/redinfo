@@ -219,6 +219,7 @@ model Vehicle {
 
   maintenanceEntries    MaintenanceEntry[]
   vehicleInventoryItems VehicleInventoryItem[]
+  stockMovements        StockMovement[]
   eventReports          EventReportVehicle[]
   liveRuns              LiveRun[]
 
@@ -266,8 +267,9 @@ model MaterialItem {
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
 
-  barcodes      MaterialItemBarcode[]
-  templateItems InventoryTemplateItem[]
+  barcodes       MaterialItemBarcode[]
+  templateItems  InventoryTemplateItem[]
+  stockMovements StockMovement[]
 
   @@index([isFrequent])
   @@index([isDeleted])
@@ -334,6 +336,11 @@ model VehicleInventoryItem {
   templateItem    InventoryTemplateItem @relation(fields: [templateItemId], references: [id], onDelete: Cascade)
   actualQuantity  Int?
   templateVersion Int
+  /// Set when a `StockMovement` deduction floored `actualQuantity` at zero,
+  /// or when the row was created on the fly for an item a report consumed
+  /// that the sheet never knew about. Cleared by a manual recount
+  /// (upsert/update/CSV import); never cleared by another consumption.
+  needsRecount    Boolean               @default(false)
   updatedById     String?
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
@@ -355,6 +362,46 @@ model VehicleInventoryAudit {
   changedAt              DateTime             @default(now())
 
   @@index([vehicleInventoryItemId])
+}
+
+enum StockMovementReason {
+  CONSUMPTION
+  MANUAL_ADJUSTMENT
+  IMPORT
+  CORRECTION
+}
+
+/// A single stock delta — the movement ledger behind a vehicle's item count.
+/// Replaces before/after auditing as the source of truth for `CONSUMPTION`:
+/// a report can be edited or deleted, and its movements need to be found and
+/// reversed as a group, which `VehicleInventoryAudit` (keyed off a single
+/// `VehicleInventoryItem`, with no report reference) cannot do.
+///
+/// `delta` is the full amount requested, even when the resulting
+/// `VehicleInventoryItem.actualQuantity` floors at zero — the ledger stays
+/// truthful about what was spent; the shortfall is a floor plus a
+/// `needsRecount` flag, not a rewritten movement. See `StockMovementsService`.
+model StockMovement {
+  id             String              @id @default(cuid())
+  vehicleId      String
+  vehicle        Vehicle             @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  materialItemId String
+  materialItem   MaterialItem        @relation(fields: [materialItemId], references: [id], onDelete: Restrict)
+  delta          Int
+  reason         StockMovementReason
+  /// The event report this consumption came from — null for manual/import/
+  /// correction movements. `SetNull`, not `Cascade`: a report being deleted
+  /// has its stock effect explicitly reversed first (see
+  /// `StockMovementsService.reverseReportConsumption`); the movement itself
+  /// stays as a true historical fact once the report it came from is gone.
+  reportId       String?
+  report         EventReport?        @relation(fields: [reportId], references: [id], onDelete: SetNull)
+  actorId        String?
+  occurredAt     DateTime            @default(now())
+  note           String?
+
+  @@index([vehicleId, occurredAt])
+  @@index([reportId])
 }
 
 // ─── Availability ─────────────────────────────────────────────────────────────
@@ -1010,6 +1057,7 @@ model EventReport {
   inemSupportUnits EventReportInemSupportUnit[]
   attachments      EventReportAttachment[]
   assessments      EventReportAssessment[]
+  stockMovements   StockMovement[]
 
   /// The run this report was closed out of, if there was one. The run owns the
   /// link, so this side is read-only provenance.

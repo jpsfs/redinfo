@@ -42,7 +42,7 @@ because it's convenient; match how the module you're editing already does it.
 
 ## Prisma
 
-Schema at `prisma/schema.prisma` — **1149 lines, 31 models**. Never `Read` it in full.
+Schema at `prisma/schema.prisma` — **1443 lines, 36 models**. Never `Read` it in full.
 
 ```bash
 grep -n "^model User" packages/backend/prisma/schema.prisma   # find a model
@@ -53,7 +53,7 @@ grep -n "^model \|^enum " packages/backend/prisma/schema.prisma  # regenerate th
 Model index by domain (names only — grep for fields/relations):
 - **Identity**: `User`, `UserCertification`, `UserProfileAudit`, `RefreshToken`
 - **Fleet**: `Vehicle`, `MaintenanceEntry`
-- **Inventory**: `InventoryTemplate`, `InventoryTemplateItem`, `VehicleInventoryItem`, `VehicleInventoryAudit`
+- **Inventory**: `MaterialItem`, `MaterialItemBarcode`, `InventoryTemplate`, `InventoryTemplateItem`, `VehicleInventoryItem`, `VehicleInventoryAudit`, `StockMovement`
 - **Availability**: `Holiday`, `AvailabilityWindow`, `AvailabilityWindowShift`, `AvailabilityWindowRole`, `AvailabilitySubmission`, `AvailabilityResponse`
 - **Schedules**: `Schedule`, `ScheduleAssignment`, `ScheduleShiftOverride`
 - **Volunteer hours**: `VolunteerHoursEntry`

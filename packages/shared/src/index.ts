@@ -562,6 +562,10 @@ export interface VehicleInventoryItem {
   templateItem?: InventoryTemplateItem;
   actualQuantity?: number | null;
   templateVersion: number;
+  /// Set when a `StockMovement` deduction floored this item at zero — the
+  /// crew spent more than the sheet said was on board. Cleared by a manual
+  /// recount (`upsert`/`update`/CSV import), never by another consumption.
+  needsRecount: boolean;
   updatedById?: string | null;
   createdAt: string;
   updatedAt: string;
@@ -580,6 +584,34 @@ export interface VehicleInventoryRow {
   templateItem: InventoryTemplateItem;
   vehicleInventoryItem?: VehicleInventoryItem;
   status: 'low' | 'ok' | 'over' | 'unlimited';
+}
+
+export enum StockMovementReason {
+  CONSUMPTION = 'CONSUMPTION',
+  MANUAL_ADJUSTMENT = 'MANUAL_ADJUSTMENT',
+  IMPORT = 'IMPORT',
+  CORRECTION = 'CORRECTION',
+}
+
+/// A single stock delta — the movement ledger behind a vehicle's item count.
+/// `delta` is negative for consumption, positive for a manual/import top-up,
+/// and is always the *requested* amount, even when the resulting
+/// `VehicleInventoryItem.actualQuantity` floors at zero (see `needsRecount`
+/// above): the ledger stays truthful about what was spent regardless of what
+/// the sheet had room to record.
+export interface StockMovement {
+  id: string;
+  vehicleId: string;
+  materialItemId: string;
+  materialItem?: MaterialItem;
+  delta: number;
+  reason: StockMovementReason;
+  /// The event report this consumption came from — null for manual/import/
+  /// correction movements.
+  reportId?: string | null;
+  actorId?: string | null;
+  occurredAt: string;
+  note?: string | null;
 }
 
 // ─── Availability ──────────────────────────────────────────────────────────────

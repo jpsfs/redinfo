@@ -1,5 +1,6 @@
 import { ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InventoryService } from './inventory.service';
+import { StockMovementsService } from './stock-movements.service';
 import { VehicleType, InventoryItemType } from '@redinfo/shared';
 
 // ── helpers ────────────────────────────────────────────────────────────────────
@@ -52,7 +53,7 @@ const EMERGENCY_VEHICLE = {
 };
 
 function buildPrismaStub(overrides: Record<string, unknown> = {}) {
-  return {
+  const stub = {
     inventoryTemplate: {
       findMany: jest.fn().mockResolvedValue([EMERGENCY_TEMPLATE]),
       findUnique: jest.fn().mockResolvedValue(null),
@@ -90,12 +91,23 @@ function buildPrismaStub(overrides: Record<string, unknown> = {}) {
     vehicleInventoryAudit: {
       create: jest.fn().mockResolvedValue({ id: 'audit-1' }),
     },
+    stockMovement: {
+      create: jest.fn().mockResolvedValue({ id: 'move-1' }),
+    },
     vehicle: {
       findFirst: jest.fn().mockResolvedValue(null),
       findMany: jest.fn().mockResolvedValue([]),
     },
-    $transaction: jest.fn().mockImplementation((ops: unknown[]) => Promise.all(ops)),
     ...overrides,
+  };
+  // The callback form of `$transaction` receives the stub itself as `tx` —
+  // there's no separate transaction client, matching how these calls are
+  // flat in the real `PrismaService` too.
+  return {
+    ...stub,
+    $transaction: jest.fn().mockImplementation((arg: unknown) =>
+      typeof arg === 'function' ? arg(stub) : Promise.all(arg as unknown[]),
+    ),
   };
 }
 
@@ -107,7 +119,7 @@ describe('InventoryService', () => {
 
   beforeEach(() => {
     prisma = buildPrismaStub();
-    service = new InventoryService(prisma as never);
+    service = new InventoryService(prisma as never, new StockMovementsService(prisma as never));
   });
 
   // ── templates ────────────────────────────────────────────────────────────────
