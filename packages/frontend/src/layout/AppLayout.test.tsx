@@ -4,7 +4,8 @@ import { AdminContext, testDataProvider } from 'react-admin';
 import polyglotI18nProvider from 'ra-i18n-polyglot';
 import { UserRole } from '@redinfo/shared';
 import { messages } from '../i18n/i18nProvider';
-import { RedInfoMenu } from './AppLayout';
+import { renderMobile } from '../test/renderMobile';
+import { RedInfoMenu, RedInfoSidebar } from './AppLayout';
 
 /**
  * Pinned to English: this file's assertions predate #180 and check the
@@ -156,5 +157,31 @@ describe('RedInfoMenu', () => {
     // Sections the role does have entries in still get their subheader.
     expect(screen.getByText('My work')).toBeInTheDocument();
     expect(screen.getByText('Operations')).toBeInTheDocument();
+  });
+});
+
+describe('RedInfoSidebar', () => {
+  // Regression for the mobile drawer growing past the visible viewport once
+  // the menu outgrows one screen — see the rationale on `RedInfoSidebar`
+  // itself. jsdom's CSS engine never evaluates `@media` blocks for
+  // `getComputedStyle` (it just ignores them), so the only thing a jsdom test
+  // can check is that the emitted stylesheet carries the fix, not that it's
+  // "live" on the element — that part is a manual/visual check on a phone.
+  it('emits the viewport-cap and scroll-containment rule for the mobile drawer paper', () => {
+    renderMobile(
+      <RedInfoSidebar open appBarAlwaysOn={false}>
+        <div>menu content</div>
+      </RedInfoSidebar>,
+    );
+
+    const paper = document.querySelector('.MuiDrawer-paper');
+    expect(paper).not.toBeNull();
+
+    const emittedCss = Array.from(document.querySelectorAll('style'))
+      .map((el) => el.textContent)
+      .join('\n');
+    expect(emittedCss).toMatch(/max-height:\s*100dvh/);
+    expect(emittedCss).toMatch(/overflow-y:\s*auto/);
+    expect(emittedCss).toMatch(/overscroll-behavior:\s*contain/);
   });
 });

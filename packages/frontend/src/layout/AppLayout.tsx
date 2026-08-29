@@ -11,6 +11,8 @@ import {
   useUserMenu,
   Logout,
   Link,
+  Sidebar,
+  SidebarProps,
   useSidebarState,
   useGetIdentity,
   useLocales,
@@ -223,6 +225,45 @@ const MobileIdentityHeader = () => {
 };
 
 /**
+ * Wraps react-admin's `Sidebar` to fix mobile drawer scrolling once the menu
+ * has more entries than fit one screen (#210, #165 both added sections — a
+ * System Admin now sees 21 entries).
+ *
+ * react-admin sizes the mobile (`xs`) drawer paper with `height: '100vh'`.
+ * `100vh` is the *layout* viewport — on iOS/Android it's taller than what's
+ * actually visible whenever the browser chrome (address bar) is on screen —
+ * so the paper extends past the fold, which reads as "the page is bigger
+ * than it should be". Swapping in `100dvh` (the *dynamic*, currently-visible
+ * viewport) caps it at what's actually on screen.
+ *
+ * That alone doesn't fix "scroll doesn't work well": once the paper's own
+ * list is scrolled to its end, iOS chains the gesture to whatever is
+ * scrollable underneath (the app body), so a swipe inside the drawer is felt
+ * as the page behind it moving. `overscrollBehavior: 'contain'` stops the
+ * scroll at the drawer's own edge instead of leaking to the page.
+ *
+ * Scoped to the `sm`-down breakpoint so the desktop permanent rail — sized
+ * and scrolled by its own `.RaSidebar-fixed` wrapper, not this paper — is
+ * untouched.
+ */
+export const RedInfoSidebar = (props: SidebarProps) => (
+  <Sidebar
+    {...props}
+    sx={(theme) => ({
+      [theme.breakpoints.down('sm')]: {
+        '& .MuiPaper-root': {
+          height: '100dvh',
+          maxHeight: '100dvh',
+          overflowY: 'auto',
+          overscrollBehavior: 'contain',
+          WebkitOverflowScrolling: 'touch',
+        },
+      },
+    })}
+  />
+);
+
+/**
  * The single mechanism that decides what appears in the drawer.
  *
  * Walks `NAV_SECTIONS` (see `layout/navigation.tsx`), keeping only the
@@ -337,5 +378,5 @@ const RedInfoUserMenu = () => {
 };
 
 export const AppLayout = (props: LayoutProps) => (
-  <Layout {...props} appBar={RedInfoAppBar} menu={RedInfoMenu} />
+  <Layout {...props} appBar={RedInfoAppBar} menu={RedInfoMenu} sidebar={RedInfoSidebar} />
 );
