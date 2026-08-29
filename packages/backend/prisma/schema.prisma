@@ -1474,3 +1474,48 @@ model DelegationSettings {
   coduDadosPhone String
   updatedAt      DateTime @updatedAt
 }
+
+// ─── Legacy migration ─────────────────────────────────────────────────────────
+
+/// Maps a row in the legacy MySQL system to the row it became here.
+///
+/// Kept out of the domain models on purpose: `User`, `Vehicle` and
+/// `EventReport` carry no `legacyId` column, so nothing in the application
+/// can accidentally depend on where a row came from, and dropping this one
+/// table is the whole of "forget the migration ever happened".
+///
+/// The loader is re-runnable and legacy always wins: on every run it looks a
+/// legacy key up here, and either updates the row it points at or creates one
+/// and records it. `sourceHash` is the SHA-256 of the normalised source tuple,
+/// stored so a future "only overwrite rows the app hasn't touched" mode has
+/// something to compare against — nothing reads it today.
+model LegacyIdMap {
+  id       String @id @default(cuid())
+  /// The target model name, e.g. "User", "EventReport", "VehicleInventoryItem".
+  entity   String
+  /// The legacy primary key, rendered as a single string. Composite keys are
+  /// joined with "|" in the source table's own PK order — e.g. a `saidas` row
+  /// is "1835|2026" and a `Material` row is "12|Luvas M". One spelling of that
+  /// rule lives in `legacyKey()`; never build one by hand at a call site.
+  legacyId String
+  /// The cuid of the row in this database.
+  newId    String
+
+  /// SHA-256 (hex) of the normalised source tuple this row was last written
+  /// from. Written on every apply run; read by nothing yet.
+  sourceHash  String
+  /// Which run first created the mapping, and which last confirmed it — a
+  /// mapping whose `lastRunId` is stale means the legacy row has disappeared.
+  firstRunId  String
+  lastRunId   String
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @updatedAt
+
+  /// One legacy row maps to at most one target row, and one target row is
+  /// claimed by at most one legacy row — both directions, so a bug that
+  /// re-points a mapping fails loudly instead of orphaning a row.
+  @@unique([entity, legacyId])
+  @@unique([entity, newId])
+  @@index([entity])
+  @@index([lastRunId])
+}

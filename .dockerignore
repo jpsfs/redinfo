@@ -11,3 +11,10 @@
 **/.idea
 **/README.md
 **/*.tsbuildinfo
+
+# Legacy migration: the dump is real production data (never in an image
+# layer) and out/ is per-run scratch output. The Dockerfile copies neither,
+# but the build context is `.`, so without this every `docker compose build`
+# ships a multi-hundred-megabyte dump to the Docker daemon for nothing.
+migration/dump
+migration/out

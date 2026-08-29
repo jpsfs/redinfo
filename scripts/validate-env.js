@@ -9,6 +9,11 @@ const required = [
   'IDENTITY_ENCRYPTION_KEYS'
 ];
 
+// LEGACY_MYSQL_* is deliberately absent. Those are read only by
+// `migrate:legacy`, a one-off operator script — a running API never touches
+// them, and requiring them here would fail every deploy that has no import to
+// run. The script checks its own inputs at startup instead.
+
 const missing = required.filter((k) => !process.env[k]);
 if (missing.length) {
   console.error('Missing required env vars:', missing.join(', '));

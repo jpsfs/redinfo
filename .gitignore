@@ -161,3 +161,8 @@ packages/*/*.d.ts.map
 # OS
 .DS_Store
 Thumbs.db
+
+# Legacy migration: raw dumps and per-run output can contain real personal/
+# clinical data pulled from the production MySQL system. Never committed.
+migration/dump/
+migration/out/
