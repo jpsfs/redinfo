@@ -57,21 +57,26 @@ describe('RedInfoMenu', () => {
       '/my-duties',
       '/my-hours',
       '/my-reports',
+      '/my-notices',
       '/statistics',
       '/vehicles',
     ]);
   });
 
-  it('gives a Logistics Coordinator exactly seven entries and no live mode', async () => {
+  it('gives a Logistics Coordinator exactly ten entries and no live mode', async () => {
+    // Ten, not seven — see the matching note in navigation.test.tsx.
     const links = await renderMenuAs(UserRole.LOGISTICS_COORDINATOR);
     expect(links).toEqual([
       '/',
       '/my-duties',
       '/my-hours',
+      '/my-notices',
       '/statistics',
+      '/notices',
       '/vehicles',
       '/inventory-templates',
       '/material-items',
+      '/notification-config',
     ]);
   });
 
@@ -84,12 +89,14 @@ describe('RedInfoMenu', () => {
       '/my-duties',
       '/my-hours',
       '/my-reports',
+      '/my-notices',
       '/live-runs',
       '/event-reports',
       '/schedules',
       '/availability-windows',
       '/volunteer-hours/review',
       '/statistics',
+      '/notices',
       '/users',
       '/vehicles',
       // Not '/inventory-templates': ROLE_PERMISSIONS does not give this role
@@ -100,6 +107,7 @@ describe('RedInfoMenu', () => {
       '/material-items',
       '/hospitals',
       '/holidays',
+      '/notification-config',
     ]);
   });
 
@@ -112,18 +120,21 @@ describe('RedInfoMenu', () => {
       '/my-duties',
       '/my-hours',
       '/my-reports',
+      '/my-notices',
       '/live-runs',
       '/event-reports',
       '/schedules',
       '/availability-windows',
       '/volunteer-hours/review',
       '/statistics',
+      '/notices',
       '/users',
       '/vehicles',
       '/inventory-templates',
       '/material-items',
       '/hospitals',
       '/holidays',
+      '/notification-config',
     ]);
   });
 

@@ -76,6 +76,13 @@ export enum Action {
   MANAGE_VOLUNTEER_HOURS = 'MANAGE_VOLUNTEER_HOURS',
   /** Read the aggregated volunteer-hours summary, without the review queue. */
   VIEW_VOLUNTEER_HOURS = 'VIEW_VOLUNTEER_HOURS',
+  /**
+   * Create/deactivate operational notices, view their read/acknowledgement
+   * history, and set the org-wide default delivery channels per notification
+   * type. Reading a notice targeted at you needs no action — that's
+   * self-scoped, the same way reading your own volunteer hours is.
+   */
+  MANAGE_NOTICES = 'MANAGE_NOTICES',
 }
 
 export const ROLE_PERMISSIONS: Record<UserRole, Action[]> = {
@@ -115,12 +122,14 @@ export const ROLE_PERMISSIONS: Record<UserRole, Action[]> = {
     // the schedule those hours are generated from.
     Action.MANAGE_VOLUNTEER_HOURS,
     Action.VIEW_VOLUNTEER_HOURS,
+    Action.MANAGE_NOTICES,
   ],
   [UserRole.LOGISTICS_COORDINATOR]: [
     Action.MANAGE_LOGISTICS,
     Action.MANAGE_VEHICLES,
     Action.VIEW_VEHICLES,
     Action.MANAGE_VEHICLE_INVENTORY,
+    Action.MANAGE_NOTICES,
   ],
 };
 
@@ -5148,6 +5157,139 @@ export interface LiveRunSyncResponse {
 export interface LiveRunCloseResponse {
   run: LiveRun;
   report: EventReport;
+}
+
+// ─── Notices & notifications ──────────────────────────────────────────────────
+//
+// Legacy parity for operational alerts (ADO #165): coordinators post a
+// targeted notice, members see it in an alerts area and acknowledge it.
+// Delivery is a pluggable framework, not just this one feature — `NOTICE` is
+// the first `NotificationType`, but the channel/preference/delivery shapes
+// below are meant to be reused by future system-triggered types without a
+// redesign. `IN_APP` is always implicit (the notice existing in the list *is*
+// the in-app delivery) — it's in `NotificationChannel` only so config/prefs
+// UIs can show it as an always-on row.
+
+export enum NoticeTargetType {
+  ALL = 'ALL',
+  ROLES = 'ROLES',
+}
+
+export enum NotificationChannel {
+  IN_APP = 'IN_APP',
+  EMAIL = 'EMAIL',
+  WEB_PUSH = 'WEB_PUSH',
+}
+
+/** Extend as more system-triggered notifications are built (e.g. shift reminders). */
+export enum NotificationType {
+  NOTICE = 'NOTICE',
+}
+
+export enum NotificationDeliveryStatus {
+  PENDING = 'PENDING',
+  SENT = 'SENT',
+  FAILED = 'FAILED',
+}
+
+export interface Notice {
+  id: string;
+  title: string;
+  body: string;
+  createdById: string;
+  createdByName: string;
+  targetType: NoticeTargetType;
+  /** Only meaningful when `targetType` is `ROLES`; empty for `ALL`. */
+  targetRoles: UserRole[];
+  /** Channels the coordinator chose when sending this notice, `IN_APP` excluded. */
+  channels: NotificationChannel[];
+  expiresAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** `POST /notices` body. */
+export interface CreateNoticeRequest {
+  title: string;
+  body: string;
+  targetType: NoticeTargetType;
+  /** Required, non-empty when `targetType` is `ROLES`. */
+  targetRoles?: UserRole[];
+  channels: NotificationChannel[];
+  expiresAt?: string;
+}
+
+/** Per-recipient state — covers both "unread vs read" and "acknowledge/dismiss". */
+export interface NoticeReceipt {
+  readAt: string | null;
+  acknowledgedAt: string | null;
+}
+
+/** `GET /notices` (member view) — a notice plus the viewer's own receipt. */
+export interface NoticeWithReceipt extends Notice {
+  receipt: NoticeReceipt;
+}
+
+/** `GET /notices` (coordinator view) — a notice plus a summary for the history list. */
+export interface NoticeWithStats extends Notice {
+  recipientCount: number;
+  acknowledgedCount: number;
+}
+
+export interface NoticeDeliveryStatus {
+  channel: NotificationChannel;
+  status: NotificationDeliveryStatus;
+  error: string | null;
+}
+
+/** `GET /notices/:id/recipients` (coordinator view) — one row per target user. */
+export interface NoticeRecipientStatus {
+  userId: string;
+  userName: string;
+  readAt: string | null;
+  acknowledgedAt: string | null;
+  deliveries: NoticeDeliveryStatus[];
+}
+
+/** Org-wide default channels per notification type — the notification config page. */
+export interface NotificationTypeSetting {
+  type: NotificationType;
+  defaultChannels: NotificationChannel[];
+}
+
+/** A member's own per-channel opt-out — the notification settings in their profile. */
+export interface UserNotificationPreference {
+  channel: NotificationChannel;
+  enabled: boolean;
+}
+
+export interface NotificationChannelResolutionInput {
+  /** Channels chosen for this specific notice (or event), `IN_APP` excluded. */
+  requestedChannels: NotificationChannel[];
+  /** Channels the org has enabled by default for this notification type. */
+  typeDefaultChannels: NotificationChannel[];
+  /** Channels this recipient has explicitly turned off. */
+  userDisabledChannels: NotificationChannel[];
+  /** `WEB_PUSH` needs a registered device; nothing to deliver to otherwise. */
+  userHasPushSubscription: boolean;
+}
+
+/**
+ * What a recipient actually gets, once org policy and personal preference are
+ * both applied. Pure and I/O-free on purpose — the delivery service resolves
+ * this per recipient before enqueueing anything, and it's the one place the
+ * three-way precedence (notice choice ∩ org default ∩ user opt-out) is
+ * defined, so it's tested once here instead of once per call site.
+ */
+export function resolveEffectiveNotificationChannels(
+  input: NotificationChannelResolutionInput,
+): NotificationChannel[] {
+  return input.requestedChannels.filter((channel) => {
+    if (!input.typeDefaultChannels.includes(channel)) return false;
+    if (input.userDisabledChannels.includes(channel)) return false;
+    if (channel === NotificationChannel.WEB_PUSH && !input.userHasPushSubscription) return false;
+    return true;
+  });
 }
 
 // ─── Statistics ─────────────────────────────────────────────────────────────

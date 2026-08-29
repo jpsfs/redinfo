@@ -42,10 +42,13 @@
     "passport-jwt": "^4.0.1",
     "passport-local": "^1.0.0",
     "passport-microsoft": "^1.0.0",
+    "pg-boss": "^12.28.1",
     "prisma": "^5.15.0",
     "reflect-metadata": "^0.2.2",
+    "resend": "^6.25.0",
     "rxjs": "^7.8.1",
-    "sanitize-html": "2.13.1"
+    "sanitize-html": "2.13.1",
+    "web-push": "^3.6.7"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -61,6 +64,7 @@
     "@types/passport-jwt": "^4.0.1",
     "@types/passport-local": "^1.0.38",
     "@types/sanitize-html": "^2.16.1",
+    "@types/web-push": "^3.6.4",
     "eslint": "^10.9.0",
     "globals": "^17.11.0",
     "jest": "^30.3.0",
@@ -88,7 +92,8 @@
       ]
     },
     "moduleNameMapper": {
-      "^@redinfo/shared$": "<rootDir>/../../shared/src/index.ts"
+      "^@redinfo/shared$": "<rootDir>/../../shared/src/index.ts",
+      "^pg-boss$": "<rootDir>/notifications/__mocks__/pg-boss.ts"
     },
     "collectCoverageFrom": [
       "**/*.(t|j)s"

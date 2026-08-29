@@ -37,21 +37,28 @@ describe('NAV_SECTIONS', () => {
       '/my-duties',
       '/my-hours',
       '/my-reports',
+      '/my-notices',
       '/statistics',
       '/vehicles',
     ]);
   });
 
-  it('gives a Logistics Coordinator exactly seven entries and no live mode', () => {
+  it('gives a Logistics Coordinator exactly ten entries and no live mode', () => {
+    // Ten, not seven: #165 added an ungated /my-notices (everyone gets it,
+    // like /my-duties) plus /notices and /notification-config, both gated on
+    // MANAGE_NOTICES — which this role holds, alongside logistics/fleet.
     const routes = visibleRoutes(UserRole.LOGISTICS_COORDINATOR);
     expect(routes).toEqual([
       '/',
       '/my-duties',
       '/my-hours',
+      '/my-notices',
       '/statistics',
+      '/notices',
       '/vehicles',
       '/inventory-templates',
       '/material-items',
+      '/notification-config',
     ]);
     expect(routes).not.toContain('/live');
   });
@@ -74,6 +81,9 @@ describe('NAV_SECTIONS', () => {
     expect(routes).toEqual(expected);
     expect(routes).toContain('/holidays');
     expect(routes).toContain('/live-runs');
+    // #165: MANAGE_NOTICES is granted to both coordinator roles.
+    expect(routes).toContain('/notices');
+    expect(routes).toContain('/notification-config');
     expect(routes).not.toContain('/inventory-templates');
     // Unlike Inventory Templates, the materials catalogue is gated on
     // MANAGE_VEHICLES (#206), which this role does hold.

@@ -49,6 +49,7 @@ Don't ask for a list of all exports — grep them.
 | Numbering | Report numbering rules |
 | The delegation's own configuration | `DelegationSettings`-adjacent shapes |
 | Live emergency runs | `LiveRun` shapes and state |
+| Notices & notifications | `Notice`, `NotificationChannel`/`NotificationType`, delivery/preference shapes, `resolveEffectiveNotificationChannels` (#165) |
 | Statistics | `/statistics/*` query and response shapes (people/activity/fleet) |
 | API error codes | `ApiErrorCode` |
 

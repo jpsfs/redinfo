@@ -142,3 +142,41 @@ function isApiPath(pathname) {
     pathname.startsWith('/event-reports')
   );
 }
+
+/**
+ * Web Push (#165) — a notice's title/body, shown as a system notification.
+ * The payload is plain JSON (`{ title, body }`, see `EmailChannelService`'s
+ * sibling `WebPushChannelService`), not the Push API's binary/encrypted
+ * envelope — the browser has already decrypted it by the time this fires.
+ */
+self.addEventListener('push', (event) => {
+  if (!event.data) return;
+  let payload;
+  try {
+    payload = event.data.json();
+  } catch {
+    return;
+  }
+  event.waitUntil(
+    self.registration.showNotification(payload.title ?? '', {
+      body: payload.body,
+      icon: '/icons/icon-192.png',
+    }),
+  );
+});
+
+/** Focuses an already-open tab rather than opening a second one, where possible. */
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  event.waitUntil(
+    (async () => {
+      const clientList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      const existing = clientList.find((client) => 'focus' in client);
+      if (existing) {
+        await existing.focus();
+        return;
+      }
+      await self.clients.openWindow('/my-notices');
+    })(),
+  );
+});

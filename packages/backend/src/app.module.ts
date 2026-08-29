@@ -14,6 +14,8 @@ import { EventReportsModule } from './event-reports/event-reports.module';
 import { LiveRunsModule } from './live-runs/live-runs.module';
 import { VolunteerHoursModule } from './volunteer-hours/volunteer-hours.module';
 import { StatisticsModule } from './statistics/statistics.module';
+import { NotificationsModule } from './notifications/notifications.module';
+import { NoticesModule } from './notices/notices.module';
 
 @Module({
   imports: [
@@ -35,6 +37,8 @@ import { StatisticsModule } from './statistics/statistics.module';
     LiveRunsModule,
     VolunteerHoursModule,
     StatisticsModule,
+    NotificationsModule,
+    NoticesModule,
   ],
 })
 export class AppModule {}

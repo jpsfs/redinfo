@@ -152,6 +152,15 @@ describe('hasPermission', () => {
     expect(hasPermission(UserRole.LOGISTICS_COORDINATOR, action)).toBe(false);
   });
 
+  it('EMERGENCY_COORDINATOR and LOGISTICS_COORDINATOR can manage notices', () => {
+    expect(hasPermission(UserRole.EMERGENCY_COORDINATOR, Action.MANAGE_NOTICES)).toBe(true);
+    expect(hasPermission(UserRole.LOGISTICS_COORDINATOR, Action.MANAGE_NOTICES)).toBe(true);
+  });
+
+  it('EMERGENCY_OPERATIONAL cannot manage notices (reading your own is self-scoped, unactioned)', () => {
+    expect(hasPermission(UserRole.EMERGENCY_OPERATIONAL, Action.MANAGE_NOTICES)).toBe(false);
+  });
+
   // Scenario 3: new emergency action added → EMERGENCY_OPERATIONAL gains it after mapping
   it('new emergency action is accessible to EMERGENCY_OPERATIONAL once added to ROLE_PERMISSIONS', () => {
     const DISPATCH_AMBULANCE = 'DISPATCH_AMBULANCE' as Action;

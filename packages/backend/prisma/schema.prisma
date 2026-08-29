@@ -122,6 +122,12 @@ model User {
   volunteerHoursReopened VolunteerHoursEntry[] @relation("VolunteerHoursReopenedBy")
   volunteerHoursDeleted  VolunteerHoursEntry[] @relation("VolunteerHoursDeletedBy")
 
+  noticesCreated          Notice[]                      @relation("NoticeCreatedBy")
+  noticeReceipts          NoticeReceipt[]                @relation("NoticeReceiptOwner")
+  notificationDeliveries  NotificationDelivery[]         @relation("NotificationDeliveryRecipient")
+  pushSubscriptions       PushSubscription[]              @relation("PushSubscriptionOwner")
+  notificationPreferences UserNotificationPreference[]   @relation("NotificationPreferenceOwner")
+
   @@index([email])
   @@index([provider, providerId])
   @@index([isActive, role])
@@ -1473,4 +1479,155 @@ model DelegationSettings {
   /// Dialled from the live-run overflow menu; the dial time is stamped on the run.
   coduDadosPhone String
   updatedAt      DateTime @updatedAt
+}
+
+// ── Notices & notifications (#165) ──
+//
+// `Notice` is legacy-parity for operational alerts/notices. Delivery
+// (`NotificationDelivery`, `PushSubscription`, the two preference tables) is a
+// pluggable framework meant to outlive this one feature — see the matching
+// banner in `@redinfo/shared`. `IN_APP` delivery has no row of its own: the
+// `Notice`/`NoticeReceipt` rows existing *are* the in-app delivery.
+
+enum NoticeTargetType {
+  ALL
+  ROLES
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  WEB_PUSH
+}
+
+enum NotificationType {
+  NOTICE
+}
+
+enum NotificationDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model Notice {
+  id          String           @id @default(cuid())
+  title       String
+  body        String
+  createdById String
+  createdBy   User             @relation("NoticeCreatedBy", fields: [createdById], references: [id])
+  targetType  NoticeTargetType
+  /// Null/absent means "never expires" — auto-deactivation is `expiresAt < now()` at read time, not a cron.
+  expiresAt   DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  targetRoles NoticeTargetRole[]
+  channels    NoticeChannel[]
+  receipts    NoticeReceipt[]
+  deliveries  NotificationDelivery[]
+
+  @@index([expiresAt])
+  @@index([createdById])
+}
+
+/// Only present when `Notice.targetType` is `ROLES`.
+model NoticeTargetRole {
+  id       String   @id @default(cuid())
+  noticeId String
+  notice   Notice   @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+  role     UserRole
+
+  @@unique([noticeId, role])
+  @@index([noticeId])
+}
+
+/// Which channels the coordinator chose when sending this notice. `IN_APP` is
+/// never stored here — see the banner note above.
+model NoticeChannel {
+  id       String              @id @default(cuid())
+  noticeId String
+  notice   Notice              @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+  channel  NotificationChannel
+
+  @@unique([noticeId, channel])
+  @@index([noticeId])
+}
+
+/// Per-recipient state. One row per (notice, user), created when the notice is
+/// sent to that user. Covers both "unread vs read" and "acknowledge/dismiss".
+model NoticeReceipt {
+  id             String    @id @default(cuid())
+  noticeId       String
+  notice         Notice    @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User      @relation("NoticeReceiptOwner", fields: [userId], references: [id], onDelete: Cascade)
+  readAt         DateTime?
+  acknowledgedAt DateTime?
+
+  @@unique([noticeId, userId])
+  @@index([noticeId])
+  @@index([userId])
+}
+
+/// One send attempt per (notice, user, channel) on a non-`IN_APP` channel —
+/// the audit trail behind the coordinator's recipient view, updated by the
+/// email provider's delivery webhook when that lands after the initial send.
+model NotificationDelivery {
+  id                String                      @id @default(cuid())
+  noticeId          String
+  notice            Notice                      @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User                        @relation("NotificationDeliveryRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  channel           NotificationChannel
+  status            NotificationDeliveryStatus  @default(PENDING)
+  error             String?
+  /// The provider's own id for this send (e.g. Resend's email id), so a
+  /// webhook event can be matched back to this row without guessing.
+  providerMessageId String?
+  attemptedAt       DateTime                    @default(now())
+  updatedAt         DateTime                    @updatedAt
+
+  @@index([noticeId])
+  @@index([userId])
+  @@index([providerMessageId])
+}
+
+/// A registered browser/device for Web Push. A user may have several (one per
+/// device); each is pushed to independently and a dead one just fails alone.
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation("PushSubscriptionOwner", fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+/// Org-wide default: is this channel used at all for this notification type?
+/// The notification config page. Absence of a row means "not yet configured" —
+/// callers treat that as disabled rather than defaulting silently to on.
+model NotificationTypeSetting {
+  id      String              @id @default(cuid())
+  type    NotificationType
+  channel NotificationChannel
+  enabled Boolean             @default(true)
+
+  @@unique([type, channel])
+}
+
+/// A member's own per-channel opt-out, set from their profile. Absence of a
+/// row means "no preference set", which callers treat as enabled.
+model UserNotificationPreference {
+  id      String              @id @default(cuid())
+  userId  String
+  user    User                @relation("NotificationPreferenceOwner", fields: [userId], references: [id], onDelete: Cascade)
+  channel NotificationChannel
+  enabled Boolean             @default(true)
+
+  @@unique([userId, channel])
 }
