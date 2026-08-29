@@ -55,10 +55,17 @@ export class StockMovementsService {
     return tx ? this.reverseConsumption(tx, reportId) : this.prisma.$transaction((t) => this.reverseConsumption(t, reportId));
   }
 
-  /** Paged, newest-first movement history for a vehicle's stock. */
+  /**
+   * Paged, newest-first movement history for a vehicle's stock. `actorId`
+   * has no Prisma relation to `User` (see the schema comment on
+   * `StockMovement`), so the actor's name is resolved with a second, batched
+   * lookup rather than an `include` — mirroring the `{id, firstName,
+   * lastName}` shape `createdBy` uses elsewhere (e.g. `SchedulesService`)
+   * instead of leaving the frontend to resolve a bare id.
+   */
   async findByVehicle(vehicleId: string, page = 1, perPage = 50) {
     const skip = (page - 1) * perPage;
-    const [data, total] = await this.prisma.$transaction([
+    const [movements, total] = await this.prisma.$transaction([
       this.prisma.stockMovement.findMany({
         where: { vehicleId },
         skip,
@@ -68,6 +75,21 @@ export class StockMovementsService {
       }),
       this.prisma.stockMovement.count({ where: { vehicleId } }),
     ]);
+
+    const actorIds = [...new Set(movements.map((m) => m.actorId).filter((id): id is string => !!id))];
+    const actors = actorIds.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: actorIds } },
+          select: { id: true, firstName: true, lastName: true },
+        })
+      : [];
+    const actorById = new Map(actors.map((actor) => [actor.id, actor]));
+
+    const data = movements.map((movement) => ({
+      ...movement,
+      actor: movement.actorId ? (actorById.get(movement.actorId) ?? null) : null,
+    }));
+
     return { data, total, page, perPage };
   }
 

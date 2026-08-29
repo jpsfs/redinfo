@@ -610,6 +610,9 @@ export interface StockMovement {
   /// correction movements.
   reportId?: string | null;
   actorId?: string | null;
+  /// Resolved by `StockMovementsService.findByVehicle` — null for a system
+  /// movement or when the acting user has since been deleted.
+  actor?: { id: string; firstName: string; lastName: string } | null;
   occurredAt: string;
   note?: string | null;
 }

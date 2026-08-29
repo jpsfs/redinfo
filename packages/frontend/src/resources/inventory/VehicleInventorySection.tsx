@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useRecordContext, useNotify } from 'react-admin';
+import { useCallback, useEffect, useState } from 'react';
+import { useRecordContext, useNotify, useLocaleState } from 'react-admin';
 import {
   Box,
   Typography,
@@ -17,12 +17,18 @@ import {
   CircularProgress,
   Button,
   Alert,
+  Link,
+  Pagination,
 } from '@mui/material';
 import SaveIcon from '@mui/icons-material/Save';
 import DownloadIcon from '@mui/icons-material/Download';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import { Locale, MaterialItem, materialItemDisplayName, StockMovementReason } from '@redinfo/shared';
+import { apiFetch } from '../../api';
 import { useT } from '../../i18n/useT';
 
 const API_URL = import.meta.env.VITE_API_URL ?? '';
+const MOVEMENTS_PER_PAGE = 10;
 
 interface TemplateItem {
   id: string;
@@ -40,6 +46,9 @@ interface VehicleInventoryItem {
   templateItemId: string;
   actualQuantity: number | null;
   templateVersion: number;
+  /// Set when a `StockMovement` deduction floored this row at zero — see
+  /// `vehicleInventory.needsRecountTooltip`.
+  needsRecount: boolean;
 }
 
 interface InventoryRow {
@@ -56,6 +65,23 @@ interface VehicleInventoryData {
   hasLowStock: boolean;
 }
 
+interface MovementActor {
+  id: string;
+  firstName: string;
+  lastName: string;
+}
+
+interface MovementRow {
+  id: string;
+  materialItemId: string;
+  materialItem: Pick<MaterialItem, 'namePt' | 'nameEn'> | null;
+  delta: number;
+  reason: StockMovementReason;
+  reportId: string | null;
+  actor: MovementActor | null;
+  occurredAt: string;
+}
+
 function statusColor(status: string): string {
   if (status === 'low') return '#ffebee';
   if (status === 'over') return '#e8f5e9';
@@ -68,8 +94,22 @@ function statusBorderColor(status: string): string {
   return 'transparent';
 }
 
+function reasonLabelKey(reason: StockMovementReason) {
+  switch (reason) {
+    case StockMovementReason.CONSUMPTION:
+      return 'vehicleInventory.reasonConsumption' as const;
+    case StockMovementReason.MANUAL_ADJUSTMENT:
+      return 'vehicleInventory.reasonManualAdjustment' as const;
+    case StockMovementReason.IMPORT:
+      return 'vehicleInventory.reasonImport' as const;
+    case StockMovementReason.CORRECTION:
+      return 'vehicleInventory.reasonCorrection' as const;
+  }
+}
+
 export const VehicleInventorySection = () => {
   const t = useT();
+  const [locale] = useLocaleState();
   const record = useRecordContext<{ id: string; vehicleType: string }>();
   const notify = useNotify();
 
@@ -79,30 +119,50 @@ export const VehicleInventorySection = () => {
   const [editValues, setEditValues] = useState<Record<string, string>>({});
   const [savingIds, setSavingIds] = useState<Set<string>>(new Set());
 
-  const fetchInventory = async () => {
+  const [movements, setMovements] = useState<MovementRow[]>([]);
+  const [movementsTotal, setMovementsTotal] = useState(0);
+  const [movementsPage, setMovementsPage] = useState(1);
+  const [movementsLoading, setMovementsLoading] = useState(true);
+  const [movementsError, setMovementsError] = useState<string | null>(null);
+
+  const fetchInventory = useCallback(async () => {
     if (!record?.id) return;
     try {
       setLoading(true);
       setError(null);
-      const token = localStorage.getItem('auth')
-        ? JSON.parse(localStorage.getItem('auth') ?? '{}').accessToken
-        : null;
-      const headers: HeadersInit = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
-      const res = await fetch(`${API_URL}/vehicle-inventory/by-vehicle/${record.id}`, { headers });
-      if (!res.ok) throw new Error('Failed to load inventory');
-      const data = await res.json();
+      const data = await apiFetch<VehicleInventoryData>(`/vehicle-inventory/by-vehicle/${record.id}`);
       setInventory(data);
     } catch {
       setError(t('vehicleInventory.loadFailed'));
     } finally {
       setLoading(false);
     }
-  };
+  }, [record?.id, t]);
+
+  const fetchMovements = useCallback(
+    async (page: number) => {
+      if (!record?.id) return;
+      try {
+        setMovementsLoading(true);
+        setMovementsError(null);
+        const result = await apiFetch<{ data: MovementRow[]; total: number }>(
+          `/vehicle-inventory/by-vehicle/${record.id}/movements?page=${page}&perPage=${MOVEMENTS_PER_PAGE}`,
+        );
+        setMovements(result.data);
+        setMovementsTotal(result.total);
+        setMovementsPage(page);
+      } catch {
+        setMovementsError(t('vehicleInventory.movementsLoadFailed'));
+      } finally {
+        setMovementsLoading(false);
+      }
+    },
+    [record?.id, t],
+  );
 
   useEffect(() => {
     fetchInventory();
+    fetchMovements(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [record?.id]);
 
@@ -119,23 +179,15 @@ export const VehicleInventorySection = () => {
 
     setSavingIds((prev) => new Set(prev).add(templateItemId));
     try {
-      const token = localStorage.getItem('auth')
-        ? JSON.parse(localStorage.getItem('auth') ?? '{}').accessToken
-        : null;
-      const headers: HeadersInit = { 'Content-Type': 'application/json' };
-      if (token) headers['Authorization'] = `Bearer ${token}`;
-
       if (vehicleInventoryItemId) {
-        await fetch(`${API_URL}/vehicle-inventory/${vehicleInventoryItemId}`, {
+        await apiFetch(`/vehicle-inventory/${vehicleInventoryItemId}`, {
           method: 'PATCH',
-          headers,
-          body: JSON.stringify({ actualQuantity }),
+          body: { actualQuantity },
         });
       } else {
-        await fetch(`${API_URL}/vehicle-inventory`, {
+        await apiFetch('/vehicle-inventory', {
           method: 'POST',
-          headers,
-          body: JSON.stringify({ vehicleId: record.id, templateItemId, actualQuantity }),
+          body: { vehicleId: record.id, templateItemId, actualQuantity },
         });
       }
 
@@ -146,6 +198,10 @@ export const VehicleInventorySection = () => {
         return next;
       });
       await fetchInventory();
+      // A manual quantity edit also writes a `MANUAL_ADJUSTMENT` movement
+      // (see `StockMovementsService.recordManualAdjustment`) — refresh so
+      // the panel below reflects it without a full page reload.
+      await fetchMovements(1);
     } catch {
       notify(t('vehicleInventory.updateFailed'), { type: 'error' });
     } finally {
@@ -303,28 +359,40 @@ export const VehicleInventorySection = () => {
                       <Typography variant="body2">{row.templateItem.unit}</Typography>
                     </TableCell>
                     <TableCell>
-                      {row.status === 'low' && (
-                        <Chip size="small" label={t('vehicleInventory.statusLow')} color="error" />
-                      )}
-                      {row.status === 'ok' && (
-                        <Chip size="small" label={t('vehicleInventory.statusOk')} color="success" />
-                      )}
-                      {row.status === 'over' && (
-                        <Chip
-                          size="small"
-                          label={t('vehicleInventory.statusAboveRec')}
-                          color="success"
-                          variant="outlined"
-                        />
-                      )}
-                      {row.status === 'unlimited' && (
-                        <Chip
-                          size="small"
-                          label={t('inventoryTemplateShow.unlimited')}
-                          color="secondary"
-                          variant="outlined"
-                        />
-                      )}
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, flexWrap: 'wrap' }}>
+                        {row.status === 'low' && (
+                          <Chip size="small" label={t('vehicleInventory.statusLow')} color="error" />
+                        )}
+                        {row.status === 'ok' && (
+                          <Chip size="small" label={t('vehicleInventory.statusOk')} color="success" />
+                        )}
+                        {row.status === 'over' && (
+                          <Chip
+                            size="small"
+                            label={t('vehicleInventory.statusAboveRec')}
+                            color="success"
+                            variant="outlined"
+                          />
+                        )}
+                        {row.status === 'unlimited' && (
+                          <Chip
+                            size="small"
+                            label={t('inventoryTemplateShow.unlimited')}
+                            color="secondary"
+                            variant="outlined"
+                          />
+                        )}
+                        {row.vehicleInventoryItem?.needsRecount && (
+                          <Tooltip title={t('vehicleInventory.needsRecountTooltip')}>
+                            <Chip
+                              size="small"
+                              icon={<WarningAmberIcon fontSize="small" />}
+                              label={t('vehicleInventory.needsRecount')}
+                              color="warning"
+                            />
+                          </Tooltip>
+                        )}
+                      </Box>
                     </TableCell>
                     <TableCell>
                       {isEditing && (
@@ -356,6 +424,89 @@ export const VehicleInventorySection = () => {
           </Table>
         </TableContainer>
       )}
+
+      <Box sx={{ mt: 3 }}>
+        <Typography variant="h6" sx={{ mb: 1 }}>
+          {t('vehicleInventory.movementsHeading')}
+        </Typography>
+        {movementsLoading && movements.length === 0 ? (
+          <CircularProgress size={20} sx={{ my: 1 }} />
+        ) : movementsError ? (
+          <Alert severity="warning" sx={{ my: 1 }}>{movementsError}</Alert>
+        ) : movements.length === 0 ? (
+          <Alert severity="info">{t('vehicleInventory.movementsEmpty')}</Alert>
+        ) : (
+          <>
+            <TableContainer component={Paper} variant="outlined">
+              <Table size="small">
+                <TableHead>
+                  <TableRow sx={{ backgroundColor: 'grey.100' }}>
+                    <TableCell><strong>{t('vehicleInventory.colDate')}</strong></TableCell>
+                    <TableCell><strong>{t('vehicleInventory.colItem')}</strong></TableCell>
+                    <TableCell align="right"><strong>{t('vehicleInventory.colDelta')}</strong></TableCell>
+                    <TableCell><strong>{t('vehicleInventory.colReason')}</strong></TableCell>
+                    <TableCell><strong>{t('vehicleInventory.colActor')}</strong></TableCell>
+                    <TableCell><strong>{t('vehicleInventory.colReport')}</strong></TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {movements.map((movement) => (
+                    <TableRow key={movement.id}>
+                      <TableCell>
+                        <Typography variant="body2">
+                          {new Date(movement.occurredAt).toLocaleString(locale)}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2">
+                          {movement.materialItem
+                            ? materialItemDisplayName(movement.materialItem, locale as Locale)
+                            : movement.materialItemId}
+                        </Typography>
+                      </TableCell>
+                      <TableCell align="right">
+                        <Typography
+                          variant="body2"
+                          color={movement.delta < 0 ? 'error.main' : 'success.main'}
+                        >
+                          {movement.delta > 0 ? `+${movement.delta}` : movement.delta}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2">{t(reasonLabelKey(movement.reason))}</Typography>
+                      </TableCell>
+                      <TableCell>
+                        <Typography variant="body2">
+                          {movement.actor
+                            ? `${movement.actor.firstName} ${movement.actor.lastName}`
+                            : t('vehicleInventory.unknownActor')}
+                        </Typography>
+                      </TableCell>
+                      <TableCell>
+                        {movement.reportId && (
+                          <Link href={`/#/event-reports/${movement.reportId}`} variant="body2">
+                            {t('vehicleInventory.viewReport')}
+                          </Link>
+                        )}
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </TableContainer>
+            {movementsTotal > MOVEMENTS_PER_PAGE && (
+              <Box sx={{ display: 'flex', justifyContent: 'center', mt: 1 }}>
+                <Pagination
+                  size="small"
+                  count={Math.ceil(movementsTotal / MOVEMENTS_PER_PAGE)}
+                  page={movementsPage}
+                  onChange={(_, page) => fetchMovements(page)}
+                />
+              </Box>
+            )}
+          </>
+        )}
+      </Box>
     </Box>
   );
 };

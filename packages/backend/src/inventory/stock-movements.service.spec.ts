@@ -408,5 +408,55 @@ describe('StockMovementsService', () => {
         }),
       );
     });
+
+    it('resolves each movement\'s actor by a single batched user lookup', async () => {
+      const movements = [
+        { id: 'mv-1', actorId: 'user-1', vehicleId: VEHICLE.id },
+        { id: 'mv-2', actorId: 'user-2', vehicleId: VEHICLE.id },
+        { id: 'mv-3', actorId: 'user-1', vehicleId: VEHICLE.id }, // same actor as mv-1
+        { id: 'mv-4', actorId: null, vehicleId: VEHICLE.id }, // system movement
+      ];
+      const findMany = jest.fn().mockResolvedValue(movements);
+      const count = jest.fn().mockResolvedValue(movements.length);
+      const userFindMany = jest.fn().mockResolvedValue([
+        { id: 'user-1', firstName: 'Ana', lastName: 'Silva' },
+        { id: 'user-2', firstName: 'Bruno', lastName: 'Costa' },
+      ]);
+      const prisma = {
+        stockMovement: { findMany, count },
+        user: { findMany: userFindMany },
+        $transaction: jest.fn((ops: unknown[]) => Promise.all(ops)),
+      };
+      const service = new StockMovementsService(prisma as never);
+
+      const result = await service.findByVehicle(VEHICLE.id);
+
+      expect(userFindMany).toHaveBeenCalledTimes(1);
+      expect(userFindMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: { in: ['user-1', 'user-2'] } } }),
+      );
+      expect(result.data).toEqual([
+        { ...movements[0], actor: { id: 'user-1', firstName: 'Ana', lastName: 'Silva' } },
+        { ...movements[1], actor: { id: 'user-2', firstName: 'Bruno', lastName: 'Costa' } },
+        { ...movements[2], actor: { id: 'user-1', firstName: 'Ana', lastName: 'Silva' } },
+        { ...movements[3], actor: null },
+      ]);
+    });
+
+    it('skips the user lookup entirely when the page has no actors', async () => {
+      const findMany = jest.fn().mockResolvedValue([{ id: 'mv-1', actorId: null, vehicleId: VEHICLE.id }]);
+      const count = jest.fn().mockResolvedValue(1);
+      const userFindMany = jest.fn();
+      const prisma = {
+        stockMovement: { findMany, count },
+        user: { findMany: userFindMany },
+        $transaction: jest.fn((ops: unknown[]) => Promise.all(ops)),
+      };
+      const service = new StockMovementsService(prisma as never);
+
+      await service.findByVehicle(VEHICLE.id);
+
+      expect(userFindMany).not.toHaveBeenCalled();
+    });
   });
 });

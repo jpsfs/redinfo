@@ -826,6 +826,28 @@ const MESSAGES = {
   'vehicleInventory.statusOk': { pt: 'OK', en: 'OK' },
   'vehicleInventory.statusAboveRec': { pt: 'Acima do Rec.', en: 'Above Rec.' },
   'vehicleInventory.saveQuantityTooltip': { pt: 'Guardar quantidade', en: 'Save quantity' },
+  'vehicleInventory.needsRecount': { pt: 'Reconferir', en: 'Recount needed' },
+  'vehicleInventory.needsRecountTooltip': {
+    pt: 'O consumo registado excedeu o stock guardado e a quantidade foi ajustada a 0. Uma edição manual da quantidade limpa este aviso.',
+    en: 'Recorded consumption exceeded the stock on file and the quantity was floored at 0. A manual quantity edit clears this flag.',
+  },
+  'vehicleInventory.movementsHeading': { pt: 'Movimentos de stock', en: 'Stock Movements' },
+  'vehicleInventory.movementsLoadFailed': {
+    pt: 'Não foi possível carregar os movimentos de stock.',
+    en: 'Could not load stock movements.',
+  },
+  'vehicleInventory.movementsEmpty': { pt: 'Sem movimentos registados.', en: 'No movements recorded yet.' },
+  'vehicleInventory.colDate': { pt: 'Data', en: 'Date' },
+  'vehicleInventory.colDelta': { pt: 'Variação', en: 'Delta' },
+  'vehicleInventory.colReason': { pt: 'Motivo', en: 'Reason' },
+  'vehicleInventory.colActor': { pt: 'Autor', en: 'Actor' },
+  'vehicleInventory.colReport': { pt: 'Relatório', en: 'Report' },
+  'vehicleInventory.viewReport': { pt: 'Ver relatório', en: 'View report' },
+  'vehicleInventory.unknownActor': { pt: '—', en: '—' },
+  'vehicleInventory.reasonConsumption': { pt: 'Consumo', en: 'Consumption' },
+  'vehicleInventory.reasonManualAdjustment': { pt: 'Ajuste manual', en: 'Manual adjustment' },
+  'vehicleInventory.reasonImport': { pt: 'Importação', en: 'Import' },
+  'vehicleInventory.reasonCorrection': { pt: 'Correção', en: 'Correction' },
 
   // ── Availability & schedules (#180 phase 3 slice 2) — shared words ──
   'common.collapse': { pt: 'Recolher', en: 'Collapse' },
