@@ -62,6 +62,17 @@ env:
 
 # Populated by the pipeline from the `redinfo-staging` ADO variable group via
 # --set-string; left empty here so nothing sensitive is ever committed.
+#
+# Deliberately never add RESEND_API_KEY / VAPID_* to the `redinfo-staging`
+# variable group: those are only rendered from `redinfo-production` (see
+# .ado/templates/deploy-env.yml). Real people's emails live in staging data,
+# and EmailChannelService fails soft with no key configured — a notice still
+# saves and shows in-app, it just isn't emailed until this environment gets
+# its own real (non-production) transport. A shared internal Mailpit-style
+# catch-all is planned for staging email preview; SMTP_HOST/SMTP_PORT will be
+# added to `env.backend` above once that's ready — see
+# packages/backend/src/notifications/channels/email-channel.service.ts for
+# how the transport is chosen.
 secrets: {}
 
 uploads:

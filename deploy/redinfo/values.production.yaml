@@ -59,6 +59,11 @@ env:
 
 # Populated by the pipeline from a `redinfo-production` ADO variable group via
 # --set-string; left empty here so nothing sensitive is ever committed.
+#
+# This is the only environment where RESEND_API_KEY / VAPID_* should be set
+# (see .ado/templates/deploy-env.yml and the matching comment in
+# values.staging.yaml) — real notice emails and push notifications go out
+# from here only.
 secrets: {}
 
 uploads:
