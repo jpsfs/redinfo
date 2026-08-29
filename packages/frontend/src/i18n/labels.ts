@@ -350,6 +350,20 @@ const MESSAGES = {
   'live.photoPending': { pt: '1 fotografia por enviar', en: '1 photograph to send' },
   'live.photosUploading': { pt: 'A enviar fotografias…', en: 'Sending photographs…' },
 
+  // ── Materials (#209) ──
+  'live.materials.entryButton': { pt: 'Registar material', en: 'Log material' },
+  'live.materials.title': { pt: 'Material consumido', en: 'Materials consumed' },
+  'live.materials.close': { pt: 'Fechar', en: 'Close' },
+  'live.materials.noFavourites': {
+    pt: 'Sem favoritos disponíveis offline.',
+    en: 'No favourites available offline.',
+  },
+  'live.materials.scanOffline': {
+    pt: 'Sem rede — só é possível ler os favoritos já guardados.',
+    en: 'No signal — only already-cached favourites can be scanned right now.',
+  },
+  'live.materials.unknownItem': { pt: 'Material não identificado', en: 'Unidentified material' },
+
   // ── Closing ──
   'live.chronology': { pt: 'Cronologia', en: 'Chronology' },
   'live.notMarked': { pt: 'não marcado', en: 'not marked' },

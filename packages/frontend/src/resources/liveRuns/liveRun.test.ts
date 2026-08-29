@@ -13,6 +13,7 @@ import {
   elapsedLabel,
   emptyRun,
   isLiveScreen,
+  materialsOf,
   newRunId,
   nextStamp,
   nextStampForScreen,
@@ -24,9 +25,11 @@ import {
   stampedRun,
   visitedScreens,
   withAssessment,
+  withMaterialTap,
   withNewAssessment,
   withSupportAction,
   withoutAssessment,
+  withoutMaterialTap,
   writeCurrentRunId,
 } from './liveRun';
 
@@ -319,6 +322,35 @@ describe('support actions', () => {
       new Date('2026-08-22T20:31:00.000Z'),
     );
     expect(run.capture?.supportActions).toHaveLength(2);
+  });
+});
+
+describe('materials', () => {
+  it('appends a tap, and bumps the revision', () => {
+    const run = withMaterialTap(emptyRun('run-1', NOW), 'mat-gloves', NOW);
+    expect(materialsOf(run)).toEqual([{ materialItemId: 'mat-gloves', at: NOW.toISOString() }]);
+    expect(run.revision).toBe(1);
+  });
+
+  it('keeps every tap as its own entry — the same item tapped three times is three entries', () => {
+    let run = emptyRun('run-1', NOW);
+    run = withMaterialTap(run, 'mat-gloves', NOW);
+    run = withMaterialTap(run, 'mat-gloves', new Date('2026-08-22T20:20:00.000Z'));
+    run = withMaterialTap(run, 'mat-gloves', new Date('2026-08-22T20:25:00.000Z'));
+
+    expect(materialsOf(run)).toHaveLength(3);
+    expect(run.revision).toBe(3);
+  });
+
+  it('removes one tap by index without disturbing the others', () => {
+    let run = withMaterialTap(emptyRun('run-1', NOW), 'mat-gloves', NOW);
+    run = withMaterialTap(run, 'mat-oxygen', new Date('2026-08-22T20:20:00.000Z'));
+
+    run = withoutMaterialTap(run, 0);
+
+    expect(materialsOf(run)).toEqual([
+      { materialItemId: 'mat-oxygen', at: '2026-08-22T20:20:00.000Z' },
+    ]);
   });
 });
 

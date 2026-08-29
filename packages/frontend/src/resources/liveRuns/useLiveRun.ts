@@ -6,6 +6,7 @@ import {
   LiveRunCapture,
   LiveRunIdentity,
   LiveRunInput,
+  LiveRunMaterialEntry,
   LiveRunState,
   LiveRunSupportActionKind,
   LiveRunWarningCode,
@@ -20,15 +21,18 @@ import {
   backedRun,
   correctedStamp,
   emptyRun,
+  materialsOf,
   nextStamp,
   patchedCapture,
   patchedIdentity,
   patchedRun,
   stampedRun,
   withAssessment,
+  withMaterialTap,
   withNewAssessment,
   withSupportAction,
   withoutAssessment,
+  withoutMaterialTap,
   writeCurrentRunId,
 } from './liveRun';
 import { enqueue, loadRun, saveRun } from './liveRunDb';
@@ -62,6 +66,12 @@ export interface LiveRunHandle {
   /** Undo the last stamp and step the run back one state. The overflow menu's "Voltar". */
   goBack: () => void;
   recordSupportAction: (kind: LiveRunSupportActionKind) => void;
+
+  materials: LiveRunMaterialEntry[];
+  /** A favourite tile or a resolved barcode scan — one entry, appended. */
+  recordMaterialTap: (materialItemId: string) => void;
+  /** Undoes a mis-tap before it reaches the report. */
+  removeMaterialTap: (index: number) => void;
 
   assessments: AssessmentInput[];
   addAssessment: () => number;
@@ -229,6 +239,19 @@ export function useLiveRun(options: UseLiveRunOptions): LiveRunHandle {
     [apply],
   );
 
+  const recordMaterialTap = useCallback(
+    (materialItemId: string) =>
+      // Write-through, same as a support action: a tap is a fact recorded the
+      // instant it happens, not something a debounce can risk losing.
+      apply((current) => withMaterialTap(current, materialItemId, new Date()), true),
+    [apply],
+  );
+
+  const removeMaterialTap = useCallback(
+    (index: number) => apply((current) => withoutMaterialTap(current, index), true),
+    [apply],
+  );
+
   /**
    * Adds a set of observations and says which index it is, so the caller can
    * page to it.
@@ -283,6 +306,9 @@ export function useLiveRun(options: UseLiveRunOptions): LiveRunHandle {
     correct,
     goBack,
     recordSupportAction,
+    materials: materialsOf(run),
+    recordMaterialTap,
+    removeMaterialTap,
     assessments: assessmentsOf(run),
     addAssessment,
     editAssessment,

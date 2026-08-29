@@ -47,6 +47,7 @@ import {
   EnRouteScreen,
   IntakeScreen,
   LiveScreenProps,
+  MaterialsSheet,
   SceneScreen,
   TransportScreen,
 } from './LiveScreens';
@@ -73,6 +74,7 @@ export const LiveRunPage = () => {
   const [reportId, setReportId] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
   const [correcting, setCorrecting] = useState(false);
+  const [materialsOpen, setMaterialsOpen] = useState(false);
   const [locality, setLocality] = useState<Locality | null>(null);
   const [homeLocality, setHomeLocality] = useState<Locality | null>(null);
   const [settings, setSettings] = useState<DelegationSettings | null>(null);
@@ -344,6 +346,8 @@ export const LiveRunPage = () => {
         blockedReason={
           current === 'closing' && form.blockers.length > 0 ? t('live.closeBlocked') : null
         }
+        materialsCount={form.materials.length}
+        onOpenMaterials={() => setMaterialsOpen(true)}
       />
 
       <CorrectTimesDialog
@@ -352,6 +356,8 @@ export const LiveRunPage = () => {
         onClose={() => setCorrecting(false)}
         onCorrect={form.correct}
       />
+
+      <MaterialsSheet open={materialsOpen} onClose={() => setMaterialsOpen(false)} form={form} />
     </Box>
   );
 };
