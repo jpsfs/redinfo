@@ -15,12 +15,19 @@
  * **API responses are never cached.** A crew shown a stale board or a stale run
  * would be worse than a crew shown nothing: the device's own IndexedDB copy is
  * the offline story, and it is authoritative. This caches the *shell* only.
+ *
+ * `?dev=1` on the registration URL (see registerSW.ts) flags a Vite dev server,
+ * where the "shell" is unbundled source that changes on every save — caching it
+ * would just mean editing a file and not seeing the edit. `DEV` below gates only
+ * that caching; `push`/`notificationclick` are unconditional, so Web Push is
+ * still testable from `docker compose up`.
  */
 
 // Bumped on every deploy of the shell. An old cache is deleted on activate, so
 // this is the only thing that has to be remembered when changing what is cached.
 const VERSION = 'v1';
 const SHELL_CACHE = `redinfo-shell-${VERSION}`;
+const DEV = new URLSearchParams(self.location.search).has('dev');
 
 /**
  * What the shell needs to render at all.
@@ -45,12 +52,14 @@ const SHELL = [
 self.addEventListener('install', (event) => {
   event.waitUntil(
     (async () => {
-      const cache = await caches.open(SHELL_CACHE);
-      // Individually, and forgivingly: one asset renamed must not leave the whole
-      // shell uncached, which is what `cache.addAll` would do.
-      await Promise.all(
-        SHELL.map((url) => cache.add(new Request(url, { cache: 'reload' })).catch(() => undefined)),
-      );
+      if (!DEV) {
+        const cache = await caches.open(SHELL_CACHE);
+        // Individually, and forgivingly: one asset renamed must not leave the whole
+        // shell uncached, which is what `cache.addAll` would do.
+        await Promise.all(
+          SHELL.map((url) => cache.add(new Request(url, { cache: 'reload' })).catch(() => undefined)),
+        );
+      }
       // Live immediately. A crew who has just installed the app and walked out of
       // coverage cannot wait for every tab to close first.
       await self.skipWaiting();
@@ -78,6 +87,11 @@ self.addEventListener('activate', (event) => {
  * font we failed to self-host) is none of our business.
  */
 self.addEventListener('fetch', (event) => {
+  // Dev: unbundled source under Vite's dev server, changing on every save.
+  // Caching it (or serving a cached offline shell for it) is the one thing
+  // this worker must not do here — let every request go straight to network.
+  if (DEV) return;
+
   const { request } = event;
   if (request.method !== 'GET') return;
 

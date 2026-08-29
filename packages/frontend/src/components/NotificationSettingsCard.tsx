@@ -45,10 +45,17 @@ export const NotificationSettingsCard = () => {
   useEffect(() => {
     let cancelled = false;
     async function checkSubscription() {
+      // Support is a capability of the browser, not of whatever has happened
+      // to register so far — `getRegistration()` can legitimately still be
+      // in flight (registerSW.ts waits for `load`) the first time this runs,
+      // and treating that race as "unsupported" stuck the message permanently
+      // even on browsers that fully support push.
       if (!('serviceWorker' in navigator) || !('PushManager' in window)) return;
-      const registration = await navigator.serviceWorker.getRegistration().catch(() => undefined);
+      if (!cancelled) setPushSupported(true);
+      // Unlike `getRegistration()`, `ready` waits for registration to finish
+      // rather than snapshotting whatever's registered right now.
+      const registration = await navigator.serviceWorker.ready.catch(() => undefined);
       if (!registration || cancelled) return;
-      setPushSupported(true);
       const subscription = await registration.pushManager.getSubscription().catch(() => null);
       if (!cancelled) setPushSubscribed(Boolean(subscription));
     }

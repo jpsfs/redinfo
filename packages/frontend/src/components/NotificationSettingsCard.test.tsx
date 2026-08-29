@@ -74,4 +74,29 @@ describe('NotificationSettingsCard', () => {
 
     expect(await screen.findByText('This browser does not support push notifications.')).toBeInTheDocument();
   });
+
+  // Regression: support must come from capability, not from a registration
+  // that already happens to exist. `ready` resolving *after* mount (the
+  // normal case — registerSW.ts waits for `load`) used to leave the card
+  // stuck on "unsupported" forever.
+  it('shows the subscribe button once a still-pending registration settles', async () => {
+    mockApiFetch.mockResolvedValue([]);
+    let resolveReady: (registration: unknown) => void;
+    const ready = new Promise((resolve) => {
+      resolveReady = resolve;
+    });
+    vi.stubGlobal('PushManager', class {});
+    vi.stubGlobal('navigator', {
+      ...navigator,
+      serviceWorker: { ready },
+    });
+
+    renderCard();
+    expect(screen.queryByRole('button', { name: 'Enable on this device' })).not.toBeInTheDocument();
+
+    resolveReady!({ pushManager: { getSubscription: () => Promise.resolve(null) } });
+
+    expect(await screen.findByRole('button', { name: 'Enable on this device' })).toBeInTheDocument();
+    vi.unstubAllGlobals();
+  });
 });
