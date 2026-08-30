@@ -41,6 +41,30 @@ steps:
         # available once explicitly mapped below as process env vars. Writing them to
         # a values file (rather than `--set` on the remote command line) also keeps
         # them out of `ps aux`/shell history on the deploy host.
+
+        # Optional-per-environment vars (RESEND_API_KEY, NOTIFICATION_EMAIL_FROM,
+        # VAPID_*): when a variable doesn't exist ANYWHERE in scope — root pipeline
+        # variables included — Azure Pipelines does not expand its $(VAR) macro to
+        # an empty string; it leaves the literal text "$(VAR)" in the env: mapping
+        # below, which lands here as a non-empty value. Every app-side "is this
+        # configured" check is a truthiness check (see WebPushChannelService,
+        # EmailChannelService), so that literal text reads as configured and
+        # crashes/misbehaves on first use. Blank out anything that still looks
+        # like an unresolved macro before it ever reaches secrets.yaml.
+        unmacro() {
+          local val="$1"
+          if [[ "${val}" =~ ^\$\([A-Za-z0-9_.]+\)$ ]]; then
+            echo ""
+          else
+            echo "${val}"
+          fi
+        }
+        RESEND_API_KEY="$(unmacro "${RESEND_API_KEY:-}")"
+        NOTIFICATION_EMAIL_FROM="$(unmacro "${NOTIFICATION_EMAIL_FROM:-}")"
+        VAPID_PUBLIC_KEY="$(unmacro "${VAPID_PUBLIC_KEY:-}")"
+        VAPID_PRIVATE_KEY="$(unmacro "${VAPID_PRIVATE_KEY:-}")"
+        VAPID_SUBJECT="$(unmacro "${VAPID_SUBJECT:-}")"
+
         cat > "$(Build.ArtifactStagingDirectory)/secrets.yaml" <<EOF
         secrets:
           JWT_SECRET: "${JWT_SECRET}"
