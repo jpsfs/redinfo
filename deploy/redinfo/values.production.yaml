@@ -11,6 +11,10 @@ image:
     repository: jpsfs/redinfo-frontend
     tag: "production"
     pullPolicy: IfNotPresent
+  legacyMigration:
+    repository: jpsfs/redinfo-legacy-migration
+    tag: "production"
+    pullPolicy: IfNotPresent
 
 service:
   backend:
@@ -58,7 +62,9 @@ env:
   frontend: {}
 
 # Populated by the pipeline from a `redinfo-production` ADO variable group via
-# --set-string; left empty here so nothing sensitive is ever committed.
+# --set-string; left empty here so nothing sensitive is ever committed. Now
+# includes LEGACY_PROD_MYSQL_HOST/PORT/USER/PASSWORD/DATABASE — see
+# values.yaml's own comment on `secrets` and `legacyMigration` below.
 secrets: {}
 
 uploads:
@@ -70,6 +76,14 @@ uploads:
 # or that account is created out-of-band before go-live.
 seed:
   enabled: false
+
+# Kept in sync with legacy production on every deploy for as long as both
+# systems are live during this bridge period — same as staging (see
+# values.staging.yaml, values.yaml, migration/README.md). This only takes
+# effect once job-seed above (or an out-of-band equivalent) has actually
+# seeded geography + hospitals — the loader's preflight hard-requires that.
+legacyMigration:
+  enabled: true
 
 postgresql:
   enabled: true

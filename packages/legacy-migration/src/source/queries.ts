@@ -9,6 +9,20 @@
  * `LegacySource` is what lets `legacy-migration.integration.spec.ts` inject a
  * synthetic in-memory fixture instead of standing up a MySQL container —
  * nothing downstream of this interface can tell the difference.
+ *
+ * **Why not a live connection to legacy production.** Every query above runs
+ * however many times a loader needs, across every table, for as long as a
+ * full run takes — legacy production is still the system the delegation's
+ * crews depend on to answer calls during this bridge period, and it has no
+ * spare capacity to budget for that. A single `mysqldump --single-transaction`
+ * (one read, one point-in-time snapshot, transactionally consistent even
+ * against a live writer) is the only thing this loader ever asks of legacy
+ * production directly — everything above then runs against a throwaway local
+ * copy of that dump instead. Locally that's `docker-compose.migration.yml`'s
+ * `mysql-legacy`, loaded from an operator-supplied dump; in the automated
+ * staging/production Job it's `job-entrypoint.sh`'s own throwaway MariaDB,
+ * loaded by piping `mariadb-dump` straight into it. Either way, `LEGACY_MYSQL_*`
+ * (what `mysql-client.ts` reads) never points at legacy production itself.
  */
 import { Pool } from 'mysql2/promise';
 import {

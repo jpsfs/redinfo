@@ -53,6 +53,11 @@ steps:
           MICROSOFT_TENANT_ID: "${MICROSOFT_TENANT_ID:-}"
           MICROSOFT_CALLBACK_URL: "${MICROSOFT_CALLBACK_URL:-}"
           GOOGLE_MAPS_API_KEY: "${GOOGLE_MAPS_API_KEY:-}"
+          LEGACY_PROD_MYSQL_HOST: "${LEGACY_PROD_MYSQL_HOST:-}"
+          LEGACY_PROD_MYSQL_PORT: "${LEGACY_PROD_MYSQL_PORT:-}"
+          LEGACY_PROD_MYSQL_USER: "${LEGACY_PROD_MYSQL_USER:-}"
+          LEGACY_PROD_MYSQL_PASSWORD: "${LEGACY_PROD_MYSQL_PASSWORD:-}"
+          LEGACY_PROD_MYSQL_DATABASE: "${LEGACY_PROD_MYSQL_DATABASE:-}"
         postgresql:
           auth:
             password: "${POSTGRES_PASSWORD}"
@@ -70,6 +75,16 @@ steps:
       MICROSOFT_CALLBACK_URL: $(MICROSOFT_CALLBACK_URL)
       GOOGLE_MAPS_API_KEY: $(GOOGLE_MAPS_API_KEY)
       POSTGRES_PASSWORD: $(POSTGRES_PASSWORD)
+      # Legacy production's own connection details — read only by
+      # job-legacy-migration.yaml's Job, while legacyMigration.enabled is true
+      # for this environment. Add these to the redinfo-<envName> variable
+      # group the same way as the vars above; unset is fine (rendered empty)
+      # for any environment with legacyMigration.enabled: false.
+      LEGACY_PROD_MYSQL_HOST: $(LEGACY_PROD_MYSQL_HOST)
+      LEGACY_PROD_MYSQL_PORT: $(LEGACY_PROD_MYSQL_PORT)
+      LEGACY_PROD_MYSQL_USER: $(LEGACY_PROD_MYSQL_USER)
+      LEGACY_PROD_MYSQL_PASSWORD: $(LEGACY_PROD_MYSQL_PASSWORD)
+      LEGACY_PROD_MYSQL_DATABASE: $(LEGACY_PROD_MYSQL_DATABASE)
 
   - task: CopyFilesOverSSH@0
     displayName: "Copy packaged chart + secrets to remote host (${{ parameters.envName }})"
@@ -98,7 +113,7 @@ steps:
         VALUES_FILE="/tmp/redinfo/values.${ENV_NAME}.yaml"
         # Tag by immutable Build.BuildId rather than the moving env-name tag used
         # previously — guarantees a real rollout without relying on pullPolicy=Always.
-        IMAGE_OVERRIDES="--set-string image.backend.repository=jpsfs/redinfo-backend,image.backend.tag=${{ parameters.imageTag }},image.backend.pullPolicy=IfNotPresent,image.frontend.repository=jpsfs/redinfo-frontend,image.frontend.tag=${{ parameters.imageTag }},image.frontend.pullPolicy=IfNotPresent"
+        IMAGE_OVERRIDES="--set-string image.backend.repository=jpsfs/redinfo-backend,image.backend.tag=${{ parameters.imageTag }},image.backend.pullPolicy=IfNotPresent,image.frontend.repository=jpsfs/redinfo-frontend,image.frontend.tag=${{ parameters.imageTag }},image.frontend.pullPolicy=IfNotPresent,image.legacyMigration.repository=jpsfs/redinfo-legacy-migration,image.legacyMigration.tag=${{ parameters.imageTag }},image.legacyMigration.pullPolicy=IfNotPresent"
 
         mkdir -p /tmp/redinfo
         tar -xzf /tmp/redinfo-chart.tgz -C /tmp
@@ -119,8 +134,16 @@ steps:
           exit 2
         fi
 
+        # --timeout covers post-install/post-upgrade hooks too (job-seed, and
+        # — where legacyMigration.enabled — job-legacy-migration: a fresh
+        # mysqldump from legacy production + reload + full loader run, in one
+        # Job). 10m was comfortable for job-seed alone; bumped for the second
+        # hook's sake. --atomic means a hook running merely slowly, not
+        # actually failing, still rolls the whole release back at this
+        # deadline — raise it further if legacy production's real dataset
+        # ever makes that a false alarm.
         "${HELM_BIN}" upgrade --install redinfo /tmp/redinfo -n "${ENV_NAME}" --create-namespace \
           --dependency-update \
           -f "${VALUES_FILE}" -f /tmp/secrets.yaml \
           ${IMAGE_OVERRIDES} \
-          --history-max 5 --atomic --timeout 10m --wait
+          --history-max 5 --atomic --timeout 20m --wait

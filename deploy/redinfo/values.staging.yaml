@@ -13,6 +13,10 @@ image:
     repository: jpsfs/redinfo-frontend
     tag: "staging"
     pullPolicy: IfNotPresent
+  legacyMigration:
+    repository: jpsfs/redinfo-legacy-migration
+    tag: "staging"
+    pullPolicy: IfNotPresent
 
 service:
   backend:
@@ -61,7 +65,9 @@ env:
   frontend: {}
 
 # Populated by the pipeline from the `redinfo-staging` ADO variable group via
-# --set-string; left empty here so nothing sensitive is ever committed.
+# --set-string; left empty here so nothing sensitive is ever committed. Now
+# includes LEGACY_PROD_MYSQL_HOST/PORT/USER/PASSWORD/DATABASE — see
+# values.yaml's own comment on `secrets` and `legacyMigration` below.
 secrets: {}
 
 uploads:
@@ -70,6 +76,12 @@ uploads:
   mountPath: /app/uploads
 
 seed:
+  enabled: true
+
+# Staging is the rehearsal environment for this bridge period: kept in sync
+# with legacy production on every deploy for as long as both systems are
+# live. See values.yaml's own comment and migration/README.md.
+legacyMigration:
   enabled: true
 
 # Enable a bundled Postgres instance for staging, with real persistence.

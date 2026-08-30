@@ -9,7 +9,19 @@
 # no separate compiled build. This package's whole "runtime" is a one-off
 # operator script, never a long-lived process, so there is no prod-image
 # tradeoff (smaller image, no ts-node) worth the extra build path.
-FROM node:22-bookworm-slim
+#
+# Two targets:
+# - `base` (the default — `docker build` with no --target): what
+#   docker-compose.migration.yml's `migration` service runs. Talks to a
+#   MySQL-protocol source given by LEGACY_MYSQL_* — locally, the sibling
+#   `mysql-legacy` compose service, already loaded from an operator-supplied
+#   dump.
+# - `job`: what deploy/redinfo/templates/job-legacy-migration.yaml runs, built
+#   with `--target job`. Bundles its own throwaway MariaDB (see
+#   job-entrypoint.sh) so a single container can fetch a fresh dump straight
+#   from legacy production and migrate it into staging/production on every
+#   deploy, with no separate compose-managed MySQL service to stand up.
+FROM node:22-bookworm-slim AS base
 
 RUN corepack enable && corepack prepare pnpm@10.32.1 --activate
 
@@ -54,3 +66,18 @@ WORKDIR /app/packages/legacy-migration
 RUN pnpm prisma:generate
 
 CMD ["pnpm", "migrate:legacy"]
+
+# ─── job stage — bundled throwaway MariaDB, for the unattended deploy Job ───
+FROM base AS job
+
+# `mariadb-server` for the throwaway instance job-entrypoint.sh starts and
+# throws away every run; it pulls in `mariadb-client` (mariadb-dump, mariadb)
+# transitively, which is also what reads the fresh copy out of legacy
+# production in the first place.
+RUN apt-get update && apt-get install -y --no-install-recommends mariadb-server && rm -rf /var/lib/apt/lists/*
+
+COPY packages/legacy-migration/job-entrypoint.sh /job-entrypoint.sh
+RUN chmod +x /job-entrypoint.sh
+
+ENTRYPOINT ["/job-entrypoint.sh"]
+CMD ["pnpm", "migrate:legacy", "--apply"]

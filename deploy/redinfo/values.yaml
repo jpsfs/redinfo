@@ -10,6 +10,13 @@ image:
     repository: jpsfs/redinfo-frontend
     tag: "dev"
     pullPolicy: IfNotPresent
+  # Built from packages/legacy-migration/Dockerfile's `job` target — see
+  # templates/job-legacy-migration.yaml. Irrelevant while legacyMigration.enabled
+  # is false (the default).
+  legacyMigration:
+    repository: jpsfs/redinfo-legacy-migration
+    tag: "dev"
+    pullPolicy: IfNotPresent
 
 service:
   backend:
@@ -41,6 +48,11 @@ env:
 # templates/secret-app.yaml), keyed to match .env.example. Leave a key unset to
 # omit it entirely rather than shipping an empty value. Populate via
 # `--set-string secrets.<KEY>=...` from the pipeline — never commit real values here.
+#
+# LEGACY_PROD_MYSQL_HOST/PORT/USER/PASSWORD/DATABASE are only read while
+# legacyMigration.enabled is true — legacy production's own connection details,
+# never the throwaway local copy job-legacy-migration.yaml's Job creates for
+# itself (see secret-app.yaml's own comment on this).
 secrets: {}
 
 # Set to override DATABASE_URL outright (external DB). Empty composes it from the
@@ -66,6 +78,19 @@ probes:
 # (admin user + PT geography reference data). See templates/job-seed.yaml.
 seed:
   enabled: false
+
+# Post-install/post-upgrade Helm hook (after job-seed) that fetches a fresh
+# copy from legacy production and migrates it into this environment on every
+# deploy — see templates/job-legacy-migration.yaml and migration/README.md.
+# Meant to be true for as long as legacy production is still the delegation's
+# system of record; flip to false the day it's decommissioned and the whole
+# packages/legacy-migration/ package can go with it.
+legacyMigration:
+  enabled: false
+  # Generous: a fresh mysqldump + reload + full loader run, in one Job.
+  activeDeadlineSeconds: 1800
+  timezone: "Europe/Lisbon"
+  importActorEmail: "import@redinfo.invalid"
 
 autoscaling: {}
 nodeSelector: {}

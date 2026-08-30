@@ -168,12 +168,17 @@ export const APOIO_INEM_TO_UNIT_TYPE: Record<string, InemUnitMapping | typeof NO
   },
   vfam: {
     unitType: InemSupportUnitType.VMER,
-    hospitalName: 'Centro Hospitalar do Médio Ave',
+    // Matches prisma/seed-geography.ts's fixture name exactly — that seed is
+    // the authoritative "what hospitals actually exist" source this name is
+    // looked up against (preflight's assertMappedHospitalsResolve), not a
+    // second, independently-typed name for the same real hospital.
+    hospitalName: 'Centro Hospitalar do Médio Ave — Unidade de Vila Nova de Famalicão',
     hospitalMunicipality: 'Vila Nova de Famalicão',
   },
   vgui: {
     unitType: InemSupportUnitType.VMER,
-    hospitalName: 'Hospital da Senhora da Oliveira',
+    // Same as vfam above — matches prisma/seed-geography.ts's fixture name.
+    hospitalName: 'Hospital da Senhora da Oliveira, Guimarães',
     hospitalMunicipality: 'Guimarães',
   },
   vvian: {

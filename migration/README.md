@@ -30,6 +30,14 @@ row context (a legacy freguesia name, an email) is still personal data, and
 `migration/out/` should be deleted once a rehearsal is reviewed, not kept
 around "just in case".
 
+The automated staging/production Job (below) never writes a dump to disk at
+all — `job-entrypoint.sh` pipes `mariadb-dump` straight into its own
+throwaway MariaDB's stdin, and that whole container is destroyed at the end
+of every run. Its `report.md`/reject CSVs live only in that Job pod's own
+transient filesystem and its logs — nobody has wired those anywhere more
+persistent yet, so a coordinator who needs to see them today has to read the
+Job pod's logs before Kubernetes garbage-collects it.
+
 ---
 
 ## Status
@@ -42,37 +50,61 @@ see below.
 
 ## How this reaches staging and production
 
-**Deliberately not a Kubernetes Job, and not a dependency of the app's own
-deploy at all.** `@redinfo/legacy-migration` is its own workspace package,
-built from its own `Dockerfile` (`packages/legacy-migration/Dockerfile`) —
-it shares no base image, no `node_modules`, and no source with
+**Not a dependency of the app's own image, even though a Kubernetes Job now
+does run it automatically.** `@redinfo/legacy-migration` is its own workspace
+package, built from its own `Dockerfile` (`packages/legacy-migration/Dockerfile`)
+— it shares no base image, no `node_modules`, and no source with
 `packages/backend/`. Nothing under `packages/backend/package.json` changes
 because this package exists (no `mysql2`, no migration scripts), and nothing
 under `packages/legacy-migration/` is reachable from the running app. The day
-the migration is over, deleting this whole package (and this file) leaves the
-app exactly as if neither had ever existed — that is the point.
+the migration is over, deleting this whole package (and this file, and
+`deploy/redinfo/templates/job-legacy-migration.yaml`, and the
+`legacyMigration.*` values below it) leaves the app exactly as if none of it
+had ever existed — that is the point.
 
-Run it one of two ways, against whichever target `DATABASE_URL` /
-`LEGACY_MYSQL_*` point at (a local rehearsal, staging, or — once — production):
+Three ways to run it, against whichever target `DATABASE_URL` / `LEGACY_MYSQL_*`
+point at:
 
-1. **Directly from an operator's machine**, wherever that machine already has
+1. **Automatically, on every staging (and — once it exists — production)
+   deploy.** `deploy/redinfo/templates/job-legacy-migration.yaml`, a
+   post-install/post-upgrade Helm hook gated by `legacyMigration.enabled`
+   (true in `values.staging.yaml` and `values.production.yaml`; false by
+   default). Built with `--target job` from this package's `Dockerfile` — a
+   variant that bundles its own throwaway MariaDB — its container fetches a
+   fresh `mariadb-dump` straight from legacy production
+   (`LEGACY_PROD_MYSQL_*`, from the `redinfo-<env>` ADO variable group — see
+   `secret-app.yaml`), loads it locally, and runs `migrate:legacy --apply`
+   against that environment's own Postgres with **no human review step** —
+   see `packages/legacy-migration/job-entrypoint.sh`. This is "legacy always
+   wins" (`upsert-engine.ts`) on a schedule: an app-side edit to an
+   already-imported row does not survive the next deploy, by design, for as
+   long as this stays enabled. Runs *after* `job-seed` (hook-weight `1` vs.
+   `0`) because the loader's preflight hard-requires seeded geography +
+   hospitals first.
+2. **Directly from an operator's machine**, wherever that machine already has
    network access to the target Postgres and to a legacy MySQL source (a
-   `mysqldump` import or, for a one-off, a direct read — see "why not a live
-   connection" in `packages/legacy-migration/src/main.ts`'s module doc):
-   `pnpm --filter @redinfo/legacy-migration migrate:legacy` (needs Node 22 +
-   pnpm locally; no Docker required).
-2. **Via the standalone image**: `docker build -f
-   packages/legacy-migration/Dockerfile -t legacy-migration .`, then `docker
-   run --rm -e DATABASE_URL=... -e LEGACY_MYSQL_HOST=... legacy-migration`.
-   `docker-compose.migration.yml`'s `migration` service wraps exactly this,
-   pointed at the local throwaway `mysql-legacy` + dev Postgres by default —
-   see the runbook below for the local-rehearsal path, and override the same
-   environment variables to point the same image anywhere else.
+   `mysqldump` import, or — see `source/queries.ts`'s own "why not a live
+   connection" doc comment for why this is the only supported shape — a
+   throwaway local copy loaded from one): `pnpm --filter @redinfo/legacy-migration
+   migrate:legacy` (needs Node 22 + pnpm locally; no Docker required).
+3. **Via the standalone `base` image, for a one-off manual rehearsal**:
+   `docker build -f packages/legacy-migration/Dockerfile -t legacy-migration .`,
+   then `docker run --rm -e DATABASE_URL=... -e LEGACY_MYSQL_HOST=...
+   legacy-migration`. `docker-compose.migration.yml`'s `migration` service
+   wraps exactly this, pointed at the local throwaway `mysql-legacy` + dev
+   Postgres by default — see the runbook below.
 
-Either way runs `ts-node src/main.ts` directly — there is no separate compiled
+All three run `ts-node src/main.ts` directly — there is no separate compiled
 build for this package (`build:migration`/`dist-migration` no longer exist).
 This is a one-off operator script, never a long-lived process, so a prod-image
 tradeoff (smaller image, no `ts-node`) was never worth a second build path.
+
+**New ADO variable group entries needed before path 1 works**: add
+`LEGACY_PROD_MYSQL_HOST`, `_PORT`, `_USER`, `_PASSWORD`, `_DATABASE` to both
+`redinfo-staging` and `redinfo-production` (same place `JWT_SECRET` etc.
+already live) — legacy production's own connection details, distinct from
+`LEGACY_MYSQL_*` (which inside that Job is the throwaway local copy
+`job-entrypoint.sh` creates for itself, never legacy production).
 
 ## The three-`-f` trap
 
@@ -97,7 +129,7 @@ service at all.
 
 ```bash
 # 1. Fresh dump from legacy production. Never a live connection — see
-#    "why not a live connection" in the loader's own module docs.
+#    "why not a live connection" in source/queries.ts's own module doc.
 mysqldump --single-transaction --routines --no-tablespaces \
   -h <legacy-host> -u <legacy-user> -p u127939263_cvp \
   > migration/dump/dump.sql                # gitignored, stays local
@@ -154,6 +186,12 @@ column to find the right `Locality.id` quickly (Portugal's 2013 freguesia
 reorganisation is the usual cause of a miss, not a typo).
 
 ## Go-live sequence
+
+This is the **final, one-time cutover** — not the automated recurring sync
+described above under "How this reaches staging and production", which keeps
+running unattended on every deploy throughout the bridge period leading up to
+this. This sequence is what actually turns legacy production off; everything
+before it is rehearsal, however many times it has run automatically by then.
 
 1. Final `mysqldump` from legacy production, as close to the cutover moment
    as practical.
