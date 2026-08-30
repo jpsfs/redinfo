@@ -13,6 +13,23 @@ variables:
   # Docker Hub service connection ID or name
   DOCKER_SERVICE_CONNECTION: "74055803-059c-40b0-bb65-0318f1294758" # Docker Hub Registry
 
+  # Root-level fallback for variables that are deliberately absent from some
+  # environments' variable groups (redinfo-staging never defines these — see
+  # the comment above `secrets:` in values.staging.yaml). Azure Pipelines does
+  # NOT expand $(VAR) to an empty string when a variable doesn't exist
+  # anywhere in scope — it leaves the literal text "$(VAR)" in place, which is
+  # a non-empty string. deploy-env.yml's env: mapping passes that straight
+  # through as a real value, so app code checking "is this configured" via a
+  # truthiness check (e.g. WebPushChannelService) sees garbage and thinks it
+  # IS configured, then crashes trying to use it. A stage/group-level variable
+  # of the same name (redinfo-production has all five) takes precedence over
+  # this root default, so production is unaffected.
+  RESEND_API_KEY: ""
+  NOTIFICATION_EMAIL_FROM: ""
+  VAPID_PUBLIC_KEY: ""
+  VAPID_PRIVATE_KEY: ""
+  VAPID_SUBJECT: ""
+
 stages:
   - stage: BuildAndPush
     displayName: Build and push images ($(Build.SourceBranchName))
