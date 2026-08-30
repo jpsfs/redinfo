@@ -1,4 +1,11 @@
-import { LocalityCandidate, nearestCandidates, resolveLocalityCandidates } from './locality';
+import {
+  LocalityCandidate,
+  buildMergedFreguesiaIndex,
+  nearestCandidates,
+  resolveLocalityCandidates,
+  resolveMergedFreguesia,
+  unionFreguesiaMembers,
+} from './locality';
 
 const candidate = (id: string, name: string, municipalityName: string): LocalityCandidate => ({
   id,
@@ -70,5 +77,82 @@ describe('nearestCandidates', () => {
   it('excludes anything with zero token overlap', () => {
     const list = [candidate('1', 'Barcelos', 'Barcelos')];
     expect(nearestCandidates('zzz-nothing-like-it', list)).toEqual([]);
+  });
+});
+
+describe('unionFreguesiaMembers', () => {
+  it('returns null for a name that is not compound at all', () => {
+    expect(unionFreguesiaMembers('Roriz')).toBeNull();
+  });
+
+  it('splits a "União das Freguesias de A e B" name into its members', () => {
+    expect(unionFreguesiaMembers('União das Freguesias de Durrães e Tregosa')).toEqual(['Durrães', 'Tregosa']);
+  });
+
+  it('splits a bare "A e B" compound name with no prefix', () => {
+    expect(unionFreguesiaMembers('Navió e Vitorino dos Piães')).toEqual(['Navió', 'Vitorino dos Piães']);
+  });
+
+  it('splits a three-way ", " + " e " list', () => {
+    expect(unionFreguesiaMembers('Ardegão, Freixo e Mato')).toEqual(['Ardegão', 'Freixo', 'Mato']);
+  });
+
+  it('expands a shared-head parenthetical qualifier into both members, keeping the whole clause too', () => {
+    const members = unionFreguesiaMembers('União das Freguesias de Alvito (São Pedro e São Martinho) e Couto');
+    expect(members).toEqual(['Alvito (São Pedro e São Martinho)', 'Couto', 'Alvito São Pedro', 'Alvito São Martinho']);
+  });
+
+  it('does not expand a parenthetical qualifier with no "e" inside it', () => {
+    expect(unionFreguesiaMembers('Campo e Tamel (São Pedro Fins)')).toEqual(['Campo', 'Tamel (São Pedro Fins)']);
+  });
+});
+
+describe('resolveMergedFreguesia', () => {
+  const HOME = 'Barcelos';
+  const NEIGHBOURS = ['Viana do Castelo', 'Ponte de Lima'];
+
+  it('resolves a merged freguesia that is unique across the whole dataset', () => {
+    const union = candidate('1', 'União das Freguesias de Durrães e Tregosa', HOME);
+    const index = buildMergedFreguesiaIndex([union]);
+    const result = resolveMergedFreguesia('TREGOSA', [], index, HOME, NEIGHBOURS);
+    expect(result).toEqual({ candidate: union, tiebreak: 'unique' });
+  });
+
+  it('breaks a tie toward the home municipality when the merged match is otherwise ambiguous', () => {
+    const barcelosCampo = candidate('1', 'União das Freguesias de Campo e Tamel (São Pedro Fins)', HOME);
+    const valongoCampo = candidate('2', 'Campo', 'Valongo');
+    const index = buildMergedFreguesiaIndex([barcelosCampo]);
+    // `knownCandidates` stands in for what tier 1 already found ambiguous (an exact "Campo" elsewhere).
+    const result = resolveMergedFreguesia('CAMPO', [valongoCampo], index, HOME, NEIGHBOURS);
+    expect(result).toEqual({ candidate: barcelosCampo, tiebreak: 'home-municipality' });
+  });
+
+  it('falls back to a confirmed neighbouring municipality when the home municipality is not a candidate', () => {
+    const viana = candidate('1', 'Carvoeiro', 'Viana do Castelo');
+    const other = candidate('2', 'Carvoeiro', 'Lagoa');
+    const index = buildMergedFreguesiaIndex([]);
+    const result = resolveMergedFreguesia('Carvoeiro', [viana, other], index, HOME, NEIGHBOURS);
+    expect(result).toEqual({ candidate: viana, tiebreak: 'neighbouring-municipality' });
+  });
+
+  it('prefers the home municipality over a neighbour when both are candidates', () => {
+    const barcelos = candidate('1', 'Arcozelo', HOME);
+    const ponteDeLima = candidate('2', 'Arcozelo', 'Ponte de Lima');
+    const index = buildMergedFreguesiaIndex([]);
+    const result = resolveMergedFreguesia('ARCOZELO', [barcelos, ponteDeLima], index, HOME, NEIGHBOURS);
+    expect(result).toEqual({ candidate: barcelos, tiebreak: 'home-municipality' });
+  });
+
+  it('stays unresolved — never guesses — when two different neighbouring municipalities both remain candidates', () => {
+    const ponteDeLima = candidate('1', 'Vila Verde', 'Ponte de Lima');
+    const viana = candidate('2', 'Vila Verde', 'Viana do Castelo');
+    const index = buildMergedFreguesiaIndex([]);
+    const result = resolveMergedFreguesia('VILA VERDE', [ponteDeLima, viana], index, HOME, NEIGHBOURS);
+    expect(result).toBeNull();
+  });
+
+  it('returns null when there is nothing to go on at all', () => {
+    const index = buildMergedFreguesiaIndex([]);
+    expect(resolveMergedFreguesia('nothing-like-it', [], index, HOME, NEIGHBOURS)).toBeNull();
   });
 });

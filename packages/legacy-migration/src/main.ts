@@ -43,6 +43,7 @@ import { loadVolunteerHours } from './loaders/13-volunteer-hours.loader';
 import { loadProfileAudits } from './loaders/14-profile-audits.loader';
 import { loadRenumbering } from './loaders/15-renumber.loader';
 import { writeReport } from './report/report-writer';
+import { writeUnresolvedLocalitiesCsv } from './report/unresolved-localities-writer';
 import { DryRunRollback } from './upsert-engine';
 
 // Anchored on __dirname, never process.cwd() — this runs under `ts-node`
@@ -74,11 +75,9 @@ export interface TrackAReport {
 }
 
 /** The Track A loader pipeline — every loader that needs no further sign-off. */
-async function runTrackA(ctx: RunContext): Promise<TrackAReport> {
+async function runTrackA(ctx: RunContext, localityResolver: LocalityResolver): Promise<TrackAReport> {
   ctx.importActorId = await loadSystemActor(ctx);
 
-  const overrides = loadLocalityOverrides(OVERRIDES_CSV);
-  const localityResolver = new LocalityResolver(ctx.prisma, overrides);
   const hospitalResolver = new HospitalResolver(ctx, ctx.options.createHospitals);
   const userResolver = new UserResolver(ctx);
   const actorResolver = new ActorResolver(ctx, ctx.importActorId);
@@ -156,6 +155,10 @@ async function main(): Promise<void> {
     }
 
     const ctx = createRunContext({ prisma, source, options });
+    // Created once, outside `runTrackA`, so its `unresolved` / `mergedFreguesiaMatches`
+    // accumulate across every chunk and survive the dry-run transaction's rollback —
+    // both are process-memory bookkeeping, never DB writes.
+    const localityResolver = new LocalityResolver(prisma, overrides);
 
     // Filled in by whichever branch below actually runs `runTrackA` — the
     // dry-run branch can't rely on `$transaction`'s own resolved value for
@@ -174,14 +177,14 @@ async function main(): Promise<void> {
     if (options.apply) {
       console.log(`Overwrite count will be printed before the first commit. Mode: APPLY (run ${options.runId}).`);
       await countdownBeforeCommit(5);
-      trackAReport = await runTrackA(ctx);
+      trackAReport = await runTrackA(ctx, localityResolver);
     } else {
       console.log(`Mode: DRY RUN (run ${options.runId}) — nothing will be written.`);
       await prisma
         .$transaction(
           async (tx) => {
             ctx.sharedTx = tx;
-            trackAReport = await runTrackA(ctx);
+            trackAReport = await runTrackA(ctx, localityResolver);
             throw new DryRunRollback();
           },
           { timeout: 300_000, maxWait: 10_000 },
@@ -192,6 +195,8 @@ async function main(): Promise<void> {
     }
 
     await ctx.rejects.close();
+    const unresolvedLocalities = await localityResolver.unresolvedReport();
+    writeUnresolvedLocalitiesCsv(options.outDir, unresolvedLocalities);
     writeReport(options.outDir, {
       runId: options.runId,
       mode: options.apply ? 'apply' : 'dry-run',
@@ -215,6 +220,8 @@ async function main(): Promise<void> {
       vehiclesWithSentinelDates: trackAReport.vehiclesWithSentinelDates,
       nonConformingPlates: trackAReport.nonConformingPlates,
       assumedSubmittedAt: trackAReport.assumedSubmittedAt,
+      mergedFreguesiaMatches: [...localityResolver.mergedFreguesiaMatches.values()].sort((a, b) => b.occurrences - a.occurrences),
+      unresolvedLocalityCount: unresolvedLocalities.length,
       truncatedNarratives: [],
       unmappedEnumCodes: [],
       droppedColumns: [

@@ -522,3 +522,27 @@ export const DEFAULT_LEGACY_TIMEZONE = 'Europe/Lisbon';
 
 /** The category every synthesised `AvailabilityWindow` is created with. */
 export const SYNTHETIC_WINDOW_CATEGORY = AvailabilityWindowCategory.EMERGENCY;
+
+/**
+ * The delegation's own municipality (same fact `DEFAULT_LEGACY_TIMEZONE`
+ * documents above) — the strongest tiebreak `transform/locality.ts`'s
+ * merged-freguesia matching has when a legacy `freguesia` name is ambiguous
+ * across municipalities (e.g. "Roriz" exists in both Barcelos and Santo
+ * Tirso; every `saidas` row naming it is a Barcelos delegation's own run).
+ */
+export const LEGACY_DELEGATION_MUNICIPALITY = 'Barcelos';
+
+/**
+ * Municipalities `saidas.freguesia` is confirmed (by the real dump) to also
+ * reach — a Barcelos-based crew responds beyond its own municipality's
+ * borders. Used only as a second tiebreak, when `LEGACY_DELEGATION_MUNICIPALITY`
+ * itself is not among the candidates; still narrow enough that picking one of
+ * these over some unrelated municipality is a safe bet rather than a guess.
+ */
+export const LEGACY_NEIGHBOURING_MUNICIPALITIES: readonly string[] = [
+  'Viana do Castelo',
+  'Ponte de Lima',
+  'Vila Verde',
+  'Esposende',
+  'Braga',
+];

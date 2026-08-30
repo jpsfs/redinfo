@@ -72,3 +72,115 @@ export function nearestCandidates(
     .slice(0, limit)
     .map((scored) => scored.candidate);
 }
+
+/**
+ * Tier 2.5 — the "2013 civil-parish reform" tier (plan finding, discovered
+ * against the real dump: 775 `saidas` rows name a pre-reform freguesia that
+ * `resolveLocalityCandidates` alone can never match, because Lei n.º
+ * 11-A/2013 merged it into a "União das Freguesias de ..." locality with a
+ * different name). Lives here, not in `resolveLocalityCandidates`, because
+ * that function's whole contract — tested in `locality.spec.ts` — is to
+ * never silently pick past a genuine ambiguity; this tier's tiebreak (a
+ * fixed, documented home municipality) is a different, weaker kind of
+ * evidence and has to stay visibly separate so a caller can tell "matched
+ * outright" from "matched via a merger and a home-municipality guess".
+ *
+ * Two written forms of a merged name appear in the geography dataset:
+ * prefixed ("União das Freguesias de A e B") and bare ("A e B" / "A, B e C",
+ * e.g. "Fornelos e Queijada"). A parenthesised qualifier that itself contains
+ * " e " (e.g. "Alvito (São Pedro e São Martinho)") names two members sharing
+ * a head word and is expanded into both, in addition to the whole clause,
+ * so "Alvito São Pedro" and "Alvito São Martinho" each match on their own.
+ *
+ * Returns `null` for a name that is not compound at all.
+ */
+export function unionFreguesiaMembers(name: string): string[] | null {
+  const UNION_PREFIX = 'União das Freguesias de';
+  const body = name.toLowerCase().startsWith(UNION_PREFIX.toLowerCase()) ? name.slice(UNION_PREFIX.length).trim() : name;
+  if (!body.includes(' e ') && !body.includes(',')) return null;
+
+  const parts: string[] = [];
+  let depth = 0;
+  let buf = '';
+  for (const token of body.split(/(\(|\)| e |,)/)) {
+    if (token === '(') {
+      depth += 1;
+      buf += token;
+    } else if (token === ')') {
+      depth -= 1;
+      buf += token;
+    } else if (depth === 0 && (token === ',' || token === ' e ')) {
+      if (buf.trim()) parts.push(buf.trim());
+      buf = '';
+    } else {
+      buf += token;
+    }
+  }
+  if (buf.trim()) parts.push(buf.trim());
+  if (parts.length < 2) return null;
+
+  const expanded = [...parts];
+  for (const part of parts) {
+    const qualifier = /^(.*?)\s*\(([^()]+)\)$/.exec(part);
+    if (qualifier && / e /i.test(` ${qualifier[2]} `)) {
+      const [, head, inner] = qualifier;
+      for (const sub of inner.split(/\s+e\s+/i)) {
+        expanded.push(`${head} ${sub}`.trim());
+      }
+    }
+  }
+  return expanded;
+}
+
+/** `foldForSearch(member) → every candidate that member name is part of` — built once per run, not once per row. */
+export interface MergedFreguesiaIndex {
+  readonly byMember: ReadonlyMap<string, LocalityCandidate[]>;
+}
+
+export function buildMergedFreguesiaIndex(candidates: readonly LocalityCandidate[]): MergedFreguesiaIndex {
+  const byMember = new Map<string, LocalityCandidate[]>();
+  for (const candidate of candidates) {
+    const members = unionFreguesiaMembers(candidate.name);
+    if (!members) continue;
+    for (const member of members) {
+      const key = foldForSearch(member);
+      byMember.set(key, [...(byMember.get(key) ?? []), candidate]);
+    }
+  }
+  return { byMember };
+}
+
+export type MergedFreguesiaTiebreak = 'unique' | 'home-municipality' | 'neighbouring-municipality';
+
+export interface MergedFreguesiaResolution {
+  candidate: LocalityCandidate;
+  /** Why this one, of possibly several — surfaced in `report.md` so a guess is never silent. */
+  tiebreak: MergedFreguesiaTiebreak;
+}
+
+/**
+ * `knownCandidates` is whatever `resolveLocalityCandidates` already found —
+ * `[]` for `NONE`, the ambiguous set for `AMBIGUOUS` — so this tier never
+ * re-derives exact/prefix matching, only adds merged-freguesia membership to
+ * the same pool before applying the home-municipality tiebreak.
+ */
+export function resolveMergedFreguesia(
+  freguesia: string,
+  knownCandidates: readonly LocalityCandidate[],
+  index: MergedFreguesiaIndex,
+  homeMunicipality: string,
+  neighbouringMunicipalities: readonly string[],
+): MergedFreguesiaResolution | null {
+  const merged = index.byMember.get(foldForSearch(freguesia)) ?? [];
+  const pool = [...new Map([...knownCandidates, ...merged].map((c) => [c.id, c])).values()];
+  if (pool.length === 1) return { candidate: pool[0], tiebreak: 'unique' };
+  if (pool.length === 0) return null;
+
+  const home = pool.filter((c) => c.municipalityName === homeMunicipality);
+  if (home.length === 1) return { candidate: home[0], tiebreak: 'home-municipality' };
+
+  const neighbours = pool.filter((c) => neighbouringMunicipalities.includes(c.municipalityName));
+  if (neighbours.length === 1) return { candidate: neighbours[0], tiebreak: 'neighbouring-municipality' };
+
+  return null; // Still ambiguous — left to the override CSV, then a reject.
+}
