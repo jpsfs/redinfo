@@ -79,9 +79,9 @@ async function runTrackA(ctx: RunContext): Promise<TrackAReport> {
 
   const overrides = loadLocalityOverrides(OVERRIDES_CSV);
   const localityResolver = new LocalityResolver(ctx.prisma, overrides);
-  const hospitalResolver = new HospitalResolver(ctx.prisma, ctx.options.createHospitals);
-  const userResolver = new UserResolver(ctx.prisma);
-  const actorResolver = new ActorResolver(ctx.prisma, ctx.importActorId);
+  const hospitalResolver = new HospitalResolver(ctx, ctx.options.createHospitals);
+  const userResolver = new UserResolver(ctx);
+  const actorResolver = new ActorResolver(ctx, ctx.importActorId);
   const usuariosRows = await ctx.source.usuarios();
   userResolver.preload(usuariosRows);
   actorResolver.preload(usuariosRows);

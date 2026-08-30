@@ -13,16 +13,24 @@
  *
  * `0` is not "user #0" — F5 also found `saidas.socorrista2 <> 0` guarding the
  * legacy `stats` view, i.e. `0` means "no one in this seat".
+ *
+ * Queries `currentClient(ctx)`, not `ctx.prisma` directly — see that
+ * function's doc comment. Concretely for this resolver: a crew number here
+ * routinely points at a `User` loader 01 created earlier in the very same
+ * run, and in dry-run mode that `User` (and its `LegacyIdMap` row) exists
+ * only inside `ctx.sharedTx` until the final rollback. Reading through
+ * `ctx.prisma` instead — a real bug once found against real legacy
+ * production data — resolved every such crew number to `null`.
  */
-import { PrismaClient } from '@prisma/client';
 import { legacyKey } from '../upsert-engine';
+import { currentClient, RunContext } from '../run-context';
 import { UsuariosRow } from '../source/row-types';
 
 export class UserResolver {
   private readonly usuarioToLegacyId = new Map<string, string>();
   private readonly cache = new Map<number, string | null>();
 
-  constructor(private readonly prisma: PrismaClient) {}
+  constructor(private readonly ctx: RunContext) {}
 
   preload(usuarios: readonly UsuariosRow[]): void {
     for (const row of usuarios) this.usuarioToLegacyId.set(row.usuario, row.id);
@@ -38,7 +46,7 @@ export class UserResolver {
       return null;
     }
 
-    const mapped = await this.prisma.legacyIdMap.findUnique({
+    const mapped = await currentClient(this.ctx).legacyIdMap.findUnique({
       where: { entity_legacyId: { entity: 'User', legacyId: legacyKey('usuarios', legacyUsuariosId) } },
     });
     const resolved = mapped?.newId ?? null;

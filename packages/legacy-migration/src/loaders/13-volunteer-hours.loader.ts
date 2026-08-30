@@ -6,6 +6,16 @@
  * nobody is going to review again, not a pending queue to recreate.
  * `proposedMinutes = minutes = TIME_TO_SEC(horas)/60`, matching the legacy
  * `stats` view's own arithmetic (plan finding F5).
+ *
+ * `row.data` MySQL's zero-date sentinel (`'0000-00-00'`) is rejected rather
+ * than dated with a fabricated "now" — confirmed against the real dump, 11
+ * rows have it. `VolunteerHoursEntry.date` is NOT NULL with no other date on
+ * the same row to fall back to, the same reasoning `loadOneAuditEntry`
+ * (loader 14) applies to `*_hist.update_date`. This path went unexercised by
+ * the first real dry run against production data (Aug 30, 0efbca4) because a
+ * `UserResolver` bug meant near-100% of rows were already rejected as
+ * `UNRESOLVED_USER` before reaching it; fixing that resolver bug surfaced
+ * this one.
  */
 import { chunk } from '../chunk';
 import { mapVolunteerActivity } from '../transform/enums';
@@ -33,6 +43,18 @@ export async function loadVolunteerHours(ctx: RunContext, userResolver: UserReso
             reason: `socorrista ${row.socorrista} does not resolve to a User.`,
             field: 'socorrista',
             valueRedacted: String(row.socorrista),
+          });
+          continue;
+        }
+
+        if (row.data === '0000-00-00') {
+          ctx.counters.reject(ENTITY);
+          ctx.rejects.write(ENTITY, {
+            legacyKey: key,
+            reasonCode: 'INVALID_DATE',
+            reason: `horas_voluntariado.data "${row.data}" is MySQL's zero-date sentinel, not a real date.`,
+            field: 'data',
+            valueRedacted: row.data,
           });
           continue;
         }

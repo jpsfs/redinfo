@@ -248,8 +248,8 @@ describeIntegration('Legacy migration harness (integration)', () => {
     return { crewNumero, ambulanciaCode, nRegional };
   }
 
-  function userResolverFor(source: FixtureLegacySource): UserResolver {
-    const resolver = new UserResolver(prisma);
+  function userResolverFor(source: FixtureLegacySource, ctx: RunContext): UserResolver {
+    const resolver = new UserResolver(ctx);
     resolver.preload(source.usuariosRows);
     return resolver;
   }
@@ -346,11 +346,25 @@ describeIntegration('Legacy migration harness (integration)', () => {
       // import actor is a real, committed row — every other loader's dry run
       // needs a real actor to reference, exactly as `main.ts` relies on.
       const ctx = await freshContext(source);
+      let sameRunResolution: string | null = null;
       await prisma
         .$transaction(async (tx) => {
           ctx.sharedTx = tx;
           ctx.options.apply = false;
           await loadUsers(ctx, new LocalityResolver(prisma, new Map()));
+
+          // Regression for a real bug found against real legacy production
+          // data: a `UserResolver` constructed *after* `ctx.sharedTx` is set
+          // (exactly as `main.ts` does) must see the `User` `loadUsers` just
+          // created a moment ago in this same still-open transaction — a
+          // resolver reading via plain `ctx.prisma` instead cannot, because
+          // that query runs on a different connection than `tx` and Postgres
+          // never lets one connection see another's uncommitted writes. This
+          // resolved every crew number in a dry run to `UNRESOLVED_USER`.
+          const sameRunResolver = new UserResolver(ctx);
+          sameRunResolver.preload(source.usuariosRows);
+          sameRunResolution = await sameRunResolver.resolve(504);
+
           throw new DryRunRollback();
         })
         .catch((err) => {
@@ -364,6 +378,7 @@ describeIntegration('Legacy migration harness (integration)', () => {
       expect(mapsAfter).toBe(mapsBefore);
       // The counters, however, reflect real work computed inside the rolled-back transaction.
       expect(ctx.counters.get('User').created + ctx.counters.get('User').adopted).toBeGreaterThan(0);
+      expect(sameRunResolution).not.toBeNull();
 
       const dryRunUser = await prisma.user.findUnique({ where: { email: `dryrun.${RUN}@example.test` } });
       expect(dryRunUser).toBeNull();
@@ -375,7 +390,7 @@ describeIntegration('Legacy migration harness (integration)', () => {
       const source = new FixtureLegacySource();
       const ctx = await freshContext(source);
       const { crewNumero, ambulanciaCode } = await setUpCrewAndVehicle(ctx, source, `p3-${RUN}`);
-      const userResolver = userResolverFor(source);
+      const userResolver = userResolverFor(source, ctx);
 
       const reportId = 3100 + Math.floor(Math.random() * 999);
       source.saidasRows = [
@@ -425,7 +440,7 @@ describeIntegration('Legacy migration harness (integration)', () => {
       const source = new FixtureLegacySource();
       const ctx = await freshContext(source);
       const { crewNumero, ambulanciaCode } = await setUpCrewAndVehicle(ctx, source, `p5-${RUN}`);
-      const userResolver = userResolverFor(source);
+      const userResolver = userResolverFor(source, ctx);
       const year = 2100 + Math.floor(Math.random() * 90); // An otherwise-empty year, isolating this partition.
 
       const locality = await prisma.locality.findFirst();
@@ -509,7 +524,7 @@ describeIntegration('Legacy migration harness (integration)', () => {
       const source = new FixtureLegacySource();
       const ctx = await freshContext(source, { batchSize: 2 });
       const { crewNumero, ambulanciaCode } = await setUpCrewAndVehicle(ctx, source, `p7-${RUN}`);
-      const userResolver = userResolverFor(source);
+      const userResolver = userResolverFor(source, ctx);
       const year = 2200 + Math.floor(Math.random() * 90);
 
       const ids = [7001, 7002, 7003, 7004, 7005].map((n) => n + Math.floor(Math.random() * 90) * 10);

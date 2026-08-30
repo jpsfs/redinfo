@@ -84,6 +84,28 @@ export function createRunContext(params: CreateRunContextParams): RunContext {
   };
 }
 
+/**
+ * The client a *read-only* resolver (one that was not itself handed a `tx`
+ * by a loader's own `runInLoaderTransaction` call — `UserResolver`,
+ * `ActorResolver`) must query through, for the same reason
+ * `runInLoaderTransaction` picks `ctx.sharedTx` over `ctx.prisma` in dry-run
+ * mode: a plain `ctx.prisma` query runs on its own connection, and Postgres
+ * (READ COMMITTED) never lets one connection see another connection's
+ * still-open, uncommitted transaction. In dry-run mode every write this run
+ * has made so far — including a `User` an earlier loader "created" this same
+ * run — lives only inside `ctx.sharedTx`, so a resolver reading via
+ * `ctx.prisma` instead would see none of them and resolve every one of them
+ * as missing (this is exactly what happened: `UserResolver` querying
+ * `ctx.prisma` directly meant every crew number pointing at a `User` created
+ * earlier in the *same* dry run came back `UNRESOLVED_USER`, near-100% of
+ * `AvailabilitySubmission`/`ScheduleAssignment`/`VolunteerHoursEntry` against
+ * real production data). In apply mode `ctx.sharedTx` is never set, so this
+ * is just `ctx.prisma` — identical to before this existed.
+ */
+export function currentClient(ctx: RunContext): Prisma.TransactionClient | PrismaClient {
+  return ctx.sharedTx ?? ctx.prisma;
+}
+
 /** Records what a rolled-back `create()` in dry-run mode would have produced. */
 export function rememberShadowId(ctx: RunContext, legacyKey: string, id: string): void {
   ctx.shadowMap.set(legacyKey, id);

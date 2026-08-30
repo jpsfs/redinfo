@@ -6,9 +6,15 @@
  * `socorrista` id. Falls back to the import actor for a username the dump
  * has lost (or one that was never a real account), never a rejection: an
  * unknown "who last touched this row" is not a reason to drop the row.
+ *
+ * Queries `currentClient(ctx)`, not `ctx.prisma` directly — same reason as
+ * `user.resolver.ts`: the `User` a username points at may have been created
+ * earlier in this same dry run, and is only visible inside `ctx.sharedTx`
+ * until the final rollback. The silent `importActorId` fallback masked this
+ * resolver's own copy of that bug (never rejected, just quietly wrong).
  */
-import { PrismaClient } from '@prisma/client';
 import { legacyKey } from '../upsert-engine';
+import { currentClient, RunContext } from '../run-context';
 import { UsuariosRow } from '../source/row-types';
 
 export class ActorResolver {
@@ -16,7 +22,7 @@ export class ActorResolver {
   private readonly cache = new Map<string, string>();
 
   constructor(
-    private readonly prisma: PrismaClient,
+    private readonly ctx: RunContext,
     private readonly importActorId: string,
   ) {}
 
@@ -35,7 +41,7 @@ export class ActorResolver {
       return this.importActorId;
     }
 
-    const mapped = await this.prisma.legacyIdMap.findUnique({
+    const mapped = await currentClient(this.ctx).legacyIdMap.findUnique({
       where: { entity_legacyId: { entity: 'User', legacyId: legacyKey('usuarios', legacyUsuariosId) } },
     });
     const resolved = mapped?.newId ?? this.importActorId;
