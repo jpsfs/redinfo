@@ -10,6 +10,7 @@
     "typecheck": "pnpm --parallel -r typecheck",
     "db:migrate": "pnpm --filter backend prisma:migrate",
     "db:studio": "pnpm --filter backend prisma:studio",
+    "migrate:legacy": "pnpm --filter @redinfo/legacy-migration migrate:legacy",
     "validate:env": "node scripts/validate-env.js",
     "setup:ci": "node scripts/setup-ci.js",
     "policy-check": "node scripts/validate-env.js",

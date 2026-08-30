@@ -41,6 +41,30 @@ steps:
         # available once explicitly mapped below as process env vars. Writing them to
         # a values file (rather than `--set` on the remote command line) also keeps
         # them out of `ps aux`/shell history on the deploy host.
+
+        # Optional-per-environment vars (RESEND_API_KEY, NOTIFICATION_EMAIL_FROM,
+        # VAPID_*): when a variable doesn't exist ANYWHERE in scope — root pipeline
+        # variables included — Azure Pipelines does not expand its $(VAR) macro to
+        # an empty string; it leaves the literal text "$(VAR)" in the env: mapping
+        # below, which lands here as a non-empty value. Every app-side "is this
+        # configured" check is a truthiness check (see WebPushChannelService,
+        # EmailChannelService), so that literal text reads as configured and
+        # crashes/misbehaves on first use. Blank out anything that still looks
+        # like an unresolved macro before it ever reaches secrets.yaml.
+        unmacro() {
+          local val="$1"
+          if [[ "${val}" =~ ^\$\([A-Za-z0-9_.]+\)$ ]]; then
+            echo ""
+          else
+            echo "${val}"
+          fi
+        }
+        RESEND_API_KEY="$(unmacro "${RESEND_API_KEY:-}")"
+        NOTIFICATION_EMAIL_FROM="$(unmacro "${NOTIFICATION_EMAIL_FROM:-}")"
+        VAPID_PUBLIC_KEY="$(unmacro "${VAPID_PUBLIC_KEY:-}")"
+        VAPID_PRIVATE_KEY="$(unmacro "${VAPID_PRIVATE_KEY:-}")"
+        VAPID_SUBJECT="$(unmacro "${VAPID_SUBJECT:-}")"
+
         cat > "$(Build.ArtifactStagingDirectory)/secrets.yaml" <<EOF
         secrets:
           JWT_SECRET: "${JWT_SECRET}"
@@ -53,6 +77,11 @@ steps:
           MICROSOFT_TENANT_ID: "${MICROSOFT_TENANT_ID:-}"
           MICROSOFT_CALLBACK_URL: "${MICROSOFT_CALLBACK_URL:-}"
           GOOGLE_MAPS_API_KEY: "${GOOGLE_MAPS_API_KEY:-}"
+          LEGACY_PROD_MYSQL_HOST: "${LEGACY_PROD_MYSQL_HOST:-}"
+          LEGACY_PROD_MYSQL_PORT: "${LEGACY_PROD_MYSQL_PORT:-}"
+          LEGACY_PROD_MYSQL_USER: "${LEGACY_PROD_MYSQL_USER:-}"
+          LEGACY_PROD_MYSQL_PASSWORD: "${LEGACY_PROD_MYSQL_PASSWORD:-}"
+          LEGACY_PROD_MYSQL_DATABASE: "${LEGACY_PROD_MYSQL_DATABASE:-}"
           RESEND_API_KEY: "${RESEND_API_KEY:-}"
           NOTIFICATION_EMAIL_FROM: "${NOTIFICATION_EMAIL_FROM:-}"
           VAPID_PUBLIC_KEY: "${VAPID_PUBLIC_KEY:-}"
@@ -84,6 +113,16 @@ steps:
       VAPID_PRIVATE_KEY: $(VAPID_PRIVATE_KEY)
       VAPID_SUBJECT: $(VAPID_SUBJECT)
       POSTGRES_PASSWORD: $(POSTGRES_PASSWORD)
+      # Legacy production's own connection details — read only by
+      # job-legacy-migration.yaml's Job, while legacyMigration.enabled is true
+      # for this environment. Add these to the redinfo-<envName> variable
+      # group the same way as the vars above; unset is fine (rendered empty)
+      # for any environment with legacyMigration.enabled: false.
+      LEGACY_PROD_MYSQL_HOST: $(LEGACY_PROD_MYSQL_HOST)
+      LEGACY_PROD_MYSQL_PORT: $(LEGACY_PROD_MYSQL_PORT)
+      LEGACY_PROD_MYSQL_USER: $(LEGACY_PROD_MYSQL_USER)
+      LEGACY_PROD_MYSQL_PASSWORD: $(LEGACY_PROD_MYSQL_PASSWORD)
+      LEGACY_PROD_MYSQL_DATABASE: $(LEGACY_PROD_MYSQL_DATABASE)
 
   - task: CopyFilesOverSSH@0
     displayName: "Copy packaged chart + secrets to remote host (${{ parameters.envName }})"
@@ -112,7 +151,7 @@ steps:
         VALUES_FILE="/tmp/redinfo/values.${ENV_NAME}.yaml"
         # Tag by immutable Build.BuildId rather than the moving env-name tag used
         # previously — guarantees a real rollout without relying on pullPolicy=Always.
-        IMAGE_OVERRIDES="--set-string image.backend.repository=jpsfs/redinfo-backend,image.backend.tag=${{ parameters.imageTag }},image.backend.pullPolicy=IfNotPresent,image.frontend.repository=jpsfs/redinfo-frontend,image.frontend.tag=${{ parameters.imageTag }},image.frontend.pullPolicy=IfNotPresent"
+        IMAGE_OVERRIDES="--set-string image.backend.repository=jpsfs/redinfo-backend,image.backend.tag=${{ parameters.imageTag }},image.backend.pullPolicy=IfNotPresent,image.frontend.repository=jpsfs/redinfo-frontend,image.frontend.tag=${{ parameters.imageTag }},image.frontend.pullPolicy=IfNotPresent,image.legacyMigration.repository=jpsfs/redinfo-legacy-migration,image.legacyMigration.tag=${{ parameters.imageTag }},image.legacyMigration.pullPolicy=IfNotPresent"
 
         mkdir -p /tmp/redinfo
         tar -xzf /tmp/redinfo-chart.tgz -C /tmp
@@ -133,8 +172,43 @@ steps:
           exit 2
         fi
 
+        # A previous run that died mid-operation (agent killed, host rebooted,
+        # even --atomic's own rollback getting interrupted) leaves the release
+        # secret's status stuck at pending-install/-upgrade/-rollback. Helm 3
+        # has no built-in self-heal for that — every future `upgrade --install`
+        # fails immediately with "another operation ... is in progress" even
+        # though nothing is actually running. Safe to clear unconditionally:
+        # this stage never runs two deploys of the same release concurrently,
+        # so a secret in one of these states is always stale, not a real lock.
+        KUBECTL_BIN=""
+        if command -v microk8s.kubectl >/dev/null 2>&1; then
+          KUBECTL_BIN="microk8s.kubectl"
+        elif command -v kubectl >/dev/null 2>&1; then
+          KUBECTL_BIN="kubectl"
+        fi
+        if [ -n "${KUBECTL_BIN}" ]; then
+          STUCK_SECRETS=$(${KUBECTL_BIN} get secrets -n "${ENV_NAME}" \
+            -l "owner=helm,name=redinfo,status in (pending-install,pending-upgrade,pending-rollback)" \
+            -o name 2>/dev/null || true)
+          if [ -n "${STUCK_SECRETS}" ]; then
+            echo "Clearing stale Helm release lock(s) before upgrade:"
+            echo "${STUCK_SECRETS}"
+            echo "${STUCK_SECRETS}" | xargs -r "${KUBECTL_BIN}" delete -n "${ENV_NAME}"
+          fi
+        else
+          echo "No kubectl found on remote host — skipping stuck-release check" >&2
+        fi
+
+        # --timeout covers post-install/post-upgrade hooks too (job-seed, and
+        # — where legacyMigration.enabled — job-legacy-migration: a fresh
+        # mysqldump from legacy production + reload + full loader run, in one
+        # Job). 10m was comfortable for job-seed alone; bumped for the second
+        # hook's sake. --atomic means a hook running merely slowly, not
+        # actually failing, still rolls the whole release back at this
+        # deadline — raise it further if legacy production's real dataset
+        # ever makes that a false alarm.
         "${HELM_BIN}" upgrade --install redinfo /tmp/redinfo -n "${ENV_NAME}" --create-namespace \
           --dependency-update \
           -f "${VALUES_FILE}" -f /tmp/secrets.yaml \
           ${IMAGE_OVERRIDES} \
-          --history-max 5 --atomic --timeout 10m --wait
+          --history-max 5 --atomic --timeout 20m --wait

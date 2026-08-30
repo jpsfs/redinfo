@@ -1,4 +1,3 @@
-import { Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { EventReportType, ReportRenumber } from '@redinfo/shared';
 
@@ -19,6 +18,11 @@ import { EventReportType, ReportRenumber } from '@redinfo/shared';
  * whole backend otherwise contains one raw statement (`SELECT 1`, in
  * `prisma.health.ts`), and keeping the raw-query surface to one reviewable file
  * is worth more than spreading it thin.
+ *
+ * No `@Injectable()` — it has no constructor and so needs no DI metadata to be
+ * listed directly in `EventReportsModule`'s `providers`, which keeps this file
+ * importable by `@redinfo/legacy-migration` (loader 12, loader 15's
+ * renumbering pass) with no dependency on the Nest framework at all.
  *
  * Two things make it safe:
  *
@@ -45,7 +49,6 @@ const NUMBERING_ORDER = Prisma.sql`COALESCE("activationAt", "startedAt"), "creat
 /** Only filed reports are numbered. A draft has no position in the sequence. */
 const FILED = Prisma.sql`"submittedAt" IS NOT NULL`;
 
-@Injectable()
 export class EventReportNumbering {
   /**
    * Serialises everyone touching this partition for the rest of the

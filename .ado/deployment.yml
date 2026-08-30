@@ -51,6 +51,22 @@ stages:
                 $(Build.BuildId)
                 $(Build.SourceBranchName)
 
+          - task: Docker@2
+            displayName: "Build and push legacy-migration job image"
+            inputs:
+              containerRegistry: "$(DOCKER_SERVICE_CONNECTION)"
+              repository: "jpsfs/redinfo-legacy-migration"
+              command: "buildAndPush"
+              Dockerfile: "packages/legacy-migration/Dockerfile"
+              buildContext: "$(Build.SourcesDirectory)"
+              # `job`, not the default `base` target: bundles its own throwaway
+              # MariaDB (see job-entrypoint.sh) — `base` is what docker-compose.
+              # migration.yml uses locally against a separately-run mysql-legacy.
+              arguments: "--target job"
+              tags: |
+                $(Build.BuildId)
+                $(Build.SourceBranchName)
+
   - stage: DeployStaging
     displayName: Deploy to staging
     dependsOn: BuildAndPush
