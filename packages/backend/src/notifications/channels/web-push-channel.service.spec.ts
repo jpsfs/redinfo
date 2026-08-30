@@ -37,6 +37,26 @@ describe('WebPushChannelService', () => {
     expect(service.publicKey).toBeNull();
   });
 
+  it('fails soft when VAPID_PUBLIC_KEY/PRIVATE_KEY are present but the SDK rejects them as invalid', async () => {
+    // Reproduces the real staging incident: an env var that is non-empty but
+    // garbage (there, a literal unexpanded "$(VAPID_SUBJECT)" from the
+    // deploy pipeline) still passes the presence check, but web-push's own
+    // synchronous validation throws — that must disable the channel, not
+    // crash the whole app.
+    process.env.VAPID_PUBLIC_KEY = 'pub';
+    process.env.VAPID_PRIVATE_KEY = 'priv';
+    process.env.VAPID_SUBJECT = '$(VAPID_SUBJECT)';
+    setVapidDetailsMock.mockImplementationOnce(() => {
+      throw new Error('Vapid subject is not a valid URL. $(VAPID_SUBJECT)');
+    });
+
+    const service = new WebPushChannelService();
+    const result = await service.send(DESTINATION, 'Storm warning', 'Roads closed.');
+
+    expect(result).toEqual({ ok: false, error: 'Push channel not configured' });
+    expect(sendNotificationMock).not.toHaveBeenCalled();
+  });
+
   it('sends the encrypted payload once VAPID keys are set', async () => {
     process.env.VAPID_PUBLIC_KEY = 'pub';
     process.env.VAPID_PRIVATE_KEY = 'priv';
