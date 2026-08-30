@@ -148,6 +148,33 @@ steps:
           exit 2
         fi
 
+        # A previous run that died mid-operation (agent killed, host rebooted,
+        # even --atomic's own rollback getting interrupted) leaves the release
+        # secret's status stuck at pending-install/-upgrade/-rollback. Helm 3
+        # has no built-in self-heal for that — every future `upgrade --install`
+        # fails immediately with "another operation ... is in progress" even
+        # though nothing is actually running. Safe to clear unconditionally:
+        # this stage never runs two deploys of the same release concurrently,
+        # so a secret in one of these states is always stale, not a real lock.
+        KUBECTL_BIN=""
+        if command -v microk8s.kubectl >/dev/null 2>&1; then
+          KUBECTL_BIN="microk8s.kubectl"
+        elif command -v kubectl >/dev/null 2>&1; then
+          KUBECTL_BIN="kubectl"
+        fi
+        if [ -n "${KUBECTL_BIN}" ]; then
+          STUCK_SECRETS=$(${KUBECTL_BIN} get secrets -n "${ENV_NAME}" \
+            -l "owner=helm,name=redinfo,status in (pending-install,pending-upgrade,pending-rollback)" \
+            -o name 2>/dev/null || true)
+          if [ -n "${STUCK_SECRETS}" ]; then
+            echo "Clearing stale Helm release lock(s) before upgrade:"
+            echo "${STUCK_SECRETS}"
+            echo "${STUCK_SECRETS}" | xargs -r "${KUBECTL_BIN}" delete -n "${ENV_NAME}"
+          fi
+        else
+          echo "No kubectl found on remote host — skipping stuck-release check" >&2
+        fi
+
         # --timeout covers post-install/post-upgrade hooks too (job-seed, and
         # — where legacyMigration.enabled — job-legacy-migration: a fresh
         # mysqldump from legacy production + reload + full loader run, in one
