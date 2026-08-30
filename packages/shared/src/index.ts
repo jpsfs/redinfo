@@ -76,6 +76,13 @@ export enum Action {
   MANAGE_VOLUNTEER_HOURS = 'MANAGE_VOLUNTEER_HOURS',
   /** Read the aggregated volunteer-hours summary, without the review queue. */
   VIEW_VOLUNTEER_HOURS = 'VIEW_VOLUNTEER_HOURS',
+  /**
+   * Create/deactivate operational notices, view their read/acknowledgement
+   * history, and set the org-wide default delivery channels per notification
+   * type. Reading a notice targeted at you needs no action — that's
+   * self-scoped, the same way reading your own volunteer hours is.
+   */
+  MANAGE_NOTICES = 'MANAGE_NOTICES',
 }
 
 export const ROLE_PERMISSIONS: Record<UserRole, Action[]> = {
@@ -115,12 +122,14 @@ export const ROLE_PERMISSIONS: Record<UserRole, Action[]> = {
     // the schedule those hours are generated from.
     Action.MANAGE_VOLUNTEER_HOURS,
     Action.VIEW_VOLUNTEER_HOURS,
+    Action.MANAGE_NOTICES,
   ],
   [UserRole.LOGISTICS_COORDINATOR]: [
     Action.MANAGE_LOGISTICS,
     Action.MANAGE_VEHICLES,
     Action.VIEW_VEHICLES,
     Action.MANAGE_VEHICLE_INVENTORY,
+    Action.MANAGE_NOTICES,
   ],
 };
 
@@ -610,6 +619,9 @@ export interface StockMovement {
   /// correction movements.
   reportId?: string | null;
   actorId?: string | null;
+  /// Resolved by `StockMovementsService.findByVehicle` — null for a system
+  /// movement or when the acting user has since been deleted.
+  actor?: { id: string; firstName: string; lastName: string } | null;
   occurredAt: string;
   note?: string | null;
 }
@@ -4513,6 +4525,21 @@ export interface LiveRunSupportAction {
 }
 
 /**
+ * One tap of the material picker while the run is live.
+ *
+ * One entry per tap, not a running total — the phone does no arithmetic live,
+ * it just appends. The same item tapped three times is three entries; turning
+ * that into a single report line (summed for `COUNTABLE`, collapsed for
+ * `UNLIMITED`) is `liveRunToEventReportInput`'s job, on close.
+ */
+export interface LiveRunMaterialEntry {
+  materialItemId: string;
+  /** Omitted (or null) means one unit — a bare tap, not a counted amount. */
+  quantity?: number | null;
+  at: string;
+}
+
+/**
  * The fields that identify a person, held only while the run is live.
  *
  * Stored as one AES-256-GCM blob rather than columns: nothing sorts, filters or
@@ -4568,6 +4595,7 @@ export interface LiveRunCapture extends EventReportClinical {
   /** The narrative as it is being drafted. Plain text — dictation goes here. */
   notes?: string | null;
   supportActions?: LiveRunSupportAction[];
+  materials?: LiveRunMaterialEntry[];
 }
 
 /**
@@ -4931,7 +4959,16 @@ export function canCloseLiveRun(run: LiveRunInput): boolean {
  */
 export function liveRunToEventReportInput(
   run: LiveRunInput,
-  options: { now?: Date } = {},
+  options: {
+    now?: Date;
+    /**
+     * The catalogue's item type for every id tapped live, keyed by
+     * `materialItemId` — looked up by the caller (a database read) so this
+     * stays a pure function. An id with no entry here, because the catalogue
+     * no longer knows it, is dropped rather than failing the close.
+     */
+    materialItemTypes?: Map<string, InventoryItemType>;
+  } = {},
 ): EventReportInput {
   const now = options.now ?? new Date();
   const startedAt = run.activationAt || run.startedAt;
@@ -5009,7 +5046,50 @@ export function liveRunToEventReportInput(
     chamuLastMeal: capture.chamuLastMeal ?? null,
     abcde: capture.abcde ?? null,
     assessments: capture.assessments ?? [],
+    materials: materialLinesFromCapture(capture.materials, options.materialItemTypes, run.vehicleId ?? null),
   };
+}
+
+/**
+ * Live-tapped materials, folded into report lines.
+ *
+ * Repeats of the same item aggregate — summed for `COUNTABLE`, collapsed to
+ * one logged line for `UNLIMITED`, which has no quantity to sum — in the
+ * order each item was first tapped, and every line is attributed to the
+ * run's own vehicle. An id the catalogue lookup could not resolve (deleted
+ * since the tap, or no lookup supplied at all) is dropped: a report the crew
+ * is about to finish by hand must never fail to appear over one bad line.
+ */
+function materialLinesFromCapture(
+  entries: LiveRunMaterialEntry[] | undefined,
+  itemTypes: Map<string, InventoryItemType> | undefined,
+  vehicleId: string | null,
+): EventReportMaterialInput[] {
+  if (!entries?.length || !itemTypes) return [];
+
+  const order: string[] = [];
+  const totals = new Map<string, number>();
+  for (const entry of entries) {
+    const itemType = itemTypes.get(entry.materialItemId);
+    if (!itemType) continue;
+    if (!totals.has(entry.materialItemId)) order.push(entry.materialItemId);
+    totals.set(
+      entry.materialItemId,
+      itemType === InventoryItemType.UNLIMITED
+        ? 1
+        : (totals.get(entry.materialItemId) ?? 0) + (entry.quantity ?? 1),
+    );
+  }
+
+  return order.map((materialItemId) => {
+    const itemType = itemTypes.get(materialItemId)!;
+    return {
+      materialItemId,
+      itemType,
+      vehicleId,
+      quantity: itemType === InventoryItemType.UNLIMITED ? null : totals.get(materialItemId)!,
+    };
+  });
 }
 
 /** `YYYY-MM-DD` of an instant, in the device's own timezone. */
@@ -5077,6 +5157,139 @@ export interface LiveRunSyncResponse {
 export interface LiveRunCloseResponse {
   run: LiveRun;
   report: EventReport;
+}
+
+// ─── Notices & notifications ──────────────────────────────────────────────────
+//
+// Legacy parity for operational alerts (ADO #165): coordinators post a
+// targeted notice, members see it in an alerts area and acknowledge it.
+// Delivery is a pluggable framework, not just this one feature — `NOTICE` is
+// the first `NotificationType`, but the channel/preference/delivery shapes
+// below are meant to be reused by future system-triggered types without a
+// redesign. `IN_APP` is always implicit (the notice existing in the list *is*
+// the in-app delivery) — it's in `NotificationChannel` only so config/prefs
+// UIs can show it as an always-on row.
+
+export enum NoticeTargetType {
+  ALL = 'ALL',
+  ROLES = 'ROLES',
+}
+
+export enum NotificationChannel {
+  IN_APP = 'IN_APP',
+  EMAIL = 'EMAIL',
+  WEB_PUSH = 'WEB_PUSH',
+}
+
+/** Extend as more system-triggered notifications are built (e.g. shift reminders). */
+export enum NotificationType {
+  NOTICE = 'NOTICE',
+}
+
+export enum NotificationDeliveryStatus {
+  PENDING = 'PENDING',
+  SENT = 'SENT',
+  FAILED = 'FAILED',
+}
+
+export interface Notice {
+  id: string;
+  title: string;
+  body: string;
+  createdById: string;
+  createdByName: string;
+  targetType: NoticeTargetType;
+  /** Only meaningful when `targetType` is `ROLES`; empty for `ALL`. */
+  targetRoles: UserRole[];
+  /** Channels the coordinator chose when sending this notice, `IN_APP` excluded. */
+  channels: NotificationChannel[];
+  expiresAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** `POST /notices` body. */
+export interface CreateNoticeRequest {
+  title: string;
+  body: string;
+  targetType: NoticeTargetType;
+  /** Required, non-empty when `targetType` is `ROLES`. */
+  targetRoles?: UserRole[];
+  channels: NotificationChannel[];
+  expiresAt?: string;
+}
+
+/** Per-recipient state — covers both "unread vs read" and "acknowledge/dismiss". */
+export interface NoticeReceipt {
+  readAt: string | null;
+  acknowledgedAt: string | null;
+}
+
+/** `GET /notices` (member view) — a notice plus the viewer's own receipt. */
+export interface NoticeWithReceipt extends Notice {
+  receipt: NoticeReceipt;
+}
+
+/** `GET /notices` (coordinator view) — a notice plus a summary for the history list. */
+export interface NoticeWithStats extends Notice {
+  recipientCount: number;
+  acknowledgedCount: number;
+}
+
+export interface NoticeDeliveryStatus {
+  channel: NotificationChannel;
+  status: NotificationDeliveryStatus;
+  error: string | null;
+}
+
+/** `GET /notices/:id/recipients` (coordinator view) — one row per target user. */
+export interface NoticeRecipientStatus {
+  userId: string;
+  userName: string;
+  readAt: string | null;
+  acknowledgedAt: string | null;
+  deliveries: NoticeDeliveryStatus[];
+}
+
+/** Org-wide default channels per notification type — the notification config page. */
+export interface NotificationTypeSetting {
+  type: NotificationType;
+  defaultChannels: NotificationChannel[];
+}
+
+/** A member's own per-channel opt-out — the notification settings in their profile. */
+export interface UserNotificationPreference {
+  channel: NotificationChannel;
+  enabled: boolean;
+}
+
+export interface NotificationChannelResolutionInput {
+  /** Channels chosen for this specific notice (or event), `IN_APP` excluded. */
+  requestedChannels: NotificationChannel[];
+  /** Channels the org has enabled by default for this notification type. */
+  typeDefaultChannels: NotificationChannel[];
+  /** Channels this recipient has explicitly turned off. */
+  userDisabledChannels: NotificationChannel[];
+  /** `WEB_PUSH` needs a registered device; nothing to deliver to otherwise. */
+  userHasPushSubscription: boolean;
+}
+
+/**
+ * What a recipient actually gets, once org policy and personal preference are
+ * both applied. Pure and I/O-free on purpose — the delivery service resolves
+ * this per recipient before enqueueing anything, and it's the one place the
+ * three-way precedence (notice choice ∩ org default ∩ user opt-out) is
+ * defined, so it's tested once here instead of once per call site.
+ */
+export function resolveEffectiveNotificationChannels(
+  input: NotificationChannelResolutionInput,
+): NotificationChannel[] {
+  return input.requestedChannels.filter((channel) => {
+    if (!input.typeDefaultChannels.includes(channel)) return false;
+    if (input.userDisabledChannels.includes(channel)) return false;
+    if (channel === NotificationChannel.WEB_PUSH && !input.userHasPushSubscription) return false;
+    return true;
+  });
 }
 
 // ─── Statistics ─────────────────────────────────────────────────────────────

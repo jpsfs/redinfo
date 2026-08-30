@@ -5,7 +5,7 @@
 import 'fake-indexeddb/auto';
 import { IDBFactory } from 'fake-indexeddb';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { EventReportAttachmentKind } from '@redinfo/shared';
+import { EventReportAttachmentKind, InventoryItemType, MaterialItem } from '@redinfo/shared';
 import { emptyRun } from './liveRun';
 import {
   StoredPhoto,
@@ -15,6 +15,7 @@ import {
   deleteRun,
   dequeue,
   enqueue,
+  listMaterialFavourites,
   listOutbox,
   listPendingPhotos,
   listPhotos,
@@ -22,6 +23,7 @@ import {
   loadRun,
   markOutboxFailure,
   resetLiveRunDb,
+  saveMaterialFavourites,
   saveRun,
   savePhoto,
   updatePhoto,
@@ -227,6 +229,53 @@ describe('photos', () => {
   });
 });
 
+const materialItem = (overrides: Partial<MaterialItem> = {}): MaterialItem => ({
+  id: 'mat-gloves',
+  namePt: 'Luvas',
+  nameEn: 'Gloves',
+  unit: 'pcs',
+  type: InventoryItemType.COUNTABLE,
+  notes: null,
+  isFrequent: true,
+  frequentOrder: 0,
+  isDeleted: false,
+  createdAt: NOW.toISOString(),
+  updatedAt: NOW.toISOString(),
+  ...overrides,
+});
+
+describe('material favourites — the offline catalogue for #209', () => {
+  it('round-trips the pinned set', async () => {
+    const gloves = materialItem();
+    const oxygen = materialItem({ id: 'mat-oxygen', namePt: 'Oxigénio', frequentOrder: 1 });
+    await saveMaterialFavourites([gloves, oxygen]);
+
+    expect(await listMaterialFavourites()).toEqual([gloves, oxygen]);
+  });
+
+  it('orders by frequentOrder, then name — the catalogue endpoint’s own order', async () => {
+    const oxygen = materialItem({ id: 'mat-oxygen', namePt: 'Oxigénio', frequentOrder: 1 });
+    const gloves = materialItem({ frequentOrder: 0 });
+    await saveMaterialFavourites([oxygen, gloves]);
+
+    expect((await listMaterialFavourites()).map((item) => item.id)).toEqual([
+      'mat-gloves',
+      'mat-oxygen',
+    ]);
+  });
+
+  it('replaces rather than accumulates, so an unpinned favourite actually disappears', async () => {
+    await saveMaterialFavourites([materialItem(), materialItem({ id: 'mat-oxygen' })]);
+    await saveMaterialFavourites([materialItem()]);
+
+    expect(await listMaterialFavourites()).toHaveLength(1);
+  });
+
+  it('is empty until the device has ever cached one', async () => {
+    expect(await listMaterialFavourites()).toEqual([]);
+  });
+});
+
 describe('when there is no IndexedDB at all', () => {
   it('degrades to "nothing stored" rather than taking the screen down', async () => {
     // Private browsing on some builds, or a WebView with storage disabled. Live
@@ -239,5 +288,7 @@ describe('when there is no IndexedDB at all', () => {
     await expect(listRuns()).resolves.toEqual([]);
     await expect(listOutbox()).resolves.toEqual([]);
     await expect(listPhotos()).resolves.toEqual([]);
+    await expect(listMaterialFavourites()).resolves.toEqual([]);
+    await expect(saveMaterialFavourites([materialItem()])).resolves.toBeUndefined();
   });
 });

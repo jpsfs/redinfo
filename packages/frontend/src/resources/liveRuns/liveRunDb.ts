@@ -1,4 +1,4 @@
-import { EventReportAttachmentKind, LiveRunInput } from '@redinfo/shared';
+import { EventReportAttachmentKind, LiveRunInput, MaterialItem } from '@redinfo/shared';
 
 /**
  * The device's own copy of every live run — IndexedDB, not `localStorage`.
@@ -17,11 +17,12 @@ import { EventReportAttachmentKind, LiveRunInput } from '@redinfo/shared';
  */
 
 export const DB_NAME = 'redinfo-live';
-export const DB_VERSION = 1;
+export const DB_VERSION = 2;
 
 export const RUNS_STORE = 'runs';
 export const PHOTOS_STORE = 'photos';
 export const OUTBOX_STORE = 'outbox';
+export const MATERIAL_FAVOURITES_STORE = 'materialFavourites';
 
 /** A photograph waiting to be uploaded, with the bytes still on the device. */
 export interface StoredPhoto {
@@ -106,6 +107,9 @@ function open(): Promise<IDBDatabase | null> {
         }
         if (!db.objectStoreNames.contains(OUTBOX_STORE)) {
           db.createObjectStore(OUTBOX_STORE, { keyPath: 'runId' });
+        }
+        if (!db.objectStoreNames.contains(MATERIAL_FAVOURITES_STORE)) {
+          db.createObjectStore(MATERIAL_FAVOURITES_STORE, { keyPath: 'id' });
         }
       };
 
@@ -370,4 +374,47 @@ export async function attachPhotosToReport(runId: string, reportId: string): Pro
     if (photo.reportId === reportId) continue;
     await updatePhoto(photo.id, { reportId });
   }
+}
+
+// ── Material favourites (offline catalogue for #209) ────────────────────────
+
+/**
+ * Replaces the cached favourites with the catalogue's current pinned set.
+ *
+ * Cleared and rewritten whole rather than merged: a favourite unpinned since
+ * the last refresh must actually disappear from the grid, and there are never
+ * more than a couple hundred of these, so a full replace costs nothing a
+ * merge would have saved.
+ */
+export function saveMaterialFavourites(items: MaterialItem[]): Promise<void> {
+  return withStore(
+    MATERIAL_FAVOURITES_STORE,
+    'readwrite',
+    async (store) => {
+      await ask(store.clear() as IDBRequest<undefined>, undefined);
+      for (const item of items) {
+        await ask(store.put(item) as IDBRequest<IDBValidKey>, item.id);
+      }
+    },
+    undefined,
+  );
+}
+
+/**
+ * The favourites as they were last seen online, ordered the way the
+ * catalogue endpoint orders them — so a dead spot's grid looks exactly like
+ * the connected one, just possibly a refresh behind.
+ */
+export function listMaterialFavourites(): Promise<MaterialItem[]> {
+  return withStore(
+    MATERIAL_FAVOURITES_STORE,
+    'readonly',
+    async (store) => {
+      const all = await ask<MaterialItem[]>(store.getAll() as IDBRequest<MaterialItem[]>, []);
+      return [...all].sort(
+        (a, b) => a.frequentOrder - b.frequentOrder || a.namePt.localeCompare(b.namePt),
+      );
+    },
+    [],
+  );
 }

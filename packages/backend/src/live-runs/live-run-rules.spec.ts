@@ -2,6 +2,7 @@ import {
   EventLocationType,
   EventReportType,
   Gender,
+  InventoryItemType,
   LIVE_RUN_ABANDON_HOURS,
   LIVE_RUN_RETENTION_HOURS,
   LIVE_RUN_STATES,
@@ -431,6 +432,121 @@ describe('liveRunToEventReportInput', () => {
     );
     expect(input.victims).toEqual([]);
     expect(validateEventReport(input)).toBeNull();
+  });
+
+  describe('materials tapped live', () => {
+    const itemTypes = new Map([
+      ['mat-bandage', InventoryItemType.COUNTABLE],
+      ['mat-oxygen', InventoryItemType.UNLIMITED],
+    ]);
+
+    it('produces nothing without a lookup, rather than guessing at a type', () => {
+      const input = liveRunToEventReportInput(
+        run({ capture: { materials: [{ materialItemId: 'mat-bandage', quantity: 1, at: '2026-08-22T20:20:00.000Z' }] } }),
+      );
+      expect(input.materials).toEqual([]);
+    });
+
+    it('sums repeats of a COUNTABLE item into one line', () => {
+      const input = liveRunToEventReportInput(
+        run({
+          capture: {
+            materials: [
+              { materialItemId: 'mat-bandage', quantity: 1, at: '2026-08-22T20:20:00.000Z' },
+              { materialItemId: 'mat-bandage', quantity: 2, at: '2026-08-22T20:25:00.000Z' },
+              // No quantity on a tap means one unit, not zero.
+              { materialItemId: 'mat-bandage', at: '2026-08-22T20:31:00.000Z' },
+            ],
+          },
+        }),
+        { materialItemTypes: itemTypes },
+      );
+      expect(input.materials).toEqual([
+        {
+          materialItemId: 'mat-bandage',
+          itemType: InventoryItemType.COUNTABLE,
+          vehicleId: 'veh-amb04',
+          quantity: 4,
+        },
+      ]);
+      expect(validateEventReport(input)).toBeNull();
+    });
+
+    it('collapses repeats of an UNLIMITED item into one logged line with no quantity', () => {
+      const input = liveRunToEventReportInput(
+        run({
+          capture: {
+            materials: [
+              { materialItemId: 'mat-oxygen', at: '2026-08-22T20:20:00.000Z' },
+              { materialItemId: 'mat-oxygen', at: '2026-08-22T20:33:00.000Z' },
+            ],
+          },
+        }),
+        { materialItemTypes: itemTypes },
+      );
+      expect(input.materials).toEqual([
+        {
+          materialItemId: 'mat-oxygen',
+          itemType: InventoryItemType.UNLIMITED,
+          vehicleId: 'veh-amb04',
+          quantity: null,
+        },
+      ]);
+      expect(validateEventReport(input)).toBeNull();
+    });
+
+    it('defaults every line to the vehicle on the run', () => {
+      const input = liveRunToEventReportInput(
+        run({
+          vehicleId: 'veh-siv02',
+          capture: { materials: [{ materialItemId: 'mat-bandage', quantity: 1, at: '2026-08-22T20:20:00.000Z' }] },
+        }),
+        { materialItemTypes: itemTypes },
+      );
+      expect(input.materials?.[0].vehicleId).toBe('veh-siv02');
+    });
+
+    it('drops a tap whose item the catalogue lookup could not resolve', () => {
+      const input = liveRunToEventReportInput(
+        run({
+          capture: {
+            materials: [
+              { materialItemId: 'mat-bandage', quantity: 1, at: '2026-08-22T20:20:00.000Z' },
+              // Deleted from the catalogue since the tap, or never existed.
+              { materialItemId: 'mat-gone', quantity: 1, at: '2026-08-22T20:22:00.000Z' },
+            ],
+          },
+        }),
+        { materialItemTypes: itemTypes },
+      );
+      expect(input.materials).toEqual([
+        {
+          materialItemId: 'mat-bandage',
+          itemType: InventoryItemType.COUNTABLE,
+          vehicleId: 'veh-amb04',
+          quantity: 1,
+        },
+      ]);
+    });
+
+    it('orders lines by when each item was first tapped', () => {
+      const input = liveRunToEventReportInput(
+        run({
+          capture: {
+            materials: [
+              { materialItemId: 'mat-oxygen', at: '2026-08-22T20:20:00.000Z' },
+              { materialItemId: 'mat-bandage', quantity: 1, at: '2026-08-22T20:22:00.000Z' },
+              { materialItemId: 'mat-oxygen', at: '2026-08-22T20:24:00.000Z' },
+            ],
+          },
+        }),
+        { materialItemTypes: itemTypes },
+      );
+      expect(input.materials?.map((material) => material.materialItemId)).toEqual([
+        'mat-oxygen',
+        'mat-bandage',
+      ]);
+    });
   });
 });
 

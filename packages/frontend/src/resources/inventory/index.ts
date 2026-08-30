@@ -5,3 +5,6 @@ export { InventoryTemplateEdit } from './InventoryTemplateEdit';
 export { InventoryItemCreate } from './InventoryItemCreate';
 export { InventoryItemEdit } from './InventoryItemEdit';
 export { VehicleInventorySection } from './VehicleInventorySection';
+export { MaterialItemList } from './MaterialItemList';
+export { MaterialItemCreate } from './MaterialItemCreate';
+export { MaterialItemEdit } from './MaterialItemEdit';

@@ -7,6 +7,7 @@ import {
   LiveRunCapture,
   LiveRunIdentity,
   LiveRunInput,
+  LiveRunMaterialEntry,
   LiveRunStateRules,
   LiveScreen,
   LiveRunState,
@@ -371,6 +372,38 @@ export function withSupportAction(
   return patchedCapture(run, {
     supportActions: [...existing, { kind, at: now.toISOString() }],
   });
+}
+
+// ── Materials ─────────────────────────────────────────────────────────────────
+
+/** The taps recorded so far, oldest first. */
+export function materialsOf(run: LiveRunInput): LiveRunMaterialEntry[] {
+  return run.capture?.materials ?? [];
+}
+
+/**
+ * Records one tap of the material picker — a favourite tile, or a barcode
+ * scan that resolved to an item.
+ *
+ * One entry per tap, not a running total: see `LiveRunMaterialEntry`. The
+ * same item tapped three times is three entries here, folded into a single
+ * report line only when the run closes (`liveRunToEventReportInput`, shared).
+ */
+export function withMaterialTap(
+  run: LiveRunInput,
+  materialItemId: string,
+  now: Date = new Date(),
+): LiveRunInput {
+  const existing = materialsOf(run);
+  return patchedCapture(run, {
+    materials: [...existing, { materialItemId, at: now.toISOString() }],
+  });
+}
+
+/** Undoes a mis-tap before it ever reaches the report. */
+export function withoutMaterialTap(run: LiveRunInput, index: number): LiveRunInput {
+  const next = materialsOf(run).filter((_, at) => at !== index);
+  return patchedCapture(run, { materials: next });
 }
 
 // ── The run clock ─────────────────────────────────────────────────────────────

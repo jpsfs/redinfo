@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Title, usePermissions } from 'react-admin';
+import { Title, useLocaleState, usePermissions } from 'react-admin';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Alert,
@@ -23,11 +23,14 @@ import {
   AbcdeFindings,
   CHAMU_FIELDS,
   EventReport,
+  InventoryItemType,
+  Locale,
   OCCURRENCE_TIME_FIELDS,
   UserRole,
   eventReportRules,
   formatEventReportCode,
   hasPermission,
+  materialItemDisplayName,
   totalKilometres,
 } from '@redinfo/shared';
 import { apiDownload, apiFetch } from '../../api';
@@ -146,6 +149,7 @@ const Chronology = ({ report }: { report: EventReport }) => {
 export const EventReportShow = () => {
   const t = useT();
   const intlLocale = useIntlLocale();
+  const [locale] = useLocaleState();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { permissions } = usePermissions<UserRole>();
@@ -335,6 +339,38 @@ export const EventReportShow = () => {
             )}
           </Card>
         </Box>
+
+        <Card title={t('field.materials')}>
+          {report.materials.length === 0 ? (
+            <Typography color="text.secondary">{t('hint.noMaterials')}</Typography>
+          ) : (
+            <Stack divider={<Divider flexItem />} spacing={1.5}>
+              {report.materials.map((material) => (
+                <Stack key={material.id} direction="row" spacing={1.5} alignItems="center">
+                  <Typography sx={{ flex: 1, fontWeight: 600 }}>
+                    {material.materialItem
+                      ? materialItemDisplayName(material.materialItem, locale as Locale)
+                      : material.materialItemId}
+                  </Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    {material.materialItem?.type === InventoryItemType.UNLIMITED
+                      ? t('materialPicker.unlimitedLogged')
+                      : `${material.quantity} ${material.materialItem?.unit ?? ''}`.trim()}
+                  </Typography>
+                  {/* Named only when there is more than one vehicle to tell
+                      apart — on a single-vehicle report every line is
+                      obviously that vehicle's, and naming it would be noise. */}
+                  {report.vehicles.length > 1 && material.vehicle && (
+                    <Chip
+                      size="small"
+                      label={`${material.vehicle.licensePlate} · ${material.vehicle.numeroCauda}`}
+                    />
+                  )}
+                </Stack>
+              ))}
+            </Stack>
+          )}
+        </Card>
 
         <Card
           title={rules.maxVictims === 1 ? t('step.victims') : t('step.victimsPlural')}

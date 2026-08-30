@@ -1,5 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { EventReportType, Gender, InemSupportUnitType, VictimDestinationKind } from '@redinfo/shared';
+import {
+  EventReportType,
+  Gender,
+  InemSupportUnitType,
+  InventoryItemType,
+  VictimDestinationKind,
+} from '@redinfo/shared';
 import {
   DRAFT_STORAGE_KEY,
   clearDraft,
@@ -8,6 +14,7 @@ import {
   emptyDraft,
   loadDraft,
   minutesBetween,
+  reattachOrphanedMaterials,
   retypeDraft,
   saveDraft,
   stepsForType,
@@ -24,6 +31,7 @@ describe('stepsForType', () => {
       'times',
       'crew',
       'vehicles',
+      'materials',
       'victims',
       'inemSupport',
       'clinical',
@@ -32,13 +40,14 @@ describe('stepsForType', () => {
     ]);
   });
 
-  it('gives a support report none of the three', () => {
+  it('gives a support report none of the three, but keeps materials', () => {
     // A standby at a village fair has no chronology, no CODU to have dispatched
     // a VMER/SIV/UMIP, and no victim to have vitals — all three are absent
-    // rather than empty.
+    // rather than empty. Material is spent regardless of the kind of activity.
     for (const type of [EventReportType.LOCAL_SUPPORT, EventReportType.SALOP_SUPPORT]) {
       const steps = stepsForType(type);
-      expect(steps).toHaveLength(6);
+      expect(steps).toHaveLength(7);
+      expect(steps).toContain('materials');
       expect(steps).not.toContain('times');
       expect(steps).not.toContain('inemSupport');
       expect(steps).not.toContain('clinical');
@@ -142,6 +151,7 @@ describe('emptyDraft', () => {
     expect(draft.endedAt).toBeNull();
     expect(draft.crew).toEqual([]);
     expect(draft.vehicles).toEqual([]);
+    expect(draft.materials).toEqual([]);
     expect(draft.victims).toEqual([]);
     expect(draft.inemSupportUnits).toEqual([]);
     expect(draft.operationalReport).toBe('');
@@ -214,10 +224,76 @@ describe('retypeDraft', () => {
     expect(next.victims).toHaveLength(1);
   });
 
+  it('never drops materials on a type change — unlike INEM units, they belong to every kind of activity', () => {
+    const withMaterials = {
+      ...emergencyDraft,
+      materials: [
+        { materialItemId: 'mat-1', itemType: InventoryItemType.COUNTABLE, vehicleId: 'veh-a', quantity: 2 },
+      ],
+    };
+    const next = retypeDraft(withMaterials, EventReportType.LOCAL_SUPPORT);
+    expect(next.materials).toEqual(withMaterials.materials);
+  });
+
+  it('reattaches a material line to the vehicle that survives the trim', () => {
+    const support = {
+      ...emergencyDraft,
+      type: EventReportType.LOCAL_SUPPORT,
+      vehicles: [
+        { vehicleId: 'a', kilometres: 1 },
+        { vehicleId: 'b', kilometres: 2 },
+        { vehicleId: 'c', kilometres: 3 },
+      ],
+      materials: [
+        { materialItemId: 'mat-1', itemType: InventoryItemType.COUNTABLE, vehicleId: 'b', quantity: 2 },
+      ],
+    };
+
+    // An emergency keeps one vehicle — 'a' — so the line tapped for 'b' has
+    // to move rather than point at a vehicle that just left the report.
+    const next = retypeDraft(support, EventReportType.EMERGENCY);
+
+    expect(next.materials).toEqual([
+      { materialItemId: 'mat-1', itemType: InventoryItemType.COUNTABLE, vehicleId: 'a', quantity: 2 },
+    ]);
+  });
+
   it('leaves everything else alone', () => {
     const next = retypeDraft(emergencyDraft, EventReportType.SALOP_SUPPORT);
     expect(next.occurredOn).toBe(emergencyDraft.occurredOn);
     expect(next.startedAt).toBe(emergencyDraft.startedAt);
+  });
+});
+
+describe('reattachOrphanedMaterials', () => {
+  const vehicles = [
+    { vehicleId: 'a', kilometres: 1 },
+    { vehicleId: 'b', kilometres: 2 },
+  ];
+
+  it('leaves a line alone when its vehicle is still on the report', () => {
+    const materials = [
+      { materialItemId: 'mat-1', itemType: InventoryItemType.COUNTABLE, vehicleId: 'b', quantity: 1 },
+    ];
+    expect(reattachOrphanedMaterials(materials, vehicles)).toEqual(materials);
+  });
+
+  it('reassigns an orphaned line to the first surviving vehicle', () => {
+    const materials = [
+      { materialItemId: 'mat-1', itemType: InventoryItemType.COUNTABLE, vehicleId: 'c', quantity: 1 },
+    ];
+    expect(reattachOrphanedMaterials(materials, vehicles)).toEqual([
+      { materialItemId: 'mat-1', itemType: InventoryItemType.COUNTABLE, vehicleId: 'a', quantity: 1 },
+    ]);
+  });
+
+  it('leaves every line as it was when no vehicle survives at all', () => {
+    // An unresolvable vehicleId becomes a validation error the crew has to
+    // see, which beats consumption quietly disappearing from the report.
+    const materials = [
+      { materialItemId: 'mat-1', itemType: InventoryItemType.COUNTABLE, vehicleId: 'c', quantity: 1 },
+    ];
+    expect(reattachOrphanedMaterials(materials, [])).toEqual(materials);
   });
 });
 
@@ -280,6 +356,7 @@ describe('draftFromReport', () => {
       vehicles: [
         { vehicleId: 'veh-1', kilometres: 51, routeLegs: null, isOverridden: false },
       ],
+      materials: [],
       victims: [
         {
           gender: Gender.FEMALE,
@@ -377,6 +454,48 @@ describe('draftFromReport', () => {
     // business, not the form's — sending them back would be sending a primary key.
     expect(draftFromReport(report).inemSupportUnits).toEqual([
       { unitType: InemSupportUnitType.VMER, hospitalId: 'hosp-1' },
+    ]);
+  });
+
+  it('carries material consumption lines back into the form', () => {
+    const report = {
+      id: 'rep-4',
+      type: EventReportType.EMERGENCY,
+      number: 130,
+      year: 2026,
+      occurredOn: '2026-08-22',
+      startedAt: '2026-08-22T20:14:00.000Z',
+      endedAt: null,
+      externalReference: '2608 4471',
+      locationType: 'HOME',
+      localityId: 'loc-1',
+      operationalReport: '',
+      shift: null,
+      crew: [],
+      vehicles: [{ id: 'v1', vehicleId: 'veh-1', kilometres: 12, position: 0, isOverridden: false }],
+      victims: [],
+      inemSupportUnits: [],
+      materials: [
+        {
+          id: 'mat-line-1',
+          materialItemId: 'mat-1',
+          materialItem: { id: 'mat-1', namePt: 'Luvas', unit: 'pcs', type: InventoryItemType.COUNTABLE },
+          vehicleId: 'veh-1',
+          quantity: 3,
+          position: 0,
+        },
+      ],
+      attachments: [],
+      createdById: 'u1',
+      createdAt: '2026-08-22T22:00:00.000Z',
+      updatedAt: '2026-08-22T22:00:00.000Z',
+    } as never;
+
+    // The line's own id and position are the server's business, not the
+    // form's — `itemType` comes along instead, resolved from the catalogue
+    // entry that is already sitting on the stored report.
+    expect(draftFromReport(report).materials).toEqual([
+      { materialItemId: 'mat-1', itemType: InventoryItemType.COUNTABLE, vehicleId: 'veh-1', quantity: 3 },
     ]);
   });
 });

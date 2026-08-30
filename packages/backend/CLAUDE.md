@@ -14,9 +14,14 @@ NestJS + Prisma. Read `../shared/CLAUDE.md` first if the feature touches shared 
 **`src/schedules/` is the richest exemplar — copy its shape for a new feature module.**
 
 Current modules: `auth`, `availability`, `event-reports`, `geography`, `health`, `hospitals`,
-`inventory`, `live-runs`, `schedules`, `statistics`, `storage`, `users`, `vehicles`,
-`volunteer-hours`, `prisma`. New modules are wired into `src/app.module.ts`. Bootstrap (global `ValidationPipe`,
-global `ApiErrorFilter`, port 3000) is in `src/main.ts`.
+`inventory`, `live-runs`, `notices`, `notifications`, `schedules`, `statistics`, `storage`,
+`users`, `vehicles`, `volunteer-hours`, `prisma`. New modules are wired into `src/app.module.ts`.
+Bootstrap (global `ValidationPipe`, global `ApiErrorFilter`, port 3000) is in `src/main.ts`.
+
+`notifications` is the generic delivery framework (channels, pg-boss queue, org/user
+preferences) — `notices` (#165) is its first consumer, not part of it. A future
+system-triggered notification type is a new producer against the same framework, not a
+redesign; see the banner comment in `notification-delivery.service.ts`.
 
 ## Controller pattern
 
@@ -61,6 +66,9 @@ Model index by domain (names only — grep for fields/relations):
 - **Event reports**: `EventReport`, `EventReportAssessment`, `EventReportCrewMember`, `EventReportVehicle`, `EventReportMaterial`, `EventReportVictim`, `EventReportInemSupportUnit`, `EventReportAttachment`
 - **Live**: `LiveRun`, `LiveRunCrewMember`
 - **Config**: `DelegationSettings`
+- **Notices & notifications** (#165): `Notice`, `NoticeTargetRole`, `NoticeChannel`,
+  `NoticeReceipt`, `NotificationDelivery`, `PushSubscription`, `NotificationTypeSetting`,
+  `UserNotificationPreference`
 
 Migrations: `prisma:migrate` (dev, interactive) / `prisma:migrate:deploy` (non-interactive —
 prefer this in scripts/CI, per `.github/AI-GOVERNANCE.md`). Run `prisma:generate` after every

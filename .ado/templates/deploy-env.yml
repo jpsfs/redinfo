@@ -58,6 +58,11 @@ steps:
           LEGACY_PROD_MYSQL_USER: "${LEGACY_PROD_MYSQL_USER:-}"
           LEGACY_PROD_MYSQL_PASSWORD: "${LEGACY_PROD_MYSQL_PASSWORD:-}"
           LEGACY_PROD_MYSQL_DATABASE: "${LEGACY_PROD_MYSQL_DATABASE:-}"
+          RESEND_API_KEY: "${RESEND_API_KEY:-}"
+          NOTIFICATION_EMAIL_FROM: "${NOTIFICATION_EMAIL_FROM:-}"
+          VAPID_PUBLIC_KEY: "${VAPID_PUBLIC_KEY:-}"
+          VAPID_PRIVATE_KEY: "${VAPID_PRIVATE_KEY:-}"
+          VAPID_SUBJECT: "${VAPID_SUBJECT:-}"
         postgresql:
           auth:
             password: "${POSTGRES_PASSWORD}"
@@ -74,6 +79,15 @@ steps:
       MICROSOFT_TENANT_ID: $(MICROSOFT_TENANT_ID)
       MICROSOFT_CALLBACK_URL: $(MICROSOFT_CALLBACK_URL)
       GOOGLE_MAPS_API_KEY: $(GOOGLE_MAPS_API_KEY)
+      # #165 notifications — deliberately only ever populated in the
+      # `redinfo-production` variable group (see the comment above `secrets: {}`
+      # in values.staging.yaml). If `redinfo-staging` ever defines these, this
+      # step will happily pick them up too — don't add them there.
+      RESEND_API_KEY: $(RESEND_API_KEY)
+      NOTIFICATION_EMAIL_FROM: $(NOTIFICATION_EMAIL_FROM)
+      VAPID_PUBLIC_KEY: $(VAPID_PUBLIC_KEY)
+      VAPID_PRIVATE_KEY: $(VAPID_PRIVATE_KEY)
+      VAPID_SUBJECT: $(VAPID_SUBJECT)
       POSTGRES_PASSWORD: $(POSTGRES_PASSWORD)
       # Legacy production's own connection details — read only by
       # job-legacy-migration.yaml's Job, while legacyMigration.enabled is true

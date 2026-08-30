@@ -1,6 +1,7 @@
-import { Box, Button, CircularProgress, Paper, Stack, Typography } from '@mui/material';
+import { Badge, Box, Button, CircularProgress, IconButton, Paper, Stack, Typography } from '@mui/material';
+import Inventory2Icon from '@mui/icons-material/Inventory2';
 import NavigationIcon from '@mui/icons-material/Navigation';
-import { LiveRunInput, LiveScreen } from '@redinfo/shared';
+import { LiveRunInput, LiveRunState, LiveScreen } from '@redinfo/shared';
 import { liveStampLabel } from '../../i18n/labels';
 import { useT } from '../../i18n/useT';
 import { timeOfDay } from '../eventReports/reportDraft';
@@ -25,6 +26,10 @@ export interface LiveBottomBarProps {
   finishing?: boolean;
   /** Why the run cannot be closed yet, already translated. */
   blockedReason?: string | null;
+  /** How many taps the material log holds, for the entry button's badge. */
+  materialsCount: number;
+  /** Opens the material log — available throughout the run, not one screen of it. */
+  onOpenMaterials: () => void;
 }
 
 /**
@@ -57,9 +62,15 @@ export const LiveBottomBar = ({
   onFinish,
   finishing = false,
   blockedReason,
+  materialsCount,
+  onOpenMaterials,
 }: LiveBottomBarProps) => {
   const t = useT();
   const step = nextStampForScreen(run, screen);
+  // Logging stops making sense once the run has already become a report —
+  // stock only moves on submit, and by then the picker belongs to the report
+  // editor's own `MaterialsSection`, not to this bar.
+  const canLogMaterials = run.state !== LiveRunState.CLOSED;
 
   return (
     <Paper
@@ -136,6 +147,24 @@ export const LiveBottomBar = ({
           >
             {t('live.navigate')}
           </Button>
+        )}
+
+        {canLogMaterials && (
+          <IconButton
+            aria-label={t('live.materials.entryButton')}
+            onClick={onOpenMaterials}
+            sx={{
+              minHeight: 64,
+              minWidth: 64,
+              borderRadius: 2,
+              border: 1,
+              borderColor: 'divider',
+            }}
+          >
+            <Badge badgeContent={materialsCount} color="primary" max={99}>
+              <Inventory2Icon />
+            </Badge>
+          </IconButton>
         )}
       </Stack>
 

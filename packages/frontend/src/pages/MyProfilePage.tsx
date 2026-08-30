@@ -14,6 +14,7 @@ import {
 } from '@mui/material';
 import { effectiveCertifications, Locale, User } from '@redinfo/shared';
 import { apiFetch, apiUpload } from '../api';
+import { NotificationSettingsCard } from '../components/NotificationSettingsCard';
 import { PersonAvatar } from '../components/PersonAvatar';
 import { PhotoUploadControl } from '../components/PhotoUploadControl';
 import { certificationLabel, bloodTypeLabel } from '../i18n/labels';
@@ -224,6 +225,8 @@ export const MyProfilePage = () => {
       <Title title={t('profile.title')} />
 
       <LanguageCard />
+
+      <NotificationSettingsCard />
 
       <Paper variant="outlined" sx={{ p: 2, mb: 2, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 1 }}>
         <PersonAvatar userId={profile.id} hasPhoto={Boolean(profile.hasPhoto)} initials={initials} />

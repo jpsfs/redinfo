@@ -57,14 +57,27 @@ describe('RedInfoMenu', () => {
       '/my-duties',
       '/my-hours',
       '/my-reports',
+      '/my-notices',
       '/statistics',
       '/vehicles',
     ]);
   });
 
-  it('gives a Logistics Coordinator exactly six entries and no live mode', async () => {
+  it('gives a Logistics Coordinator exactly ten entries and no live mode', async () => {
+    // Ten, not seven — see the matching note in navigation.test.tsx.
     const links = await renderMenuAs(UserRole.LOGISTICS_COORDINATOR);
-    expect(links).toEqual(['/', '/my-duties', '/my-hours', '/statistics', '/vehicles', '/inventory-templates']);
+    expect(links).toEqual([
+      '/',
+      '/my-duties',
+      '/my-hours',
+      '/my-notices',
+      '/statistics',
+      '/notices',
+      '/vehicles',
+      '/inventory-templates',
+      '/material-items',
+      '/notification-config',
+    ]);
   });
 
   it('gives an Emergency Coordinator every operational and configuration entry, including Holidays', async () => {
@@ -76,19 +89,25 @@ describe('RedInfoMenu', () => {
       '/my-duties',
       '/my-hours',
       '/my-reports',
+      '/my-notices',
       '/live-runs',
       '/event-reports',
       '/schedules',
       '/availability-windows',
       '/volunteer-hours/review',
       '/statistics',
+      '/notices',
       '/users',
       '/vehicles',
       // Not '/inventory-templates': ROLE_PERMISSIONS does not give this role
       // MANAGE_LOGISTICS. See navigation.test.tsx for the note on this gap
       // against the approved design's entry-count table.
+      // '/material-items' IS included, unlike '/inventory-templates' above:
+      // it's gated on MANAGE_VEHICLES (#206), which this role does hold.
+      '/material-items',
       '/hospitals',
       '/holidays',
+      '/notification-config',
     ]);
   });
 
@@ -101,17 +120,21 @@ describe('RedInfoMenu', () => {
       '/my-duties',
       '/my-hours',
       '/my-reports',
+      '/my-notices',
       '/live-runs',
       '/event-reports',
       '/schedules',
       '/availability-windows',
       '/volunteer-hours/review',
       '/statistics',
+      '/notices',
       '/users',
       '/vehicles',
       '/inventory-templates',
+      '/material-items',
       '/hospitals',
       '/holidays',
+      '/notification-config',
     ]);
   });
 

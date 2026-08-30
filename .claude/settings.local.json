@@ -44,7 +44,11 @@
       "Bash(sudo -n docker exec redinfo-backend-1 sh -c 'cd /app/packages/backend && npx prisma migrate deploy')",
       "WebSearch",
       "Bash(node scripts/validate_palette.js \"#ED1B24,#0E7C86,#6B4FA0,#C7761D,#2E7D32\" --mode light --surface \"#FFFFFF\")",
-      "Bash(node scripts/validate_palette.js \"#ED1B24,#0E7C86,#6B4FA0\" --pairs all --mode light --surface \"#FFFFFF\")"
+      "Bash(node scripts/validate_palette.js \"#ED1B24,#0E7C86,#6B4FA0\" --pairs all --mode light --surface \"#FFFFFF\")",
+      "Bash(env)",
+      "Read(//home/jpsfs-work/**)",
+      "Bash(awk '{print $1}')",
+      "Bash(sudo -n chown -R jpsfs:workspace-share /home/jpsfs/workspace/redinfo/.git)"
     ]
   },
   "enableAllProjectMcpServers": true,

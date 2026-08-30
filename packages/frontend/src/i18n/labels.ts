@@ -60,6 +60,7 @@ const MESSAGES = {
   'step.crew': { pt: 'Equipa', en: 'Crew' },
   'step.vehicles': { pt: 'Viatura e quilómetros', en: 'Vehicle and kilometres' },
   'step.vehiclesPlural': { pt: 'Viaturas e quilómetros', en: 'Vehicles and kilometres' },
+  'step.materials': { pt: 'Material consumido', en: 'Material consumed' },
   'step.victims': { pt: 'Vítima e transporte', en: 'Victim and transport' },
   'step.victimsPlural': { pt: 'Vítimas e transporte', en: 'Victims and transport' },
   'step.inemSupport': { pt: 'Meios INEM de apoio', en: 'INEM support units' },
@@ -79,6 +80,7 @@ const MESSAGES = {
   'field.coduReference': { pt: 'Nº CODU', en: 'CODU number' },
   'field.vehicle': { pt: 'Viatura', en: 'Vehicle' },
   'field.vehiclesUsed': { pt: 'Viaturas usadas', en: 'Vehicles used' },
+  'field.materials': { pt: 'Material', en: 'Material' },
   'field.kilometres': { pt: 'Quilómetros percorridos', en: 'Kilometres covered' },
   'field.kilometresShort': { pt: 'km', en: 'km' },
   'field.total': { pt: 'Total', en: 'Total' },
@@ -163,6 +165,10 @@ const MESSAGES = {
     pt: 'Total da saída até ao regresso ao quartel.',
     en: 'Total from leaving to returning to the station.',
   },
+  'hint.materialsNeedVehicle': {
+    pt: 'Escolhe primeiro a viatura para poderes registar material.',
+    en: 'Choose the vehicle first before recording material.',
+  },
   'hint.ageApproximate': {
     pt: 'Se não souberes ao certo, aproxima.',
     en: 'If you are not sure, approximate.',
@@ -196,6 +202,7 @@ const MESSAGES = {
     pt: 'Nenhum meio INEM de apoio registado',
     en: 'No INEM support units recorded',
   },
+  'hint.noMaterials': { pt: 'Nenhum material registado', en: 'No material recorded' },
   'hint.recent': { pt: 'RECENTES', en: 'RECENT' },
   'hint.noTransport': { pt: 'SEM TRANSPORTE', en: 'NOT TRANSPORTED' },
   'hint.chooseDestination': { pt: 'Escolher desfecho', en: 'Choose an outcome' },
@@ -343,6 +350,20 @@ const MESSAGES = {
   'live.photoPending': { pt: '1 fotografia por enviar', en: '1 photograph to send' },
   'live.photosUploading': { pt: 'A enviar fotografias…', en: 'Sending photographs…' },
 
+  // ── Materials (#209) ──
+  'live.materials.entryButton': { pt: 'Registar material', en: 'Log material' },
+  'live.materials.title': { pt: 'Material consumido', en: 'Materials consumed' },
+  'live.materials.close': { pt: 'Fechar', en: 'Close' },
+  'live.materials.noFavourites': {
+    pt: 'Sem favoritos disponíveis offline.',
+    en: 'No favourites available offline.',
+  },
+  'live.materials.scanOffline': {
+    pt: 'Sem rede — só é possível ler os favoritos já guardados.',
+    en: 'No signal — only already-cached favourites can be scanned right now.',
+  },
+  'live.materials.unknownItem': { pt: 'Material não identificado', en: 'Unidentified material' },
+
   // ── Closing ──
   'live.chronology': { pt: 'Cronologia', en: 'Chronology' },
   'live.notMarked': { pt: 'não marcado', en: 'not marked' },
@@ -466,9 +487,13 @@ const MESSAGES = {
   'nav.personnel': { pt: 'Pessoal', en: 'Personnel' },
   'nav.vehicles': { pt: 'Viaturas', en: 'Vehicles' },
   'nav.inventoryTemplates': { pt: 'Modelos de inventário', en: 'Inventory Templates' },
+  'nav.materialItems': { pt: 'Catálogo de materiais', en: 'Material Catalogue' },
   'nav.hospitals': { pt: 'Hospitais', en: 'Hospitals' },
   'nav.holidays': { pt: 'Feriados', en: 'Holidays' },
   'nav.myProfile': { pt: 'O meu perfil', en: 'My Profile' },
+  'nav.myNotices': { pt: 'Avisos', en: 'Notices' },
+  'nav.notices': { pt: 'Gerir avisos', en: 'Manage Notices' },
+  'nav.notificationConfig': { pt: 'Notificações', en: 'Notifications' },
 
   // ── Resource names — react-admin's `resources.<name>.name`, replacing the
   // `options={{ label }}` prop removed from every `<Resource>` in App.tsx. ──
@@ -677,6 +702,10 @@ const MESSAGES = {
 
   'resources.inventory-template-items.fields.templateId': { pt: 'ID do modelo', en: 'Template ID' },
   'resources.inventory-template-items.fields.name': { pt: 'Nome do item', en: 'Item Name' },
+  'resources.inventory-template-items.fields.materialItemId': {
+    pt: 'Item do catálogo',
+    en: 'Catalogue Item',
+  },
   'resources.inventory-template-items.fields.type': { pt: 'Tipo', en: 'Type' },
   'resources.inventory-template-items.fields.recommendedQuantity': {
     pt: 'Quantidade recomendada',
@@ -687,6 +716,68 @@ const MESSAGES = {
   'resources.inventory-template-items.fields.notes': { pt: 'Notas', en: 'Notes' },
 
   'inventoryItemForm.unitHelp': { pt: 'Por exemplo, un, litros, kit', en: 'E.g. pcs, liters, kit' },
+
+  // ── Materials catalogue admin resource (#206) ──
+  'resources.material-items.fields.namePt': { pt: 'Nome (PT)', en: 'Name (PT)' },
+  'resources.material-items.fields.nameEn': { pt: 'Nome (EN)', en: 'Name (EN)' },
+  'resources.material-items.fields.unit': { pt: 'Unidade', en: 'Unit' },
+  'resources.material-items.fields.type': { pt: 'Tipo', en: 'Type' },
+  'resources.material-items.fields.notes': { pt: 'Notas', en: 'Notes' },
+  'resources.material-items.fields.isFrequent': { pt: 'Favorito', en: 'Favourite' },
+  'resources.material-items.fields.frequentOrder': {
+    pt: 'Ordem entre favoritos',
+    en: 'Favourite Order',
+  },
+  'resources.material-items.fields.barcodes': { pt: 'Códigos de barras', en: 'Barcodes' },
+  'resources.material-items.fields.barcodes.code': { pt: 'Código', en: 'Code' },
+  'resources.material-items.fields.barcodes.label': { pt: 'Rótulo', en: 'Label' },
+
+  'materialItemForm.namePtHelp': {
+    pt: 'Nome usado quando não existe tradução para inglês.',
+    en: 'Used whenever no English translation is set.',
+  },
+  'materialItemForm.frequentOrderHelp': {
+    pt: 'Ordena os favoritos no acesso rápido — menor primeiro.',
+    en: 'Orders favourites in the quick-access picker — lowest first.',
+  },
+  'materialItemForm.addBarcode': { pt: 'Adicionar código de barras', en: 'Add Barcode' },
+  'materialItemForm.removeBarcode': { pt: 'Remover código de barras', en: 'Remove Barcode' },
+
+  'materialItemList.searchPlaceholder': {
+    pt: 'Pesquisar por nome ou código de barras…',
+    en: 'Search by name or barcode…',
+  },
+  'materialItemList.favourite': { pt: 'Favorito', en: 'Favourite' },
+  'materialItemList.barcodeCount': { pt: '%{count} código(s)', en: '%{count} barcode(s)' },
+
+  // ── MaterialPicker (#207) ──
+  'materialPicker.favouritesTitle': { pt: 'Favoritos', en: 'Favourites' },
+  'materialPicker.searchPlaceholder': { pt: 'Procurar material…', en: 'Search materials…' },
+  'materialPicker.scanButton': { pt: 'Ler código de barras', en: 'Scan barcode' },
+  'materialPicker.scanTitle': { pt: 'A ler código de barras', en: 'Scanning barcode' },
+  'materialPicker.scanHint': {
+    pt: 'Aponte a câmara para o código de barras',
+    en: 'Point the camera at the barcode',
+  },
+  'materialPicker.closeScan': { pt: 'Fechar leitor', en: 'Close scanner' },
+  'materialPicker.cameraDenied': {
+    pt: 'Sem acesso à câmara. Utilize a pesquisa.',
+    en: 'Camera access denied. Use search instead.',
+  },
+  'materialPicker.cameraUnsupported': {
+    pt: 'Leitura de código de barras não suportada neste aparelho. Utilize a pesquisa.',
+    en: "Barcode scanning isn't supported on this device. Use search instead.",
+  },
+  'materialPicker.barcodeNotFound': {
+    pt: 'Nenhum material encontrado para este código.',
+    en: 'No material found for that code.',
+  },
+  'materialPicker.linesEmpty': {
+    pt: 'Ainda não foi registado nenhum material.',
+    en: 'No material recorded yet.',
+  },
+  'materialPicker.unlimitedLogged': { pt: 'Registado', en: 'Logged' },
+  'materialPicker.linesTitle': { pt: 'Material registado', en: 'Material logged' },
 
   'resources.inventory-templates.fields.vehicleType': { pt: 'Tipo de viatura', en: 'Vehicle Type' },
   'resources.inventory-templates.fields.version': { pt: 'Versão', en: 'Version' },
@@ -738,6 +829,28 @@ const MESSAGES = {
   'vehicleInventory.statusOk': { pt: 'OK', en: 'OK' },
   'vehicleInventory.statusAboveRec': { pt: 'Acima do Rec.', en: 'Above Rec.' },
   'vehicleInventory.saveQuantityTooltip': { pt: 'Guardar quantidade', en: 'Save quantity' },
+  'vehicleInventory.needsRecount': { pt: 'Reconferir', en: 'Recount needed' },
+  'vehicleInventory.needsRecountTooltip': {
+    pt: 'O consumo registado excedeu o stock guardado e a quantidade foi ajustada a 0. Uma edição manual da quantidade limpa este aviso.',
+    en: 'Recorded consumption exceeded the stock on file and the quantity was floored at 0. A manual quantity edit clears this flag.',
+  },
+  'vehicleInventory.movementsHeading': { pt: 'Movimentos de stock', en: 'Stock Movements' },
+  'vehicleInventory.movementsLoadFailed': {
+    pt: 'Não foi possível carregar os movimentos de stock.',
+    en: 'Could not load stock movements.',
+  },
+  'vehicleInventory.movementsEmpty': { pt: 'Sem movimentos registados.', en: 'No movements recorded yet.' },
+  'vehicleInventory.colDate': { pt: 'Data', en: 'Date' },
+  'vehicleInventory.colDelta': { pt: 'Variação', en: 'Delta' },
+  'vehicleInventory.colReason': { pt: 'Motivo', en: 'Reason' },
+  'vehicleInventory.colActor': { pt: 'Autor', en: 'Actor' },
+  'vehicleInventory.colReport': { pt: 'Relatório', en: 'Report' },
+  'vehicleInventory.viewReport': { pt: 'Ver relatório', en: 'View report' },
+  'vehicleInventory.unknownActor': { pt: '—', en: '—' },
+  'vehicleInventory.reasonConsumption': { pt: 'Consumo', en: 'Consumption' },
+  'vehicleInventory.reasonManualAdjustment': { pt: 'Ajuste manual', en: 'Manual adjustment' },
+  'vehicleInventory.reasonImport': { pt: 'Importação', en: 'Import' },
+  'vehicleInventory.reasonCorrection': { pt: 'Correção', en: 'Correction' },
 
   // ── Availability & schedules (#180 phase 3 slice 2) — shared words ──
   'common.collapse': { pt: 'Recolher', en: 'Collapse' },
@@ -1337,6 +1450,105 @@ const MESSAGES = {
   'myDuties.pastDuties': { pt: 'Serviços passados', en: 'Past duties' },
   'myDuties.vehicleCountOne': { pt: '%{count} viatura', en: '%{count} vehicle' },
   'myDuties.vehicleCountMany': { pt: '%{count} viaturas', en: '%{count} vehicles' },
+
+  // ── Notification channels — shared across the notices/settings screens below ──
+  'notificationChannel.IN_APP': { pt: 'Na aplicação', en: 'In-app' },
+  'notificationChannel.EMAIL': { pt: 'Email', en: 'Email' },
+  'notificationChannel.WEB_PUSH': { pt: 'Notificação push', en: 'Push notification' },
+
+  // ── My notices (#165) — the member's own alerts area ──
+  'notices.pageTitle': { pt: 'Avisos', en: 'Notices' },
+  'notices.heading': { pt: 'Avisos', en: 'Notices' },
+  'notices.subheading': {
+    pt: 'Comunicações operacionais dos coordenadores. Confirma a leitura das que precisam de resposta.',
+    en: 'Operational notices from coordinators. Acknowledge the ones that need a response.',
+  },
+  'notices.loadFailed': { pt: 'Não foi possível carregar os avisos.', en: 'Could not load notices.' },
+  'notices.none': { pt: 'Não há avisos ativos.', en: 'No active notices.' },
+  'notices.from': { pt: 'De %{name}', en: 'From %{name}' },
+  'notices.unread': { pt: 'Não lido', en: 'Unread' },
+  'notices.acknowledged': { pt: 'Confirmado', en: 'Acknowledged' },
+  'notices.acknowledgeButton': { pt: 'Confirmar leitura', en: 'Acknowledge' },
+  'notices.acknowledgeFailed': { pt: 'Não foi possível confirmar.', en: 'Could not acknowledge.' },
+  'notices.expiresOn': { pt: 'Válido até %{date}', en: 'Valid until %{date}' },
+
+  // ── Notice management (#165) — the coordinator's create/history screen ──
+  'noticeManage.pageTitle': { pt: 'Gerir avisos', en: 'Manage notices' },
+  'noticeManage.heading': { pt: 'Avisos operacionais', en: 'Operational notices' },
+  'noticeManage.subheading': {
+    pt: 'Cria e acompanha avisos para a equipa. O histórico mostra confirmações de leitura por destinatário.',
+    en: 'Create and track notices for the team. History shows read acknowledgement per recipient.',
+  },
+  'noticeManage.loadFailed': { pt: 'Não foi possível carregar os avisos.', en: 'Could not load notices.' },
+  'noticeManage.none': { pt: 'Ainda não foram enviados avisos.', en: 'No notices sent yet.' },
+  'noticeManage.newButton': { pt: 'Novo aviso', en: 'New notice' },
+  'noticeManage.titleField': { pt: 'Título', en: 'Title' },
+  'noticeManage.bodyField': { pt: 'Mensagem', en: 'Message' },
+  'noticeManage.targetType': { pt: 'Destinatários', en: 'Recipients' },
+  'noticeManage.targetAll': { pt: 'Todos', en: 'Everyone' },
+  'noticeManage.targetRoles': { pt: 'Funções específicas', en: 'Specific roles' },
+  'noticeManage.channels': { pt: 'Enviar também por', en: 'Also deliver via' },
+  'noticeManage.expiresAt': { pt: 'Expira em (opcional)', en: 'Expires on (optional)' },
+  'noticeManage.createButton': { pt: 'Enviar aviso', en: 'Send notice' },
+  'noticeManage.createSuccess': { pt: 'Aviso enviado.', en: 'Notice sent.' },
+  'noticeManage.createFailed': { pt: 'Não foi possível enviar o aviso.', en: 'Could not send the notice.' },
+  'noticeManage.deactivateButton': { pt: 'Terminar agora', en: 'End now' },
+  'noticeManage.deactivateFailed': { pt: 'Não foi possível terminar o aviso.', en: 'Could not end the notice.' },
+  'noticeManage.active': { pt: 'Ativo', en: 'Active' },
+  'noticeManage.ended': { pt: 'Terminado', en: 'Ended' },
+  'noticeManage.recipientsButton': { pt: 'Destinatários', en: 'Recipients' },
+  'noticeManage.recipientsTitle': { pt: 'Destinatários', en: 'Recipients' },
+  'noticeManage.recipientName': { pt: 'Nome', en: 'Name' },
+  'noticeManage.recipientsLoadFailed': {
+    pt: 'Não foi possível carregar os destinatários.',
+    en: 'Could not load recipients.',
+  },
+  'noticeManage.acknowledgedHeader': { pt: 'Confirmações', en: 'Acknowledged' },
+  'noticeManage.acknowledgedCount': {
+    pt: '%{acknowledged} de %{total} confirmaram',
+    en: '%{acknowledged} of %{total} acknowledged',
+  },
+  'noticeManage.deliveryStatus.PENDING': { pt: 'A enviar', en: 'Sending' },
+  'noticeManage.deliveryStatus.SENT': { pt: 'Enviado', en: 'Sent' },
+  'noticeManage.deliveryStatus.FAILED': { pt: 'Falhou', en: 'Failed' },
+
+  // ── Notification settings (#165) — profile section ──
+  'notificationSettings.heading': { pt: 'Notificações', en: 'Notifications' },
+  'notificationSettings.subheading': {
+    pt: 'Como queres ser avisado de novos avisos operacionais, além de os veres aqui na aplicação.',
+    en: 'How you want to hear about new operational notices, on top of seeing them here in the app.',
+  },
+  'notificationSettings.loadFailed': {
+    pt: 'Não foi possível carregar as preferências.',
+    en: 'Could not load your notification preferences.',
+  },
+  'notificationSettings.saveFailed': {
+    pt: 'Não foi possível guardar as preferências.',
+    en: 'Could not save your notification preferences.',
+  },
+  'notificationSettings.pushSubscribe': { pt: 'Ativar neste aparelho', en: 'Enable on this device' },
+  'notificationSettings.pushUnsubscribe': { pt: 'Desativar neste aparelho', en: 'Disable on this device' },
+  'notificationSettings.pushSubscribed': { pt: 'Ativo neste aparelho', en: 'Enabled on this device' },
+  'notificationSettings.pushUnsupported': {
+    pt: 'Este browser não suporta notificações push.',
+    en: 'This browser does not support push notifications.',
+  },
+  'notificationSettings.pushFailed': {
+    pt: 'Não foi possível ativar as notificações push.',
+    en: 'Could not enable push notifications.',
+  },
+
+  // ── Notification configuration (#165) — org-wide defaults ──
+  'notificationConfig.pageTitle': { pt: 'Notificações', en: 'Notifications' },
+  'notificationConfig.heading': { pt: 'Canais de notificação', en: 'Notification channels' },
+  'notificationConfig.subheading': {
+    pt: 'Canais disponíveis para avisos operacionais em toda a organização. Cada pessoa pode ainda desativar um canal nas suas preferências.',
+    en: 'Channels available for operational notices, organisation-wide. Each person can still turn a channel off in their own preferences.',
+  },
+  'notificationConfig.loadFailed': { pt: 'Não foi possível carregar a configuração.', en: 'Could not load the configuration.' },
+  'notificationConfig.saveFailed': { pt: 'Não foi possível guardar a configuração.', en: 'Could not save the configuration.' },
+  'notificationConfig.saved': { pt: 'Configuração guardada.', en: 'Configuration saved.' },
+  'notificationConfig.noticeType': { pt: 'Avisos operacionais', en: 'Operational notices' },
 
   // ── My hours (#164) ──
   'myHours.pageTitle': { pt: 'As minhas horas', en: 'My Hours' },

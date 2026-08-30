@@ -24,6 +24,9 @@ import {
   InventoryTemplateEdit,
   InventoryItemCreate,
   InventoryItemEdit,
+  MaterialItemList,
+  MaterialItemCreate,
+  MaterialItemEdit,
 } from './resources/inventory';
 import {
   AvailabilityWindowList,
@@ -50,10 +53,14 @@ import { MyProfilePage } from './pages/MyProfilePage';
 import { LiveRunsPage } from './pages/LiveRunsPage';
 import { VolunteerHoursReviewPage } from './pages/VolunteerHoursReviewPage';
 import { StatisticsPage } from './pages/StatisticsPage';
+import { MyNoticesPage } from './pages/MyNoticesPage';
+import { NoticesPage } from './pages/NoticesPage';
+import { NotificationConfigPage } from './pages/NotificationConfigPage';
 import PeopleIcon from '@mui/icons-material/People';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import BuildIcon from '@mui/icons-material/Build';
 import InventoryIcon from '@mui/icons-material/Inventory';
+import Inventory2Icon from '@mui/icons-material/Inventory2';
 import DateRangeIcon from '@mui/icons-material/DateRange';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
 import EventNoteIcon from '@mui/icons-material/EventNote';
@@ -151,6 +158,15 @@ export default function App() {
         {/* Aggregate, organisation-wide dashboards (docs/plans/estatisticas-dashboards.md).
             No `requires` in the drawer manifest — every authenticated member sees it. */}
         <Route path="/statistics" element={<StatisticsPage />} />
+        {/* The member's own alerts area (#165). Ungated — everyone sees the
+            notices targeted at them, the same way everyone sees their own duties. */}
+        <Route path="/my-notices" element={<MyNoticesPage />} />
+        {/* The coordinator's create/history screen for operational notices
+            (#165), gated by MANAGE_NOTICES in the drawer manifest. */}
+        <Route path="/notices" element={<NoticesPage />} />
+        {/* Org-wide default delivery channels per notification type (#165),
+            gated by MANAGE_NOTICES the same as the notices screen above. */}
+        <Route path="/notification-config" element={<NotificationConfigPage />} />
       </CustomRoutes>
 
       <Resource
@@ -194,6 +210,14 @@ export default function App() {
       />
 
       <Resource name="vehicle-inventory" />
+
+      <Resource
+        name="material-items"
+        icon={Inventory2Icon}
+        list={MaterialItemList}
+        create={MaterialItemCreate}
+        edit={MaterialItemEdit}
+      />
 
       <Resource
         name="availability-windows"

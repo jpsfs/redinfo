@@ -4,12 +4,19 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { Route, Routes } from 'react-router-dom';
-import { EventLocationType, Gender, LiveRunState, VictimDestinationKind } from '@redinfo/shared';
+import {
+  EventLocationType,
+  Gender,
+  InventoryItemType,
+  LiveRunState,
+  MaterialItem,
+  VictimDestinationKind,
+} from '@redinfo/shared';
 import { renderMobile } from '../../test/renderMobile';
 import { apiFetch } from '../../api';
 import { LiveRunPage } from './LiveRunPage';
 import { emptyRun } from './liveRun';
-import { resetLiveRunDb, saveRun } from './liveRunDb';
+import { resetLiveRunDb, saveMaterialFavourites, saveRun } from './liveRunDb';
 
 vi.mock('../../api', () => ({ apiFetch: vi.fn(), apiDownload: vi.fn() }));
 
@@ -70,9 +77,31 @@ const HOSPITAL = {
   approximate: false,
 };
 
+const GLOVES: MaterialItem = {
+  id: 'mat-gloves',
+  namePt: 'Luvas',
+  nameEn: 'Gloves',
+  unit: 'pcs',
+  type: InventoryItemType.COUNTABLE,
+  notes: null,
+  isFrequent: true,
+  frequentOrder: 0,
+  isDeleted: false,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+  barcodes: [],
+};
+
 /** Every read the shell makes, answered by path. */
 function respondWith(overrides: Record<string, unknown> = {}) {
   mockApiFetch.mockImplementation((path: string, options?: { method?: string }) => {
+    if (path.startsWith('/material-items?frequent=true')) {
+      if (overrides.materialsOffline) return Promise.reject(new Error('offline'));
+      return Promise.resolve({ data: (overrides.materialFavourites as MaterialItem[]) ?? [GLOVES] });
+    }
+    if (path.startsWith('/material-items/by-barcode/')) {
+      return Promise.reject(new Error('not found'));
+    }
     if (path.endsWith('/close')) {
       return Promise.resolve(
         overrides.close ?? {
@@ -484,6 +513,58 @@ describe('the closing screen', () => {
 
     const chronology = (await screen.findByText('Cronologia')).closest('div')!;
     expect(within(chronology).getAllByText('não marcado').length).toBeGreaterThan(0);
+  });
+});
+
+describe('materials logging (#209)', () => {
+  it('opens the sheet from the bottom bar, and a favourite tap records an entry and updates the badge', async () => {
+    const user = userEvent.setup();
+    await seed();
+    renderRun('intake');
+
+    // No taps yet — the bar's badge is not shown at all.
+    expect(screen.queryByText('1')).not.toBeInTheDocument();
+
+    await user.click(await screen.findByLabelText('Registar material'));
+    expect(await screen.findByText('Material consumido')).toBeInTheDocument();
+
+    await user.click(await screen.findByText('Luvas'));
+    // The tap chip on the favourite tile, and the new row in the log below.
+    expect(await screen.findAllByText('Luvas')).toHaveLength(2);
+
+    await user.click(screen.getByLabelText('Fechar'));
+
+    // The same fact, read off the bottom bar once the sheet is closed.
+    expect(await screen.findByLabelText('Registar material')).toHaveTextContent('1');
+  });
+
+  it('keeps every tap as its own entry, so tapping twice shows two rows in the log', async () => {
+    const user = userEvent.setup();
+    await seed();
+    renderRun('intake');
+
+    await user.click(await screen.findByLabelText('Registar material'));
+    const tile = await screen.findByText('Luvas');
+    await user.click(tile);
+    await user.click(tile);
+
+    // Two log rows plus the favourite tile itself.
+    expect(await screen.findAllByText('Luvas')).toHaveLength(3);
+  });
+
+  it('logs a cached favourite even with the network mocked off', async () => {
+    const user = userEvent.setup();
+    await seed();
+    await saveMaterialFavourites([GLOVES]);
+    respondWith({ materialsOffline: true });
+    renderRun('intake');
+
+    await user.click(await screen.findByLabelText('Registar material'));
+    // The grid renders from the device's own cache — no request had to
+    // succeed for the favourite to be here.
+    await user.click(await screen.findByText('Luvas'));
+
+    expect(await screen.findAllByText('Luvas')).toHaveLength(2);
   });
 });
 

@@ -124,7 +124,7 @@ export class InventoryService {
         skip,
         take: perPage,
         orderBy: [{ order: 'asc' }, { name: 'asc' }],
-        include: { template: true },
+        include: { template: true, materialItem: true },
       }),
       this.prisma.inventoryTemplateItem.count({ where }),
     ]);
@@ -134,16 +134,44 @@ export class InventoryService {
   async findOneTemplateItem(id: string) {
     const item = await this.prisma.inventoryTemplateItem.findFirst({
       where: { id, isDeleted: false },
-      include: { template: true },
+      include: { template: true, materialItem: true },
     });
     if (!item) throw new NotFoundException(`Inventory template item ${id} not found`);
     return item;
   }
 
+  /**
+   * Looks up the `MaterialItem` a create/update points at and returns the
+   * `name`/`type`/`unit` triple the row should carry — the catalogue is the
+   * identity now (#206), so these stay a read-through cache of it rather
+   * than free text. Returns `null` when the dto carries no `materialItemId`
+   * at all (the legacy free-text path); throws when it names one that
+   * doesn't exist.
+   */
+  private async resolveMaterialItem(materialItemId: string | undefined) {
+    if (!materialItemId) return null;
+    const materialItem = await this.prisma.materialItem.findFirst({
+      where: { id: materialItemId, isDeleted: false },
+    });
+    if (!materialItem) {
+      throw new NotFoundException(`Material item ${materialItemId} not found`);
+    }
+    return materialItem;
+  }
+
   async createTemplateItem(dto: CreateInventoryTemplateItemDto) {
     const template = await this.findOneTemplate(dto.templateId);
+    const materialItem = await this.resolveMaterialItem(dto.materialItemId);
 
-    if (dto.type === InventoryItemType.COUNTABLE && dto.recommendedQuantity === undefined) {
+    const name = materialItem?.namePt ?? dto.name;
+    const type = materialItem?.type ?? dto.type;
+    const unit = materialItem?.unit ?? dto.unit;
+
+    if (!name || !type) {
+      throw new BadRequestException('Either materialItemId or name/type must be provided');
+    }
+
+    if (type === InventoryItemType.COUNTABLE && dto.recommendedQuantity === undefined) {
       throw new BadRequestException(
         'recommendedQuantity is required for COUNTABLE items',
       );
@@ -152,14 +180,15 @@ export class InventoryService {
     const item = await this.prisma.inventoryTemplateItem.create({
       data: {
         templateId: dto.templateId,
-        name: dto.name,
-        type: dto.type,
-        recommendedQuantity: dto.type === InventoryItemType.UNLIMITED ? null : (dto.recommendedQuantity ?? 0),
-        unit: dto.unit ?? 'pcs',
+        materialItemId: materialItem?.id ?? null,
+        name,
+        type,
+        recommendedQuantity: type === InventoryItemType.UNLIMITED ? null : (dto.recommendedQuantity ?? 0),
+        unit: unit ?? 'pcs',
         notes: dto.notes ?? null,
         order: dto.order ?? 0,
       },
-      include: { template: true },
+      include: { template: true, materialItem: true },
     });
 
     // Bump template version when items change
@@ -173,23 +202,30 @@ export class InventoryService {
 
   async updateTemplateItem(id: string, dto: UpdateInventoryTemplateItemDto) {
     const item = await this.findOneTemplateItem(id);
+    // `undefined` means "leave the link alone"; an explicit id re-points it,
+    // re-deriving name/type/unit from the newly linked catalogue entry.
+    const materialItem =
+      dto.materialItemId !== undefined ? await this.resolveMaterialItem(dto.materialItemId) : null;
+    const effectiveType = materialItem?.type ?? dto.type ?? item.type;
 
     const updatedItem = await this.prisma.inventoryTemplateItem.update({
       where: { id },
       data: {
-        ...(dto.name !== undefined && { name: dto.name }),
-        ...(dto.type !== undefined && { type: dto.type }),
+        ...(dto.materialItemId !== undefined && { materialItemId: materialItem?.id ?? null }),
+        ...(materialItem
+          ? { name: materialItem.namePt, type: materialItem.type, unit: materialItem.unit }
+          : {
+              ...(dto.name !== undefined && { name: dto.name }),
+              ...(dto.type !== undefined && { type: dto.type }),
+              ...(dto.unit !== undefined && { unit: dto.unit }),
+            }),
         ...(dto.recommendedQuantity !== undefined && {
-          recommendedQuantity:
-            (dto.type ?? item.type) === InventoryItemType.UNLIMITED
-              ? null
-              : dto.recommendedQuantity,
+          recommendedQuantity: effectiveType === InventoryItemType.UNLIMITED ? null : dto.recommendedQuantity,
         }),
-        ...(dto.unit !== undefined && { unit: dto.unit }),
         ...(dto.notes !== undefined && { notes: dto.notes }),
         ...(dto.order !== undefined && { order: dto.order }),
       },
-      include: { template: true },
+      include: { template: true, materialItem: true },
     });
 
     // Bump template version when items change

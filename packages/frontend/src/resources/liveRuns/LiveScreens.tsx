@@ -1,10 +1,14 @@
-import { useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
+import { useLocaleState } from 'react-admin';
 import {
   Alert,
   Autocomplete,
   Box,
   Button,
   Chip,
+  Dialog,
+  DialogContent,
+  DialogTitle,
   Divider,
   IconButton,
   InputAdornment,
@@ -16,25 +20,31 @@ import {
   Typography,
 } from '@mui/material';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import CloseIcon from '@mui/icons-material/Close';
+import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import MicIcon from '@mui/icons-material/Mic';
 import MicNoneIcon from '@mui/icons-material/MicNone';
 import MonitorHeartIcon from '@mui/icons-material/MonitorHeart';
 import PlaceIcon from '@mui/icons-material/Place';
+import QrCodeScannerIcon from '@mui/icons-material/QrCodeScanner';
 import {
   EVENT_LOCATION_TYPES,
   EventLocationType,
   EventReportType,
   GENDERS,
   Gender,
+  Locale,
   Locality,
   MAX_LIVE_RUN_ADDRESS_LENGTH,
   MAX_LIVE_RUN_COMPLAINT_LENGTH,
   MAX_VICTIM_AGE,
   MIN_VICTIM_AGE,
+  MaterialItem,
   OCCURRENCE_TIME_FIELDS,
   SNS_NUMBER_REGEX,
   VictimDestinationKind,
+  materialItemDisplayName,
 } from '@redinfo/shared';
 import {
   destinationLabel,
@@ -45,13 +55,20 @@ import {
   occurrenceTimeLabel,
 } from '../../i18n/labels';
 import { useT } from '../../i18n/useT';
+import { useOnline } from '../../hooks/useOnline';
 import { ReportLookups, personName, vehicleLabel } from '../eventReports/useReportLookups';
 import { LocalityPicker, localityLabel, rememberLocality } from '../eventReports/LocalityPicker';
 import { DestinationChoice, HospitalPicker } from '../eventReports/HospitalPicker';
 import { timeOfDay } from '../eventReports/reportDraft';
+import {
+  BarcodeScanErrorKind,
+  BarcodeScanner,
+  isCameraScanSupported,
+} from '../../components/MaterialPicker/BarcodeScanner';
 import { PhotoQueueHandle } from './usePhotoQueue';
 import { LiveRunHandle } from './useLiveRun';
 import { DictationControl } from './useDictation';
+import { useLiveMaterialsCatalogue } from './useLiveMaterialsCatalogue';
 import { AssessmentEditor } from './AssessmentEditor';
 import { PhotoTray } from './PhotoTray';
 
@@ -711,5 +728,237 @@ export const ClosingScreen = ({ form, photos, locality, dictation }: LiveScreenP
         </Stack>
       </Paper>
     </Stack>
+  );
+};
+
+// ── Materials (#209) ────────────────────────────────────────────────────────
+
+/**
+ * The live material log — a favourites grid and a barcode scanner, both
+ * appending taps to `form.materials` rather than editing a quantity.
+ *
+ * Opened from the bottom bar's badge rather than walked into: logging what is
+ * spent happens throughout a run, on whichever screen the crew is on, not on
+ * one screen of it — so this is a sheet over the shell, not one of the six.
+ *
+ * The favourites grid is the offline-safe half of `MaterialPicker` (#207):
+ * `useLiveMaterialsCatalogue` reads the device's own cached copy first, so a
+ * dead spot never empties the grid, and refreshes it whenever the connection
+ * allows. Full-text search is deliberately not offered here — a favourite
+ * tile and a barcode are the two ways #209 promises to reach an item
+ * one-handed; the long tail is the report editor's job, once the crew is back
+ * at a desk.
+ */
+export const MaterialsSheet = ({
+  open,
+  onClose,
+  form,
+}: {
+  open: boolean;
+  onClose: () => void;
+  form: LiveRunHandle;
+}) => {
+  const t = useT();
+  const [locale] = useLocaleState();
+  const online = useOnline();
+  const catalogue = useLiveMaterialsCatalogue();
+
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [scanMessage, setScanMessage] = useState<string | null>(null);
+  const [justAddedId, setJustAddedId] = useState<string | null>(null);
+  // Items resolved off a barcode scan, kept only so a scanned item's name
+  // still shows in the log below even when it is not one of the favourites.
+  const [scannedItems, setScannedItems] = useState<Record<string, MaterialItem>>({});
+  const cameraSupported = useRef(isCameraScanSupported()).current;
+
+  const itemsById = useMemo(() => {
+    const map: Record<string, MaterialItem> = { ...scannedItems };
+    for (const item of catalogue.favourites) map[item.id] = item;
+    return map;
+  }, [catalogue.favourites, scannedItems]);
+
+  const name = (item: MaterialItem) => materialItemDisplayName(item, locale as Locale);
+  const countOf = (materialItemId: string) =>
+    form.materials.filter((entry) => entry.materialItemId === materialItemId).length;
+
+  const tap = (item: MaterialItem) => {
+    form.recordMaterialTap(item.id);
+    setJustAddedId(item.id);
+    window.setTimeout(() => setJustAddedId((current) => (current === item.id ? null : current)), 600);
+    if (typeof navigator !== 'undefined' && navigator.vibrate) navigator.vibrate(30);
+  };
+
+  const handleDetect = (code: string) => {
+    catalogue
+      .findByBarcode(code)
+      .then((item) => {
+        setScanMessage(null);
+        setScannedItems((current) => ({ ...current, [item.id]: item }));
+        tap(item);
+        // The scanner stays open — a crew scanning a shelf of boxes should
+        // not have to reopen it after every item.
+      })
+      .catch(() => {
+        setScannerOpen(false);
+        setScanMessage(online ? t('materialPicker.barcodeNotFound') : t('live.materials.scanOffline'));
+      });
+  };
+
+  const handleScanError = (kind: BarcodeScanErrorKind) => {
+    setScannerOpen(false);
+    setScanMessage(
+      kind === 'denied' ? t('materialPicker.cameraDenied') : t('materialPicker.cameraUnsupported'),
+    );
+  };
+
+  const entries = form.materials;
+
+  return (
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs">
+      <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, pr: 1 }}>
+        <Box sx={{ flex: 1 }}>{t('live.materials.title')}</Box>
+        <IconButton onClick={onClose} aria-label={t('live.materials.close')}>
+          <CloseIcon />
+        </IconButton>
+      </DialogTitle>
+      <DialogContent>
+        <Stack spacing={2}>
+          {catalogue.favourites.length === 0 && !catalogue.loading && (
+            <Typography variant="body2" color="text.secondary">
+              {t('live.materials.noFavourites')}
+            </Typography>
+          )}
+
+          {catalogue.favourites.length > 0 && (
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))',
+                gap: 1,
+              }}
+            >
+              {catalogue.favourites.map((item) => {
+                const count = countOf(item.id);
+                return (
+                  <Paper
+                    key={item.id}
+                    component="button"
+                    type="button"
+                    onClick={() => tap(item)}
+                    elevation={0}
+                    sx={{
+                      minHeight: 72,
+                      p: 1,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 0.5,
+                      border: 2,
+                      borderColor: count > 0 ? 'primary.main' : 'divider',
+                      backgroundColor: count > 0 ? 'primary.50' : 'background.paper',
+                      color: 'text.primary',
+                      cursor: 'pointer',
+                      font: 'inherit',
+                      transform: justAddedId === item.id ? 'scale(1.05)' : 'scale(1)',
+                      transition: 'transform 150ms ease, background-color 150ms ease',
+                    }}
+                  >
+                    <Typography sx={{ fontWeight: 700, fontSize: '0.8125rem', textAlign: 'center' }}>
+                      {name(item)}
+                    </Typography>
+                    {count > 0 && <Chip size="small" color="primary" label={count} />}
+                  </Paper>
+                );
+              })}
+            </Box>
+          )}
+
+          {cameraSupported && (
+            <Button
+              fullWidth
+              variant="outlined"
+              startIcon={<QrCodeScannerIcon />}
+              onClick={() => {
+                setScanMessage(null);
+                setScannerOpen(true);
+              }}
+              sx={{ minHeight: 48, fontWeight: 700 }}
+            >
+              {t('materialPicker.scanButton')}
+            </Button>
+          )}
+
+          {scanMessage && <Alert severity="warning">{scanMessage}</Alert>}
+
+          <Divider />
+
+          <Box>
+            <Typography sx={{ fontWeight: 700, fontSize: '0.8125rem', color: 'text.secondary', mb: 1 }}>
+              {t('materialPicker.linesTitle')}
+            </Typography>
+            {entries.length === 0 ? (
+              <Typography variant="body2" color="text.secondary">
+                {t('materialPicker.linesEmpty')}
+              </Typography>
+            ) : (
+              <Stack spacing={1}>
+                {entries
+                  .map((entry, index) => ({ entry, index }))
+                  .reverse()
+                  .map(({ entry, index }) => {
+                    const item = itemsById[entry.materialItemId];
+                    const label = item ? name(item) : t('live.materials.unknownItem');
+                    return (
+                      <Stack
+                        key={`${entry.materialItemId}-${entry.at}-${index}`}
+                        direction="row"
+                        alignItems="center"
+                        spacing={1}
+                        sx={{ p: 1, border: 1, borderColor: 'divider', borderRadius: 1 }}
+                      >
+                        <Box sx={{ flex: 1, minWidth: 0 }}>
+                          <Typography sx={{ fontWeight: 600 }} noWrap>
+                            {label}
+                          </Typography>
+                        </Box>
+                        <Typography
+                          variant="body2"
+                          color="text.secondary"
+                          sx={{ fontVariantNumeric: 'tabular-nums' }}
+                        >
+                          {timeOfDay(entry.at)}
+                        </Typography>
+                        <IconButton
+                          size="small"
+                          aria-label={`${t('action.remove')} — ${label}`}
+                          onClick={() => form.removeMaterialTap(index)}
+                        >
+                          <DeleteOutlineIcon fontSize="small" />
+                        </IconButton>
+                      </Stack>
+                    );
+                  })}
+              </Stack>
+            )}
+          </Box>
+        </Stack>
+      </DialogContent>
+
+      <Dialog open={scannerOpen} onClose={() => setScannerOpen(false)} fullWidth maxWidth="xs">
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1, pr: 1 }}>
+          <Box sx={{ flex: 1 }}>{t('materialPicker.scanTitle')}</Box>
+          <IconButton onClick={() => setScannerOpen(false)} aria-label={t('materialPicker.closeScan')}>
+            <CloseIcon />
+          </IconButton>
+        </DialogTitle>
+        <DialogContent>
+          {scannerOpen && <BarcodeScanner onDetect={handleDetect} onError={handleScanError} />}
+          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            {t('materialPicker.scanHint')}
+          </Typography>
+        </DialogContent>
+      </Dialog>
+    </Dialog>
   );
 };

@@ -45,6 +45,7 @@ import {
   ClinicalSection,
   CrewSection,
   InemSupportSection,
+  MaterialsSection,
   NarrativeSection,
   ReviewSection,
   SectionProps,
@@ -70,6 +71,8 @@ const stepTitle = (t: Translate, step: StepId, type: EventReportType | string): 
       return t('step.crew');
     case 'vehicles':
       return rules.maxVehicles === 1 ? t('step.vehicles') : t('step.vehiclesPlural');
+    case 'materials':
+      return t('step.materials');
     case 'victims':
       return rules.maxVictims === 1 ? t('step.victims') : t('step.victimsPlural');
     case 'inemSupport':
@@ -322,6 +325,8 @@ export const EventReportEditor = ({ form, report = null }: EventReportEditorProp
         return <CrewSection {...sectionProps} />;
       case 'vehicles':
         return <VehiclesSection {...sectionProps} />;
+      case 'materials':
+        return <MaterialsSection {...sectionProps} />;
       case 'victims':
         return <VictimsSection {...sectionProps} />;
       case 'inemSupport':

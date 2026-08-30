@@ -13,9 +13,12 @@ import DateRangeIcon from '@mui/icons-material/DateRange';
 import PeopleIcon from '@mui/icons-material/People';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import InventoryIcon from '@mui/icons-material/Inventory';
+import Inventory2Icon from '@mui/icons-material/Inventory2';
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
 import QueryStatsIcon from '@mui/icons-material/QueryStats';
+import NotificationsIcon from '@mui/icons-material/Notifications';
+import CampaignIcon from '@mui/icons-material/Campaign';
 import { Action } from '@redinfo/shared';
 import { MessageKey } from '../i18n/labels';
 
@@ -91,6 +94,12 @@ export const NAV_SECTIONS: NavSection[] = [
         icon: <ArticleIcon />,
         requires: [Action.CREATE_EVENT_REPORT],
       },
+      {
+        // Everyone's own alerts area (#165) — ungated, like /my-duties above.
+        to: '/my-notices',
+        label: 'nav.myNotices',
+        icon: <NotificationsIcon />,
+      },
     ],
   },
   {
@@ -134,6 +143,13 @@ export const NAV_SECTIONS: NavSection[] = [
         label: 'nav.statistics',
         icon: <QueryStatsIcon />,
       },
+      {
+        // Create/history screen for operational notices (#165).
+        to: '/notices',
+        label: 'nav.notices',
+        icon: <CampaignIcon />,
+        requires: [Action.MANAGE_NOTICES],
+      },
     ],
   },
   {
@@ -162,6 +178,12 @@ export const NAV_SECTIONS: NavSection[] = [
         icon: <InventoryIcon />,
         requires: [Action.MANAGE_LOGISTICS],
       },
+      {
+        to: '/material-items',
+        label: 'nav.materialItems',
+        icon: <Inventory2Icon />,
+        requires: [Action.MANAGE_VEHICLES],
+      },
     ],
   },
   {
@@ -178,6 +200,13 @@ export const NAV_SECTIONS: NavSection[] = [
         label: 'nav.holidays',
         icon: <EventBusyIcon />,
         requires: [Action.MANAGE_HOLIDAYS],
+      },
+      {
+        // Org-wide default delivery channels per notification type (#165).
+        to: '/notification-config',
+        label: 'nav.notificationConfig',
+        icon: <NotificationsIcon />,
+        requires: [Action.MANAGE_NOTICES],
       },
     ],
   },
