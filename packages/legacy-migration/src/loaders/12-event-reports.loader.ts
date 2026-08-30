@@ -3,6 +3,15 @@
  * Every row is an EMERGENCY (plan finding F1). Q1/Q2/Q5/Q7 are all resolved
  * — see `mapping.config.ts` and `migration/README.md`.
  *
+ * `submittedAt` (`create_date`): confirmed against the real dump, ~39% of
+ * rows still hold MySQL's zero-datetime default rather than a real
+ * timestamp. Unlike the sentinel-as-absent fixes elsewhere, `submittedAt`
+ * carries real meaning here — `IS NULL` *is* the draft state (see
+ * `EventReport`'s own doc comment) — and these are complete historical
+ * records, not paperwork still owed, so `resolveSubmittedAt` falls back to
+ * `update_date`, then `occurredOn`, rather than `null`. Every fallback is
+ * listed in `report.md` as the assumption it is.
+ *
  * Writes with the Prisma client directly, never `EventReportsService.create`
  * — see plan §5.7 for why (permission check with no actor here, a
  * per-request-shaped renumber decision 13 excludes, and no upsert path).
@@ -68,6 +77,38 @@ interface EventReportsContext {
   materialItemIdByKey: Map<string, string>;
 }
 
+export interface EventReportsLoaderReport {
+  /**
+   * Rows where `saidas.create_date` was MySQL's zero-datetime sentinel
+   * (confirmed against the real dump: ~39% of all rows) — `submittedAt` fell
+   * back to `update_date` where usable, else `occurredOn`, rather than the
+   * `null` ("draft") this app gives that meaning to elsewhere. These are
+   * complete historical records, not paperwork someone still owes.
+   */
+  assumedSubmittedAt: Array<{ legacyKey: string; date: string; source: 'update_date' | 'occurredOn' }>;
+}
+
+const ZERO_DATETIME = '0000-00-00 00:00:00';
+
+/**
+ * `create_date` when usable; otherwise the closest fact still available,
+ * flagged in `report.md` since it's a guess rather than the real value.
+ */
+function resolveSubmittedAt(
+  row: SaidasRow,
+  occurredOn: string,
+  key: string,
+  report: EventReportsLoaderReport,
+): Date {
+  if (row.create_date !== ZERO_DATETIME) return new Date(row.create_date);
+  if (row.update_date !== ZERO_DATETIME) {
+    report.assumedSubmittedAt.push({ legacyKey: key, date: row.update_date, source: 'update_date' });
+    return new Date(row.update_date);
+  }
+  report.assumedSubmittedAt.push({ legacyKey: key, date: occurredOn, source: 'occurredOn' });
+  return new Date(`${occurredOn}T00:00:00.000Z`);
+}
+
 function ageFromLegacy(idade: number | null, idadeAM: string | null): { age: number; note: string | null } {
   const raw = idade ?? 0;
   if (!idadeAM || idadeAM === 'Anos') return { age: raw, note: null };
@@ -82,7 +123,7 @@ export async function loadEventReports(
   localityResolver: LocalityResolver,
   userResolver: UserResolver,
   materialItemIdByKey: Map<string, string>,
-): Promise<Set<number>> {
+): Promise<{ yearsTouched: Set<number>; report: EventReportsLoaderReport }> {
   const [saidas, ambulancias, materialSaida, apoioInem, tipoOcorrencia] = await Promise.all([
     ctx.source.saidas(ctx.options.since ?? undefined),
     ctx.source.ambulancias(),
@@ -106,6 +147,7 @@ export async function loadEventReports(
   }
 
   const yearsTouched = new Set<number>();
+  const report: EventReportsLoaderReport = { assumedSubmittedAt: [] };
   const numbering = new EventReportNumbering();
 
   for (const batch of chunk(saidas, ctx.options.batchSize)) {
@@ -125,7 +167,7 @@ export async function loadEventReports(
 
       const yearsInThisChunk = new Set<number>();
       for (const row of batch) {
-        const wrote = await loadOneEventReport(ctx, tx, preload, localityResolver, userResolver, row);
+        const wrote = await loadOneEventReport(ctx, tx, preload, localityResolver, userResolver, row, report);
         if (wrote) {
           yearsTouched.add(row.ano);
           yearsInThisChunk.add(row.ano);
@@ -141,7 +183,7 @@ export async function loadEventReports(
     });
   }
 
-  return yearsTouched;
+  return { yearsTouched, report };
 }
 
 async function loadOneEventReport(
@@ -151,6 +193,7 @@ async function loadOneEventReport(
   localityResolver: LocalityResolver,
   userResolver: UserResolver,
   row: SaidasRow,
+  report: EventReportsLoaderReport,
 ): Promise<boolean> {
   const key = legacyKey('saidas', row.id, row.ano);
 
@@ -313,7 +356,7 @@ async function loadOneEventReport(
     number: null,
     legacyNumber: row.id,
     year: row.ano,
-    submittedAt: new Date(row.create_date),
+    submittedAt: resolveSubmittedAt(row, chronology.result.occurredOn, key, report),
     submittedById: ctx.importActorId,
     occurredOn: new Date(`${chronology.result.occurredOn}T00:00:00.000Z`),
     startedAt: new Date(chronology.result.startedAt),

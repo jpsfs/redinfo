@@ -22,8 +22,15 @@
  * `838:59:59`); hours are read modulo 24 rather than assumed to already be a
  * valid hour-of-day, so a malformed extended value degrades to "some time on
  * this wall-clock day" instead of throwing.
+ *
+ * `data` itself is rejected up front (`INVALID_OCCURRENCE_DATE`) rather than
+ * assumed parseable — confirmed against the real dump, a few `saidas` rows
+ * still hold MySQL's zero-date default (`'0000-00-00'`). Unlike the
+ * sentinel-as-null fixes elsewhere in the loaders, `occurredOn` has no
+ * "unknown" to fall back to (it's a required field), so these rows can only
+ * be rejected, not migrated with a guessed date.
  */
-import { EventReportProblem, EventReportType, validateOccurrenceTimes } from '@redinfo/shared';
+import { EventReportType, validateOccurrenceTimes } from '@redinfo/shared';
 
 /** The five occurrence fields, in the fixed order they are walked. */
 const CHRONOLOGY_FIELDS = [
@@ -58,9 +65,22 @@ export interface ChronologyResult {
   endedAt: string | null;
 }
 
+/**
+ * Deliberately wider than `EventReportProblem` alone: `validateOccurrenceTimes`
+ * returns one (a real business-rule violation), but this module's own
+ * pre-validation (an unparseable `data`) needs a reject reason too, and that
+ * is a migration-only concern with no business meaning to attach a shared
+ * `EventReportProblemCode` to. `EventReportProblem` is structurally
+ * compatible with this shape, so returning one straight through still works.
+ */
+export interface ChronologyProblem {
+  code: string;
+  message: string;
+}
+
 export type ChronologyOutcome =
   | { ok: true; result: ChronologyResult }
-  | { ok: false; problem: EventReportProblem };
+  | { ok: false; problem: ChronologyProblem };
 
 /** Parses `HH:MM:SS` (or `H:MM:SS`, or an out-of-range hour) into seconds-of-day, mod 24h. */
 function secondsOfDay(time: string): number {
@@ -120,6 +140,23 @@ function wallClockToUtcInstant(isoDate: string, secondsIntoDay: number, timeZone
 }
 
 export function buildChronology(input: ChronologyInput): ChronologyOutcome {
+  // `saidas.data` is a NOT NULL `date`, but — confirmed against the real
+  // dump — a handful of rows still hold MySQL's zero-date default
+  // ('0000-00-00') rather than a real one. `occurredOn` has no equivalent
+  // of `null` (`EventReport.occurredOn` is required), so unlike the
+  // sentinel-as-null fixes elsewhere, there is no value to substitute here —
+  // this genuinely can't be migrated, and rejecting explains why in
+  // report.md instead of a raw `RangeError: Invalid time value` further down.
+  if (Number.isNaN(new Date(`${input.data}T00:00:00.000Z`).getTime())) {
+    return {
+      ok: false,
+      problem: {
+        code: 'INVALID_OCCURRENCE_DATE',
+        message: `saidas.data "${input.data}" is not a real calendar date.`,
+      },
+    };
+  }
+
   const raw: Record<string, string | null> = {
     hChamada: input.hChamada,
     hcl: input.hcl,

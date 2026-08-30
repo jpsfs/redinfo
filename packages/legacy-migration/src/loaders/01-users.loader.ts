@@ -15,13 +15,27 @@
  * one by name and email so a coordinator can re-role the real admins and
  * team leaders by hand afterward.
  *
- * `n_cvp` → `redCrossNumber`, `n_tripulante` → `volunteerNumber`: the plan's
- * own proposed reading of the two legacy number fields (§10 Q11, "minor" —
- * confirm the assignment, not whether to migrate at all). Used as stated
- * rather than sentinelled, and called out in the report as an assumption.
- * Every other `socorrista` column Q11 asks about (`grupo_ii`,
- * `estado_civil`, `profissao`, `curso`, `num_curso`, `estado`) has no target
- * field and is not migrated.
+ * `n_cvp` → `redCrossNumber`, `n_tripulante` → `volunteerNumber`, `nif` →
+ * `nif`: the plan's own proposed reading of these legacy number fields (§10
+ * Q11, "minor" — confirm the assignment, not whether to migrate at all).
+ * Every other `socorrista` column Q11 asks about (`grupo_ii`, `estado_civil`,
+ * `profissao`, `curso`, `num_curso`, `estado`) has no target field and is not
+ * migrated.
+ *
+ * All three are nullable `int` columns in legacy, each with a real `@unique`
+ * target column here — and each has rows using the literal integer `0`
+ * (never a real number for any of these) alongside true `NULL`, both meaning
+ * "none on file". Confirmed against the real dump: `0` is not sentinelled
+ * separately from `NULL`, so treated identically to it below — otherwise
+ * every row after the first `0` in each column collides on the unique
+ * constraint and aborts the whole run before `report.md` can even be
+ * written, rather than the soft "flag it and continue" this was meant to be.
+ *
+ * `nascimento` (→ `birthDate`, nullable) has the same class of issue in its
+ * own type: MySQL's zero-date sentinel `'0000-00-00'` alongside true `NULL`,
+ * both meaning "no birth date on file" rather than a real one — `new
+ * Date('0000-00-00T...')` is simply an invalid `Date`, so this is treated as
+ * absent the same way.
  */
 import { AuthProvider } from '@prisma/client';
 import { mapBloodType } from '../transform/enums';
@@ -87,13 +101,16 @@ async function loadOneUser(
     passwordHash: null,
     isActive: usuario.activo === 1,
     phone: phoneFromLegacyInt(socorrista?.contacto ?? null),
-    birthDate: socorrista?.nascimento ? new Date(`${socorrista.nascimento}T00:00:00.000Z`) : null,
+    birthDate:
+      socorrista?.nascimento && socorrista.nascimento !== '0000-00-00'
+        ? new Date(`${socorrista.nascimento}T00:00:00.000Z`)
+        : null,
     addressLine: socorrista?.rua ?? null,
     postalCode: socorrista?.cod_postal ?? null,
     localityId,
-    redCrossNumber: socorrista?.n_cvp != null ? String(socorrista.n_cvp) : null,
-    volunteerNumber: socorrista?.n_tripulante != null ? String(socorrista.n_tripulante) : null,
-    nif: socorrista?.nif != null ? String(socorrista.nif) : null,
+    redCrossNumber: socorrista?.n_cvp ? String(socorrista.n_cvp) : null,
+    volunteerNumber: socorrista?.n_tripulante ? String(socorrista.n_tripulante) : null,
+    nif: socorrista?.nif ? String(socorrista.nif) : null,
     citizenCardNumber: socorrista?.bi != null ? String(socorrista.bi) : null,
     bloodType: mapBloodType(socorrista?.sangue),
     locale: null,

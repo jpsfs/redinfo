@@ -113,6 +113,23 @@ describe('buildChronology — nulls', () => {
   });
 });
 
+describe('buildChronology — MySQL zero-date', () => {
+  it('rejects rather than throws when data is the zero-date sentinel', () => {
+    const outcome = buildChronology({
+      ...base,
+      data: '0000-00-00',
+      hChamada: '08:00:00',
+      hcl: null,
+      hsl: null,
+      hch: null,
+      hd: null,
+    });
+    expect(outcome.ok).toBe(false);
+    if (outcome.ok) return;
+    expect(outcome.problem.code).toBe('INVALID_OCCURRENCE_DATE');
+  });
+});
+
 describe('buildChronology — MySQL TIME beyond 24 hours', () => {
   it('reads the hour modulo 24 rather than rejecting an out-of-range value', () => {
     const outcome = buildChronology({

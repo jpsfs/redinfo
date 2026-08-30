@@ -5,7 +5,12 @@
  * One `Schedule` per synthesised window (plan §5.3's `escala-schedule:
  * {ano}-{mes}`), `PUBLISHED` with `publishedAt` set to the latest
  * `update_date` seen anywhere in that month — the closest legacy fact to
- * "when this roster was finalised". Each row yields up to three assignments,
+ * "when this roster was finalised". Confirmed against the real dump: whole
+ * months (mostly 2016-2019) have every row still on `update_date`'s
+ * NOT-NULL zero-datetime default (`'0000-00-00 00:00:00'`, never a real
+ * edit) — `loadOneSchedule` treats that as unknown (`publishedAt: null`,
+ * which the target column allows) rather than an invalid `Date`. Each row
+ * yields up to three assignments,
  * one per crew slot (`condutor`, `socorrista_1`, `socorrista_3`) — `0` in any
  * of those columns means the seat was empty, matching the `0` = "nobody"
  * convention plan finding F5 established for `saidas`.
@@ -103,7 +108,12 @@ async function loadOneSchedule(
     status: ScheduleStatus.PUBLISHED,
     createdById: ctx.importActorId,
     publishedById: ctx.importActorId,
-    publishedAt: new Date(publishedAt),
+    // '0000-00-00 00:00:00' is MySQL's zero-datetime sentinel for a NOT NULL
+    // `escala.update_date` column — every row in some months (mostly the
+    // oldest, 2016-2019) never had a real update recorded, so the "latest"
+    // seen for the month is itself the sentinel. Schedule.publishedAt is
+    // nullable, so this is "unknown" rather than a fabricated real date.
+    publishedAt: publishedAt === '0000-00-00 00:00:00' ? null : new Date(publishedAt),
   };
   const hash = sourceHash(data);
 

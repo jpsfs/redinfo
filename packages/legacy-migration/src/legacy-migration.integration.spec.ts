@@ -480,7 +480,7 @@ describeIntegration('Legacy migration harness (integration)', () => {
         }),
       ];
 
-      const yearsTouched = await loadEventReports(ctx, new LocalityResolver(prisma, new Map()), userResolver, new Map());
+      const { yearsTouched } = await loadEventReports(ctx, new LocalityResolver(prisma, new Map()), userResolver, new Map());
       expect(yearsTouched.has(year)).toBe(true);
       await loadRenumbering(ctx, yearsTouched);
 

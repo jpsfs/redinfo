@@ -27,9 +27,9 @@ import { UserResolver } from './resolvers/user.resolver';
 import { ActorResolver } from './resolvers/actor.resolver';
 import { runTargetPreflight } from './preflight';
 import { loadSystemActor } from './loaders/00-system-actor.loader';
-import { loadUsers } from './loaders/01-users.loader';
+import { loadUsers, UsersLoaderReport } from './loaders/01-users.loader';
 import { loadUserCertifications } from './loaders/02-user-certifications.loader';
-import { loadVehicles } from './loaders/03-vehicles.loader';
+import { loadVehicles, VehiclesLoaderReport } from './loaders/03-vehicles.loader';
 import { loadMaterialItems } from './loaders/04-material-items.loader';
 import { loadInventoryTemplates } from './loaders/05-inventory-templates.loader';
 import { loadVehicleInventory } from './loaders/06-vehicle-inventory.loader';
@@ -38,7 +38,7 @@ import { loadAvailabilityWindows } from './loaders/08-availability-windows.loade
 import { loadAvailabilitySubmissions } from './loaders/09-availability-submissions.loader';
 import { loadSchedules } from './loaders/10-schedules.loader';
 import { loadScheduleOverrides } from './loaders/11-schedule-overrides.loader';
-import { loadEventReports } from './loaders/12-event-reports.loader';
+import { loadEventReports, EventReportsLoaderReport } from './loaders/12-event-reports.loader';
 import { loadVolunteerHours } from './loaders/13-volunteer-hours.loader';
 import { loadProfileAudits } from './loaders/14-profile-audits.loader';
 import { loadRenumbering } from './loaders/15-renumber.loader';
@@ -64,8 +64,17 @@ async function countdownBeforeCommit(seconds: number): Promise<void> {
   process.stdout.write('\rCommitting now.                          \n');
 }
 
+/** Everything `report.md` needs that a loader — rather than a fixed decision — actually computes. */
+export interface TrackAReport {
+  placeholderEmails: UsersLoaderReport['placeholderEmails'];
+  defaultedVolunteerRoles: UsersLoaderReport['defaultedVolunteerRoles'];
+  vehiclesWithSentinelDates: VehiclesLoaderReport['vehiclesWithSentinelDates'];
+  nonConformingPlates: VehiclesLoaderReport['nonConformingPlates'];
+  assumedSubmittedAt: EventReportsLoaderReport['assumedSubmittedAt'];
+}
+
 /** The Track A loader pipeline — every loader that needs no further sign-off. */
-async function runTrackA(ctx: RunContext): Promise<void> {
+async function runTrackA(ctx: RunContext): Promise<TrackAReport> {
   ctx.importActorId = await loadSystemActor(ctx);
 
   const overrides = loadLocalityOverrides(OVERRIDES_CSV);
@@ -77,9 +86,13 @@ async function runTrackA(ctx: RunContext): Promise<void> {
   userResolver.preload(usuariosRows);
   actorResolver.preload(usuariosRows);
 
-  if (loaderIsSelected('01-users', ctx.options.only)) await loadUsers(ctx, localityResolver);
+  const usersReport = loaderIsSelected('01-users', ctx.options.only)
+    ? await loadUsers(ctx, localityResolver)
+    : { placeholderEmails: [], defaultedVolunteerRoles: [] };
   if (loaderIsSelected('02-user-certifications', ctx.options.only)) await loadUserCertifications(ctx, userResolver);
-  if (loaderIsSelected('03-vehicles', ctx.options.only)) await loadVehicles(ctx);
+  const vehiclesReport = loaderIsSelected('03-vehicles', ctx.options.only)
+    ? await loadVehicles(ctx)
+    : { vehiclesWithSentinelDates: [], nonConformingPlates: [] };
 
   const materialItemIdByKey = loaderIsSelected('04-material-items', ctx.options.only)
     ? await loadMaterialItems(ctx)
@@ -103,14 +116,22 @@ async function runTrackA(ctx: RunContext): Promise<void> {
   if (loaderIsSelected('10-schedules', ctx.options.only)) await loadSchedules(ctx, windows, userResolver);
   if (loaderIsSelected('11-schedule-overrides', ctx.options.only)) await loadScheduleOverrides(ctx);
 
-  const emergencyYearsTouched = loaderIsSelected('12-event-reports', ctx.options.only)
+  const eventReports = loaderIsSelected('12-event-reports', ctx.options.only)
     ? await loadEventReports(ctx, localityResolver, userResolver, materialItemIdByKey)
-    : new Set<number>();
+    : { yearsTouched: new Set<number>(), report: { assumedSubmittedAt: [] } };
 
   if (loaderIsSelected('13-volunteer-hours', ctx.options.only)) await loadVolunteerHours(ctx, userResolver);
   if (loaderIsSelected('14-profile-audits', ctx.options.only)) await loadProfileAudits(ctx, userResolver, actorResolver);
 
-  if (loaderIsSelected('15-renumber', ctx.options.only)) await loadRenumbering(ctx, emergencyYearsTouched);
+  if (loaderIsSelected('15-renumber', ctx.options.only)) await loadRenumbering(ctx, eventReports.yearsTouched);
+
+  return {
+    placeholderEmails: usersReport.placeholderEmails,
+    defaultedVolunteerRoles: usersReport.defaultedVolunteerRoles,
+    vehiclesWithSentinelDates: vehiclesReport.vehiclesWithSentinelDates,
+    nonConformingPlates: vehiclesReport.nonConformingPlates,
+    assumedSubmittedAt: eventReports.report.assumedSubmittedAt,
+  };
 }
 
 async function main(): Promise<void> {
@@ -136,17 +157,31 @@ async function main(): Promise<void> {
 
     const ctx = createRunContext({ prisma, source, options });
 
+    // Filled in by whichever branch below actually runs `runTrackA` — the
+    // dry-run branch can't rely on `$transaction`'s own resolved value for
+    // this (the callback always throws `DryRunRollback` to force the
+    // rollback, so nothing "returns" from it in the success sense), hence
+    // capturing it via this outer variable instead, same as `ctx.counters`
+    // and `ctx.rejects` already are.
+    let trackAReport: TrackAReport = {
+      placeholderEmails: [],
+      defaultedVolunteerRoles: [],
+      vehiclesWithSentinelDates: [],
+      nonConformingPlates: [],
+      assumedSubmittedAt: [],
+    };
+
     if (options.apply) {
       console.log(`Overwrite count will be printed before the first commit. Mode: APPLY (run ${options.runId}).`);
       await countdownBeforeCommit(5);
-      await runTrackA(ctx);
+      trackAReport = await runTrackA(ctx);
     } else {
       console.log(`Mode: DRY RUN (run ${options.runId}) — nothing will be written.`);
       await prisma
         .$transaction(
           async (tx) => {
             ctx.sharedTx = tx;
-            await runTrackA(ctx);
+            trackAReport = await runTrackA(ctx);
             throw new DryRunRollback();
           },
           { timeout: 300_000, maxWait: 10_000 },
@@ -175,10 +210,11 @@ async function main(): Promise<void> {
         { table: 'material_saida_hist', reason: 'No audit model exists for material-consumption edit history (plan finding F2 / Q6).' },
         { table: 'alteracoes_escala', reason: 'No minutes-shaped fact to migrate into ScheduleShiftOverride — see loader 11.' },
       ],
-      placeholderEmails: [],
-      defaultedVolunteerRoles: [],
-      vehiclesWithSentinelDates: [],
-      nonConformingPlates: [],
+      placeholderEmails: trackAReport.placeholderEmails,
+      defaultedVolunteerRoles: trackAReport.defaultedVolunteerRoles,
+      vehiclesWithSentinelDates: trackAReport.vehiclesWithSentinelDates,
+      nonConformingPlates: trackAReport.nonConformingPlates,
+      assumedSubmittedAt: trackAReport.assumedSubmittedAt,
       truncatedNarratives: [],
       unmappedEnumCodes: [],
       droppedColumns: [

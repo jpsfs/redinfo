@@ -70,6 +70,12 @@ services:
     build:
       context: .
       dockerfile: packages/legacy-migration/Dockerfile
+      # Explicit: the Dockerfile's final stage is `job` (job-entrypoint.sh,
+      # which fetches its own copy from LEGACY_PROD_MYSQL_* and demands those
+      # vars be set) — without this, an image rebuild silently picks up that
+      # stage instead of `base` and this service stops working for its actual
+      # purpose, local rehearsal against the already-loaded mysql-legacy above.
+      target: base
     restart: "no"
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://redinfo:redinfo_dev_password@postgres:5432/redinfo}

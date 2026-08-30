@@ -21,6 +21,7 @@ export interface ReportData {
   defaultedVolunteerRoles: Array<{ name: string; email: string }>;
   vehiclesWithSentinelDates: string[];
   nonConformingPlates: Array<{ legacyKey: string; value: string }>;
+  assumedSubmittedAt: Array<{ legacyKey: string; date: string; source: string }>;
   truncatedNarratives: string[];
   unmappedEnumCodes: Array<{ table: string; code: string; count: number; question?: string }>;
   droppedColumns: Array<{ table: string; columns: string[] }>;
@@ -91,6 +92,14 @@ export function renderReport(data: ReportData): string {
     data.vehiclesWithSentinelDates.length > 0
       ? data.vehiclesWithSentinelDates.map((v) => `- ${v}`).join('\n') + '\n'
       : '_None._\n',
+  );
+
+  sections.push('## Event reports given a fallback submittedAt (create_date sentinel)\n');
+  sections.push(
+    table(
+      ['Legacy key', 'Date used', 'Source'],
+      data.assumedSubmittedAt.map((r) => [r.legacyKey, r.date, r.source]),
+    ),
   );
 
   sections.push('## Non-conforming licence plates\n');

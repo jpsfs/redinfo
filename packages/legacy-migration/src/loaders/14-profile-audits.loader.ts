@@ -13,7 +13,10 @@
  *
  * `updated_by` resolves through `ActorResolver`, falling back to the import
  * actor for a username the dump has lost — never a reason to drop an audit
- * entry.
+ * entry. A `*_hist.update_date` that is MySQL's zero-datetime sentinel
+ * *is* one, though (see `loadOneAuditEntry`) — `UserProfileAudit.changedAt`
+ * is a fact about when a real change happened, and there is nothing else on
+ * the row to date it from.
  */
 import { mapBloodType } from '../transform/enums';
 import { phoneFromLegacyInt } from '../transform/phone';
@@ -137,6 +140,27 @@ async function loadOneAuditEntry(
   userId: string,
   diff: { field: string; oldValue: string | null; newValue: string | null; changedAt: string; updatedBy: string | null },
 ): Promise<void> {
+  // MySQL's zero-datetime sentinel — confirmed against the real dump, a
+  // handful of `*_hist` rows have it instead of a real `update_date`.
+  // `changedAt` is NOT NULL (`@default(now())`), but that default exists for
+  // rows the app itself creates going forward, not as a stand-in for a real
+  // historical fact this loader simply doesn't have; unlike `submittedAt`
+  // (loader 12), there is no other still-known date on the same row to fall
+  // back to, and — unlike a `User`/`EventReport` — losing one supplementary
+  // audit-trail entry doesn't misrepresent the entity it's attached to, so
+  // this is rejected rather than dated with a fabricated "now".
+  if (diff.changedAt === '0000-00-00 00:00:00') {
+    ctx.counters.reject(ENTITY);
+    ctx.rejects.write(ENTITY, {
+      legacyKey: key,
+      reasonCode: 'INVALID_CHANGED_AT',
+      reason: `*_hist.update_date "${diff.changedAt}" is MySQL's zero-datetime sentinel, not a real timestamp.`,
+      field: 'update_date',
+      valueRedacted: diff.changedAt,
+    });
+    return;
+  }
+
   const changedById = await actorResolver.resolve(diff.updatedBy);
   const data = {
     userId,
