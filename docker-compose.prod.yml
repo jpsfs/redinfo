@@ -24,6 +24,11 @@ services:
       target: prod
       args:
         VITE_API_URL: /api
+        # Matches the real production branding (.ado/deployment.yml sets this
+        # the same way when building the image Helm actually deploys) so a
+        # local `docker compose -f ... -f docker-compose.prod.yml up` preview
+        # looks like the real thing rather than the dev default.
+        VITE_APP_TITLE: "CVP Portal"
     restart: always
     ports:
       - "80:80"

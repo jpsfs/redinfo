@@ -27,6 +27,10 @@ CMD ["pnpm", "dev"]
 FROM node:22-alpine AS build
 
 ARG VITE_API_URL=/api
+# Tab title / installed-app name — see .env.example for the per-environment
+# values this gets built with (dev default here; staging/production pass
+# their own via --build-arg, see .ado/deployment.yml).
+ARG VITE_APP_TITLE="RedInfo - Dev"
 
 RUN corepack enable && corepack prepare pnpm@10.32.1 --activate
 
@@ -46,7 +50,7 @@ WORKDIR /app/packages/shared
 RUN pnpm build
 
 WORKDIR /app/packages/frontend
-RUN VITE_API_URL=$VITE_API_URL pnpm build
+RUN VITE_API_URL="$VITE_API_URL" VITE_APP_TITLE="$VITE_APP_TITLE" pnpm build
 
 
 # ─── Production stage (served by nginx) ───────────────────────────────────────

@@ -1,6 +1,6 @@
 {
-  "name": "RedInfo — Cruz Vermelha Portuguesa, Delegação de Campo",
-  "short_name": "RedInfo",
+  "name": "__APP_TITLE__ — Cruz Vermelha Portuguesa, Delegação de Campo",
+  "short_name": "__APP_TITLE__",
   "description": "Registo de ocorrências e emergências em direto.",
   "lang": "pt-PT",
   "dir": "ltr",
