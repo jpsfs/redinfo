@@ -60,16 +60,33 @@ stages:
                 $(Build.SourceBranchName)
 
           - task: Docker@2
-            displayName: "Build and push frontend image"
+            displayName: "Build frontend image"
             inputs:
               containerRegistry: "$(DOCKER_SERVICE_CONNECTION)"
               repository: "jpsfs/redinfo-frontend"
-              command: "buildAndPush"
+              # `build`, not `buildAndPush`: the Docker@2 task silently drops
+              # `arguments` for buildAndPush (logs a warning, doesn't fail —
+              # easy to miss). `--target prod` happened to work anyway since
+              # prod is the Dockerfile's last stage anyway, but VITE_APP_TITLE
+              # was never actually reaching `docker build` — every environment
+              # was silently getting the ARG's Dockerfile default. Split into
+              # build + push below so `arguments` actually takes effect.
+              command: "build"
               Dockerfile: "packages/frontend/Dockerfile"
               buildContext: "$(Build.SourcesDirectory)"
               # Build only the production stage so the dev stage is never run in CI.
               # The dev stage is used by docker compose locally only.
               arguments: '--target prod --build-arg VITE_APP_TITLE="$(viteAppTitle)"'
+              tags: |
+                $(Build.BuildId)
+                $(Build.SourceBranchName)
+
+          - task: Docker@2
+            displayName: "Push frontend image"
+            inputs:
+              containerRegistry: "$(DOCKER_SERVICE_CONNECTION)"
+              repository: "jpsfs/redinfo-frontend"
+              command: "push"
               tags: |
                 $(Build.BuildId)
                 $(Build.SourceBranchName)
