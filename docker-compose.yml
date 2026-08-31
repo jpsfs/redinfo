@@ -38,7 +38,12 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-redinfo}:${POSTGRES_PASSWORD:-redinfo_dev_password}@postgres:5432/${POSTGRES_DB:-redinfo}
       NODE_ENV: development
-      FRONTEND_URL: http://localhost:5173
+      # Overridable per host — a hardcoded value here would always win over
+      # .env's FRONTEND_URL, since `environment:` takes precedence over
+      # `env_file`. Needed so hosts reachable at a real domain (e.g.
+      # dev-redcross.jpsfs.com) get correct CORS + OAuth-callback redirects
+      # while plain localhost dev keeps working with no .env change.
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
       # Event report attachments, certification documents, profile photos.
       # A named volume so they survive a redeploy — see docker-compose.prod.yml.
       ATTACHMENTS_DIR: /app/uploads
