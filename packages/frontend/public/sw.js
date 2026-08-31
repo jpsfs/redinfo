@@ -25,7 +25,15 @@
 
 // Bumped on every deploy of the shell. An old cache is deleted on activate, so
 // this is the only thing that has to be remembered when changing what is cached.
-const VERSION = 'v1';
+//
+// v2: manifest.webmanifest used to be treated as cache-first alongside the
+// hashed bundles/fonts/icons (see the fetch handler's "immutable by name"
+// comment) — but its filename never changes while its content does (the
+// per-environment __APP_TITLE__ substitution), so an already-installed SW
+// kept serving a stale manifest indefinitely even after a redeploy changed
+// it. Bumping VERSION here purges that stale cache for existing installs;
+// see the manifest-specific network-first branch below for the actual fix.
+const VERSION = 'v2';
 const SHELL_CACHE = `redinfo-shell-${VERSION}`;
 const DEV = new URLSearchParams(self.location.search).has('dev');
 
@@ -117,6 +125,29 @@ self.addEventListener('fetch', (event) => {
             (await cache.match('/')) ??
             Response.error()
           );
+        }
+      })(),
+    );
+    return;
+  }
+
+  // manifest.webmanifest is the one shell entry whose *filename* never
+  // changes but whose *content* does (the per-environment __APP_TITLE__
+  // substitution baked in at build time). Cache-first would pin an
+  // already-installed SW to whatever title was live when it first cached
+  // this file. Network-first (falling back to the cached copy only when
+  // offline, same shape as the navigate branch above) keeps it current on
+  // every deploy while still working with no network.
+  if (url.pathname === '/manifest.webmanifest') {
+    event.respondWith(
+      (async () => {
+        const cache = await caches.open(SHELL_CACHE);
+        try {
+          const response = await fetch(request, { cache: 'no-store' });
+          if (response.ok) void cache.put(request, response.clone());
+          return response;
+        } catch {
+          return (await cache.match(request)) ?? Response.error();
         }
       })(),
     );
