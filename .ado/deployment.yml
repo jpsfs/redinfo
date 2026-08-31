@@ -23,6 +23,29 @@ stages:
         steps:
           - checkout: self
 
+          - task: Bash@3
+            displayName: "Determine frontend app title"
+            inputs:
+              targetType: "inline"
+              # Tab title / installed-app name (see .env.example's
+              # VITE_APP_TITLE) — one branch per environment, so
+              # Build.SourceBranchName alone is enough to pick it, same as the
+              # envName the Deploy* stages below key off of.
+              script: |
+                set -euo pipefail
+                case "$(Build.SourceBranchName)" in
+                  staging)
+                    TITLE="RedInfo - QA"
+                    ;;
+                  production)
+                    TITLE="CVP Portal"
+                    ;;
+                  *)
+                    TITLE="RedInfo - Dev"
+                    ;;
+                esac
+                echo "##vso[task.setvariable variable=viteAppTitle]${TITLE}"
+
           - task: Docker@2
             displayName: "Build and push backend image"
             inputs:
@@ -46,7 +69,7 @@ stages:
               buildContext: "$(Build.SourcesDirectory)"
               # Build only the production stage so the dev stage is never run in CI.
               # The dev stage is used by docker compose locally only.
-              arguments: "--target prod"
+              arguments: '--target prod --build-arg VITE_APP_TITLE="$(viteAppTitle)"'
               tags: |
                 $(Build.BuildId)
                 $(Build.SourceBranchName)
