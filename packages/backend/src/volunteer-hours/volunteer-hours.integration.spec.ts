@@ -61,7 +61,7 @@ describeIntegration('Volunteer hours module (integration)', () => {
 
   async function createUser(firstName: string, lastName: string, role: UserRole) {
     return prisma.user.create({
-      data: { email: email(`${firstName}.${lastName}`.toLowerCase()), firstName, lastName, role },
+      data: { email: email(`${firstName}.${lastName}`.toLowerCase()), firstName, lastName, roles: [role] },
       select: { id: true },
     });
   }

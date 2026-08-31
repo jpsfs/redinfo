@@ -62,7 +62,7 @@ export class EventReportCrewService {
    */
   async listCandidates(): Promise<SchedulePerson[]> {
     const rows = await this.prisma.user.findMany({
-      where: { isActive: true, role: { in: eventReportCrewEligibleRoles() as never[] } },
+      where: { isActive: true, roles: { hasSome: eventReportCrewEligibleRoles() as never[] } },
       select: CANDIDATE_SELECT,
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
     });

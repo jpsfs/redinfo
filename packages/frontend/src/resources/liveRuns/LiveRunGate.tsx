@@ -1,7 +1,7 @@
 import { ReactNode } from 'react';
 import { useAuthenticated, usePermissions } from 'react-admin';
 import { Alert, Box, Container, LinearProgress } from '@mui/material';
-import { Action, hasPermission } from '@redinfo/shared';
+import { Action, UserRole, hasPermission } from '@redinfo/shared';
 import { useT } from '../../i18n/useT';
 
 /**
@@ -18,7 +18,7 @@ import { useT } from '../../i18n/useT';
  */
 export const LiveRunGate = ({ children }: { children: ReactNode }) => {
   useAuthenticated();
-  const { permissions, isLoading } = usePermissions();
+  const { permissions, isLoading } = usePermissions<UserRole[]>();
   const t = useT();
 
   if (isLoading) {
@@ -29,7 +29,7 @@ export const LiveRunGate = ({ children }: { children: ReactNode }) => {
     );
   }
 
-  if (!permissions || !hasPermission(permissions, Action.CREATE_EVENT_REPORT)) {
+  if (!permissions?.length || !hasPermission(permissions, Action.CREATE_EVENT_REPORT)) {
     return (
       <Container maxWidth="sm" sx={{ py: 4 }}>
         <Alert severity="warning">{t('live.notPermitted')}</Alert>

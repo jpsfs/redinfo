@@ -68,7 +68,7 @@ const report = (overrides: Partial<EventReport> = {}): EventReport =>
     ...overrides,
   }) as EventReport;
 
-function renderPage(as: UserRole = UserRole.EMERGENCY_OPERATIONAL) {
+function renderPage(as: UserRole[] = [UserRole.EMERGENCY_OPERATIONAL]) {
   const authProvider = {
     login: () => Promise.resolve(),
     logout: () => Promise.resolve(),
@@ -132,7 +132,7 @@ describe('my reports', () => {
   });
 
   it('offers no new report to someone who may not', async () => {
-    renderPage(UserRole.LOGISTICS_COORDINATOR);
+    renderPage([UserRole.LOGISTICS_COORDINATOR]);
 
     await screen.findByText('EMG 128/2026');
     expect(

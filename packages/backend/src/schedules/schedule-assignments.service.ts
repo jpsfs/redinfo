@@ -83,7 +83,7 @@ export class ScheduleAssignmentsService {
 
     const person = await this.prisma.user.findUnique({
       where: { id: dto.userId },
-      select: { ...PERSON_SELECT, isActive: true, role: true },
+      select: { ...PERSON_SELECT, isActive: true, roles: true },
     });
     if (!person) throw new NotFoundException(`User ${dto.userId} not found`);
     const personName = `${person.firstName} ${person.lastName}`;
@@ -94,7 +94,8 @@ export class ScheduleAssignmentsService {
         { person: personName },
       );
     }
-    if (!availabilityEligibleRoles().includes(person.role as never)) {
+    const eligibleRoles = availabilityEligibleRoles();
+    if (!person.roles.some((role) => eligibleRoles.includes(role as never))) {
       throw new ApiBadRequestException(
         'ASSIGNMENT_PERSON_NOT_FIELD_PERSONNEL',
         `${personName} is not field personnel and cannot be scheduled.`,
@@ -269,7 +270,7 @@ export class ScheduleAssignmentsService {
 
     const [roster, submissions, declined, assignments] = await Promise.all([
       this.prisma.user.findMany({
-        where: { isActive: true, role: { in: availabilityEligibleRoles() as never[] } },
+        where: { isActive: true, roles: { hasSome: availabilityEligibleRoles() as never[] } },
         select: PERSON_SELECT,
         orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
       }),

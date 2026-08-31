@@ -68,8 +68,8 @@ export class AuthService {
    * doc comment on the `RefreshToken` model for why `refresh()` re-derives
    * it from the token being rotated rather than taking it as a parameter.
    */
-  async generateTokens(user: Pick<User, 'id' | 'email' | 'role'>, remember = false) {
-    const payload = { sub: user.id, email: user.email, role: user.role };
+  async generateTokens(user: Pick<User, 'id' | 'email' | 'roles'>, remember = false) {
+    const payload = { sub: user.id, email: user.email, roles: user.roles };
 
     const accessToken = this.jwtService.sign(payload, {
       expiresIn: this.config.get<string>('JWT_ACCESS_EXPIRES_IN') ?? '15m',

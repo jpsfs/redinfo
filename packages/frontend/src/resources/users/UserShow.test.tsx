@@ -26,7 +26,7 @@ const person = (overrides: Partial<User> = {}): User =>
     email: 'ana.silva@example.test',
     firstName: 'Ana',
     lastName: 'Silva',
-    role: UserRole.EMERGENCY_OPERATIONAL,
+    roles: [UserRole.EMERGENCY_OPERATIONAL],
     provider: 'LOCAL',
     isActive: true,
     isDriver: false,
@@ -50,7 +50,7 @@ const person = (overrides: Partial<User> = {}): User =>
     ...overrides,
   }) as User;
 
-function renderShow(record: User, role: UserRole = UserRole.EMERGENCY_COORDINATOR) {
+function renderShow(record: User, roles: UserRole[] = [UserRole.EMERGENCY_COORDINATOR]) {
   const dataProvider = testDataProvider({
     getOne: vi.fn(() => Promise.resolve({ data: record })) as never,
   });
@@ -59,7 +59,7 @@ function renderShow(record: User, role: UserRole = UserRole.EMERGENCY_COORDINATO
     logout: () => Promise.resolve(),
     checkAuth: () => Promise.resolve(),
     checkError: () => Promise.resolve(),
-    getPermissions: () => Promise.resolve(role),
+    getPermissions: () => Promise.resolve(roles),
   };
 
   render(
@@ -100,7 +100,7 @@ describe('UserShow', () => {
   });
 
   it('offers Add/Edit/Remove to a coordinator', async () => {
-    renderShow(person(), UserRole.EMERGENCY_COORDINATOR);
+    renderShow(person(), [UserRole.EMERGENCY_COORDINATOR]);
 
     expect(await screen.findByRole('button', { name: /add certification/i })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /^edit$/i })).toBeInTheDocument();
@@ -108,7 +108,7 @@ describe('UserShow', () => {
   });
 
   it('hides certification management from someone without MANAGE_PERSONNEL', async () => {
-    renderShow(person(), UserRole.EMERGENCY_OPERATIONAL);
+    renderShow(person(), [UserRole.EMERGENCY_OPERATIONAL]);
 
     await waitFor(() => expect(screen.getAllByText('TAS').length).toBeGreaterThan(0));
     expect(screen.queryByRole('button', { name: /add certification/i })).not.toBeInTheDocument();
@@ -170,7 +170,7 @@ describe('UserShow — photo', () => {
   });
 
   it('hides photo management from someone without MANAGE_PERSONNEL', async () => {
-    renderShow(person(), UserRole.EMERGENCY_OPERATIONAL);
+    renderShow(person(), [UserRole.EMERGENCY_OPERATIONAL]);
     await screen.findByText('Ana Silva');
     expect(screen.queryByRole('button', { name: 'Change photo' })).not.toBeInTheDocument();
   });
@@ -214,7 +214,7 @@ describe('UserShow — certification document', () => {
   });
 
   it('hides the attach control from someone without MANAGE_PERSONNEL, since there is nothing to open', async () => {
-    renderShow(person(), UserRole.EMERGENCY_OPERATIONAL);
+    renderShow(person(), [UserRole.EMERGENCY_OPERATIONAL]);
     await waitFor(() => expect(screen.getAllByText('TAS').length).toBeGreaterThan(0));
     expect(screen.queryByRole('button', { name: /attach document/i })).not.toBeInTheDocument();
   });
@@ -337,7 +337,7 @@ describe('UserShow — certification document', () => {
         },
       ],
     });
-    renderShow(record, UserRole.EMERGENCY_OPERATIONAL);
+    renderShow(record, [UserRole.EMERGENCY_OPERATIONAL]);
 
     expect(await screen.findByRole('button', { name: 'certificado.pdf' })).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Replace' })).not.toBeInTheDocument();

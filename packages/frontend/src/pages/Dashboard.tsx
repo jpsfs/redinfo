@@ -158,7 +158,7 @@ const certificationFilterLink = (status: 'EXPIRING' | 'EXPIRED') =>
  */
 export const CertificationAlertsTile = () => {
   const t = useT();
-  const { permissions, isLoading } = usePermissions<UserRole>();
+  const { permissions, isLoading } = usePermissions<UserRole[]>();
   const [alerts, setAlerts] = useState<CertificationAlerts | null>(null);
   const canView = Boolean(permissions && hasPermission(permissions, Action.MANAGE_PERSONNEL));
 

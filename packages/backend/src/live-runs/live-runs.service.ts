@@ -156,7 +156,7 @@ export class LiveRunsService {
     if (!isLiveRunReadable({ closedAt: row.closedAt?.toISOString() ?? null }, now)) {
       throw new NotFoundException('This run is past its retention window.');
     }
-    if (hasPermission(user.role, Action.VIEW_LIVE_RUNS)) return;
+    if (hasPermission(user.roles, Action.VIEW_LIVE_RUNS)) return;
     if (this.isOnRun(row, user.id)) return;
     throw new ForbiddenException(
       'Only the crew of this run and emergency coordinators can read it.',
@@ -180,7 +180,7 @@ export class LiveRunsService {
         'This run has been closed into a report. Change the report instead.',
       );
     }
-    if (!hasPermission(user.role, Action.CREATE_EVENT_REPORT)) {
+    if (!hasPermission(user.roles, Action.CREATE_EVENT_REPORT)) {
       throw new ForbiddenException('Only field crew can record a live run.');
     }
     if (this.isOnRun(row, user.id)) return;

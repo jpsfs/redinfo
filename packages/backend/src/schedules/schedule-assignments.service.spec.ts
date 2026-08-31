@@ -91,7 +91,7 @@ const ANA = {
   lastName: 'Silva',
   certifications: [{ type: CertificationType.DRIVER, validUntil: null }],
   isActive: true,
-  role: UserRole.EMERGENCY_OPERATIONAL,
+  roles: [UserRole.EMERGENCY_OPERATIONAL],
 };
 const JOANA = {
   id: 'u-joana',
@@ -99,7 +99,7 @@ const JOANA = {
   lastName: 'Pinto',
   certifications: [] as Array<{ type: CertificationType; validUntil: string | null }>,
   isActive: true,
-  role: UserRole.EMERGENCY_OPERATIONAL,
+  roles: [UserRole.EMERGENCY_OPERATIONAL],
 };
 
 function buildPrismaStub(overrides: Record<string, unknown> = {}) {
@@ -389,11 +389,22 @@ describe('ScheduleAssignmentsService.assign', () => {
     const prisma = buildPrismaStub();
     prisma.user.findUnique.mockResolvedValue({
       ...ANA,
-      role: UserRole.LOGISTICS_COORDINATOR,
+      roles: [UserRole.LOGISTICS_COORDINATOR],
     });
     const { service } = makeService(prisma);
 
     await expect(service.assign('s1', dto(), 'u-coord')).rejects.toThrow(/not field personnel/i);
+  });
+
+  it('a dual-role person is assignable if any held role is field-eligible', async () => {
+    const prisma = buildPrismaStub();
+    prisma.user.findUnique.mockResolvedValue({
+      ...ANA,
+      roles: [UserRole.LOGISTICS_COORDINATOR, UserRole.EMERGENCY_OPERATIONAL],
+    });
+    const { service } = makeService(prisma);
+
+    await expect(service.assign('s1', dto(), 'u-coord')).resolves.toBeDefined();
   });
 
   it('404s an unknown person', async () => {
@@ -573,7 +584,7 @@ describe('ScheduleAssignmentsService.selfAssign', () => {
     const prisma = buildPrismaStub();
     prisma.user.findUnique.mockResolvedValue({
       ...JOANA,
-      role: UserRole.LOGISTICS_COORDINATOR,
+      roles: [UserRole.LOGISTICS_COORDINATOR],
     });
     const { service } = makeService(prisma, buildSchedulesStub(published()));
 

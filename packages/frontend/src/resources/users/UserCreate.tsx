@@ -1,6 +1,7 @@
 import {
   Create,
   FormDataConsumer,
+  SelectArrayInput,
   SelectInput,
   SimpleForm,
   TextInput,
@@ -61,10 +62,10 @@ export const UserCreate = () => {
             )
           }
         </FormDataConsumer>
-        <SelectInput
-          source="role"
+        <SelectArrayInput
+          source="roles"
           choices={roleChoices}
-          defaultValue="EMERGENCY_OPERATIONAL"
+          defaultValue={[UserRole.EMERGENCY_OPERATIONAL]}
           validate={required()}
         />
 

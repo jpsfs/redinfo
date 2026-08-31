@@ -152,7 +152,7 @@ export const EventReportShow = () => {
   const [locale] = useLocaleState();
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { permissions } = usePermissions<UserRole>();
+  const { permissions } = usePermissions<UserRole[]>();
   const [report, setReport] = useState<EventReport | null>(null);
   const [error, setError] = useState<string | null>(null);
 

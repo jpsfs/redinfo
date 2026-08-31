@@ -3,6 +3,7 @@ import {
   Edit,
   FormDataConsumer,
   PasswordInput,
+  SelectArrayInput,
   SelectInput,
   SimpleForm,
   TextInput,
@@ -19,13 +20,16 @@ import { useT } from '../../i18n/useT';
  * One PATCH endpoint serves both an admin and a coordinator — the API enforces
  * which fields each may change (`MANAGE_USERS` for account fields,
  * `MANAGE_PERSONNEL` for everything else), and this form matches that by only
- * rendering the fields the viewer may submit. A field never rendered is never
- * part of the submission, so a coordinator's save never touches email, role
- * or password.
+ * rendering the fields the viewer may submit. This does *not* by itself keep
+ * a coordinator's save from touching email/roles/password, though — the
+ * fields are hidden, but react-admin still submits every field the loaded
+ * record carries (see `dataProvider.update`'s doc comment); it's the diff
+ * against `previousData` there, plus `UsersService.update` comparing against
+ * the stored row, that actually enforces it.
  */
 export const UserEdit = () => {
   const t = useT();
-  const { permissions } = usePermissions<UserRole>();
+  const { permissions } = usePermissions<UserRole[]>();
   const canManageAccount = Boolean(permissions && hasPermission(permissions, Action.MANAGE_USERS));
   const canManagePersonnel = Boolean(permissions && hasPermission(permissions, Action.MANAGE_PERSONNEL));
   const roleChoices = Object.values(UserRole).map((role) => ({
@@ -50,7 +54,7 @@ export const UserEdit = () => {
         {canManageAccount ? (
           <>
             <TextInput source="email" validate={[required(), email()]} />
-            <SelectInput source="role" choices={roleChoices} validate={required()} />
+            <SelectArrayInput source="roles" choices={roleChoices} validate={required()} />
             <SelectInput
               source="provider"
               choices={providerChoices}

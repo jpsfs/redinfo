@@ -75,3 +75,74 @@ describe('dataProvider — refresh-and-retry on 401', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });
+
+// ── update() sends only what changed ────────────────────────────────────────
+//
+// react-admin seeds an Edit form's defaultValues from the whole fetched
+// record and submits all of them — including server-computed fields no DTO
+// declares (createdAt, certifications, …). The backend's ValidationPipe 400s
+// on any of those, so this is the fix for "changing a role gives a backend
+// error" (and every other Edit screen's save): diff against previousData and
+// send only the real change.
+
+describe('dataProvider.update — diffs against previousData', () => {
+  it('sends only the fields that actually changed', async () => {
+    setTokens('access-1', 'refresh-1', true);
+    let sentBody: unknown;
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      sentBody = init?.body ? JSON.parse(init.body as string) : undefined;
+      return Promise.resolve(jsonResponse({ id: 'u-1', role: 'EMERGENCY_COORDINATOR' }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    const previousData = {
+      id: 'u-1',
+      firstName: 'Ana',
+      role: 'EMERGENCY_OPERATIONAL',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      certifications: [{ type: 'DRIVER' }],
+      locality: { id: 'loc-1', name: 'Barcelos' },
+    };
+
+    await dataProvider.update('users', {
+      id: 'u-1',
+      previousData,
+      data: { ...previousData, role: 'EMERGENCY_COORDINATOR' },
+    });
+
+    expect(sentBody).toEqual({ role: 'EMERGENCY_COORDINATOR' });
+  });
+
+  it('makes no request at all when nothing changed', async () => {
+    setTokens('access-1', 'refresh-1', true);
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+
+    const record = { id: 'u-1', firstName: 'Ana' };
+    const result = await dataProvider.update('users', {
+      id: 'u-1',
+      previousData: record,
+      data: { ...record },
+    });
+
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(result.data).toEqual(record);
+  });
+
+  it('sends the whole payload when there is no previousData to diff against', async () => {
+    setTokens('access-1', 'refresh-1', true);
+    let sentBody: unknown;
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      sentBody = init?.body ? JSON.parse(init.body as string) : undefined;
+      return Promise.resolve(jsonResponse({ id: 'u-1' }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    await dataProvider.update('users', {
+      id: 'u-1',
+      data: { id: 'u-1', firstName: 'Ana' },
+    });
+
+    expect(sentBody).toEqual({ firstName: 'Ana' });
+  });
+});

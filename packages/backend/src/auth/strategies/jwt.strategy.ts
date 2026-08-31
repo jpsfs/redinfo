@@ -7,7 +7,7 @@ import { UsersService } from '../../users/users.service';
 export interface JwtPayload {
   sub: string;
   email: string;
-  role: string;
+  roles: string[];
 }
 
 @Injectable()

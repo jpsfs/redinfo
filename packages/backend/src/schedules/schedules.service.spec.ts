@@ -28,8 +28,8 @@ const MEMBER_ROLE = {
 const ACTOR = { id: 'u-coord', firstName: 'Ana', lastName: 'Ferreira' };
 
 /** A coordinator sees drafts; a volunteer sees only what is published. */
-const COORDINATOR = { id: ACTOR.id, role: UserRole.EMERGENCY_COORDINATOR };
-const VOLUNTEER = { id: 'u-ana', role: UserRole.EMERGENCY_OPERATIONAL };
+const COORDINATOR = { id: ACTOR.id, roles: [UserRole.EMERGENCY_COORDINATOR] };
+const VOLUNTEER = { id: 'u-ana', roles: [UserRole.EMERGENCY_OPERATIONAL] };
 const ANA = {
   id: 'u-ana',
   firstName: 'Ana',

@@ -2,8 +2,8 @@ import { ForbiddenException } from '@nestjs/common';
 import { NoticeTargetType, NotificationChannel, UserRole } from '@redinfo/shared';
 import { NoticesService } from './notices.service';
 
-const COORDINATOR = { id: 'u-coord', role: UserRole.EMERGENCY_COORDINATOR };
-const OPERATIONAL = { id: 'u-op', role: UserRole.EMERGENCY_OPERATIONAL };
+const COORDINATOR = { id: 'u-coord', roles: [UserRole.EMERGENCY_COORDINATOR] };
+const OPERATIONAL = { id: 'u-op', roles: [UserRole.EMERGENCY_OPERATIONAL] };
 
 function buildPrisma() {
   return {
@@ -94,7 +94,7 @@ describe('NoticesService.create', () => {
     });
 
     expect(prisma.user.findMany).toHaveBeenCalledWith({
-      where: { isActive: true, role: { in: [UserRole.LOGISTICS_COORDINATOR] } },
+      where: { isActive: true, roles: { hasSome: [UserRole.LOGISTICS_COORDINATOR] } },
       select: { id: true },
     });
   });

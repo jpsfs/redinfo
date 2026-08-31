@@ -19,7 +19,7 @@ async function main() {
         firstName: 'Admin',
         lastName: 'RedCross',
         passwordHash,
-        role: UserRole.SYSTEM_ADMIN,
+        roles: [UserRole.SYSTEM_ADMIN],
         provider: AuthProvider.LOCAL,
         isActive: true,
       },

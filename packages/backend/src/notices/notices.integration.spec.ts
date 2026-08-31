@@ -28,7 +28,7 @@ describeIntegration('Notices module (integration)', () => {
 
   async function createUser(firstName: string, role: UserRole, isActive = true) {
     return prisma.user.create({
-      data: { email: email(firstName.toLowerCase()), firstName, lastName: 'Test', role, isActive },
+      data: { email: email(firstName.toLowerCase()), firstName, lastName: 'Test', roles: [role], isActive },
       select: { id: true },
     });
   }
@@ -56,7 +56,7 @@ describeIntegration('Notices module (integration)', () => {
 
   it('targets every active user for ALL and excludes inactive ones', async () => {
     const notice = await notices.create(
-      { id: coordinator.id, role: UserRole.EMERGENCY_COORDINATOR },
+      { id: coordinator.id, roles: [UserRole.EMERGENCY_COORDINATOR] },
       {
         title: 'Base closed today',
         body: 'Roads flooded near the depot.',
@@ -74,7 +74,7 @@ describeIntegration('Notices module (integration)', () => {
 
   it('restricts a ROLES notice to the chosen roles only', async () => {
     const notice = await notices.create(
-      { id: coordinator.id, role: UserRole.EMERGENCY_COORDINATOR },
+      { id: coordinator.id, roles: [UserRole.EMERGENCY_COORDINATOR] },
       {
         title: 'Logistics-only notice',
         body: 'Fuel delivery moved to Friday.',
@@ -85,21 +85,21 @@ describeIntegration('Notices module (integration)', () => {
     );
     noticeIds.push(notice.id);
 
-    const mine = await notices.listForMember({ id: logistics.id, role: UserRole.LOGISTICS_COORDINATOR });
+    const mine = await notices.listForMember({ id: logistics.id, roles: [UserRole.LOGISTICS_COORDINATOR] });
     expect(mine.map((n) => n.id)).toContain(notice.id);
 
-    const notMine = await notices.listForMember({ id: operational.id, role: UserRole.EMERGENCY_OPERATIONAL });
+    const notMine = await notices.listForMember({ id: operational.id, roles: [UserRole.EMERGENCY_OPERATIONAL] });
     expect(notMine.map((n) => n.id)).not.toContain(notice.id);
   });
 
   it('carries a member through read → acknowledge, visible to the coordinator', async () => {
     const notice = await notices.create(
-      { id: coordinator.id, role: UserRole.EMERGENCY_COORDINATOR },
+      { id: coordinator.id, roles: [UserRole.EMERGENCY_COORDINATOR] },
       { title: 'Read me', body: 'Please confirm.', targetType: NoticeTargetType.ALL, channels: [] },
     );
     noticeIds.push(notice.id);
 
-    const beforeAck = await notices.listForMember({ id: operational.id, role: UserRole.EMERGENCY_OPERATIONAL });
+    const beforeAck = await notices.listForMember({ id: operational.id, roles: [UserRole.EMERGENCY_OPERATIONAL] });
     expect(beforeAck.find((n) => n.id === notice.id)?.receipt).toEqual({ readAt: null, acknowledgedAt: null });
 
     await notices.markRead(notice.id, operational.id);
@@ -116,14 +116,46 @@ describeIntegration('Notices module (integration)', () => {
 
   it('deactivate expires the notice so it drops out of the member’s active list', async () => {
     const notice = await notices.create(
-      { id: coordinator.id, role: UserRole.EMERGENCY_COORDINATOR },
+      { id: coordinator.id, roles: [UserRole.EMERGENCY_COORDINATOR] },
       { title: 'Ends now', body: 'Superseded.', targetType: NoticeTargetType.ALL, channels: [] },
     );
     noticeIds.push(notice.id);
 
     await notices.deactivate(notice.id);
 
-    const mine = await notices.listForMember({ id: operational.id, role: UserRole.EMERGENCY_OPERATIONAL });
+    const mine = await notices.listForMember({ id: operational.id, roles: [UserRole.EMERGENCY_OPERATIONAL] });
     expect(mine.map((n) => n.id)).not.toContain(notice.id);
+  });
+
+  it('a dual-role recipient targeted by both of their roles appears exactly once', async () => {
+    const dual = await prisma.user.create({
+      data: {
+        email: email('dual-role'),
+        firstName: 'Dual',
+        lastName: 'Role',
+        roles: [UserRole.EMERGENCY_OPERATIONAL, UserRole.LOGISTICS_COORDINATOR],
+        isActive: true,
+      },
+      select: { id: true },
+    });
+
+    try {
+      const notice = await notices.create(
+        { id: coordinator.id, roles: [UserRole.EMERGENCY_COORDINATOR] },
+        {
+          title: 'Both halves of your job',
+          body: 'Targeted at both roles you hold.',
+          targetType: NoticeTargetType.ROLES,
+          targetRoles: [UserRole.EMERGENCY_OPERATIONAL, UserRole.LOGISTICS_COORDINATOR],
+          channels: [],
+        },
+      );
+      noticeIds.push(notice.id);
+
+      const recipients = await notices.getRecipients(notice.id);
+      expect(recipients.filter((r) => r.userId === dual.id)).toHaveLength(1);
+    } finally {
+      await prisma.user.delete({ where: { id: dual.id } });
+    }
   });
 });

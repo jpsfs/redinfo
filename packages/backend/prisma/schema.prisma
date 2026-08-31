@@ -50,7 +50,11 @@ model User {
   firstName    String
   lastName     String
   passwordHash String?
-  role         UserRole     @default(EMERGENCY_OPERATIONAL)
+  /// Every role this person holds. Unordered, no primary — permissions are
+  /// the union across the set (`hasPermission` in `@redinfo/shared`). An
+  /// empty array is not a valid state; the DTO enforces non-empty on the
+  /// way in.
+  roles        UserRole[]   @default([EMERGENCY_OPERATIONAL])
   provider     AuthProvider @default(LOCAL)
   providerId   String?
   isActive     Boolean      @default(true)
@@ -130,7 +134,7 @@ model User {
 
   @@index([email])
   @@index([provider, providerId])
-  @@index([isActive, role])
+  @@index([isActive])
   @@index([localityId])
 }
 

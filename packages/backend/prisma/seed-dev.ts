@@ -100,7 +100,7 @@ interface UserFixture {
   key: string;
   firstName: string;
   lastName: string;
-  role: UserRole;
+  roles: UserRole[];
   isActive?: boolean;
   phone: string;
   birthDate: string;
@@ -155,7 +155,9 @@ async function main() {
       key: 'mariana',
       firstName: 'Mariana',
       lastName: 'Alves',
-      role: UserRole.EMERGENCY_COORDINATOR,
+      // Dual-role dev fixture: a coordinator who is also a System
+      // Administrator — the exact "can do both" case multi-role exists for.
+      roles: [UserRole.EMERGENCY_COORDINATOR, UserRole.SYSTEM_ADMIN],
       phone: '+351 912 345 678',
       birthDate: '1985-03-12',
       joinedOn: '2012-05-01',
@@ -180,7 +182,9 @@ async function main() {
       key: 'joaoP',
       firstName: 'João',
       lastName: 'Pinto',
-      role: UserRole.EMERGENCY_COORDINATOR,
+      // Second dual-role dev fixture: a coordinator who is also field
+      // personnel — the other "can do both" case from the same request.
+      roles: [UserRole.EMERGENCY_COORDINATOR, UserRole.EMERGENCY_OPERATIONAL],
       phone: '+351 913 456 789',
       birthDate: '1988-07-22',
       joinedOn: '2014-02-15',
@@ -204,7 +208,7 @@ async function main() {
       key: 'ricardo',
       firstName: 'Ricardo',
       lastName: 'Gonçalves',
-      role: UserRole.LOGISTICS_COORDINATOR,
+      roles: [UserRole.LOGISTICS_COORDINATOR],
       phone: '+351 914 567 890',
       birthDate: '1979-11-02',
       joinedOn: '2009-09-01',
@@ -225,7 +229,7 @@ async function main() {
       key: 'ines',
       firstName: 'Inês',
       lastName: 'Marques',
-      role: UserRole.EMERGENCY_OPERATIONAL,
+      roles: [UserRole.EMERGENCY_OPERATIONAL],
       phone: '+351 915 678 901',
       birthDate: '1996-04-18',
       joinedOn: '2019-03-01',
@@ -249,7 +253,7 @@ async function main() {
       key: 'tiago',
       firstName: 'Tiago',
       lastName: 'Correia',
-      role: UserRole.EMERGENCY_OPERATIONAL,
+      roles: [UserRole.EMERGENCY_OPERATIONAL],
       phone: '+351 916 789 012',
       birthDate: '1993-09-09',
       joinedOn: '2017-06-10',
@@ -273,7 +277,7 @@ async function main() {
       key: 'beatriz',
       firstName: 'Beatriz',
       lastName: 'Lopes',
-      role: UserRole.EMERGENCY_OPERATIONAL,
+      roles: [UserRole.EMERGENCY_OPERATIONAL],
       phone: '+351 917 890 123',
       birthDate: '1999-12-30',
       joinedOn: '2021-01-20',
@@ -293,7 +297,7 @@ async function main() {
       key: 'diogo',
       firstName: 'Diogo',
       lastName: 'Ribeiro',
-      role: UserRole.EMERGENCY_OPERATIONAL,
+      roles: [UserRole.EMERGENCY_OPERATIONAL],
       phone: '+351 918 901 234',
       birthDate: '1982-02-14',
       joinedOn: '2008-04-01',
@@ -317,7 +321,7 @@ async function main() {
       key: 'sara',
       firstName: 'Sara',
       lastName: 'Teixeira',
-      role: UserRole.EMERGENCY_OPERATIONAL,
+      roles: [UserRole.EMERGENCY_OPERATIONAL],
       phone: '+351 919 012 345',
       birthDate: '1997-06-25',
       joinedOn: '2020-08-15',
@@ -339,7 +343,7 @@ async function main() {
       key: 'hugo',
       firstName: 'Hugo',
       lastName: 'Fernandes',
-      role: UserRole.EMERGENCY_OPERATIONAL,
+      roles: [UserRole.EMERGENCY_OPERATIONAL],
       phone: '+351 920 123 456',
       birthDate: '1990-01-05',
       joinedOn: '2015-05-05',
@@ -362,7 +366,7 @@ async function main() {
       key: 'catarina',
       firstName: 'Catarina',
       lastName: 'Machado',
-      role: UserRole.EMERGENCY_OPERATIONAL,
+      roles: [UserRole.EMERGENCY_OPERATIONAL],
       phone: '+351 921 234 567',
       birthDate: '2001-10-10',
       joinedOn: isoAgo(45),
@@ -382,7 +386,7 @@ async function main() {
       key: 'nuno',
       firstName: 'Nuno',
       lastName: 'Barbosa',
-      role: UserRole.EMERGENCY_OPERATIONAL,
+      roles: [UserRole.EMERGENCY_OPERATIONAL],
       isActive: false,
       phone: '+351 922 345 678',
       birthDate: '1975-08-08',
@@ -417,7 +421,7 @@ async function main() {
         firstName: fixture.firstName,
         lastName: fixture.lastName,
         passwordHash,
-        role: fixture.role,
+        roles: fixture.roles,
         isActive: fixture.isActive ?? true,
         phone: fixture.phone,
         birthDate: parseIsoDate(fixture.birthDate),
@@ -436,10 +440,10 @@ async function main() {
       },
       select: { id: true },
     });
-    // Kept as the fixture's own role rather than read back from `created`:
+    // Kept as the fixture's own roles rather than read back from `created`:
     // Prisma's generated enum type and `@redinfo/shared`'s are structurally
     // separate types, and every service call below wants the latter.
-    users[fixture.key] = { id: created.id, role: fixture.role };
+    users[fixture.key] = { id: created.id, roles: fixture.roles };
 
     for (const cert of fixture.certs) {
       await prisma.userCertification.create({
@@ -449,7 +453,7 @@ async function main() {
           validUntil: cert.validUntil ? parseIsoDate(cert.validUntil) : null,
           issuedOn: cert.issuedOn ? parseIsoDate(cert.issuedOn) : null,
           notes: cert.notes,
-          createdById: fixture.role === UserRole.EMERGENCY_OPERATIONAL ? users.mariana.id : admin.id,
+          createdById: fixture.roles.includes(UserRole.EMERGENCY_OPERATIONAL) ? users.mariana.id : admin.id,
         },
       });
     }

@@ -59,7 +59,7 @@ export class ScheduleAutofillService {
     const asOf = today();
     const [rosterRows, submissions, existing] = await Promise.all([
       this.prisma.user.findMany({
-        where: { isActive: true, role: { in: availabilityEligibleRoles() as never[] } },
+        where: { isActive: true, roles: { hasSome: availabilityEligibleRoles() as never[] } },
         select: { id: true, firstName: true, lastName: true, certifications: { select: CERT_HELD_SELECT } },
       }),
       this.prisma.availabilitySubmission.findMany({

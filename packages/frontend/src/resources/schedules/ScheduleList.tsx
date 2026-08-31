@@ -41,7 +41,7 @@ export const ScheduleStatusChip = ({ status }: { status?: string }) => {
  * offered and refused.
  */
 const ScheduleListActions = () => {
-  const { permissions } = usePermissions<UserRole>();
+  const { permissions } = usePermissions<UserRole[]>();
   const [open, setOpen] = useState(false);
 
   const t = useT();

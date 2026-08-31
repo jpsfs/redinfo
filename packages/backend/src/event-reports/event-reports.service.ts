@@ -43,7 +43,7 @@ import {
 /** Just enough of the caller to answer "may they read or change this report". */
 export interface RequestUser {
   id: string;
-  role: UserRole;
+  roles: UserRole[];
 }
 
 /**
@@ -160,7 +160,7 @@ export class EventReportsService {
     // show, so clicking one must not change the others' numbers.
     const { type: _ignored, ...rest } = filters;
     const scope: Prisma.EventReportWhereInput[] = [this.buildWhere(rest)];
-    if (user && !hasPermission(user.role, Action.VIEW_EVENT_REPORTS)) {
+    if (user && !hasPermission(user.roles, Action.VIEW_EVENT_REPORTS)) {
       scope.push(involves(user.id));
     }
     const where: Prisma.EventReportWhereInput = { AND: scope };
@@ -338,7 +338,7 @@ export class EventReportsService {
     year: number,
     actor?: RequestUser,
   ): Promise<void> {
-    if (!actor || hasPermission(actor.role, Action.MANAGE_EVENT_REPORTS)) return;
+    if (!actor || hasPermission(actor.roles, Action.MANAGE_EVENT_REPORTS)) return;
 
     const displaced = await this.numbering.countDisplaced(tx, type, year);
     if (displaced === 0) return;
@@ -419,7 +419,7 @@ export class EventReportsService {
    * the list of what moved, and every move is in the log.
    */
   async remove(id: string, user: RequestUser): Promise<EventReportDeleteResponse> {
-    if (!hasPermission(user.role, Action.MANAGE_EVENT_REPORTS)) {
+    if (!hasPermission(user.roles, Action.MANAGE_EVENT_REPORTS)) {
       throw new ForbiddenException('Only a coordinator can delete a filed report.');
     }
     const existing = await this.loadRow(id);
@@ -448,7 +448,7 @@ export class EventReportsService {
    * bounced off the report they just filed.
    */
   assertCanRead(row: EventReportRow, user: RequestUser): void {
-    if (hasPermission(user.role, Action.VIEW_EVENT_REPORTS)) return;
+    if (hasPermission(user.roles, Action.VIEW_EVENT_REPORTS)) return;
     if (this.isInvolved(row, user.id)) return;
     throw new ForbiddenException(
       'Only the crew of this activity and coordinators can read this report.',
@@ -461,9 +461,9 @@ export class EventReportsService {
    * Editing someone else's needs `MANAGE_EVENT_REPORTS`.
    */
   assertCanWrite(row: EventReportRow, user: RequestUser): void {
-    if (hasPermission(user.role, Action.MANAGE_EVENT_REPORTS)) return;
+    if (hasPermission(user.roles, Action.MANAGE_EVENT_REPORTS)) return;
     if (
-      hasPermission(user.role, Action.CREATE_EVENT_REPORT) &&
+      hasPermission(user.roles, Action.CREATE_EVENT_REPORT) &&
       this.isInvolved(row, user.id)
     ) {
       return;

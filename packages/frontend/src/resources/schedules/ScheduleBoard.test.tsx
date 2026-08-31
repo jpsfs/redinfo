@@ -47,15 +47,15 @@ const rowFor = (label: string): HTMLElement =>
   screen.getByText(label).closest('tr') as HTMLElement;
 
 const COORDINATOR = {
-  role: UserRole.EMERGENCY_COORDINATOR,
+  roles: [UserRole.EMERGENCY_COORDINATOR],
   identity: { id: 'u-coord', fullName: 'Maria Santos', isDriver: false, certifications: [] },
 };
 const MEMBER = {
-  role: UserRole.EMERGENCY_OPERATIONAL,
+  roles: [UserRole.EMERGENCY_OPERATIONAL],
   identity: { id: 'u-rui', fullName: 'Rui Nunes', isDriver: false, certifications: [] },
 };
 const DRIVING_MEMBER = {
-  role: UserRole.EMERGENCY_OPERATIONAL,
+  roles: [UserRole.EMERGENCY_OPERATIONAL],
   identity: {
     id: 'u-bruno',
     fullName: 'Bruno Costa',
@@ -71,13 +71,13 @@ const i18nProvider = polyglotI18nProvider(messages, 'en');
  * The board reads who is looking at it from react-admin, so every render goes
  * through an AdminContext carrying that person's role and identity.
  */
-function renderBoard(as: { role: UserRole; identity: Record<string, unknown> } = COORDINATOR) {
+function renderBoard(as: { roles: UserRole[]; identity: Record<string, unknown> } = COORDINATOR) {
   const authProvider = {
     login: () => Promise.resolve(),
     logout: () => Promise.resolve(),
     checkAuth: () => Promise.resolve(),
     checkError: () => Promise.resolve(),
-    getPermissions: () => Promise.resolve(as.role),
+    getPermissions: () => Promise.resolve(as.roles),
     getIdentity: () => Promise.resolve(as.identity as never),
   };
   return render(

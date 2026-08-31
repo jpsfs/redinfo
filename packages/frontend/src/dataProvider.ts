@@ -69,6 +69,62 @@ const httpClient = async (url: string, options: fetchUtils.Options = {}) => {
   }
 };
 
+/**
+ * Structural equality for the JSON-shaped values a record holds: primitives,
+ * arrays, and plain objects. Good enough for diffing a submitted form value
+ * against the stored record — nothing here carries functions or class
+ * instances; dates travel as ISO strings, which `===` already handles.
+ */
+function isEqualValue(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (a === null || b === null || typeof a !== 'object' || typeof b !== 'object') return false;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return (
+      Array.isArray(a) &&
+      Array.isArray(b) &&
+      a.length === b.length &&
+      a.every((item, i) => isEqualValue(item, b[i]))
+    );
+  }
+  const aRec = a as Record<string, unknown>;
+  const bRec = b as Record<string, unknown>;
+  const aKeys = Object.keys(aRec);
+  const bKeys = Object.keys(bRec);
+  return aKeys.length === bKeys.length && aKeys.every((key) => isEqualValue(aRec[key], bRec[key]));
+}
+
+/**
+ * Only the fields that actually changed. `id` is always dropped — it
+ * identifies the URL, not a field to PATCH, and no update DTO declares it.
+ *
+ * Why this exists: react-admin's `<Edit>` form seeds its `defaultValues` from
+ * the *whole* fetched record (`getFormInitialValues` merges `record` in) and
+ * submits every field, not only the ones an `<Input>` renders — including
+ * server-computed fields no DTO declares (`createdAt`, `certifications`,
+ * `isDriver`, …). The backend's `ValidationPipe({ forbidNonWhitelisted: true
+ * })` 400s on any of those, so an unfiltered `update()` fails on every save
+ * from every `<Edit>` screen, not just the fields a user actually touched.
+ * Diffing against `previousData` (which react-admin always supplies for a
+ * regular, non-optimistic update) is the fix, and it is strictly safer than
+ * sending everything: several update services (e.g. `MaterialItemsService`)
+ * treat "field present" as "replace the whole related collection", so
+ * resending an unchanged array-valued field can churn rows for no reason.
+ * Without `previousData` (some custom callers build an `UpdateParams` by
+ * hand) there is nothing to diff against, so everything except `id` goes.
+ */
+function changedFields(
+  data: Record<string, unknown>,
+  previousData: Record<string, unknown> | undefined,
+): Record<string, unknown> {
+  const changed: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (key === 'id') continue;
+    if (previousData && isEqualValue(value, previousData[key])) continue;
+    changed[key] = value;
+  }
+  return changed;
+}
+
 export const dataProvider: DataProvider = {
   async getList(resource: string, params: GetListParams) {
     const { page = 1, perPage = 25 } = params.pagination ?? {};
@@ -117,9 +173,18 @@ export const dataProvider: DataProvider = {
   },
 
   async update(resource: string, params: UpdateParams) {
+    const changed = changedFields(
+      params.data as Record<string, unknown>,
+      params.previousData as Record<string, unknown> | undefined,
+    );
+    if (Object.keys(changed).length === 0) {
+      // Nothing to save — most often a coordinator resaving a form they
+      // didn't actually edit. Skip the round trip rather than PATCH `{}`.
+      return { data: params.data };
+    }
     const { json } = await httpClient(`${API_URL}/${resource}/${params.id}`, {
       method: 'PATCH',
-      body: JSON.stringify(params.data),
+      body: JSON.stringify(changed),
     });
     return { data: json };
   },

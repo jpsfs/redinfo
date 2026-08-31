@@ -18,7 +18,7 @@ const person = (overrides: Partial<User> = {}): User =>
     email: 'ana.silva@example.test',
     firstName: 'Ana',
     lastName: 'Silva',
-    role: UserRole.EMERGENCY_OPERATIONAL,
+    roles: [UserRole.EMERGENCY_OPERATIONAL],
     provider: 'LOCAL',
     isActive: true,
     isDriver: true,
@@ -42,7 +42,7 @@ const person = (overrides: Partial<User> = {}): User =>
     ...overrides,
   }) as User;
 
-function renderList(data: User[], role: UserRole = UserRole.SYSTEM_ADMIN) {
+function renderList(data: User[], roles: UserRole[] = [UserRole.SYSTEM_ADMIN]) {
   const dataProvider = testDataProvider({
     getList: vi.fn(() => Promise.resolve({ data, total: data.length })) as never,
   });
@@ -51,7 +51,7 @@ function renderList(data: User[], role: UserRole = UserRole.SYSTEM_ADMIN) {
     logout: () => Promise.resolve(),
     checkAuth: () => Promise.resolve(),
     checkError: () => Promise.resolve(),
-    getPermissions: () => Promise.resolve(role),
+    getPermissions: () => Promise.resolve(roles),
   };
 
   render(
@@ -93,14 +93,27 @@ describe('the personnel registry', () => {
   });
 
   it('offers Create only to someone who may manage accounts', async () => {
-    renderList([person()], UserRole.SYSTEM_ADMIN);
+    renderList([person()], [UserRole.SYSTEM_ADMIN]);
     await screen.findByText('Ana Silva');
     expect(screen.getByRole('link', { name: /create/i })).toBeInTheDocument();
   });
 
   it('hides Create from a coordinator, who may manage personnel but not accounts', async () => {
-    renderList([person()], UserRole.EMERGENCY_COORDINATOR);
+    renderList([person()], [UserRole.EMERGENCY_COORDINATOR]);
     await screen.findByText('Ana Silva');
     expect(screen.queryByRole('link', { name: /create/i })).not.toBeInTheDocument();
+  });
+
+  it('offers Create to someone who holds MANAGE_USERS via any of several roles (#multi-role)', async () => {
+    renderList([person()], [UserRole.EMERGENCY_COORDINATOR, UserRole.SYSTEM_ADMIN]);
+    await screen.findByText('Ana Silva');
+    expect(screen.getByRole('link', { name: /create/i })).toBeInTheDocument();
+  });
+
+  it('shows a chip for every role a person holds', async () => {
+    renderList([person({ roles: [UserRole.EMERGENCY_COORDINATOR, UserRole.SYSTEM_ADMIN] })]);
+    await screen.findByText('Ana Silva');
+    expect(screen.getByText('Emergency Coordinator')).toBeInTheDocument();
+    expect(screen.getByText('System Administrator')).toBeInTheDocument();
   });
 });

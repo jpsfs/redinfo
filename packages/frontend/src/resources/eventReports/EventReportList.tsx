@@ -93,7 +93,7 @@ const TypeTabs = () => {
 
 const ListActions = () => {
   const t = useT();
-  const { permissions } = usePermissions<UserRole>();
+  const { permissions } = usePermissions<UserRole[]>();
   const navigate = useNavigate();
 
   if (!permissions || !hasPermission(permissions, Action.CREATE_EVENT_REPORT)) {

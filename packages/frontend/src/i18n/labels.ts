@@ -520,6 +520,7 @@ const MESSAGES = {
   'resources.users.fields.lastName': { pt: 'Apelido', en: 'Last Name' },
   'resources.users.fields.email': { pt: 'E-mail', en: 'Email' },
   'resources.users.fields.role': { pt: 'Função', en: 'Role' },
+  'resources.users.fields.roles': { pt: 'Funções', en: 'Roles' },
   'resources.users.fields.password': { pt: 'Palavra-passe', en: 'Password' },
   'resources.users.fields.isActive': { pt: 'Ativo', en: 'Active' },
   'resources.users.fields.readiness': { pt: 'Operacionalidade', en: 'Readiness' },
@@ -575,6 +576,7 @@ const MESSAGES = {
   },
 
   'personnelList.nameColumn': { pt: 'Nome', en: 'Name' },
+  'personnelList.roleColumn': { pt: 'Funções', en: 'Roles' },
   'personnelList.searchPlaceholder': {
     pt: 'Procurar nome ou número',
     en: 'Search name or number',
@@ -2208,6 +2210,10 @@ const MESSAGES = {
   'apiError.MATERIAL_ITEM_BARCODE_CONFLICT': {
     pt: 'O código de barras %{code} já está a ser usado por outro item.',
     en: 'Barcode %{code} is already used by another item.',
+  },
+  'apiError.LAST_SYSTEM_ADMIN': {
+    pt: 'Esta é a única pessoa com a função de Administrador de Sistema — atribui essa função a outra pessoa primeiro.',
+    en: 'This is the only System Administrator left — give someone else that role first.',
   },
 
   // ── Calendar headers (#180 phase 5) ──

@@ -751,7 +751,7 @@ const MobileBoard = ({
 export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
   const t = useT();
   const isMobile = useIsMobile();
-  const { permissions } = usePermissions<UserRole>();
+  const { permissions } = usePermissions<UserRole[]>();
   const { identity } = useGetIdentity();
   const [board, setBoard] = useState<ScheduleBoardResponse | null>(null);
   const [loading, setLoading] = useState(true);

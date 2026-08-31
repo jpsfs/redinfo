@@ -35,7 +35,7 @@ describeIntegration('UserProfileService.updateOwn (integration)', () => {
         email: email('sofia'),
         firstName: 'Sofia',
         lastName: 'Test',
-        role: UserRole.EMERGENCY_OPERATIONAL,
+        roles: [UserRole.EMERGENCY_OPERATIONAL],
         isActive: true,
       },
     });

@@ -19,7 +19,7 @@ const ANA: User = {
   email: 'ana.silva@example.test',
   firstName: 'Ana',
   lastName: 'Silva',
-  role: UserRole.EMERGENCY_OPERATIONAL,
+  roles: [UserRole.EMERGENCY_OPERATIONAL],
   provider: 'LOCAL' as User['provider'],
   isActive: true,
   isDriver: false,
@@ -29,13 +29,13 @@ const ANA: User = {
   certifications: [],
 } as unknown as User;
 
-function renderEdit(update: ReturnType<typeof vi.fn>, role: UserRole = UserRole.SYSTEM_ADMIN) {
+function renderEdit(update: ReturnType<typeof vi.fn>, roles: UserRole[] = [UserRole.SYSTEM_ADMIN]) {
   const authProvider = {
     login: () => Promise.resolve(),
     logout: () => Promise.resolve(),
     checkAuth: () => Promise.resolve(),
     checkError: () => Promise.resolve(),
-    getPermissions: () => Promise.resolve(role),
+    getPermissions: () => Promise.resolve(roles),
   };
 
   render(
@@ -81,9 +81,34 @@ describe('UserEdit — provider field', () => {
   });
 
   it('a coordinator (no MANAGE_USERS) never sees the provider field at all', async () => {
-    renderEdit(vi.fn(), UserRole.EMERGENCY_COORDINATOR);
+    renderEdit(vi.fn(), [UserRole.EMERGENCY_COORDINATOR]);
 
     await screen.findByLabelText(/First Name/);
     expect(screen.queryByLabelText(/Provider/)).not.toBeInTheDocument();
+  });
+});
+
+describe('UserEdit — roles field (#multi-role)', () => {
+  it('an admin can give someone more than one role at once', async () => {
+    const update = vi.fn((_resource: string, params: { data: Record<string, unknown> }) =>
+      Promise.resolve({ data: { ...ANA, ...params.data } }),
+    );
+    renderEdit(update);
+
+    await userEvent.click(await screen.findByLabelText(/Roles/));
+    await userEvent.click(await screen.findByRole('option', { name: 'System Administrator' }));
+    await userEvent.click(screen.getByRole('option', { name: 'Emergency Coordinator' }));
+    await userEvent.keyboard('{Escape}');
+
+    await userEvent.click(screen.getByRole('button', { name: /save/i }));
+
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1), { timeout: 6000 });
+    expect(update.mock.calls[0][1].data.roles).toEqual(
+      expect.arrayContaining([
+        UserRole.EMERGENCY_OPERATIONAL,
+        UserRole.SYSTEM_ADMIN,
+        UserRole.EMERGENCY_COORDINATOR,
+      ]),
+    );
   });
 });

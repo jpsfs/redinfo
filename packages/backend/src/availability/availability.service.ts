@@ -31,7 +31,7 @@ import { CERT_HELD_SELECT, computeIsDriver, today } from '../users/certification
 /** The authenticated caller, as attached to the request by `JwtStrategy`. */
 export interface RequestUser {
   id: string;
-  role: UserRole;
+  roles: UserRole[];
 }
 
 const PERSON_SELECT = {
@@ -117,7 +117,7 @@ export class AvailabilityService {
    */
   assertOwnerOrCoordinator(targetUserId: string, requester: RequestUser): void {
     if (requester?.id && requester.id === targetUserId) return;
-    if (requester?.role && hasPermission(requester.role, Action.VIEW_AVAILABILITY_MATRIX)) {
+    if (requester?.roles?.length && hasPermission(requester.roles, Action.VIEW_AVAILABILITY_MATRIX)) {
       return;
     }
     throw new ForbiddenException('You may only view your own availability');
@@ -277,7 +277,7 @@ export class AvailabilityService {
 
     const eligibleRoles = availabilityEligibleRoles();
     const personnel = await this.prisma.user.findMany({
-      where: { isActive: true, role: { in: eligibleRoles } },
+      where: { isActive: true, roles: { hasSome: eligibleRoles as never[] } },
       select: PERSON_SELECT,
       orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
     });

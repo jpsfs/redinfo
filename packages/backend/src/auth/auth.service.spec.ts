@@ -13,7 +13,7 @@ import { AuthService } from './auth.service';
 const person = {
   id: 'u-1',
   email: 'ana.silva@example.test',
-  role: UserRole.EMERGENCY_OPERATIONAL,
+  roles: [UserRole.EMERGENCY_OPERATIONAL],
 };
 
 function makeService(configOverrides: Record<string, string> = {}) {
@@ -71,6 +71,23 @@ describe('AuthService.generateTokens — remember', () => {
 
     const data = prisma.refreshToken.create.mock.calls[0][0].data;
     expect(daysBetween(data.expiresAt, new Date())).toBe(14);
+  });
+});
+
+// ── The JWT claim carries the whole role set ───────────────────────────────
+//
+// `authProvider.ts` on the frontend decodes this claim directly, so its shape
+// is a cross-package contract — see #multi-role.
+
+describe('AuthService.generateTokens — roles claim', () => {
+  it('signs the full roles array, not a single role', async () => {
+    const { service, jwtService } = makeService();
+    const dualRole = { ...person, roles: [UserRole.EMERGENCY_COORDINATOR, UserRole.SYSTEM_ADMIN] };
+
+    await service.generateTokens(dualRole);
+
+    const [payload] = (jwtService.sign as jest.Mock).mock.calls[0] as [{ roles: UserRole[] }];
+    expect(payload.roles).toEqual([UserRole.EMERGENCY_COORDINATOR, UserRole.SYSTEM_ADMIN]);
   });
 });
 
@@ -156,7 +173,7 @@ describe('AuthService.validateLocalUser', () => {
   const localUser = {
     id: 'u-2',
     email: 'ana.silva@example.test',
-    role: UserRole.EMERGENCY_OPERATIONAL,
+    roles: [UserRole.EMERGENCY_OPERATIONAL],
     provider: AuthProvider.LOCAL,
     isActive: true,
     passwordHash: bcrypt.hashSync('CorrectPass1!', 12),

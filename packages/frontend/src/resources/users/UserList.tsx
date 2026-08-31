@@ -1,6 +1,5 @@
 import {
   BooleanField,
-  ChipField,
   Datagrid,
   FunctionField,
   List,
@@ -12,14 +11,14 @@ import {
   ExportButton,
   usePermissions,
 } from 'react-admin';
-import { Stack, Typography } from '@mui/material';
+import { Chip, Stack, Typography } from '@mui/material';
 import { Action, CERTIFICATION_TYPES, User, UserRole, hasPermission } from '@redinfo/shared';
 import { CertificationBadge } from '../../components/CertificationBadge';
 import { accountRoleLabel, certificationLabel } from '../../i18n/labels';
 import { useT } from '../../i18n/useT';
 
 const ListActions = () => {
-  const { permissions } = usePermissions<UserRole>();
+  const { permissions } = usePermissions<UserRole[]>();
   if (!permissions || !hasPermission(permissions, Action.MANAGE_USERS)) return <TopToolbar />;
   return (
     <TopToolbar>
@@ -39,6 +38,19 @@ const ReadinessField = ({ record }: { record?: User }) => {
     >
       {record.isActiveEmergencyOperational ? t('profile.operational') : t('profile.notOperational')}
     </Typography>
+  );
+};
+
+/** Every role this person holds (#multi-role) — one chip each, unordered. */
+const RolesField = ({ record }: { record?: User }) => {
+  const t = useT();
+  if (!record || !record.roles || record.roles.length === 0) return null;
+  return (
+    <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+      {record.roles.map((role) => (
+        <Chip key={role} size="small" label={accountRoleLabel(t, role)} />
+      ))}
+    </Stack>
   );
 };
 
@@ -115,7 +127,7 @@ export const UserList = () => {
             </Typography>
           )}
         />
-        <ChipField source="role" />
+        <FunctionField label={t('personnelList.roleColumn')} render={(record: User) => <RolesField record={record} />} />
         <FunctionField source="readiness" render={(record: User) => <ReadinessField record={record} />} />
         <FunctionField
           source="certifications"

@@ -36,14 +36,16 @@ import {
 } from './design-tokens';
 
 /**
- * `identity.role` is a `UserRole` account role (`SYSTEM_ADMIN`,
+ * `identity.roles` is the `UserRole[]` set this person holds (`SYSTEM_ADMIN`,
  * `EMERGENCY_COORDINATOR`, …) — a different vocabulary from `i18n/labels.ts`'s
  * `roleLabel`, which names a *shift* role ("Driver", "Team Leader"). Reuses
  * `accountRoleLabel`, the same lookup `UserList`/`UserEdit`/`UserCreate` already
  * use for it, so this doesn't invent a second display name for the same enum.
+ * Joined rather than picking one — multi-role means there is no single "the"
+ * role to show (#multi-role).
  */
-const identityRoleLabel = (t: Translate, role?: string | null): string =>
-  (role && accountRoleLabel(t, role)) || role || '';
+const identityRoleLabel = (t: Translate, roles?: string[] | null): string =>
+  roles?.length ? roles.map((role) => accountRoleLabel(t, role)).join(' · ') : '';
 
 /**
  * react-admin's default toolbar (language picker + refresh), but dropped on
@@ -218,7 +220,7 @@ const MobileIdentityHeader = () => {
         <Box sx={{ fontWeight: 700, fontSize: '0.9375rem', lineHeight: 1.3 }}>
           {identity.fullName}
         </Box>
-        <Box sx={{ fontSize: fontSizeXSmall, opacity: 0.85 }}>{identityRoleLabel(t, identity.role)}</Box>
+        <Box sx={{ fontSize: fontSizeXSmall, opacity: 0.85 }}>{identityRoleLabel(t, identity.roles)}</Box>
       </Box>
     </Box>
   );
@@ -363,7 +365,7 @@ const RedInfoUserMenu = () => {
             <Box sx={{ minWidth: 0 }}>
               <Box sx={{ fontWeight: 600, fontSize: '0.9375rem' }}>{identity.fullName}</Box>
               <Box sx={{ fontSize: fontSizeXSmall, color: 'text.secondary' }}>
-                {identityRoleLabel(t, identity.role)}
+                {identityRoleLabel(t, identity.roles)}
               </Box>
             </Box>
           </Box>

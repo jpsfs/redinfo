@@ -70,7 +70,7 @@ describeIntegration('Statistics module (integration)', () => {
           email: email(local),
           firstName: local[0].toUpperCase() + local.slice(1),
           lastName: 'Test',
-          role: UserRole.EMERGENCY_OPERATIONAL,
+          roles: [UserRole.EMERGENCY_OPERATIONAL],
           isActive: true,
         },
       });

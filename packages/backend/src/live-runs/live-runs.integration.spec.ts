@@ -153,7 +153,7 @@ describeIntegration('Live runs (integration)', () => {
           email: email(local),
           firstName: local[0].toUpperCase() + local.slice(1),
           lastName: 'Test',
-          role,
+          roles: [role],
           isActive: true,
         },
       });
@@ -163,10 +163,10 @@ describeIntegration('Live runs (integration)', () => {
     outsider = await makeUser('outsider', UserRole.EMERGENCY_OPERATIONAL);
     coordinator = await makeUser('coordinator', UserRole.EMERGENCY_COORDINATOR);
 
-    tiagoUser = { id: tiago.id, role: UserRole.EMERGENCY_OPERATIONAL };
-    anaUser = { id: ana.id, role: UserRole.EMERGENCY_OPERATIONAL };
-    outsiderUser = { id: outsider.id, role: UserRole.EMERGENCY_OPERATIONAL };
-    coordinatorUser = { id: coordinator.id, role: UserRole.EMERGENCY_COORDINATOR };
+    tiagoUser = { id: tiago.id, roles: [UserRole.EMERGENCY_OPERATIONAL] };
+    anaUser = { id: ana.id, roles: [UserRole.EMERGENCY_OPERATIONAL] };
+    outsiderUser = { id: outsider.id, roles: [UserRole.EMERGENCY_OPERATIONAL] };
+    coordinatorUser = { id: coordinator.id, roles: [UserRole.EMERGENCY_COORDINATOR] };
 
     municipality = await prisma.municipality.create({
       data: {

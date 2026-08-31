@@ -103,7 +103,7 @@ export const MyReportsPage = () => {
   const t = useT();
   const intlLocale = useIntlLocale();
   const navigate = useNavigate();
-  const { permissions } = usePermissions<UserRole>();
+  const { permissions } = usePermissions<UserRole[]>();
   const [reports, setReports] = useState<EventReport[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [draft] = useState<StoredDraft | null>(() => loadDraft());

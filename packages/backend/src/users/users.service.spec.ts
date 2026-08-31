@@ -18,7 +18,7 @@ const BASE_ROW = {
   email: 'ana.silva@example.test',
   firstName: 'Ana',
   lastName: 'Silva',
-  role: UserRole.EMERGENCY_OPERATIONAL,
+  roles: [UserRole.EMERGENCY_OPERATIONAL],
   provider: AuthProvider.LOCAL,
   isActive: true,
   createdAt: new Date('2026-01-01T00:00:00.000Z'),
@@ -213,9 +213,9 @@ describe('UsersService.findOne — computed readiness', () => {
 describe('UsersService.update — account vs personnel fields', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  const ADMIN = { id: 'u-admin', role: SharedUserRole.SYSTEM_ADMIN };
-  const COORDINATOR = { id: 'u-coord', role: SharedUserRole.EMERGENCY_COORDINATOR };
-  const OPERATIONAL = { id: 'u-op', role: SharedUserRole.EMERGENCY_OPERATIONAL };
+  const ADMIN = { id: 'u-admin', roles: [SharedUserRole.SYSTEM_ADMIN] };
+  const COORDINATOR = { id: 'u-coord', roles: [SharedUserRole.EMERGENCY_COORDINATOR] };
+  const OPERATIONAL = { id: 'u-op', roles: [SharedUserRole.EMERGENCY_OPERATIONAL] };
 
   it('a coordinator may enable/disable and edit profile fields', async () => {
     const { service, prisma } = makeService();
@@ -227,13 +227,13 @@ describe('UsersService.update — account vs personnel fields', () => {
     );
   });
 
-  it('a coordinator may not change email, role or password — account-level stays admin-only', async () => {
+  it('a coordinator may not change email, roles or password — account-level stays admin-only', async () => {
     const { service } = makeService();
     await expect(
       service.update(USER.id, { email: 'new@example.test' }, COORDINATOR),
     ).rejects.toBeInstanceOf(ForbiddenException);
     await expect(
-      service.update(USER.id, { role: SharedUserRole.SYSTEM_ADMIN }, COORDINATOR),
+      service.update(USER.id, { roles: [SharedUserRole.SYSTEM_ADMIN] }, COORDINATOR),
     ).rejects.toBeInstanceOf(ForbiddenException);
     await expect(
       service.update(USER.id, { password: 'NewSecurePass1!' }, COORDINATOR),
@@ -251,17 +251,118 @@ describe('UsersService.update — account vs personnel fields', () => {
     const { service, prisma } = makeService();
     await service.update(
       USER.id,
-      { email: 'new@example.test', role: SharedUserRole.EMERGENCY_COORDINATOR, isActive: false },
+      { email: 'new@example.test', roles: [SharedUserRole.EMERGENCY_COORDINATOR], isActive: false },
       ADMIN,
     );
     expect(prisma.user.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           email: 'new@example.test',
-          role: SharedUserRole.EMERGENCY_COORDINATOR,
+          roles: [SharedUserRole.EMERGENCY_COORDINATOR],
           isActive: false,
         }),
       }),
+    );
+  });
+
+  // ── "Present in the DTO" is not "being edited" (the #multi-role bug fix) ───
+
+  it('a coordinator resubmitting unchanged email/roles alongside a real change succeeds', async () => {
+    const { service, prisma } = makeService();
+    await service.update(
+      USER.id,
+      { email: USER.email, roles: [SharedUserRole.EMERGENCY_OPERATIONAL], phone: '+351 900 000 000' },
+      COORDINATOR,
+    );
+    expect(prisma.user.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ phone: '+351 900 000 000' }) }),
+    );
+  });
+
+  it('reordered roles are not a change', async () => {
+    const { service, prisma } = makeService({
+      user: { findUnique: jest.fn().mockResolvedValue({ ...USER, roles: [UserRole.EMERGENCY_COORDINATOR, UserRole.SYSTEM_ADMIN] }) },
+    });
+    await service.update(
+      USER.id,
+      { roles: [SharedUserRole.SYSTEM_ADMIN, SharedUserRole.EMERGENCY_COORDINATOR], phone: '+351 900 000 001' },
+      COORDINATOR,
+    );
+    expect(prisma.user.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ phone: '+351 900 000 001' }) }),
+    );
+  });
+
+  it('an empty password string is not a request to change it', async () => {
+    const { service, prisma } = makeService();
+    await service.update(USER.id, { password: '', phone: '+351 900 000 002' }, COORDINATOR);
+    expect(prisma.user.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ phone: '+351 900 000 002' }) }),
+    );
+  });
+
+  it('an actually different email still needs MANAGE_USERS', async () => {
+    const { service } = makeService();
+    await expect(
+      service.update(USER.id, { email: 'different@example.test' }, COORDINATOR),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('an operational hitting a nonexistent id is refused before the row is even read (403, not 404)', async () => {
+    const { service, prisma } = makeService({ user: { findUnique: jest.fn().mockResolvedValue(null) } });
+    await expect(service.update('nope', { phone: '+351 900 000 000' }, OPERATIONAL)).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(prisma.user.findUnique).not.toHaveBeenCalled();
+  });
+
+  it('an admin hitting a nonexistent id gets 404, since they clear the pre-gate', async () => {
+    const { service } = makeService({ user: { findUnique: jest.fn().mockResolvedValue(null) } });
+    await expect(service.update('nope', { phone: '+351 900 000 000' }, ADMIN)).rejects.toBeInstanceOf(
+      NotFoundException,
+    );
+  });
+
+  // ── Refusing to strip the last SYSTEM_ADMIN ─────────────────────────────────
+
+  it('refuses to remove SYSTEM_ADMIN from the only user who holds it', async () => {
+    const { service, prisma } = makeService({
+      user: {
+        findUnique: jest.fn().mockResolvedValue({ ...USER, id: ADMIN.id, roles: [UserRole.SYSTEM_ADMIN] }),
+        count: jest.fn().mockResolvedValue(0),
+      },
+    });
+    await expect(
+      service.update(ADMIN.id, { roles: [SharedUserRole.EMERGENCY_COORDINATOR] }, ADMIN),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(prisma.user.count).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: { not: ADMIN.id } }),
+      }),
+    );
+  });
+
+  it('allows removing SYSTEM_ADMIN from one of two holders', async () => {
+    const { service } = makeService({
+      user: {
+        findUnique: jest.fn().mockResolvedValue({ ...USER, id: ADMIN.id, roles: [UserRole.SYSTEM_ADMIN] }),
+        count: jest.fn().mockResolvedValue(1),
+      },
+    });
+    await expect(
+      service.update(ADMIN.id, { roles: [SharedUserRole.EMERGENCY_COORDINATOR] }, ADMIN),
+    ).resolves.toBeDefined();
+  });
+
+  it('refuses to deactivate the last SYSTEM_ADMIN', async () => {
+    const { service } = makeService({
+      user: {
+        findUnique: jest.fn().mockResolvedValue({ ...USER, id: ADMIN.id, roles: [UserRole.SYSTEM_ADMIN] }),
+        count: jest.fn().mockResolvedValue(0),
+      },
+    });
+    await expect(service.update(ADMIN.id, { isActive: false }, ADMIN)).rejects.toBeInstanceOf(
+      ConflictException,
     );
   });
 
@@ -452,7 +553,7 @@ describe('UsersService.findOrLinkOAuthUser', () => {
 describe('UsersService.update — provider', () => {
   beforeEach(() => jest.clearAllMocks());
 
-  const ADMIN = { id: 'u-admin', role: SharedUserRole.SYSTEM_ADMIN };
+  const ADMIN = { id: 'u-admin', roles: [SharedUserRole.SYSTEM_ADMIN] };
 
   it('an admin moving an account to GOOGLE also clears any password', async () => {
     const { service, prisma } = makeService();
@@ -475,7 +576,7 @@ describe('UsersService.update — provider', () => {
 
   it('coordinator cannot change provider — it is account-level, admin-only', async () => {
     const { service } = makeService();
-    const COORDINATOR = { id: 'u-coord', role: SharedUserRole.EMERGENCY_COORDINATOR };
+    const COORDINATOR = { id: 'u-coord', roles: [SharedUserRole.EMERGENCY_COORDINATOR] };
     await expect(
       service.update(USER.id, { provider: SharedAuthProvider.GOOGLE }, COORDINATOR),
     ).rejects.toBeInstanceOf(ForbiddenException);

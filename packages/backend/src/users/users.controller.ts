@@ -33,7 +33,7 @@ import { UploadedFile as UploadedFileShape } from './user-certifications.service
 
 export interface RequestUser {
   id: string;
-  role: UserRole;
+  roles: UserRole[];
 }
 
 @ApiTags('Users')
@@ -128,7 +128,7 @@ export class UsersController {
   }
 
   /**
-   * Ungated on purpose: account fields (email, role, password, provider)
+   * Ungated on purpose: account fields (email, roles, password, provider)
    * need `MANAGE_USERS`, personnel fields (name, active flag, contact
    * details, …) need `MANAGE_PERSONNEL` — `UsersService.update` enforces the
    * split so one endpoint can serve both an admin and a coordinator.

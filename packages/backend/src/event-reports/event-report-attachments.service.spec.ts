@@ -15,9 +15,9 @@ import { AttachmentStorage } from '../storage/attachment-storage';
 // who may change a report may attach to it, and neither half of "row plus
 // bytes" is ever left behind on its own.
 
-const CREW: RequestUser = { id: 'user-tiago', role: UserRole.EMERGENCY_OPERATIONAL };
-const OUTSIDER: RequestUser = { id: 'user-outsider', role: UserRole.EMERGENCY_OPERATIONAL };
-const COORDINATOR: RequestUser = { id: 'user-ana', role: UserRole.EMERGENCY_COORDINATOR };
+const CREW: RequestUser = { id: 'user-tiago', roles: [UserRole.EMERGENCY_OPERATIONAL] };
+const OUTSIDER: RequestUser = { id: 'user-outsider', roles: [UserRole.EMERGENCY_OPERATIONAL] };
+const COORDINATOR: RequestUser = { id: 'user-ana', roles: [UserRole.EMERGENCY_COORDINATOR] };
 
 const file = (overrides: Partial<UploadedAttachment> = {}): UploadedAttachment => ({
   originalname: 'foto.jpg',

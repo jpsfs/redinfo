@@ -56,9 +56,9 @@ describeIntegration('Schedules module (integration)', () => {
 
   // Who is asking: a coordinator sees drafts, a member only sees what has been
   // published — and can add themselves to it.
-  let coordinatorUser: { id: string; role: UserRole };
-  let anaUser: { id: string; role: UserRole };
-  let carlaUser: { id: string; role: UserRole };
+  let coordinatorUser: { id: string; roles: UserRole[] };
+  let anaUser: { id: string; roles: UserRole[] };
+  let carlaUser: { id: string; roles: UserRole[] };
 
   const createdWindowIds: string[] = [];
 
@@ -73,7 +73,7 @@ describeIntegration('Schedules module (integration)', () => {
         email: email(`${firstName}.${lastName}`.toLowerCase()),
         firstName,
         lastName,
-        role,
+        roles: [role],
         isActive: options.isActive ?? true,
       },
       select: { id: true },
@@ -140,7 +140,7 @@ describeIntegration('Schedules module (integration)', () => {
 
   const submit = (user: { id: string }, windowId: string, dates: string[]) =>
     availability.submitMine(
-      { id: user.id, role: UserRole.EMERGENCY_OPERATIONAL } as RequestUser,
+      { id: user.id, roles: [UserRole.EMERGENCY_OPERATIONAL] } as RequestUser,
       { windowId, entries: dates.map((date) => ({ date, slots: [1] })) },
     );
 
@@ -167,9 +167,9 @@ describeIntegration('Schedules module (integration)', () => {
       createUser('Maria', 'Santos', UserRole.EMERGENCY_COORDINATOR),
     ]);
 
-    coordinatorUser = { id: coordinator.id, role: UserRole.EMERGENCY_COORDINATOR };
-    anaUser = { id: ana.id, role: UserRole.EMERGENCY_OPERATIONAL };
-    carlaUser = { id: carla.id, role: UserRole.EMERGENCY_OPERATIONAL };
+    coordinatorUser = { id: coordinator.id, roles: [UserRole.EMERGENCY_COORDINATOR] };
+    anaUser = { id: ana.id, roles: [UserRole.EMERGENCY_OPERATIONAL] };
+    carlaUser = { id: carla.id, roles: [UserRole.EMERGENCY_OPERATIONAL] };
   });
 
   afterAll(async () => {
@@ -263,7 +263,7 @@ describeIntegration('Schedules module (integration)', () => {
   it('integration: schedules someone who declared no availability, as an override', async () => {
     const window = await openWindow();
     await availability.declineMine(
-      { id: rui.id, role: UserRole.EMERGENCY_OPERATIONAL } as RequestUser,
+      { id: rui.id, roles: [UserRole.EMERGENCY_OPERATIONAL] } as RequestUser,
       window.id,
     );
     const schedule = await schedules.create({ windowId: window.id }, coordinator.id);

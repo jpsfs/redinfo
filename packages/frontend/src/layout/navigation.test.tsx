@@ -8,9 +8,9 @@ import { NAV_SECTIONS } from './navigation';
  * only has to walk the same manifest correctly, which `AppLayout.test.tsx`
  * checks separately.
  */
-function visibleRoutes(role: UserRole): string[] {
+function visibleRoutes(roles: UserRole | UserRole[]): string[] {
   return NAV_SECTIONS.flatMap((section) => section.entries)
-    .filter((entry) => !entry.requires || entry.requires.some((action) => hasPermission(role, action)))
+    .filter((entry) => !entry.requires || entry.requires.some((action) => hasPermission(roles, action)))
     .map((entry) => entry.to);
 }
 
@@ -93,5 +93,17 @@ describe('NAV_SECTIONS', () => {
   it('gives a System Admin every entry in the manifest', () => {
     const all = NAV_SECTIONS.flatMap((section) => section.entries).map((entry) => entry.to);
     expect(visibleRoutes(UserRole.SYSTEM_ADMIN)).toEqual(all);
+  });
+
+  it('a dual-role person sees the union of both roles’ entries (#multi-role)', () => {
+    const dual = visibleRoutes([UserRole.EMERGENCY_OPERATIONAL, UserRole.LOGISTICS_COORDINATOR]);
+    const operational = visibleRoutes(UserRole.EMERGENCY_OPERATIONAL);
+    const logistics = visibleRoutes(UserRole.LOGISTICS_COORDINATOR);
+    const union = [...new Set([...operational, ...logistics])];
+
+    expect(new Set(dual)).toEqual(new Set(union));
+    // Routes from each half are individually present, not just the union set.
+    expect(dual).toContain('/live'); // operational-only
+    expect(dual).toContain('/inventory-templates'); // logistics-only
   });
 });

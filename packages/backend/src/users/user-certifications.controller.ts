@@ -124,13 +124,13 @@ export class UserCertificationsController {
 
   private assertCanRead(userId: string, user: RequestUser): void {
     if (user.id === userId) return;
-    if (hasPermission(user.role, Action.VIEW_USERS)) return;
-    if (hasPermission(user.role, Action.MANAGE_PERSONNEL)) return;
+    if (hasPermission(user.roles, Action.VIEW_USERS)) return;
+    if (hasPermission(user.roles, Action.MANAGE_PERSONNEL)) return;
     throw new ForbiddenException("You may not read this person's certifications.");
   }
 
   private assertCanWrite(user: RequestUser): void {
-    if (hasPermission(user.role, Action.MANAGE_PERSONNEL)) return;
+    if (hasPermission(user.roles, Action.MANAGE_PERSONNEL)) return;
     throw new ForbiddenException('Only a coordinator or admin may maintain certifications.');
   }
 }

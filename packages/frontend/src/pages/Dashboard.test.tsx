@@ -17,13 +17,13 @@ const mockApiFetch = apiFetch as unknown as Mock;
 // Portuguese welcome card and hardcoded English tiles.
 const i18nProvider = polyglotI18nProvider(messages, 'en');
 
-function renderTile(role: UserRole) {
+function renderTile(roles: UserRole[]) {
   const authProvider = {
     login: () => Promise.resolve(),
     logout: () => Promise.resolve(),
     checkAuth: () => Promise.resolve(),
     checkError: () => Promise.resolve(),
-    getPermissions: () => Promise.resolve(role),
+    getPermissions: () => Promise.resolve(roles),
   };
 
   render(
@@ -45,7 +45,7 @@ describe('CertificationAlertsTile', () => {
 
   it('is invisible to someone without MANAGE_PERSONNEL', async () => {
     mockApiFetch.mockResolvedValue({ expiring: 3, expired: 1 });
-    renderTile(UserRole.EMERGENCY_OPERATIONAL);
+    renderTile([UserRole.EMERGENCY_OPERATIONAL]);
 
     // Give the effect a chance to run — it must not even fetch.
     await waitFor(() => expect(mockApiFetch).not.toHaveBeenCalled());
@@ -54,7 +54,7 @@ describe('CertificationAlertsTile', () => {
 
   it('shows counts of expiring and expired personnel to a coordinator', async () => {
     mockApiFetch.mockResolvedValue({ expiring: 3, expired: 1 });
-    renderTile(UserRole.EMERGENCY_COORDINATOR);
+    renderTile([UserRole.EMERGENCY_COORDINATOR]);
 
     expect(await screen.findByText('1 expired')).toBeInTheDocument();
     expect(screen.getByText('3 expiring within 6 months')).toBeInTheDocument();
@@ -62,7 +62,7 @@ describe('CertificationAlertsTile', () => {
 
   it('renders nothing when there is nothing to flag', async () => {
     mockApiFetch.mockResolvedValue({ expiring: 0, expired: 0 });
-    renderTile(UserRole.EMERGENCY_COORDINATOR);
+    renderTile([UserRole.EMERGENCY_COORDINATOR]);
 
     await waitFor(() => expect(mockApiFetch).toHaveBeenCalled());
     expect(screen.queryByTestId('certification-alerts-tile')).not.toBeInTheDocument();
@@ -70,7 +70,7 @@ describe('CertificationAlertsTile', () => {
 
   it('links each count through to the personnel registry, filtered', async () => {
     mockApiFetch.mockResolvedValue({ expiring: 0, expired: 2 });
-    renderTile(UserRole.SYSTEM_ADMIN);
+    renderTile([UserRole.SYSTEM_ADMIN]);
 
     const link = await screen.findByRole('link', { name: '2 expired' });
     expect(link).toHaveAttribute(
@@ -100,7 +100,7 @@ describe('Dashboard', () => {
       logout: () => Promise.resolve(),
       checkAuth: () => Promise.resolve(),
       checkError: () => Promise.resolve(),
-      getPermissions: () => Promise.resolve(UserRole.EMERGENCY_COORDINATOR),
+      getPermissions: () => Promise.resolve([UserRole.EMERGENCY_COORDINATOR]),
     };
 
     render(
@@ -138,7 +138,7 @@ describe('Dashboard', () => {
       logout: () => Promise.resolve(),
       checkAuth: () => Promise.resolve(),
       checkError: () => Promise.resolve(),
-      getPermissions: () => Promise.resolve(UserRole.EMERGENCY_COORDINATOR),
+      getPermissions: () => Promise.resolve([UserRole.EMERGENCY_COORDINATOR]),
     };
 
     render(

@@ -27,6 +27,55 @@ export const ROLE_METADATA: Record<UserRole, RoleMetadata> = {
   [UserRole.LOGISTICS_COORDINATOR]: { domain: 'logistics' },
 };
 
+/**
+ * The roles a brand-new account gets when none are specified. One place so
+ * the Prisma column default, `UsersService.create` and the seeds cannot
+ * drift apart.
+ */
+export const DEFAULT_USER_ROLES: readonly UserRole[] = [UserRole.EMERGENCY_OPERATIONAL];
+
+/**
+ * A person holds a *set* of roles — a Coordinator may also be an Admin, an
+ * Admin may also be Operational — but plenty of call sites
+ * (`availabilityEligibleRoles()`, the permission matrix test, a single-role
+ * fixture) still reason about one role at a time. Widening `hasPermission`
+ * to accept either shape here is what keeps multi-role from touching every
+ * call site that only ever checks one role.
+ */
+export type RoleOrRoles = UserRole | readonly UserRole[];
+
+/**
+ * `typeof === 'string'` rather than `Array.isArray`: `UserRole` is a string
+ * enum, so this narrows cleanly in both branches, which `Array.isArray`
+ * does not do for a `readonly` array in a union.
+ */
+export function toRoleList(roles: RoleOrRoles): readonly UserRole[] {
+  return typeof roles === 'string' ? [roles] : roles;
+}
+
+/**
+ * Deduplicated and put in `UserRole` declaration order.
+ *
+ * The set of roles a person holds is unordered as a domain concept — there
+ * is no primary role — so a canonical *storage* order is what stops the
+ * profile audit trail (`recordProfileChanges`, which compares
+ * `String(value)`) from recording a change every time a form hands the same
+ * set back in a different order.
+ */
+export function normalizeRoles(roles: readonly UserRole[]): UserRole[] {
+  const held = new Set(roles);
+  return (Object.values(UserRole) as UserRole[]).filter((role) => held.has(role));
+}
+
+/** Order-insensitive, duplicate-insensitive set equality. */
+export function sameRoleSet(a: readonly UserRole[], b: readonly UserRole[]): boolean {
+  const left = new Set(a);
+  const right = new Set(b);
+  if (left.size !== right.size) return false;
+  for (const role of left) if (!right.has(role)) return false;
+  return true;
+}
+
 // ─── Actions ─────────────────────────────────────────────────────────────────
 
 export enum Action {
@@ -133,9 +182,23 @@ export const ROLE_PERMISSIONS: Record<UserRole, Action[]> = {
   ],
 };
 
-export function hasPermission(role: UserRole, action: Action): boolean {
-  if (role === UserRole.SYSTEM_ADMIN) return true;
-  return (ROLE_PERMISSIONS[role] ?? []).includes(action);
+/**
+ * Does this person hold `action`?
+ *
+ * Permissions are the **union** across every role held — two roles never
+ * subtract from each other, and there is no precedence to resolve. Takes a
+ * single role too, so the matrix test and the eligibility helpers keep
+ * reading one role at a time.
+ *
+ * `SYSTEM_ADMIN` anywhere in the set short-circuits to true — it is defined
+ * as "every `Action`", and keeping it a short-circuit rather than a table
+ * lookup means a newly added `Action` is admin-reachable the moment it
+ * exists.
+ */
+export function hasPermission(roles: RoleOrRoles, action: Action): boolean {
+  const held = toRoleList(roles);
+  if (held.includes(UserRole.SYSTEM_ADMIN)) return true;
+  return held.some((role) => (ROLE_PERMISSIONS[role] ?? []).includes(action));
 }
 
 export enum AuthProvider {
@@ -180,7 +243,11 @@ export interface User {
   email: string;
   firstName: string;
   lastName: string;
-  role: UserRole;
+  /**
+   * Every role this person holds — unordered, no primary. Permissions are
+   * the union across the set; see `hasPermission`. Always non-empty.
+   */
+  roles: UserRole[];
   provider: AuthProvider;
   isActive: boolean;
   /**
@@ -5478,7 +5545,8 @@ export type ApiErrorCode =
   | 'SELF_ASSIGN_OVERLAPPING_SHIFT'
   | 'SHIFT_ADJUSTMENT_END_BEFORE_START'
   | 'SHIFT_ADJUSTMENT_OVERLAPS'
-  | 'MATERIAL_ITEM_BARCODE_CONFLICT';
+  | 'MATERIAL_ITEM_BARCODE_CONFLICT'
+  | 'LAST_SYSTEM_ADMIN';
 
 export interface ApiErrorBody {
   code: ApiErrorCode;

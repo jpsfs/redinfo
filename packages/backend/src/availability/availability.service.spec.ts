@@ -78,8 +78,8 @@ const MARTA = { id: 'u-marta', firstName: 'Marta', lastName: 'Oliveira', certifi
 
 const ROSTER = [ANA, BRUNO, CARLA, MARTA, RUI];
 
-const VOLUNTEER: RequestUser = { id: ANA.id, role: UserRole.EMERGENCY_OPERATIONAL };
-const COORDINATOR: RequestUser = { id: 'coord-1', role: UserRole.EMERGENCY_COORDINATOR };
+const VOLUNTEER: RequestUser = { id: ANA.id, roles: [UserRole.EMERGENCY_OPERATIONAL] };
+const COORDINATOR: RequestUser = { id: 'coord-1', roles: [UserRole.EMERGENCY_COORDINATOR] };
 
 function submissionRow(userId: string, date: string, slot: number, id = `${userId}-${date}-${slot}`) {
   return {
@@ -666,7 +666,7 @@ describe('AvailabilityService.assertOwnerOrCoordinator', () => {
   it('allows a system admin, who holds every action', () => {
     const { service } = buildService();
     expect(() =>
-      service.assertOwnerOrCoordinator(ANA.id, { id: 'admin', role: UserRole.SYSTEM_ADMIN }),
+      service.assertOwnerOrCoordinator(ANA.id, { id: 'admin', roles: [UserRole.SYSTEM_ADMIN] }),
     ).not.toThrow();
   });
 
@@ -675,7 +675,27 @@ describe('AvailabilityService.assertOwnerOrCoordinator', () => {
     expect(() =>
       service.assertOwnerOrCoordinator(ANA.id, {
         id: 'log-1',
-        role: UserRole.LOGISTICS_COORDINATOR,
+        roles: [UserRole.LOGISTICS_COORDINATOR],
+      }),
+    ).toThrow(ForbiddenException);
+  });
+
+  it('allows a dual-role person via the role that grants VIEW_AVAILABILITY_MATRIX', () => {
+    const { service } = buildService();
+    expect(() =>
+      service.assertOwnerOrCoordinator(ANA.id, {
+        id: 'dual-1',
+        roles: [UserRole.LOGISTICS_COORDINATOR, UserRole.EMERGENCY_COORDINATOR],
+      }),
+    ).not.toThrow();
+  });
+
+  it('still denies a dual-role person whose roles never grant it', () => {
+    const { service } = buildService();
+    expect(() =>
+      service.assertOwnerOrCoordinator(ANA.id, {
+        id: 'dual-2',
+        roles: [UserRole.LOGISTICS_COORDINATOR, UserRole.EMERGENCY_OPERATIONAL],
       }),
     ).toThrow(ForbiddenException);
   });
@@ -965,8 +985,8 @@ describe('AvailabilityService.getMatrix', () => {
       expect.objectContaining({
         where: {
           isActive: true,
-          role: {
-            in: [
+          roles: {
+            hasSome: [
               // SYSTEM_ADMIN can submit, so it must be counted too — otherwise
               // an admin's own availability never shows up in the matrix.
               UserRole.SYSTEM_ADMIN,

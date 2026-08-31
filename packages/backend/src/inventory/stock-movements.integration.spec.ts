@@ -67,7 +67,7 @@ describeIntegration('StockMovementsService (integration)', () => {
         email: `stock-movements.${RUN}@inventory.test`,
         firstName: 'Stock',
         lastName: 'Test',
-        role: 'EMERGENCY_OPERATIONAL',
+        roles: ['EMERGENCY_OPERATIONAL'],
         isActive: true,
       },
     });

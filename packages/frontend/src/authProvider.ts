@@ -55,6 +55,16 @@ export const authProvider: AuthProvider = {
     try {
       const [, payload] = token.split('.');
       const decoded = JSON.parse(atob(payload));
+      // Pre-#multi-role tokens carry a singular `role` claim, not `roles`.
+      // Rather than leave a mid-session user with a half-broken menu (some
+      // capabilities checked, others silently missing), treat a token
+      // without the new claim as expired and force a clean re-login — the
+      // access token's short lifetime (15 min default) means this is a
+      // one-time inconvenience, not a recurring one.
+      if (!Array.isArray(decoded.roles)) {
+        clearTokens();
+        throw new Error('Session expired');
+      }
       if (decoded.exp * 1000 < Date.now()) {
         const refreshed = await refreshAccessToken();
         if (!refreshed) throw new Error('Session expired');
@@ -107,7 +117,7 @@ export const authProvider: AuthProvider = {
     try {
       const [, payload] = token.split('.');
       const decoded = JSON.parse(atob(payload));
-      return decoded.role ?? null;
+      return Array.isArray(decoded.roles) ? decoded.roles : null;
     } catch {
       return null;
     }

@@ -21,13 +21,13 @@ import { StockMovementsService } from '../inventory/stock-movements.service';
 // the narrative are routinely added the next morning; and deleting one is a
 // coordinator's act because it leaves a gap in the year's numbering.
 
-const OPERATIONAL: RequestUser = { id: 'user-tiago', role: UserRole.EMERGENCY_OPERATIONAL };
+const OPERATIONAL: RequestUser = { id: 'user-tiago', roles: [UserRole.EMERGENCY_OPERATIONAL] };
 const OTHER_OPERATIONAL: RequestUser = {
   id: 'user-outsider',
-  role: UserRole.EMERGENCY_OPERATIONAL,
+  roles: [UserRole.EMERGENCY_OPERATIONAL],
 };
-const COORDINATOR: RequestUser = { id: 'user-ana', role: UserRole.EMERGENCY_COORDINATOR };
-const LOGISTICS: RequestUser = { id: 'user-log', role: UserRole.LOGISTICS_COORDINATOR };
+const COORDINATOR: RequestUser = { id: 'user-ana', roles: [UserRole.EMERGENCY_COORDINATOR] };
+const LOGISTICS: RequestUser = { id: 'user-log', roles: [UserRole.LOGISTICS_COORDINATOR] };
 
 /**
  * A stored row, complete enough to be serialized.
@@ -229,13 +229,22 @@ describe('reading a report', () => {
 
   it('lets whoever filed it read it, even if they were not on the crew', () => {
     const { service } = makeService();
-    const filer: RequestUser = { id: 'user-filer', role: UserRole.EMERGENCY_OPERATIONAL };
+    const filer: RequestUser = { id: 'user-filer', roles: [UserRole.EMERGENCY_OPERATIONAL] };
     expect(() => service.assertCanRead(row({ crew: [] }), filer)).not.toThrow();
   });
 
   it('refuses an operational who was neither', () => {
     const { service } = makeService();
     expect(() => service.assertCanRead(row(), OTHER_OPERATIONAL)).toThrow(ForbiddenException);
+  });
+
+  it('an operational who also holds EMERGENCY_COORDINATOR may read a report they were not on', () => {
+    const { service } = makeService();
+    const dual: RequestUser = {
+      id: 'user-dual',
+      roles: [UserRole.EMERGENCY_OPERATIONAL, UserRole.EMERGENCY_COORDINATOR],
+    };
+    expect(() => service.assertCanRead(row(), dual)).not.toThrow();
   });
 
   it('is 404, not 403, for a report that does not exist', async () => {

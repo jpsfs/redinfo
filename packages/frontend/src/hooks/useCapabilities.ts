@@ -12,22 +12,25 @@ export interface Capabilities {
 }
 
 /**
- * Turns the viewer's role into a capability predicate.
+ * Turns the viewer's roles into a capability predicate.
  *
- * `authProvider.getPermissions()` returns the bare role string, not a list of
- * actions, so this is where that role gets checked against `@redinfo/shared`'s
- * `hasPermission` — the same table the backend guards with. It exists so the
- * navigation manifest (`layout/navigation.tsx`) and anything else gating on a
- * capability share one lookup rather than each re-deriving it.
+ * `authProvider.getPermissions()` returns the roles array decoded from the
+ * JWT, not a list of actions, so this is where those roles get checked
+ * against `@redinfo/shared`'s `hasPermission` — the same table the backend
+ * guards with. Permissions are the union across every role held (#multi-role):
+ * `hasPermission` takes the whole array, so a person with two roles can do
+ * anything either one grants. Exists so the navigation manifest
+ * (`layout/navigation.tsx`) and anything else gating on a capability share
+ * one lookup rather than each re-deriving it.
  */
 export function useCapabilities(): Capabilities {
-  const { permissions, isPending } = usePermissions<UserRole | null>();
+  const { permissions, isPending } = usePermissions<UserRole[] | null>();
 
   return {
     isPending,
     can: (actions) =>
       !actions || actions.length === 0
         ? true
-        : !!permissions && actions.some((action) => hasPermission(permissions, action)),
+        : !!permissions?.length && actions.some((action) => hasPermission(permissions, action)),
   };
 }

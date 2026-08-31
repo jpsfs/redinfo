@@ -32,7 +32,7 @@ const profile = (overrides: Partial<User> = {}): User =>
     email: 'ana.silva@example.test',
     firstName: 'Ana',
     lastName: 'Silva',
-    role: 'EMERGENCY_OPERATIONAL',
+    roles: ['EMERGENCY_OPERATIONAL'],
     isActive: true,
     isDriver: false,
     isActiveEmergencyOperational: true,

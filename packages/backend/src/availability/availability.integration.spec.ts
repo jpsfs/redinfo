@@ -88,7 +88,7 @@ describeIntegration('Availability module (integration)', () => {
         email: email(`${firstName}.${lastName}`.toLowerCase()),
         firstName,
         lastName,
-        role,
+        roles: [role],
         isActive: options.isActive ?? true,
       },
       select: { id: true },
@@ -183,8 +183,8 @@ describeIntegration('Availability module (integration)', () => {
         createUser('Sara', 'Admin', UserRole.SYSTEM_ADMIN, { isDriver: true }),
       ]);
 
-    volunteer = { id: ana.id, role: UserRole.EMERGENCY_OPERATIONAL };
-    coordinatorUser = { id: coordinator.id, role: UserRole.EMERGENCY_COORDINATOR };
+    volunteer = { id: ana.id, roles: [UserRole.EMERGENCY_OPERATIONAL] };
+    coordinatorUser = { id: coordinator.id, roles: [UserRole.EMERGENCY_COORDINATOR] };
 
     // The window deliberately covers a holiday Monday so the 1-shift/2-shift
     // split is exercised end to end.
@@ -1103,7 +1103,7 @@ describeIntegration('Availability module (integration)', () => {
     async function seedSubmissions() {
       await openWindow();
       await availability.submitMine(
-        { id: ana.id, role: UserRole.EMERGENCY_OPERATIONAL },
+        { id: ana.id, roles: [UserRole.EMERGENCY_OPERATIONAL] },
         {
           entries: [
             { date: '2026-09-28', slots: [1] },
@@ -1113,7 +1113,7 @@ describeIntegration('Availability module (integration)', () => {
         },
       );
       await availability.submitMine(
-        { id: bruno.id, role: UserRole.EMERGENCY_OPERATIONAL },
+        { id: bruno.id, roles: [UserRole.EMERGENCY_OPERATIONAL] },
         {
           entries: [
             { date: '2026-09-28', slots: [1] },
@@ -1122,7 +1122,7 @@ describeIntegration('Availability module (integration)', () => {
         },
       );
       await availability.submitMine(
-        { id: carla.id, role: UserRole.EMERGENCY_OPERATIONAL },
+        { id: carla.id, roles: [UserRole.EMERGENCY_OPERATIONAL] },
         {
           entries: [
             { date: '2026-09-28', slots: [1] },
@@ -1132,12 +1132,12 @@ describeIntegration('Availability module (integration)', () => {
         },
       );
       await availability.submitMine(
-        { id: rui.id, role: UserRole.EMERGENCY_OPERATIONAL },
+        { id: rui.id, roles: [UserRole.EMERGENCY_OPERATIONAL] },
         { entries: [{ date: '2026-09-28', slots: [1] }] },
       );
       // Marta declines; the inactive user and the logistics coordinator submit
       // nothing and must not appear on the roster at all.
-      await availability.declineMine({ id: marta.id, role: UserRole.EMERGENCY_OPERATIONAL });
+      await availability.declineMine({ id: marta.id, roles: [UserRole.EMERGENCY_OPERATIONAL] });
     }
 
     it('counts availability and drivers per shift with the right coverage colour', async () => {
@@ -1217,7 +1217,7 @@ describeIntegration('Availability module (integration)', () => {
     it('shows a system admin their own saved availability in the matrix', async () => {
       await openWindow();
       await availability.submitMine(
-        { id: systemAdmin.id, role: UserRole.SYSTEM_ADMIN },
+        { id: systemAdmin.id, roles: [UserRole.SYSTEM_ADMIN] },
         { entries: [{ date: '2026-09-28', slots: [1] }] },
       );
 
@@ -1250,7 +1250,7 @@ describeIntegration('Availability module (integration)', () => {
       });
       for (const person of [ana, bruno, carla]) {
         await availability.submitMine(
-          { id: person.id, role: UserRole.EMERGENCY_OPERATIONAL },
+          { id: person.id, roles: [UserRole.EMERGENCY_OPERATIONAL] },
           { windowId: window.id, entries: [{ date: '2026-10-12', slots: [1, 2] }] },
         );
       }

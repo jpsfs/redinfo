@@ -153,7 +153,7 @@ const CertificationDocumentRow = ({
 const PhotoPanel = () => {
   const t = useT();
   const record = useRecordContext<User>();
-  const { permissions } = usePermissions<UserRole>();
+  const { permissions } = usePermissions<UserRole[]>();
   const notify = useNotify();
   const refresh = useRefresh();
   const canManage = Boolean(permissions && hasPermission(permissions, Action.MANAGE_PERSONNEL));
@@ -201,7 +201,7 @@ const PhotoPanel = () => {
 const CertificationsPanel = () => {
   const t = useT();
   const record = useRecordContext<User>();
-  const { permissions } = usePermissions<UserRole>();
+  const { permissions } = usePermissions<UserRole[]>();
   const notify = useNotify();
   const refresh = useRefresh();
   const canManage = Boolean(permissions && hasPermission(permissions, Action.MANAGE_PERSONNEL));

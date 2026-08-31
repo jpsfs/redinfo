@@ -109,12 +109,12 @@ export interface ScheduleContext {
 /** Just enough of the caller to answer "may they see this, and as whom". */
 export interface RequestUser {
   id: string;
-  role: UserRole;
+  roles: UserRole[];
 }
 
 /** A coordinator sees drafts too; everyone else only sees what is published. */
 const canSeeDrafts = (user: RequestUser) =>
-  hasPermission(user.role, Action.VIEW_SCHEDULES);
+  hasPermission(user.roles, Action.VIEW_SCHEDULES);
 
 @Injectable()
 export class SchedulesService {

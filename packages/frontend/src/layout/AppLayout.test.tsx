@@ -24,14 +24,14 @@ const i18nProvider = polyglotI18nProvider(messages, 'en');
  * once (`never puts My Profile...` below) would otherwise query across every
  * menu it has mounted so far, not just the latest one.
  */
-async function renderMenuAs(role: UserRole | null): Promise<string[]> {
+async function renderMenuAs(roles: UserRole[] | null): Promise<string[]> {
   cleanup();
   const authProvider = {
     login: () => Promise.resolve(),
     logout: () => Promise.resolve(),
     checkAuth: () => Promise.resolve(),
     checkError: () => Promise.resolve(),
-    getPermissions: () => Promise.resolve(role),
+    getPermissions: () => Promise.resolve(roles),
   };
 
   render(
@@ -50,7 +50,7 @@ async function renderMenuAs(role: UserRole | null): Promise<string[]> {
 
 describe('RedInfoMenu', () => {
   it('gives an Emergency Operational exactly the field-crew entries, live mode first', async () => {
-    const links = await renderMenuAs(UserRole.EMERGENCY_OPERATIONAL);
+    const links = await renderMenuAs([UserRole.EMERGENCY_OPERATIONAL]);
     expect(links).toEqual([
       '/live',
       '/',
@@ -66,7 +66,7 @@ describe('RedInfoMenu', () => {
 
   it('gives a Logistics Coordinator exactly ten entries and no live mode', async () => {
     // Ten, not seven — see the matching note in navigation.test.tsx.
-    const links = await renderMenuAs(UserRole.LOGISTICS_COORDINATOR);
+    const links = await renderMenuAs([UserRole.LOGISTICS_COORDINATOR]);
     expect(links).toEqual([
       '/',
       '/my-duties',
@@ -82,7 +82,7 @@ describe('RedInfoMenu', () => {
   });
 
   it('gives an Emergency Coordinator every operational and configuration entry, including Holidays', async () => {
-    const links = await renderMenuAs(UserRole.EMERGENCY_COORDINATOR);
+    const links = await renderMenuAs([UserRole.EMERGENCY_COORDINATOR]);
     expect(links).toEqual([
       '/live',
       '/',
@@ -113,7 +113,7 @@ describe('RedInfoMenu', () => {
   });
 
   it('gives a System Admin every entry in the manifest', async () => {
-    const links = await renderMenuAs(UserRole.SYSTEM_ADMIN);
+    const links = await renderMenuAs([UserRole.SYSTEM_ADMIN]);
     expect(links).toEqual([
       '/live',
       '/',
@@ -142,13 +142,13 @@ describe('RedInfoMenu', () => {
   it('never puts My Profile in the drawer, for any role', async () => {
     const linksByRole = [];
     for (const role of Object.values(UserRole)) {
-      linksByRole.push(await renderMenuAs(role));
+      linksByRole.push(await renderMenuAs([role]));
     }
     linksByRole.forEach((links) => expect(links).not.toContain('/my-profile'));
   });
 
   it('draws no subheader for a section left with zero visible entries', async () => {
-    await renderMenuAs(UserRole.EMERGENCY_OPERATIONAL);
+    await renderMenuAs([UserRole.EMERGENCY_OPERATIONAL]);
     // Not 'Operations': Statistics carries no `requires` (every authenticated
     // member sees it — docs/plans/estatisticas-dashboards.md §5), so that
     // section is never empty any more.

@@ -15,7 +15,7 @@ import { CreateNoticeDto } from './dto/create-notice.dto';
 
 export interface RequestUser {
   id: string;
-  role: UserRole;
+  roles: UserRole[];
 }
 
 const NOTICE_INCLUDE = {
@@ -70,7 +70,12 @@ export class NoticesService {
           {
             OR: [
               { targetType: NoticeTargetType.ALL },
-              { targetType: NoticeTargetType.ROLES, targetRoles: { some: { role: user.role } } },
+              {
+                targetType: NoticeTargetType.ROLES,
+                // A notice targeted at any role this member holds reaches
+                // them — `in`, not equality, now that a person holds a set.
+                targetRoles: { some: { role: { in: user.roles } } },
+              },
             ],
           },
         ],
@@ -169,7 +174,7 @@ export class NoticesService {
     const users = await this.prisma.user.findMany({
       where: {
         isActive: true,
-        ...(targetType === NoticeTargetType.ROLES ? { role: { in: targetRoles ?? [] } } : {}),
+        ...(targetType === NoticeTargetType.ROLES ? { roles: { hasSome: targetRoles ?? [] } } : {}),
       },
       select: { id: true },
     });

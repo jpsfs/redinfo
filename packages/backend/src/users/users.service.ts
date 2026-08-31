@@ -12,12 +12,16 @@ import {
   BloodType as SharedBloodType,
   CertificationStatus,
   CertificationType,
+  DEFAULT_USER_ROLES,
   User as SharedUser,
   UserRole as SharedUserRole,
   effectiveCertifications,
   hasPermission,
   holdsCertification,
+  normalizeRoles,
+  sameRoleSet,
 } from '@redinfo/shared';
+import { ApiConflictException } from '../common/api-error.exception';
 import { PrismaService } from '../prisma/prisma.service';
 import { parseIsoDate, toIsoDate } from '../utils/date.util';
 import { serializeLocality } from '../geography/geography.service';
@@ -70,7 +74,7 @@ const ACCOUNT_AUDITED_FIELDS = [
   'firstName',
   'lastName',
   'email',
-  'role',
+  'roles',
   'provider',
   'isActive',
   'phone',
@@ -96,14 +100,14 @@ const ACCOUNT_AUDITED_FIELDS = [
  * split enforced here instead — the same "ungated handler, service decides"
  * pattern `SchedulesService` uses for `getMyDuties`.
  */
-const ACCOUNT_ONLY_FIELDS = ['email', 'role', 'password', 'provider'] as const;
+const ACCOUNT_ONLY_FIELDS = ['email', 'roles', 'password', 'provider'] as const;
 
 export const PERSON_SELECT = {
   id: true,
   email: true,
   firstName: true,
   lastName: true,
-  role: true,
+  roles: true,
   provider: true,
   isActive: true,
   createdAt: true,
@@ -149,7 +153,7 @@ interface PersonRow {
   email: string;
   firstName: string;
   lastName: string;
-  role: `${UserRole}`;
+  roles: `${UserRole}`[];
   provider: `${AuthProvider}`;
   isActive: boolean;
   createdAt: Date;
@@ -185,7 +189,7 @@ export function serializePerson(row: PersonRow, asOf: string = today()): SharedU
     email: row.email,
     firstName: row.firstName,
     lastName: row.lastName,
-    role: row.role as SharedUserRole,
+    roles: row.roles as SharedUserRole[],
     provider: row.provider as SharedAuthProvider,
     isActive: row.isActive,
     isDriver: holdsCertification(held, CertificationType.DRIVER, asOf),
@@ -369,7 +373,7 @@ export class UsersService {
           firstName: dto.firstName,
           lastName: dto.lastName,
           passwordHash,
-          role: dto.role ?? UserRole.EMERGENCY_OPERATIONAL,
+          roles: normalizeRoles(dto.roles ?? DEFAULT_USER_ROLES) as never[],
           provider,
           isActive: dto.isActive ?? true,
           phone: dto.phone,
@@ -394,24 +398,53 @@ export class UsersService {
     }
   }
 
-  async update(id: string, dto: UpdateUserDto, actor: { id: string; role: SharedUserRole }) {
-    const touchesAccountFields = ACCOUNT_ONLY_FIELDS.some(
-      (field) => dto[field] !== undefined,
-    );
-    const touchesPersonnelFields = Object.keys(dto).some(
-      (key) =>
-        !(ACCOUNT_ONLY_FIELDS as readonly string[]).includes(key) &&
-        (dto as Record<string, unknown>)[key] !== undefined,
-    );
-    if (touchesAccountFields && !hasPermission(actor.role, Action.MANAGE_USERS)) {
-      throw new ForbiddenException('Only an administrator may change email, role or password.');
-    }
-    if (touchesPersonnelFields && !hasPermission(actor.role, Action.MANAGE_PERSONNEL)) {
+  async update(id: string, dto: UpdateUserDto, actor: { id: string; roles: SharedUserRole[] }) {
+    // Cheap gate before the row is read at all. `PATCH /users/:id` is
+    // deliberately ungated at the route, so without this, reading `before`
+    // first would let any authenticated user probe which ids exist via
+    // 404-vs-403.
+    if (
+      !hasPermission(actor.roles, Action.MANAGE_PERSONNEL) &&
+      !hasPermission(actor.roles, Action.MANAGE_USERS)
+    ) {
       throw new ForbiddenException("You may not edit this person's profile.");
     }
 
     const before = await this.prisma.user.findUnique({ where: { id } });
     if (!before) throw new NotFoundException(`User ${id} not found`);
+
+    // "Present in the DTO" is not "being edited" — the edit form resubmits
+    // every field it rendered (see `UserEdit`'s doc comment), which used to
+    // 403 a coordinator out of their own screen for resaving an unchanged
+    // email/roles alongside a real change. Only a value that actually
+    // differs from the stored row counts as touching it.
+    const touchesAccountFields =
+      (dto.email !== undefined && dto.email !== before.email) ||
+      (dto.provider !== undefined && dto.provider !== before.provider) ||
+      (dto.roles !== undefined && !sameRoleSet(dto.roles, before.roles as SharedUserRole[])) ||
+      (typeof dto.password === 'string' && dto.password.length > 0);
+    const touchesPersonnelFields = Object.keys(dto).some(
+      (key) =>
+        !(ACCOUNT_ONLY_FIELDS as readonly string[]).includes(key) &&
+        (dto as Record<string, unknown>)[key] !== undefined,
+    );
+    if (touchesAccountFields && !hasPermission(actor.roles, Action.MANAGE_USERS)) {
+      throw new ForbiddenException('Only an administrator may change email, roles or password.');
+    }
+    if (touchesPersonnelFields && !hasPermission(actor.roles, Action.MANAGE_PERSONNEL)) {
+      throw new ForbiddenException("You may not edit this person's profile.");
+    }
+
+    // A user losing their last SYSTEM_ADMIN role, or being deactivated while
+    // holding it, would leave nobody able to grant it back. Deletion is
+    // covered separately in `remove()`.
+    const losingSystemAdmin =
+      (before.roles as SharedUserRole[]).includes(SharedUserRole.SYSTEM_ADMIN) &&
+      ((dto.roles !== undefined && !dto.roles.includes(SharedUserRole.SYSTEM_ADMIN)) ||
+        dto.isActive === false);
+    if (losingSystemAdmin) {
+      await this.assertNotLastSystemAdmin(id);
+    }
 
     // Moving an account to GOOGLE/MICROSOFT here is the one way back out of
     // the one-way lock `findOrLinkOAuthUser` puts an OAuth-linked account
@@ -432,7 +465,7 @@ export class UsersService {
           ...(dto.email && { email: dto.email }),
           ...(dto.firstName && { firstName: dto.firstName }),
           ...(dto.lastName && { lastName: dto.lastName }),
-          ...(dto.role && { role: dto.role }),
+          ...(dto.roles && { roles: normalizeRoles(dto.roles) as never[] }),
           ...(dto.provider && { provider: dto.provider }),
           ...(passwordHash !== undefined && { passwordHash }),
           // Booleans need an explicit undefined check — `false` must persist.
@@ -475,7 +508,10 @@ export class UsersService {
    * deactivation rather than surfacing a raw constraint violation as a 500.
    */
   async remove(id: string) {
-    await this.findOne(id);
+    const person = await this.findOne(id);
+    if (person.roles.includes(SharedUserRole.SYSTEM_ADMIN)) {
+      await this.assertNotLastSystemAdmin(id);
+    }
     try {
       const row = await this.prisma.user.delete({ where: { id }, select: PERSON_SELECT });
       return serializePerson(row);
@@ -490,10 +526,28 @@ export class UsersService {
     }
   }
 
+  /**
+   * Refuses to remove the only `SYSTEM_ADMIN` left — the role that grants
+   * every other role, so losing the last holder is unrecoverable without
+   * direct database access.
+   */
+  private async assertNotLastSystemAdmin(excludingId: string): Promise<void> {
+    const otherAdmins = await this.prisma.user.count({
+      where: { isActive: true, roles: { has: SharedUserRole.SYSTEM_ADMIN as never }, id: { not: excludingId } },
+    });
+    if (otherAdmins === 0) {
+      throw new ApiConflictException(
+        'LAST_SYSTEM_ADMIN',
+        'This is the only System Administrator left — give someone else that role first.',
+      );
+    }
+  }
+
   private buildWhere(filters: PersonnelFilters): Prisma.UserWhereInput {
     return {
       ...(filters.ids ? { id: { in: filters.ids } } : {}),
-      ...(filters.role ? { role: filters.role as never } : {}),
+      // `?role=X` means "people who hold X", not "whose only role is X".
+      ...(filters.role ? { roles: { has: filters.role as never } } : {}),
       ...(filters.isActive !== undefined ? { isActive: filters.isActive } : {}),
       ...(filters.q
         ? {

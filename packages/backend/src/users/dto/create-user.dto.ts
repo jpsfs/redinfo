@@ -1,4 +1,7 @@
 import {
+  ArrayNotEmpty,
+  ArrayUnique,
+  IsArray,
   IsBoolean,
   IsDateString,
   IsEmail,
@@ -45,10 +48,22 @@ export class CreateUserDto {
   @MinLength(8)
   password?: string;
 
-  @ApiPropertyOptional({ enum: UserRole, default: UserRole.EMERGENCY_OPERATIONAL })
+  @ApiPropertyOptional({
+    enum: UserRole,
+    isArray: true,
+    default: [UserRole.EMERGENCY_OPERATIONAL],
+    description:
+      'Every role this person holds. Unordered — there is no primary role — and ' +
+      'permissions are the union across the set. Omit to get the default; an ' +
+      'empty array is rejected rather than treated as "no access", because a ' +
+      'roleless account is not a state the app has a meaning for.',
+  })
   @IsOptional()
-  @IsEnum(UserRole)
-  role?: UserRole;
+  @IsArray()
+  @ArrayNotEmpty()
+  @ArrayUnique()
+  @IsEnum(UserRole, { each: true })
+  roles?: UserRole[];
 
   @ApiPropertyOptional({
     enum: AuthProvider,

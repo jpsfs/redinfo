@@ -12,7 +12,7 @@ const personRow = (overrides: Record<string, unknown> = {}) => ({
   email: 'ana.silva@example.test',
   firstName: 'Ana',
   lastName: 'Silva',
-  role: 'EMERGENCY_OPERATIONAL',
+  roles: ['EMERGENCY_OPERATIONAL'],
   provider: 'LOCAL',
   isActive: true,
   createdAt: new Date('2026-01-01T00:00:00.000Z'),
