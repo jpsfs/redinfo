@@ -204,7 +204,34 @@ async function loadOneEventReport(
     return false;
   };
 
+  // ── Narrative notes (never saidas.contacto — Q7) ──
+  const droppedNotes: string[] = [];
+
+  // ── Victim / destination (Q2, resolved) — resolved before chronology,
+  // because buildChronology needs to know whether `hch` (hospital arrival) is
+  // real: see the comment on `hasHospitalTransport` below. Purely a lookup
+  // against `row.transporte`, no DB round trip, so doing it early costs
+  // nothing. ──
+  const destination = mapDestination(row.transporte);
+  if (destination === undefined) {
+    return reject({ reasonCode: 'UNKNOWN_TRANSPORTE_CODE', reason: `transporte "${row.transporte}" has no mapping.`, field: 'transporte' });
+  }
+  if (isTodoReview(destination) || (typeof destination === 'object' && 'reject' in destination)) {
+    const rejected = destination as { reasonCode: string; reason: string };
+    return reject({ reasonCode: rejected.reasonCode, reason: rejected.reason, field: 'transporte' });
+  }
+  const hasHospitalTransport = destination !== 'NO_VICTIM' && destination.kind === VictimDestinationKind.HOSPITAL;
+
   // ── Chronology ──
+  // `hch` (hospital arrival) is only meaningful when the victim was actually
+  // taken to a hospital. Confirmed against EMG 088/2026 (transporte=n2,
+  // deceased on scene): legacy leaves `hch` at MySQL's '00:00:00' default
+  // instead of NULL whenever there was no transport, and buildChronology,
+  // reading that as a real clock time, both fabricates a hospitalArrivalAt
+  // the crew never recorded and — via its own midnight-rollover walk — can
+  // push the rest of the chronology onto an invented extra day, inflating the
+  // report's total duration. hasHospitalTransport tells it to treat `hch` as
+  // absent whenever the destination isn't actually a hospital.
   const chronology = buildChronology({
     data: row.data,
     hChamada: row.h_chamada,
@@ -212,10 +239,16 @@ async function loadOneEventReport(
     hsl: row.hsl,
     hch: row.hch,
     hd: row.hd,
+    hasHospitalTransport,
     timezone: process.env.LEGACY_TIMEZONE ?? DEFAULT_LEGACY_TIMEZONE,
   });
   if (!chronology.ok) {
     return reject({ reasonCode: chronology.problem.code, reason: chronology.problem.message });
+  }
+  if (!hasHospitalTransport && row.hch) {
+    droppedNotes.push(
+      `Legacy hch "${row.hch}" dropped: transporte="${row.transporte}" recorded no hospital destination.`,
+    );
   }
 
   // ── Location ──
@@ -249,8 +282,6 @@ async function loadOneEventReport(
     // the whole report — validateEventReport places no minimum on crew size.
   }
 
-  // ── Narrative notes (never saidas.contacto — Q7) ──
-  const droppedNotes: string[] = [];
   const { age, note: ageNote } = ageFromLegacy(row.idade, row.idade_AM);
   if (ageNote) droppedNotes.push(ageNote);
 
@@ -271,16 +302,7 @@ async function loadOneEventReport(
     }
   }
 
-  // ── Victim / destination (Q2, resolved) ──
-  const destination = mapDestination(row.transporte);
-  if (destination === undefined) {
-    return reject({ reasonCode: 'UNKNOWN_TRANSPORTE_CODE', reason: `transporte "${row.transporte}" has no mapping.`, field: 'transporte' });
-  }
-  if (isTodoReview(destination) || (typeof destination === 'object' && 'reject' in destination)) {
-    const rejected = destination as { reasonCode: string; reason: string };
-    return reject({ reasonCode: rejected.reasonCode, reason: rejected.reason, field: 'transporte' });
-  }
-
+  // ── Victim row itself (destination resolved above, before chronology) ──
   const victims: EventReportInput['victims'] = [];
   let destinationHospitalId: string | null = null;
   if (destination !== 'NO_VICTIM') {
