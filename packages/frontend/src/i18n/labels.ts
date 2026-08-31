@@ -972,6 +972,10 @@ const MESSAGES = {
   'windowList.newWindow': { pt: 'Nova janela de disponibilidade', en: 'New availability window' },
   'windowList.statusOpen': { pt: 'Aberta', en: 'Open' },
   'windowList.statusClosed': { pt: 'Fechada', en: 'Closed' },
+  'windowList.statusAll': { pt: 'Todas', en: 'All' },
+  'windowList.allCategories': { pt: 'Todas as categorias', en: 'All categories' },
+  'windowList.filterCategoryLabel': { pt: 'Categoria', en: 'Category' },
+  'windowList.filterStatusLabel': { pt: 'Estado', en: 'Status' },
   'windowList.upcomingHolidays': { pt: 'Próximos feriados', en: 'Upcoming holidays' },
   'windowList.overlapRuleInfo': {
     pt: 'Pode estar aberta uma janela por categoria em qualquer dia: uma janela de Emergência e uma de Apoio Local podem cobrir as mesmas datas ao mesmo tempo, duas de Emergência não podem. Cada janela tem os seus próprios turnos, definidos quando é aberta.',

@@ -24,7 +24,7 @@ import { CategoryChip } from '../../components/CategoryChip';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { reportTypeLabel } from '../../i18n/labels';
 import { useT } from '../../i18n/useT';
-import { MonthFilter } from './MonthFilter';
+import { MonthFilter } from '../../components/MonthFilter';
 import { ReportListCard } from './ReportListCard';
 import { timeOfDay } from './reportDraft';
 

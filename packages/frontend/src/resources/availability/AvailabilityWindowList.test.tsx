@@ -3,6 +3,7 @@ import { render, screen, waitForElementToBeRemoved } from '@testing-library/reac
 import userEvent from '@testing-library/user-event';
 import {
   AdminContext,
+  ListContextProvider,
   ResourceContextProvider,
   ResourceDefinitionContextProvider,
   testDataProvider,
@@ -10,7 +11,7 @@ import {
 import polyglotI18nProvider from 'ra-i18n-polyglot';
 import { MemoryRouter } from 'react-router-dom';
 import { messages } from '../../i18n/i18nProvider';
-import { WindowListActions } from './AvailabilityWindowList';
+import { WindowFilterBar, WindowListActions } from './AvailabilityWindowList';
 import { apiFetch } from '../../api';
 import { renderMobile } from '../../test/renderMobile';
 
@@ -137,5 +138,72 @@ describe('WindowListActions — mobile', () => {
       'href',
       '/availability-windows/create',
     );
+  });
+});
+
+/** Enough of `useListController`'s result for `WindowFilterBar` to read and call. */
+type PartialListContext = Parameters<typeof ListContextProvider>[0]['value'];
+
+function renderFilterBar(filterValues: Record<string, unknown> = {}) {
+  const setFilters = vi.fn();
+  render(
+    <AdminContext dataProvider={testDataProvider()} i18nProvider={i18nProvider}>
+      <ListContextProvider
+        value={
+          { filterValues, setFilters, displayedFilters: {} } as unknown as PartialListContext
+        }
+      >
+        <WindowFilterBar />
+      </ListContextProvider>
+    </AdminContext>,
+  );
+  return { setFilters };
+}
+
+describe('WindowFilterBar', () => {
+  it('shows Open as selected when no status filter has been set', () => {
+    renderFilterBar({});
+    expect(screen.getByRole('button', { name: 'Open' })).toHaveClass('MuiChip-filled');
+    expect(screen.getByRole('button', { name: 'Closed' })).toHaveClass('MuiChip-outlined');
+  });
+
+  it('switches to Closed without dropping the category filter', async () => {
+    const { setFilters } = renderFilterBar({ category: 'EMERGENCY' });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Closed' }));
+
+    expect(setFilters).toHaveBeenCalledWith(
+      { category: 'EMERGENCY', status: 'CLOSED' },
+      {},
+    );
+  });
+
+  it('sets an empty status rather than removing it, so Open does not reassert itself', async () => {
+    const { setFilters } = renderFilterBar({ status: 'CLOSED' });
+
+    await userEvent.click(screen.getByRole('button', { name: 'All' }));
+
+    expect(setFilters).toHaveBeenCalledWith({ status: '' }, {});
+  });
+
+  it('picking a category preserves the status filter', async () => {
+    const { setFilters } = renderFilterBar({ status: 'CLOSED' });
+
+    await userEvent.click(screen.getByRole('button', { name: 'Emergency' }));
+
+    expect(setFilters).toHaveBeenCalledWith({ status: 'CLOSED', category: 'EMERGENCY' }, {});
+  });
+
+  it('clearing the category keeps the rest of the filters', async () => {
+    const { setFilters } = renderFilterBar({ status: 'CLOSED', category: 'EMERGENCY' });
+
+    await userEvent.click(screen.getByRole('button', { name: 'All categories' }));
+
+    expect(setFilters).toHaveBeenCalledWith({ status: 'CLOSED' }, {});
+  });
+
+  it('renders the month stepper', () => {
+    renderFilterBar({});
+    expect(screen.getByText('All dates')).toBeInTheDocument();
   });
 });

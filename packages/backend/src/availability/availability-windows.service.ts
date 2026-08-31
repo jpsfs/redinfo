@@ -87,10 +87,16 @@ export class AvailabilityWindowsService {
     private readonly shiftSchedule: ShiftScheduleService,
   ) {}
 
+  /**
+   * `from`/`to` narrow to windows whose own span *overlaps* the range, not
+   * ones fully contained by it — the same rule `findOverlaps` uses. A window
+   * covering the turn of the month has to show up when either month is asked
+   * for, or it would silently disappear between the two.
+   */
   async findAll(
     page = 1,
     perPage = 25,
-    filters: { category?: string; status?: string } = {},
+    filters: { category?: string; status?: string; from?: string; to?: string } = {},
   ) {
     const skip = (page - 1) * perPage;
     const where = {
@@ -98,13 +104,26 @@ export class AvailabilityWindowsService {
         ? { category: this.assertCategory(filters.category) }
         : {}),
       ...(filters.status ? { status: this.assertStatus(filters.status) } : {}),
+      ...(filters.from || filters.to
+        ? {
+            ...(filters.to
+              ? { startDate: { lte: parseIsoDate(this.assertIsoDate(filters.to, 'to')) } }
+              : {}),
+            ...(filters.from
+              ? { endDate: { gte: parseIsoDate(this.assertIsoDate(filters.from, 'from')) } }
+              : {}),
+          }
+        : {}),
     };
     const [rows, total] = await this.prisma.$transaction([
       this.prisma.availabilityWindow.findMany({
         where,
         skip,
         take: perPage,
-        orderBy: { openedAt: 'desc' },
+        // The period a window covers, not when it was administratively
+        // opened — a window opened late for an earlier month should not
+        // outrank one opened promptly for next month.
+        orderBy: [{ startDate: 'desc' }, { openedAt: 'desc' }],
         include: WINDOW_INCLUDE,
       }),
       this.prisma.availabilityWindow.count({ where }),

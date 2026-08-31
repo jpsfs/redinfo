@@ -104,13 +104,17 @@ export class AvailabilityWindowsController {
   @ApiQuery({ name: 'perPage', required: false, type: Number })
   @ApiQuery({ name: 'category', required: false, enum: AvailabilityWindowCategory })
   @ApiQuery({ name: 'status', required: false, enum: AvailabilityWindowStatus })
+  @ApiQuery({ name: 'from', required: false, type: String })
+  @ApiQuery({ name: 'to', required: false, type: String })
   findAll(
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('perPage', new DefaultValuePipe(25), ParseIntPipe) perPage: number,
     @Query('category') category?: string,
     @Query('status') status?: string,
+    @Query('from') from?: string,
+    @Query('to') to?: string,
   ) {
-    return this.windowsService.findAll(page, perPage, { category, status });
+    return this.windowsService.findAll(page, perPage, { category, status, from, to });
   }
 
   // Ungated: any authenticated user may check whether submissions are open.

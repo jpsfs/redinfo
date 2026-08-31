@@ -420,6 +420,83 @@ describeIntegration('Availability module (integration)', () => {
     });
   });
 
+  // ── the coordinator's list of windows ───────────────────────────────────────
+
+  describe('findAll listing', () => {
+    it('orders by the period each window covers, not by when it was opened', async () => {
+      await closeOpenWindows();
+      // Opened out of period order: the September window is opened last, but
+      // covers the earliest dates, and must still sort after November's.
+      const november = await windowsService.open(
+        { startDate: '2026-11-01', endDate: '2026-11-07', category: EMERGENCY },
+        coordinator.id,
+      );
+      const october = await windowsService.open(
+        { startDate: '2026-10-01', endDate: '2026-10-07', category: LOCAL_SUPPORT },
+        coordinator.id,
+      );
+      const september = await windowsService.open(
+        { startDate: '2026-09-01', endDate: '2026-09-07', category: SALOP_SUPPORT },
+        coordinator.id,
+      );
+      createdWindowIds.push(november.id, october.id, september.id);
+
+      const { data } = await windowsService.findAll(1, 25, {});
+      const ids = data.map((window) => window.id);
+
+      expect(ids.indexOf(november.id)).toBeLessThan(ids.indexOf(october.id));
+      expect(ids.indexOf(october.id)).toBeLessThan(ids.indexOf(september.id));
+    });
+
+    it('matches a window that only overlaps the requested month, not just one contained by it', async () => {
+      await closeOpenWindows();
+      // Straddles September/October — must show up when either month is asked for.
+      const straddling = await windowsService.open(
+        { startDate: '2026-09-28', endDate: '2026-10-04', category: EMERGENCY },
+        coordinator.id,
+      );
+      createdWindowIds.push(straddling.id);
+
+      const septemberView = await windowsService.findAll(1, 25, {
+        from: '2026-09-01',
+        to: '2026-09-30',
+      });
+      const octoberView = await windowsService.findAll(1, 25, {
+        from: '2026-10-01',
+        to: '2026-10-31',
+      });
+      const novemberView = await windowsService.findAll(1, 25, {
+        from: '2026-11-01',
+        to: '2026-11-30',
+      });
+
+      expect(septemberView.data.map((w) => w.id)).toContain(straddling.id);
+      expect(octoberView.data.map((w) => w.id)).toContain(straddling.id);
+      expect(novemberView.data.map((w) => w.id)).not.toContain(straddling.id);
+    });
+
+    it('excludes closed windows once asked to, and finds them again with status all', async () => {
+      const closed = await openWindow('2026-10-12', '2026-10-18');
+      await windowsService.close(closed.id, coordinator.id);
+      const open = await windowsService.open(
+        { startDate: '2026-10-19', endDate: '2026-10-25', category: EMERGENCY },
+        coordinator.id,
+      );
+      createdWindowIds.push(open.id);
+
+      const openOnly = await windowsService.findAll(1, 25, {
+        status: AvailabilityWindowStatus.OPEN,
+      });
+      expect(openOnly.data.map((w) => w.id)).not.toContain(closed.id);
+      expect(openOnly.data.map((w) => w.id)).toContain(open.id);
+
+      const both = await windowsService.findAll(1, 25, {});
+      expect(both.data.map((w) => w.id)).toEqual(
+        expect.arrayContaining([closed.id, open.id]),
+      );
+    });
+  });
+
   // ── several windows open at once ───────────────────────────────────────────
 
   describe('submitting with more than one window open', () => {

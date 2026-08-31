@@ -4,17 +4,19 @@ import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import CloseIcon from '@mui/icons-material/Close';
 import { useListContext } from 'react-admin';
-import { addMonths, formatMonthLabel, isoMonth, monthEnd, monthStart, toIsoDate } from '../../utils/dates';
-import { useT } from '../../i18n/useT';
+import { addMonths, formatMonthLabel, isoMonth, monthEnd, monthStart, toIsoDate } from '../utils/dates';
+import { useT } from '../i18n/useT';
 
 /**
- * Narrows the list to one calendar month, via the same `from`/`to` query
- * params the backend's date-range filter already accepts
- * (`EventReportsController`) — no different from how `TypeTabs` pushes
- * `type` into the same `filterValues`.
+ * Narrows a list to one calendar month, via the same `from`/`to` query
+ * params each backend's date-range filter accepts (`EventReportsController`,
+ * `AvailabilityWindowsController`) — no different from how `TypeTabs` pushes
+ * `type` into the same `filterValues`. Shared between the event-report and
+ * availability-window lists, which is why it lives here rather than under
+ * either resource.
  *
  * Unset by default: this is a browsing list of history, not a calendar, so
- * it should not hide older reports until asked to. Stepping forward or back
+ * it should not hide older rows until asked to. Stepping forward or back
  * while unset starts from the current month.
  */
 export const MonthFilter = () => {

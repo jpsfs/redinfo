@@ -1005,7 +1005,11 @@ describe('AvailabilityWindowsService', () => {
       const result = await service.findAll(2, 10);
 
       expect(prisma.availabilityWindow.findMany).toHaveBeenCalledWith(
-        expect.objectContaining({ skip: 10, take: 10, orderBy: { openedAt: 'desc' } }),
+        expect.objectContaining({
+          skip: 10,
+          take: 10,
+          orderBy: [{ startDate: 'desc' }, { openedAt: 'desc' }],
+        }),
       );
       expect(result).toMatchObject({ total: 3, page: 2, perPage: 10 });
       expect(result.data).toHaveLength(1);
@@ -1038,6 +1042,39 @@ describe('AvailabilityWindowsService', () => {
 
     it('rejects a filter value that is not a category', async () => {
       await expect(service.findAll(1, 25, { category: 'NOPE' })).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+
+    it('narrows to windows overlapping a from/to range', async () => {
+      prisma.availabilityWindow.findMany.mockResolvedValue([]);
+
+      await service.findAll(1, 25, { from: '2026-10-01', to: '2026-10-31' });
+
+      const where = {
+        startDate: { lte: new Date('2026-10-31') },
+        endDate: { gte: new Date('2026-10-01') },
+      };
+      expect(prisma.availabilityWindow.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where }),
+      );
+      expect(prisma.availabilityWindow.count).toHaveBeenCalledWith({ where });
+    });
+
+    it('applies only the given half of an open-ended date range', async () => {
+      prisma.availabilityWindow.findMany.mockResolvedValue([]);
+
+      await service.findAll(1, 25, { from: '2026-10-01' });
+
+      expect(prisma.availabilityWindow.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { endDate: { gte: new Date('2026-10-01') } },
+        }),
+      );
+    });
+
+    it('rejects a malformed date filter', async () => {
+      await expect(service.findAll(1, 25, { from: 'not-a-date' })).rejects.toThrow(
         BadRequestException,
       );
     });

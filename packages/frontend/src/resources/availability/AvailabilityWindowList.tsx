@@ -5,7 +5,6 @@ import {
   DateField,
   FunctionField,
   List,
-  SelectInput,
   TextField,
   TopToolbar,
   useListContext,
@@ -17,7 +16,9 @@ import {
   Button,
   Card,
   CardContent,
+  Chip,
   CircularProgress,
+  Paper,
   Stack,
   Typography,
 } from '@mui/material';
@@ -26,6 +27,8 @@ import BoltIcon from '@mui/icons-material/Bolt';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
 import { AVAILABILITY_WINDOW_CATEGORIES, AvailabilityWindow, AvailabilityWindowStatus, Holiday } from '@redinfo/shared';
 import { apiFetch } from '../../api';
+import { CategoryChip } from '../../components/CategoryChip';
+import { MonthFilter } from '../../components/MonthFilter';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { windowCategoryLabel } from '../../i18n/labels';
 import { useT } from '../../i18n/useT';
@@ -185,39 +188,113 @@ const MobileWindowList = () => {
   );
 };
 
+/**
+ * Category, status and month, together.
+ *
+ * A plain body element rather than `<List filters>`: `WindowListActions` is
+ * a custom `actions` element, and `ListToolbar` only threads `filters` into
+ * react-admin's *default* toolbar — with a custom one it renders the actions
+ * untouched and the filter form never appears
+ * (`ra-ui-materialui/dist/list/ListToolbar.js`).
+ *
+ * Status defaults to Open, via `filterDefaultValues` on `<List>`: a closed
+ * window's job is done, and this page is for managing what's still live.
+ * "All" sets `status: ''` rather than removing the key — an empty string
+ * still counts as "the user has an opinion" to react-admin's list-params
+ * logic, so the Open default does not silently reassert itself once some
+ * other filter or sort has been touched.
+ */
+export const WindowFilterBar = () => {
+  const t = useT();
+  const { filterValues, setFilters, displayedFilters } = useListContext();
+
+  const activeCategory = filterValues.category as string | undefined;
+  const selectCategory = (category?: string) => {
+    const { category: _dropped, ...rest } = filterValues;
+    setFilters(category ? { ...rest, category } : rest, displayedFilters);
+  };
+
+  const activeStatus = (filterValues.status as string | undefined) ?? AvailabilityWindowStatus.OPEN;
+  const selectStatus = (status: string) => {
+    setFilters({ ...filterValues, status }, displayedFilters);
+  };
+
+  return (
+    <Paper
+      variant="outlined"
+      sx={{ p: 2, mb: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }}
+    >
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+        <Typography variant="caption" color="text.secondary" sx={{ minWidth: 64 }}>
+          {t('windowList.filterCategoryLabel')}
+        </Typography>
+        <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }} useFlexGap>
+          <Chip
+            label={t('windowList.allCategories')}
+            color={activeCategory ? 'default' : 'primary'}
+            variant={activeCategory ? 'outlined' : 'filled'}
+            onClick={() => selectCategory(undefined)}
+            sx={{ height: 32, fontWeight: 600 }}
+          />
+          {AVAILABILITY_WINDOW_CATEGORIES.map((category) => (
+            <CategoryChip
+              key={category}
+              category={category}
+              label={windowCategoryLabel(t, category)}
+              selected={activeCategory === category}
+              onClick={() => selectCategory(category)}
+              sx={{ height: 32, fontWeight: 600, cursor: 'pointer' }}
+            />
+          ))}
+        </Stack>
+      </Box>
+
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+        <Typography variant="caption" color="text.secondary" sx={{ minWidth: 64 }}>
+          {t('windowList.filterStatusLabel')}
+        </Typography>
+        <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }} useFlexGap>
+          <Chip
+            size="small"
+            label={t('windowList.statusOpen')}
+            color={activeStatus === AvailabilityWindowStatus.OPEN ? 'success' : 'default'}
+            variant={activeStatus === AvailabilityWindowStatus.OPEN ? 'filled' : 'outlined'}
+            onClick={() => selectStatus(AvailabilityWindowStatus.OPEN)}
+          />
+          <Chip
+            size="small"
+            label={t('windowList.statusClosed')}
+            color={activeStatus === AvailabilityWindowStatus.CLOSED ? 'primary' : 'default'}
+            variant={activeStatus === AvailabilityWindowStatus.CLOSED ? 'filled' : 'outlined'}
+            onClick={() => selectStatus(AvailabilityWindowStatus.CLOSED)}
+          />
+          <Chip
+            size="small"
+            label={t('windowList.statusAll')}
+            color={activeStatus === '' ? 'primary' : 'default'}
+            variant={activeStatus === '' ? 'filled' : 'outlined'}
+            onClick={() => selectStatus('')}
+          />
+        </Stack>
+        <MonthFilter />
+      </Box>
+    </Paper>
+  );
+};
+
 export const AvailabilityWindowList = () => {
   const t = useT();
   const isMobile = useIsMobile();
 
-  /** Categories are independent rotas, so filtering by one is the common view. */
-  const windowFilters = [
-    <SelectInput
-      key="category"
-      source="category"
-      alwaysOn
-      choices={AVAILABILITY_WINDOW_CATEGORIES.map((category) => ({
-        id: category,
-        name: windowCategoryLabel(t, category),
-      }))}
-    />,
-    <SelectInput
-      key="status"
-      source="status"
-      choices={[
-        { id: AvailabilityWindowStatus.OPEN, name: t('windowList.statusOpen') },
-        { id: AvailabilityWindowStatus.CLOSED, name: t('windowList.statusClosed') },
-      ]}
-    />,
-  ];
-
   return (
     <List
       actions={<WindowListActions />}
-      filters={windowFilters}
-      sort={{ field: 'openedAt', order: 'DESC' }}
+      filterDefaultValues={{ status: AvailabilityWindowStatus.OPEN }}
+      sort={{ field: 'startDate', order: 'DESC' }}
       empty={false}
     >
     <>
+      <WindowFilterBar />
       <UpcomingHolidays />
       <Alert severity="info" sx={{ mb: 2 }}>
         {t('windowList.overlapRuleInfo')}
@@ -234,25 +311,29 @@ export const AvailabilityWindowList = () => {
           />
           <FunctionField
             source="category"
+            sortable={false}
             render={(record: AvailabilityWindow) => (
               <WindowCategoryChip category={record.category} />
             )}
           />
-          <TextField source="name" emptyText="—" />
+          <TextField source="name" emptyText="—" sortable={false} />
           <FunctionField
             source="status"
+            sortable={false}
             render={(record: AvailabilityWindow) => <WindowStatusChip status={record.status} />}
           />
           <FunctionField
             source="openedBy"
+            sortable={false}
             render={(record: AvailabilityWindow) => actorName(record.openedBy)}
           />
-          <DateField source="openedAt" showTime />
+          <DateField source="openedAt" showTime sortable={false} />
           <FunctionField
             source="closedBy"
+            sortable={false}
             render={(record: AvailabilityWindow) => actorName(record.closedBy)}
           />
-          <DateField source="closedAt" showTime emptyText="—" />
+          <DateField source="closedAt" showTime emptyText="—" sortable={false} />
         </Datagrid>
       )}
     </>
