@@ -1,24 +1,38 @@
 /**
- * `saidas.descricao` (plaintext `longtext`) → `EventReport.operationalReport`
- * (NOT NULL sanitised HTML).
+ * `saidas.descricao` → `EventReport.operationalReport` (NOT NULL sanitised
+ * HTML).
  *
- * Four steps, in order:
- * 1. HTML-escape the plaintext, split on newlines, wrap each non-empty line
- *    in `<p>`. Skipping the escape would corrupt any narrative containing
- *    `<` or `&` — a crew's free text is exactly the kind of input that has
- *    both.
- * 2. Prepend the `tipo_ocorrencia` label as a bolded first paragraph.
- * 3. Append a "campos não migrados" list for whatever the caller says has no
- *    target field. Deliberately generic — this module takes the note strings
- *    as input rather than deciding what belongs in them. **`saidas.contacto`
- *    (a phone number) is never one of them** — Q7 (resolved): a phone number
- *    is dropped entirely, never written into `operationalReport` or any other
- *    field. Loader 12 does not read `saidas.contacto` for any purpose.
- * 4. Run the whole thing through `sanitizeReportHtml` — the same function the
+ * `descricao` is declared `longtext`, but it is **not plaintext**: the legacy
+ * app wrote it from a rich-text control, and the real dump confirms it — of
+ * 1,835 rows, 1,814 (~99%) already contain HTML tags (`<p>`, entities like
+ * `&eacute;`/`&nbsp;`, etc.); the rest are blank. Treating it as plaintext
+ * (escaping `<`/`&` and re-wrapping each line in `<p>`) was tried once and
+ * was wrong — it turned every already-formatted report into visibly escaped
+ * tag soup (`&lt;p&gt;...`) instead of preserving the formatting a crew
+ * member actually typed. The new platform has the same shape of field
+ * (`RichTextEditor`/`RichTextViewer`, sanitised HTML, no markdown — see
+ * `sanitize-report.ts`), so the correct move is to carry the legacy HTML
+ * through as HTML, not re-derive it from scratch.
+ *
+ * Three steps, in order:
+ * 1. Prepend the `tipo_ocorrencia` label as a bolded first paragraph (this
+ *    one *is* plain text from a controlled lookup, so it is escaped).
+ * 2. Pass `descricao` through untouched (as HTML) and append a "campos não
+ *    migrados" list for whatever the caller says has no target field — also
+ *    genuinely plain text, also escaped. Deliberately generic: this module
+ *    takes the note strings as input rather than deciding what belongs in
+ *    them. **`saidas.contacto` (a phone number) is never one of them** — Q7
+ *    (resolved): a phone number is dropped entirely, never written into
+ *    `operationalReport` or any other field. Loader 12 does not read
+ *    `saidas.contacto` for any purpose.
+ * 3. Run the whole thing through `sanitizeReportHtml` — the same function the
  *    API uses on every write, so imported markup is trusted exactly as much
- *    as markup a crew typed today — then truncate on a tag boundary at
- *    `MAX_OPERATIONAL_REPORT_LENGTH`, leaving room for a visible truncation
- *    marker rather than silently dropping the tail.
+ *    as markup a crew typed today. It also does the real work of downgrading
+ *    legacy markup outside the new editor's tag set (tables, spans, fonts,
+ *    images, inline styles) to plain text rather than dropping it silently,
+ *    and decodes the legacy entities along the way. Then truncate on a tag
+ *    boundary at `MAX_OPERATIONAL_REPORT_LENGTH`, leaving room for a visible
+ *    truncation marker rather than silently dropping the tail.
  */
 import { MAX_OPERATIONAL_REPORT_LENGTH } from '@redinfo/shared';
 import { sanitizeReportHtml } from '../../../backend/src/event-reports/sanitize-report';
@@ -47,16 +61,6 @@ function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
-/** Escapes first (so no line-splitting risk from an injected literal `\n` in an entity), then wraps. */
-function plaintextToParagraphs(text: string): string {
-  return escapeHtml(text)
-    .split('\n')
-    .map((line) => line.trim())
-    .filter((line) => line.length > 0)
-    .map((line) => `<p>${line}</p>`)
-    .join('');
-}
-
 function droppedFieldsBlock(notes: string[]): string {
   if (notes.length === 0) return '';
   const items = notes.map((note) => `<li>${escapeHtml(note)}</li>`).join('');
@@ -76,7 +80,11 @@ export function buildNarrative(input: NarrativeInput): NarrativeResult {
   if (input.ocorrenciaLabel) {
     parts.push(`<p><strong>Tipo de ocorrência:</strong> ${escapeHtml(input.ocorrenciaLabel)}</p>`);
   }
-  parts.push(plaintextToParagraphs(input.descricao));
+  // `descricao` is already HTML from the legacy rich-text control (confirmed
+  // against the dump — see the module doc comment) — passed through as-is
+  // and left to `sanitizeReportHtml` below to downgrade to the new editor's
+  // tag set, not re-escaped as if it were plain text typed just now.
+  parts.push(input.descricao);
   parts.push(droppedFieldsBlock(input.droppedNotes));
 
   const sanitized = sanitizeReportHtml(parts.join(''));

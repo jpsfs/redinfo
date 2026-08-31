@@ -48,6 +48,7 @@ import { mapDestination, mapGender, mapInemUnit, mapLocationType, mapOcorrenciaL
 import { buildNarrative } from '../transform/narrative';
 import { normaliseAmbulanciaCode } from '../transform/ambulancia-code';
 import { materialCatalogueKey } from '../transform/material-name';
+import { quantityFromLegacyDelta } from '../transform/material-quantity';
 import { DEFAULT_LEGACY_TIMEZONE, NO_STRUCTURED_INEM_ROW, SAIDAS_CREW_ROLE_NAMES } from '../mapping.config';
 import { LocalityResolver } from '../resolvers/locality.resolver';
 import { UserResolver } from '../resolvers/user.resolver';
@@ -312,7 +313,7 @@ async function loadOneEventReport(
       materialItemId,
       itemType: 'COUNTABLE' as NonNullable<EventReportInput['materials']>[number]['itemType'],
       vehicleId,
-      quantity: materialRow.quantidade,
+      quantity: quantityFromLegacyDelta(materialRow.quantidade),
     });
   }
 

@@ -22,6 +22,8 @@ export interface ReportData {
   vehiclesWithSentinelDates: string[];
   nonConformingPlates: Array<{ legacyKey: string; value: string }>;
   assumedSubmittedAt: Array<{ legacyKey: string; date: string; source: string }>;
+  mergedFreguesiaMatches: Array<{ legacyText: string; resolvedTo: string; municipality: string; tiebreak: string; occurrences: number }>;
+  unresolvedLocalityCount: number;
   truncatedNarratives: string[];
   unmappedEnumCodes: Array<{ table: string; code: string; count: number; question?: string }>;
   droppedColumns: Array<{ table: string; columns: string[] }>;
@@ -100,6 +102,29 @@ export function renderReport(data: ReportData): string {
       ['Legacy key', 'Date used', 'Source'],
       data.assumedSubmittedAt.map((r) => [r.legacyKey, r.date, r.source]),
     ),
+  );
+
+  sections.push('## Localities resolved via merged-freguesia matching (tier 2.5)\n');
+  sections.push(
+    `A pre-2013 freguesia name with no exact match, resolved by finding the "União das Freguesias de ..." ` +
+      `it was merged into (Lei n.º 11-A/2013) and, where that was still ambiguous across municipalities, ` +
+      `breaking the tie toward the delegation's own municipality or a confirmed neighbour. Every row here is a ` +
+      `guess, not a certainty — spot-check before trusting it, and correct it via ` +
+      `\`migration/overrides/locality-map.csv\` if wrong.\n`,
+  );
+  sections.push(
+    table(
+      ['Legacy text', 'Resolved to', 'Municipality', 'Tiebreak', 'Occurrences'],
+      data.mergedFreguesiaMatches.map((m) => [m.legacyText, m.resolvedTo, m.municipality, m.tiebreak, String(m.occurrences)]),
+    ),
+  );
+
+  sections.push('## Unresolved localities\n');
+  sections.push(
+    data.unresolvedLocalityCount > 0
+      ? `${data.unresolvedLocalityCount} distinct freguesia value(s) matched nothing — see \`unresolved-localities.csv\` ` +
+          `for nearest-candidate suggestions to add to \`migration/overrides/locality-map.csv\`.\n`
+      : '_None._\n',
   );
 
   sections.push('## Non-conforming licence plates\n');

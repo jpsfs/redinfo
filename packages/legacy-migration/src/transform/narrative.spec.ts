@@ -3,23 +3,37 @@ import { sanitizeReportHtml } from '../../../backend/src/event-reports/sanitize-
 import { buildNarrative } from './narrative';
 
 describe('buildNarrative', () => {
-  it('escapes < and & in the plaintext rather than passing them through', () => {
+  // `descricao` is HTML from the legacy rich-text control (confirmed against
+  // the real dump — 1,814 of 1,835 rows already contain tags), so it is
+  // carried through, not re-escaped as if a crew had just typed it.
+  it('passes legacy rich-text HTML through, preserving its paragraphs and formatting', () => {
     const result = buildNarrative({
-      descricao: 'Vítima com dor <forte> & agitada',
+      descricao: '<p>Chamada particular para fem.</p><p>Sinais vitais <strong>normais</strong> e est&aacute;veis.</p>',
       ocorrenciaLabel: null,
       droppedNotes: [],
     });
-    expect(result.html).toContain('Vítima com dor &lt;forte&gt; &amp; agitada');
-    expect(result.html).not.toContain('<forte>');
+    expect(result.html).toContain('<p>Chamada particular para fem.</p>');
+    expect(result.html).toContain('<p>Sinais vitais <strong>normais</strong> e estáveis.</p>');
   });
 
-  it('turns each non-empty line into its own paragraph', () => {
+  it('downgrades a tag outside the new editor\'s allowed set to plain text rather than dropping its content', () => {
     const result = buildNarrative({
-      descricao: 'Primeira linha\n\nSegunda linha\nTerceira linha',
+      descricao: '<div><span style="color:red">Vítima</span> transportada</div>',
       ocorrenciaLabel: null,
       droppedNotes: [],
     });
-    expect(result.html).toBe('<p>Primeira linha</p><p>Segunda linha</p><p>Terceira linha</p>');
+    expect(result.html).toContain('Vítima transportada');
+    expect(result.html).not.toContain('<div>');
+    expect(result.html).not.toContain('<span');
+  });
+
+  it('never lets stray markup in the legacy text carry a script or an event handler through', () => {
+    const result = buildNarrative({
+      descricao: '<p onclick="alert(1)">Nota</p><script>alert(2)</script>',
+      ocorrenciaLabel: null,
+      droppedNotes: [],
+    });
+    expect(result.html).toBe('<p>Nota</p>');
   });
 
   it('prepends the occurrence type as a bolded first paragraph', () => {
@@ -55,7 +69,7 @@ describe('buildNarrative', () => {
   });
 
   it('truncates at MAX_OPERATIONAL_REPORT_LENGTH on a tag boundary and marks the cut', () => {
-    const longLine = 'A'.repeat(MAX_OPERATIONAL_REPORT_LENGTH);
+    const longLine = `<p>${'A'.repeat(MAX_OPERATIONAL_REPORT_LENGTH)}</p>`;
     const result = buildNarrative({ descricao: longLine, ocorrenciaLabel: null, droppedNotes: [] });
 
     expect(result.truncated).toBe(true);

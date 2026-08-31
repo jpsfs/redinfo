@@ -174,16 +174,29 @@ file's `mysql-legacy`/dev-Postgres defaults.
 |---|---|
 | `report.md` | The deliverable a human reads. Overwrite summary first (created/adopted/**updated**/unchanged/rejected per entity — the `updated` total is the headline "how many existing rows would this touch" number), then per-decision detail sections, "not migrated" tables/columns, and truncated/non-conforming values. |
 | `rejects-<entity>.csv` | One per entity with at least one rejected row. `legacy_key,reason_code,reason,field,value_redacted` — `value_redacted` is blank for sensitive/clinical fields. |
-| `unresolved-localities.csv` | Every `saidas.freguesia` value the three-tier resolver could not place, with `nearest_candidates` to make filling in the override CSV fast. |
+| `unresolved-localities.csv` | Every `saidas.freguesia` value none of the resolver's tiers could place, with `nearest_candidates` to make filling in the override CSV fast. |
 | `run.jsonl` | One JSON line per decision, for diffing two runs. |
 
 ## Filling in `migration/overrides/locality-map.csv`
 
-Header: `legacy_text,localityId,note`. A row whose `localityId` does not
-exist is a **preflight failure**, not a row-level warning — it is checked
-before any loader runs. Use `unresolved-localities.csv`'s `nearest_candidates`
-column to find the right `Locality.id` quickly (Portugal's 2013 freguesia
-reorganisation is the usual cause of a miss, not a typo).
+Most of what used to land here is now resolved automatically: the resolver's
+tier 2.5 (`transform/locality.ts::resolveMergedFreguesia`) recognises a
+pre-2013 freguesia name folded into a "União das Freguesias de ..." locality
+(Lei n.º 11-A/2013 — confirmed the dominant cause, not typos: it accounted
+for 755 of 775 `UNRESOLVED_LOCALITY` rejects in the real dump) and, when that
+alone is still ambiguous across municipalities, breaks the tie toward
+`LEGACY_DELEGATION_MUNICIPALITY`/`LEGACY_NEIGHBOURING_MUNICIPALITIES`
+(`mapping.config.ts`). Every tier-2.5 match is still a guess, not a
+certainty — `report.md`'s "Localities resolved via merged-freguesia matching"
+section lists every one of them (legacy text, resolved locality, which
+tiebreak fired) so a coordinator can spot-check and correct a wrong one via
+this file, which still wins over tier 2.5 for anything it lists.
+
+For what's left in `unresolved-localities.csv`: header
+`legacy_text,localityId,note`. A row whose `localityId` does not exist is a
+**preflight failure**, not a row-level warning — it is checked before any
+loader runs. Use the CSV's `nearest_candidates` column to find the right
+`Locality.id` quickly.
 
 ## Go-live sequence
 
