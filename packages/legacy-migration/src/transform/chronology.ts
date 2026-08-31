@@ -29,6 +29,18 @@
  * sentinel-as-null fixes elsewhere in the loaders, `occurredOn` has no
  * "unknown" to fall back to (it's a required field), so these rows can only
  * be rejected, not migrated with a guessed date.
+ *
+ * 3. **`hch` (hospital arrival) is a sentinel, not a real time, whenever there
+ *    was no hospital transport.** Confirmed against EMG 088/2026
+ *    (`transporte=n2`, deceased on scene): legacy leaves `hch` at MySQL's
+ *    `'00:00:00'` default instead of `NULL` in that case, and — taken
+ *    literally — it both fabricates a `hospitalArrivalAt` the crew never
+ *    recorded and, via the rollover walk above, can push every later field
+ *    onto an invented extra day, inflating the report's total duration. The
+ *    caller (loader 12) knows whether `transporte` actually names a hospital
+ *    destination and passes that as `hasHospitalTransport`; when it's false,
+ *    `hch` is treated exactly like an absent value — skipped in the rollover
+ *    walk, `null` in the result — regardless of what it holds.
  */
 import { EventReportType, validateOccurrenceTimes } from '@redinfo/shared';
 
@@ -50,6 +62,12 @@ export interface ChronologyInput {
   hsl: string | null;
   hch: string | null;
   hd: string | null;
+  /**
+   * Whether `transporte` actually names a hospital destination for this
+   * report's victim — never inferred here. `false` makes `hch` read as
+   * absent no matter what it holds; see module doc, reason 3.
+   */
+  hasHospitalTransport: boolean;
   /** IANA zone name, e.g. `Europe/Lisbon`. Never defaulted here — see the module doc. */
   timezone: string;
 }
@@ -161,7 +179,9 @@ export function buildChronology(input: ChronologyInput): ChronologyOutcome {
     hChamada: input.hChamada,
     hcl: input.hcl,
     hsl: input.hsl,
-    hch: input.hch,
+    // See module doc, reason 3: without a real hospital transport, `hch` is
+    // legacy's '00:00:00' sentinel, not a clock time worth walking.
+    hch: input.hasHospitalTransport ? input.hch : null,
     hd: input.hd,
   };
 

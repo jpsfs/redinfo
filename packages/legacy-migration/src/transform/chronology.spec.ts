@@ -1,6 +1,6 @@
 import { buildChronology } from './chronology';
 
-const base = { data: '2024-06-10', timezone: 'UTC' } as const;
+const base = { data: '2024-06-10', timezone: 'UTC', hasHospitalTransport: true } as const;
 
 describe('buildChronology — straight in-order case', () => {
   it('carries every field through with no rollover and no timezone shift', () => {
@@ -113,6 +113,44 @@ describe('buildChronology — nulls', () => {
   });
 });
 
+describe('buildChronology — hch sentinel when there was no hospital transport', () => {
+  it('reads hch as absent when hasHospitalTransport is false, even though it holds a value', () => {
+    // EMG 088/2026 shape: victim deceased on scene (transporte=n2), legacy
+    // still stores hch='00:00:00' rather than NULL.
+    const outcome = buildChronology({
+      ...base,
+      hasHospitalTransport: false,
+      hChamada: '14:00:00',
+      hcl: '14:10:00',
+      hsl: '14:40:00',
+      hch: '00:00:00',
+      hd: '14:55:00',
+    });
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.result.hospitalArrivalAt).toBeNull();
+    // Without the sentinel treated as a real (and earlier) clock time, hd
+    // stays on the same day instead of rolling onto an invented next day.
+    expect(outcome.result.availableAt).toBe('2024-06-10T14:55:00.000Z');
+    expect(outcome.result.endedAt).toBe('2024-06-10T14:55:00.000Z');
+  });
+
+  it('still honours hch when hasHospitalTransport is true', () => {
+    const outcome = buildChronology({
+      ...base,
+      hasHospitalTransport: true,
+      hChamada: '14:00:00',
+      hcl: '14:10:00',
+      hsl: '14:40:00',
+      hch: '15:00:00',
+      hd: '15:30:00',
+    });
+    expect(outcome.ok).toBe(true);
+    if (!outcome.ok) return;
+    expect(outcome.result.hospitalArrivalAt).toBe('2024-06-10T15:00:00.000Z');
+  });
+});
+
 describe('buildChronology — MySQL zero-date', () => {
   it('rejects rather than throws when data is the zero-date sentinel', () => {
     const outcome = buildChronology({
@@ -161,7 +199,7 @@ describe('buildChronology — MySQL TIME beyond 24 hours', () => {
 });
 
 describe('buildChronology — Europe/Lisbon DST boundaries', () => {
-  const lisbon = { timezone: 'Europe/Lisbon' } as const;
+  const lisbon = { timezone: 'Europe/Lisbon', hasHospitalTransport: true } as const;
 
   it('the day before the spring-forward transition has no offset (WET, UTC+0)', () => {
     const outcome = buildChronology({
