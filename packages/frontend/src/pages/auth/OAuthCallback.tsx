@@ -1,14 +1,14 @@
 import { useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { CircularProgress, Box, Typography } from '@mui/material';
-
-const TOKEN_KEY = 'redinfo_access_token';
-const REFRESH_KEY = 'redinfo_refresh_token';
+import { setTokens } from '../../authStorage';
 
 /**
  * Handles the OAuth redirect callback.
- * The backend redirects to /auth/callback?accessToken=...&refreshToken=...
- * We persist the tokens and redirect to the home page.
+ * The backend redirects to /auth/callback?accessToken=...&refreshToken=...&remember=...
+ * We persist the tokens (per the "keep me signed in" choice carried through
+ * the OAuth round-trip via `remember` — see `GoogleAuthGuard`'s doc comment)
+ * and redirect to the home page.
  */
 export const OAuthCallback = () => {
   const navigate = useNavigate();
@@ -17,10 +17,10 @@ export const OAuthCallback = () => {
     const params = new URLSearchParams(window.location.search);
     const accessToken = params.get('accessToken');
     const refreshToken = params.get('refreshToken');
+    const remember = params.get('remember') !== 'false';
 
     if (accessToken && refreshToken) {
-      localStorage.setItem(TOKEN_KEY, accessToken);
-      localStorage.setItem(REFRESH_KEY, refreshToken);
+      setTokens(accessToken, refreshToken, remember);
       navigate('/', { replace: true });
     } else {
       navigate('/login', { replace: true });

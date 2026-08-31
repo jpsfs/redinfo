@@ -14,6 +14,7 @@ import {
 } from 'react-admin';
 import { ApiErrorCode } from '@redinfo/shared';
 import { getAccessToken } from './authProvider';
+import { refreshAccessToken } from './authRefresh';
 import { i18nProvider } from './i18n/i18nProvider';
 import { apiErrorLabel } from './i18n/labels';
 
@@ -41,11 +42,31 @@ const translateHttpError = (error: unknown): never => {
   throw error;
 };
 
-const httpClient = (url: string, options: fetchUtils.Options = {}) => {
-  const token = getAccessToken();
-  const headers = new Headers(options.headers);
-  if (token) headers.set('Authorization', `Bearer ${token}`);
-  return fetchUtils.fetchJson(url, { ...options, headers }).catch(translateHttpError);
+/**
+ * Retries once with a refreshed access token on a 401 — see `authRefresh`'s
+ * doc comment for why: a short-lived access token can go stale mid-session
+ * without anything having checked, and the refresh token underneath it may
+ * still be perfectly valid.
+ */
+const httpClient = async (url: string, options: fetchUtils.Options = {}) => {
+  const attempt = (token: string | null) => {
+    const headers = new Headers(options.headers);
+    if (token) headers.set('Authorization', `Bearer ${token}`);
+    return fetchUtils.fetchJson(url, { ...options, headers });
+  };
+
+  try {
+    return await attempt(getAccessToken());
+  } catch (error) {
+    if (!(error instanceof HttpError) || error.status !== 401) return translateHttpError(error);
+    const refreshed = await refreshAccessToken();
+    if (!refreshed) return translateHttpError(error);
+    try {
+      return await attempt(refreshed);
+    } catch (retryError) {
+      return translateHttpError(retryError);
+    }
+  }
 };
 
 export const dataProvider: DataProvider = {

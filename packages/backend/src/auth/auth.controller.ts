@@ -9,11 +9,12 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiBody, ApiBearerAuth, ApiExcludeEndpoint } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { LocalAuthGuard } from './guards/local-auth.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { GoogleAuthGuard } from './guards/google-oauth.guard';
+import { MicrosoftAuthGuard } from './guards/microsoft-oauth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
@@ -30,8 +31,8 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @UseGuards(LocalAuthGuard)
   @ApiBody({ type: LoginDto })
-  async login(@Req() req: any) {
-    return this.authService.login((req.user as User).id);
+  async login(@Req() req: any, @Body() dto: LoginDto) {
+    return this.authService.login((req.user as User).id, dto.remember ?? false);
   }
 
   // ── Refresh ─────────────────────────────────────────────────────────────────
@@ -63,19 +64,20 @@ export class AuthController {
 
   @Get('google')
   @ApiExcludeEndpoint()
-  @UseGuards(AuthGuard('google'))
+  @UseGuards(GoogleAuthGuard)
   googleLogin() {
     // Redirect is handled by passport
   }
 
   @Get('google/callback')
   @ApiExcludeEndpoint()
-  @UseGuards(AuthGuard('google'))
+  @UseGuards(GoogleAuthGuard)
   async googleCallback(@Req() req: any, @Res() res: any) {
-    const tokens = await this.authService.login((req.user as User).id);
+    const remember = req.query.state === 'true';
+    const tokens = await this.authService.login((req.user as User).id, remember);
     const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:5173';
     res.redirect(
-      `${frontendUrl}/auth/callback?accessToken=${tokens.accessToken}&refreshToken=${tokens.refreshToken}`,
+      `${frontendUrl}/auth/callback?accessToken=${tokens.accessToken}&refreshToken=${tokens.refreshToken}&remember=${remember}`,
     );
   }
 
@@ -83,19 +85,20 @@ export class AuthController {
 
   @Get('microsoft')
   @ApiExcludeEndpoint()
-  @UseGuards(AuthGuard('microsoft'))
+  @UseGuards(MicrosoftAuthGuard)
   microsoftLogin() {
     // Redirect is handled by passport
   }
 
   @Get('microsoft/callback')
   @ApiExcludeEndpoint()
-  @UseGuards(AuthGuard('microsoft'))
+  @UseGuards(MicrosoftAuthGuard)
   async microsoftCallback(@Req() req: any, @Res() res: any) {
-    const tokens = await this.authService.login((req.user as User).id);
+    const remember = req.query.state === 'true';
+    const tokens = await this.authService.login((req.user as User).id, remember);
     const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:5173';
     res.redirect(
-      `${frontendUrl}/auth/callback?accessToken=${tokens.accessToken}&refreshToken=${tokens.refreshToken}`,
+      `${frontendUrl}/auth/callback?accessToken=${tokens.accessToken}&refreshToken=${tokens.refreshToken}&remember=${remember}`,
     );
   }
 }

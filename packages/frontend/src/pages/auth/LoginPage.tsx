@@ -1,4 +1,5 @@
-import { Login, LoginForm } from 'react-admin';
+import { useState, ChangeEvent } from 'react';
+import { Login, LoginForm, TextInput, PasswordInput, BooleanInput, required } from 'react-admin';
 import { Box, Divider, Button, Typography } from '@mui/material';
 import GoogleIcon from '@mui/icons-material/Google';
 import MicrosoftIcon from '@mui/icons-material/Window';
@@ -15,7 +16,7 @@ const LoginHeader = () => {
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        pt: 3,
+        pt: { xs: 2, sm: 3 },
         pb: 1,
         px: 2,
       }}
@@ -24,7 +25,7 @@ const LoginHeader = () => {
         sx={{
           maxWidth: 200,
           height: 'auto',
-          mb: 2,
+          mb: { xs: 1, sm: 2 },
           borderRadius: 1,
         }}
       />
@@ -50,10 +51,34 @@ const LoginHeader = () => {
   );
 };
 
-const OAuthButtons = () => {
+/**
+ * "Keep me signed in" applies to both the password form below and the OAuth
+ * buttons — `remember` is lifted here rather than owned by either so one
+ * checkbox governs both. `BooleanInput` keeps it registered on the form (so
+ * a password sign-in submits it as part of `values`, see
+ * `authProvider.login`), and `onChange` mirrors the same value out to
+ * `OAuthButtons`, which can't have it as a form field since it never
+ * submits — it just links straight to the backend.
+ */
+const RememberMeInput = ({ onRememberChange }: { onRememberChange: (remember: boolean) => void }) => {
   const t = useT();
   return (
-    <Box sx={{ px: 2, pb: 3 }}>
+    <BooleanInput
+      source="remember"
+      label={t('login.keepMeSignedIn')}
+      helperText={t('login.keepMeSignedInHint')}
+      defaultValue={true}
+      onChange={(event: ChangeEvent<HTMLInputElement>) => onRememberChange(event.target.checked)}
+      sx={{ mt: -1 }}
+    />
+  );
+};
+
+const OAuthButtons = ({ remember }: { remember: boolean }) => {
+  const t = useT();
+  const rememberParam = `remember=${remember}`;
+  return (
+    <Box sx={{ px: 2, pb: { xs: 2, sm: 3 } }}>
       <Divider sx={{ mb: 2 }}>
         <Typography variant="caption" color="text.secondary">
           {t('login.orSignInWith')}
@@ -63,7 +88,7 @@ const OAuthButtons = () => {
         fullWidth
         variant="outlined"
         startIcon={<GoogleIcon />}
-        href={`${API_URL}/auth/google`}
+        href={`${API_URL}/auth/google?${rememberParam}`}
         sx={{ mb: 1, textTransform: 'none' }}
         aria-label={t('login.signInWithGoogle')}
       >
@@ -73,7 +98,7 @@ const OAuthButtons = () => {
         fullWidth
         variant="outlined"
         startIcon={<MicrosoftIcon />}
-        href={`${API_URL}/auth/microsoft`}
+        href={`${API_URL}/auth/microsoft?${rememberParam}`}
         sx={{ textTransform: 'none' }}
         aria-label={t('login.signInWithMicrosoft')}
       >
@@ -83,10 +108,30 @@ const OAuthButtons = () => {
   );
 };
 
-export const LoginPage = () => (
-  <Login>
-    <LoginHeader />
-    <LoginForm />
-    <OAuthButtons />
-  </Login>
-);
+export const LoginPage = () => {
+  const t = useT();
+  const [remember, setRemember] = useState(true);
+
+  return (
+    <Login>
+      <LoginHeader />
+      <LoginForm>
+        <TextInput
+          autoFocus
+          source="username"
+          label={t('ra.auth.username')}
+          autoComplete="username"
+          validate={required()}
+        />
+        <PasswordInput
+          source="password"
+          label={t('ra.auth.password')}
+          autoComplete="current-password"
+          validate={required()}
+        />
+        <RememberMeInput onRememberChange={setRemember} />
+      </LoginForm>
+      <OAuthButtons remember={remember} />
+    </Login>
+  );
+};

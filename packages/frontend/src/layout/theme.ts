@@ -5,6 +5,7 @@ import {
   colorRedCrossRedDark,
   colorRedCrossRedLight,
   colorWhite,
+  colorGrey50,
   colorGrey100,
   colorGrey200,
   colorGrey700,
@@ -214,15 +215,27 @@ export const theme = createTheme({
     },
 
     // ── react-admin Login page overrides ──────────────────────────────────
+    //
+    // Was a solid `colorRedCrossRed` field behind the card — too strong at
+    // full-viewport scale even though the same red is fine as an accent
+    // (button, chip, card edge). A soft neutral base with a faint red glow
+    // keeps the brand identity (plus the card's red top edge and the red
+    // submit button) without the wall-of-red.
     RaLogin: {
       styleOverrides: {
         root: {
-          background: colorRedCrossRed,
-          backgroundImage: 'none',
-          minHeight: '100vh',
+          backgroundColor: colorGrey100,
+          backgroundImage: `radial-gradient(ellipse 900px 480px at 50% -12%, ${colorRedCrossRedLight}40, transparent 70%), linear-gradient(180deg, ${colorGrey50} 0%, ${colorGrey100} 100%)`,
+          // `100vh` on a mobile browser is taller than the visible area once
+          // the address bar is accounted for, so a fully-fitting page still
+          // scrolled and, being centered, revealed empty space above the
+          // card rather than cutting anything off. `100dvh` tracks the
+          // actual visible viewport instead.
+          minHeight: '100dvh',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          padding: spacingUnit * 2,
           // react-admin's overridesResolver only applies `root` — hide the
           // default lock-icon avatar using a nested selector instead of the
           // `avatar` slot key, which is not processed by overridesResolver.
@@ -230,8 +243,9 @@ export const theme = createTheme({
         },
         card: {
           borderRadius: borderRadiusMedium,
+          borderTop: `4px solid ${colorRedCrossRed}`,
           padding: `${spacingUnit}px`,
-          boxShadow: '0 4px 24px rgba(0,0,0,0.18)',
+          boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
           width: '100%',
           maxWidth: 400,
         },

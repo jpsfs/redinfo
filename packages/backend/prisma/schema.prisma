@@ -200,6 +200,10 @@ model RefreshToken {
   expiresAt DateTime
   createdAt DateTime  @default(now())
   revokedAt DateTime?
+  /// "Keep me signed in" at issuance time — carries the longer TTL class
+  /// through rotation, since `refresh()` re-derives the new token's lifetime
+  /// from the one it's replacing rather than from anything the client sends.
+  remember  Boolean   @default(false)
 
   @@index([userId])
 }

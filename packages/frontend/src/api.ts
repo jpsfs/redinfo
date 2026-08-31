@@ -1,11 +1,33 @@
 import { ApiErrorCode } from '@redinfo/shared';
 import { getAccessToken } from './authProvider';
+import { refreshAccessToken } from './authRefresh';
 
 const API_URL = import.meta.env.VITE_API_URL ?? '';
 
 export interface ApiFetchOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
+}
+
+/**
+ * Fetches `path`, retrying once with a refreshed access token if the first
+ * attempt comes back 401 — the access token is short-lived (15 min) and
+ * nothing polls for its expiry while someone stays on one screen, so this
+ * is what keeps a still-valid refresh token from looking like a dropped
+ * session. See `authRefresh`'s doc comment.
+ */
+async function fetchWithAuthRetry(path: string, init: RequestInit): Promise<Response> {
+  const attempt = (token: string | null) => {
+    const headers: Record<string, string> = { ...(init.headers as Record<string, string> | undefined) };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    return fetch(`${API_URL}${path}`, { ...init, headers });
+  };
+
+  const response = await attempt(getAccessToken());
+  if (response.status !== 401) return response;
+
+  const refreshed = await refreshAccessToken();
+  return refreshed ? attempt(refreshed) : response;
 }
 
 /**
@@ -17,13 +39,9 @@ export interface ApiFetchOptions {
  * component reaching into localStorage itself.
  */
 export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): Promise<T> {
-  const token = getAccessToken();
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  if (token) headers.Authorization = `Bearer ${token}`;
-
-  const response = await fetch(`${API_URL}${path}`, {
+  const response = await fetchWithAuthRetry(path, {
     method: options.method ?? 'GET',
-    headers,
+    headers: { 'Content-Type': 'application/json' },
     ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
   });
 
@@ -44,11 +62,7 @@ export async function apiFetch<T>(path: string, options: ApiFetchOptions = {}): 
  * with the token and handed to the browser as an object URL instead.
  */
 export async function apiDownload(path: string, filename: string): Promise<void> {
-  const token = getAccessToken();
-  const headers: Record<string, string> = {};
-  if (token) headers.Authorization = `Bearer ${token}`;
-
-  const response = await fetch(`${API_URL}${path}`, { headers });
+  const response = await fetchWithAuthRetry(path, {});
   if (!response.ok) {
     const { message, code, params } = await readError(response);
     throw new ApiError(message, response.status, code, params);
@@ -80,12 +94,7 @@ export async function apiUpload<T>(path: string, file: File | Blob): Promise<T> 
   const body = new FormData();
   body.append('file', file, file instanceof File ? file.name : 'ficheiro');
 
-  const token = getAccessToken();
-  const response = await fetch(`${API_URL}${path}`, {
-    method: 'POST',
-    headers: token ? { Authorization: `Bearer ${token}` } : {},
-    body,
-  });
+  const response = await fetchWithAuthRetry(path, { method: 'POST', body });
 
   if (!response.ok) {
     const { message, code, params } = await readError(response);

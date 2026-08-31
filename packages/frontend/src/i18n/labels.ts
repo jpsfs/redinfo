@@ -2028,6 +2028,11 @@ const MESSAGES = {
   'login.orSignInWith': { pt: 'ou entrar com', en: 'or sign in with' },
   'login.signInWithGoogle': { pt: 'Entrar com Google', en: 'Sign in with Google' },
   'login.signInWithMicrosoft': { pt: 'Entrar com Microsoft', en: 'Sign in with Microsoft' },
+  'login.keepMeSignedIn': { pt: 'Manter sessão iniciada', en: 'Keep me signed in' },
+  'login.keepMeSignedInHint': {
+    pt: 'Recomendado apenas em dispositivos pessoais — desmarca num computador partilhado.',
+    en: 'Recommended only on personal devices — leave unchecked on a shared computer.',
+  },
   'login.orgName': {
     pt: 'Cruz Vermelha Portuguesa — Delegação de Campo',
     en: 'Portuguese Red Cross — Field Delegation',

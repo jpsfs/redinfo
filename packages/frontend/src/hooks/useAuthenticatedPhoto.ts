@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { getAccessToken } from '../authProvider';
+import { refreshAccessToken } from '../authRefresh';
 
 const API_URL = import.meta.env.VITE_API_URL ?? '';
 
@@ -27,13 +28,19 @@ export function useAuthenticatedPhoto(userId: string | undefined, hasPhoto: bool
 
     let cancelled = false;
     let objectUrl: string | null = null;
-    const token = getAccessToken();
+
+    const load = (token: string | null) =>
+      fetch(`${API_URL}/users/${userId}/photo`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
 
     void (async () => {
       try {
-        const response = await fetch(`${API_URL}/users/${userId}/photo`, {
-          headers: token ? { Authorization: `Bearer ${token}` } : {},
-        });
+        let response = await load(getAccessToken());
+        if (response.status === 401) {
+          const refreshed = await refreshAccessToken();
+          if (refreshed) response = await load(refreshed);
+        }
         if (!response.ok) throw new Error(response.statusText);
         const blob = await response.blob();
         if (cancelled) return;
