@@ -18,4 +18,17 @@ export class GoogleAuthGuard extends AuthGuard('google') {
     const req = context.switchToHttp().getRequest();
     return { state: req.query?.remember === 'true' ? 'true' : 'false' };
   }
+
+  /**
+   * A failed OAuth attempt (no matching admin-provisioned account — see
+   * `GoogleStrategy`/`findOrLinkOAuthUser`) must not throw here: this runs
+   * mid-redirect, and the default `handleRequest` throwing `Unauthorized`
+   * would surface as a raw 401 JSON page to a browser that just came back
+   * from Google. Instead, leave `req.user` unset and let `googleCallback`
+   * redirect to the frontend with an error to show instead.
+   */
+  handleRequest<TUser = unknown>(err: unknown, user: unknown): TUser {
+    if (err) throw err;
+    return (user || undefined) as TUser;
+  }
 }

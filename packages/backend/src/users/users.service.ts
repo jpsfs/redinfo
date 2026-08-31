@@ -5,7 +5,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
-import { AuthProvider, Prisma, UserRole } from '@prisma/client';
+import { AuthProvider, Prisma, User, UserRole } from '@prisma/client';
 import {
   Action,
   AuthProvider as SharedAuthProvider,
@@ -71,6 +71,7 @@ const ACCOUNT_AUDITED_FIELDS = [
   'lastName',
   'email',
   'role',
+  'provider',
   'isActive',
   'phone',
   'birthDate',
@@ -95,7 +96,7 @@ const ACCOUNT_AUDITED_FIELDS = [
  * split enforced here instead — the same "ungated handler, service decides"
  * pattern `SchedulesService` uses for `getMyDuties`.
  */
-const ACCOUNT_ONLY_FIELDS = ['email', 'role', 'password'] as const;
+const ACCOUNT_ONLY_FIELDS = ['email', 'role', 'password', 'provider'] as const;
 
 export const PERSON_SELECT = {
   id: true,
@@ -310,33 +311,43 @@ export class UsersService {
     return this.prisma.user.findUnique({ where: { email } });
   }
 
-  async findOrCreateOAuthUser(params: {
+  /**
+   * OAuth login only ever authenticates an EXISTING account — it never
+   * creates one. Accounts are admin-provisioned (`create`/`update` below);
+   * letting a first-time Google/Microsoft sign-in silently create a user
+   * would be self-registration via SSO, which is exactly what this closes.
+   *
+   * The first successful sign-in for a still-LOCAL account auto-links that
+   * provider (an admin shouldn't need to already know the provider's opaque
+   * `providerId` to provision someone for OAuth) and wipes `passwordHash` —
+   * from then on the link is one-way: only an admin editing the account
+   * directly can move it back to LOCAL (see `update`). A login attempt can
+   * never do that, and can never relink an account already tied to a
+   * *different* OAuth provider — both come back `null`, which the calling
+   * strategy turns into an auth failure rather than an exception, since this
+   * runs mid-redirect (see `GoogleAuthGuard`/`MicrosoftAuthGuard`).
+   */
+  async findOrLinkOAuthUser(params: {
     email: string;
     firstName: string;
     lastName: string;
     provider: AuthProvider;
     providerId: string;
-  }) {
+  }): Promise<User | null> {
     const existing = await this.prisma.user.findFirst({
       where: { provider: params.provider, providerId: params.providerId },
     });
-    if (existing) return existing;
+    if (existing) return existing.isActive ? existing : null;
 
-    // Also check by email to avoid duplicates
     const byEmail = await this.prisma.user.findUnique({ where: { email: params.email } });
-    if (byEmail) {
-      return this.prisma.user.update({
-        where: { id: byEmail.id },
-        data: { provider: params.provider, providerId: params.providerId },
-      });
+    if (!byEmail || !byEmail.isActive) return null;
+    if (byEmail.provider !== AuthProvider.LOCAL && byEmail.provider !== params.provider) {
+      return null;
     }
 
-    return this.prisma.user.create({
-      data: {
-        ...params,
-        role: UserRole.EMERGENCY_OPERATIONAL,
-        isActive: true,
-      },
+    return this.prisma.user.update({
+      where: { id: byEmail.id },
+      data: { provider: params.provider, providerId: params.providerId, passwordHash: null },
     });
   }
 
@@ -344,7 +355,12 @@ export class UsersService {
     const exists = await this.prisma.user.findUnique({ where: { email: dto.email } });
     if (exists) throw new ConflictException('Email already in use');
 
-    const passwordHash = dto.password ? await bcrypt.hash(dto.password, 12) : null;
+    const provider = dto.provider ?? AuthProvider.LOCAL;
+    // A GOOGLE/MICROSOFT account never gets a password, even if one was
+    // typed into the form — it would just be dead credential material,
+    // since `validateLocalUser` refuses any account whose provider isn't
+    // LOCAL regardless.
+    const passwordHash = provider === AuthProvider.LOCAL && dto.password ? await bcrypt.hash(dto.password, 12) : null;
 
     try {
       const row = await this.prisma.user.create({
@@ -354,7 +370,7 @@ export class UsersService {
           lastName: dto.lastName,
           passwordHash,
           role: dto.role ?? UserRole.EMERGENCY_OPERATIONAL,
-          provider: AuthProvider.LOCAL,
+          provider,
           isActive: dto.isActive ?? true,
           phone: dto.phone,
           birthDate: dto.birthDate ? parseIsoDate(dto.birthDate) : undefined,
@@ -396,7 +412,18 @@ export class UsersService {
 
     const before = await this.prisma.user.findUnique({ where: { id } });
     if (!before) throw new NotFoundException(`User ${id} not found`);
-    const passwordHash = dto.password ? await bcrypt.hash(dto.password, 12) : undefined;
+
+    // Moving an account to GOOGLE/MICROSOFT here is the one way back out of
+    // the one-way lock `findOrLinkOAuthUser` puts an OAuth-linked account
+    // into — an admin, not a login attempt. It also wipes any password so
+    // there's no leftover credential material for a provider that isn't
+    // LOCAL, same as account creation.
+    const movingOffLocal = dto.provider !== undefined && dto.provider !== AuthProvider.LOCAL;
+    const passwordHash = movingOffLocal
+      ? null
+      : dto.password
+        ? await bcrypt.hash(dto.password, 12)
+        : undefined;
 
     try {
       const row = await this.prisma.user.update({
@@ -406,7 +433,8 @@ export class UsersService {
           ...(dto.firstName && { firstName: dto.firstName }),
           ...(dto.lastName && { lastName: dto.lastName }),
           ...(dto.role && { role: dto.role }),
-          ...(passwordHash && { passwordHash }),
+          ...(dto.provider && { provider: dto.provider }),
+          ...(passwordHash !== undefined && { passwordHash }),
           // Booleans need an explicit undefined check — `false` must persist.
           ...(dto.isActive !== undefined && { isActive: dto.isActive }),
           ...(dto.phone !== undefined && { phone: dto.phone }),

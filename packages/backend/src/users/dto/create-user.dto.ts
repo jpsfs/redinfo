@@ -9,7 +9,7 @@ import {
   MinLength,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { BloodType, UserRole } from '@redinfo/shared';
+import { AuthProvider, BloodType, UserRole } from '@redinfo/shared';
 
 /** Guards on free-text profile fields; not domain rules. */
 export const MAX_PHONE_LENGTH = 30;
@@ -49,6 +49,18 @@ export class CreateUserDto {
   @IsOptional()
   @IsEnum(UserRole)
   role?: UserRole;
+
+  @ApiPropertyOptional({
+    enum: AuthProvider,
+    default: AuthProvider.LOCAL,
+    description:
+      'How this person signs in. GOOGLE/MICROSOFT accounts never get a password — the ' +
+      'first successful sign-in with that provider links it automatically; once linked, ' +
+      'only an admin can move an account back to LOCAL.',
+  })
+  @IsOptional()
+  @IsEnum(AuthProvider)
+  provider?: AuthProvider;
 
   @ApiPropertyOptional({ default: true })
   @IsOptional()

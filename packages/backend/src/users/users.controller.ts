@@ -128,10 +128,10 @@ export class UsersController {
   }
 
   /**
-   * Ungated on purpose: account fields (email, role, password) need
-   * `MANAGE_USERS`, personnel fields (name, active flag, contact details, …)
-   * need `MANAGE_PERSONNEL` — `UsersService.update` enforces the split so one
-   * endpoint can serve both an admin and a coordinator.
+   * Ungated on purpose: account fields (email, role, password, provider)
+   * need `MANAGE_USERS`, personnel fields (name, active flag, contact
+   * details, …) need `MANAGE_PERSONNEL` — `UsersService.update` enforces the
+   * split so one endpoint can serve both an admin and a coordinator.
    */
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: UpdateUserDto, @CurrentUser() user: RequestUser) {

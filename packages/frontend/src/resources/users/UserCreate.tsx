@@ -1,5 +1,6 @@
 import {
   Create,
+  FormDataConsumer,
   SelectInput,
   SimpleForm,
   TextInput,
@@ -9,8 +10,8 @@ import {
   minLength,
 } from 'react-admin';
 import { Divider, Typography } from '@mui/material';
-import { BLOOD_TYPE_LABEL, BloodType, UserRole } from '@redinfo/shared';
-import { accountRoleLabel } from '../../i18n/labels';
+import { AuthProvider, BLOOD_TYPE_LABEL, BloodType, UserRole } from '@redinfo/shared';
+import { accountRoleLabel, authProviderLabel } from '../../i18n/labels';
 import { useT } from '../../i18n/useT';
 
 /**
@@ -25,6 +26,10 @@ export const UserCreate = () => {
     id: role,
     name: accountRoleLabel(t, role),
   }));
+  const providerChoices = Object.values(AuthProvider).map((provider) => ({
+    id: provider,
+    name: authProviderLabel(t, provider),
+  }));
   const bloodTypeChoices = Object.values(BloodType).map((type) => ({
     id: type,
     name: BLOOD_TYPE_LABEL[type],
@@ -37,7 +42,25 @@ export const UserCreate = () => {
         <TextInput source="firstName" validate={required()} />
         <TextInput source="lastName" validate={required()} />
         <TextInput source="email" validate={[required(), email()]} />
-        <PasswordInput source="password" validate={[required(), minLength(8)]} />
+        <SelectInput
+          source="provider"
+          choices={providerChoices}
+          defaultValue={AuthProvider.LOCAL}
+          helperText={t('userForm.providerHint')}
+          validate={required()}
+        />
+        {/*
+          A GOOGLE/MICROSOFT account never gets a password — see
+          `UsersService.create`, which drops it server-side regardless, but
+          hiding the field here means it's never even typed in.
+        */}
+        <FormDataConsumer>
+          {({ formData }) =>
+            (formData.provider ?? AuthProvider.LOCAL) === AuthProvider.LOCAL && (
+              <PasswordInput source="password" validate={[required(), minLength(8)]} />
+            )
+          }
+        </FormDataConsumer>
         <SelectInput
           source="role"
           choices={roleChoices}

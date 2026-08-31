@@ -1,6 +1,7 @@
 import type { ApiErrorCode, Locale } from '@redinfo/shared';
 import {
   AVAILABILITY_WINDOW_CATEGORY_METADATA,
+  AuthProvider,
   AvailabilityWindowCategory,
   availabilityWindowCategoryLabel,
   EventLocationType,
@@ -563,6 +564,10 @@ const MESSAGES = {
   'userForm.newPasswordHint': {
     pt: 'Nova palavra-passe (deixa em branco para manter a atual).',
     en: 'New password (leave blank to keep the current one).',
+  },
+  'userForm.providerHint': {
+    pt: 'A entrada com Google/Microsoft liga-se automaticamente no primeiro início de sessão — depois disso, só um administrador consegue voltar a "Palavra-passe".',
+    en: 'Google/Microsoft sign-in links itself automatically on first login — after that, only an admin can move it back to "Password".',
   },
   'userForm.volunteerNumberHint': {
     pt: 'Opcional, atribuído manualmente.',
@@ -2037,6 +2042,14 @@ const MESSAGES = {
     pt: 'Cruz Vermelha Portuguesa — Delegação de Campo',
     en: 'Portuguese Red Cross — Field Delegation',
   },
+  'login.oauthAccountNotFound': {
+    pt: 'Não existe conta para esta conta Google/Microsoft. Pede a um administrador para a criar.',
+    en: "There's no account for that Google/Microsoft sign-in. Ask an administrator to create one.",
+  },
+  'login.localLoginDisabled': {
+    pt: 'A entrada com palavra-passe está desativada — usa o Google ou o Microsoft.',
+    en: 'Password sign-in is disabled — use Google or Microsoft instead.',
+  },
 
   // ── Dashboard (#180 phase 3) ──
   'dashboard.welcomeTitle': { pt: 'Bem-vindo ao RedInfo', en: 'Welcome to RedInfo' },
@@ -2687,6 +2700,11 @@ const ENUM_MESSAGES = {
     pt: 'Coordenador de Logística',
     en: 'Logistics Coordinator',
   },
+  // ── Auth providers — how a person signs in, `UserForm`'s provider field ──
+  [`authProvider.${AuthProvider.LOCAL}`]: { pt: 'Palavra-passe', en: 'Password' },
+  [`authProvider.${AuthProvider.GOOGLE}`]: { pt: 'Google', en: 'Google' },
+  [`authProvider.${AuthProvider.MICROSOFT}`]: { pt: 'Microsoft', en: 'Microsoft' },
+
   [`accountRoleDescription.${UserRole.SYSTEM_ADMIN}`]: {
     pt: 'Acesso total a todos os recursos e operações do sistema.',
     en: 'Full access to all system resources and operations.',
@@ -2827,6 +2845,10 @@ export const accountRoleLabel = (t: Translate, role: UserRole | string): string 
 
 export const accountRoleDescription = (t: Translate, role: UserRole | string): string =>
   t(`accountRoleDescription.${role}`);
+
+/** How a person signs in — `AuthProvider`, the `UserForm` provider field. */
+export const authProviderLabel = (t: Translate, provider: AuthProvider | string): string =>
+  t(`authProvider.${provider}`);
 
 /**
  * A window category's display label, falling back to `@redinfo/shared`'s

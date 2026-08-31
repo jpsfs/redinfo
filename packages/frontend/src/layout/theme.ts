@@ -233,8 +233,16 @@ export const theme = createTheme({
           // actual visible viewport instead.
           minHeight: '100dvh',
           display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
+          // NOT `alignItems`/`justifyContent: center`. react-admin's base
+          // root pairs `min-height: 100vh` with `height: 1px` — a
+          // known WebKit workaround that only works with top-alignment
+          // (`justify-content: flex-start`, its default); centering the
+          // flex box directly re-triggers the bug it exists to avoid,
+          // clipping overflow instead of letting it scroll (mobile Safari
+          // couldn't reach the OAuth buttons once the card grew past one
+          // screen with the remember-me row added). Centering via `margin:
+          // auto` on the card below gets the same look without it.
+          overflowY: 'auto',
           padding: spacingUnit * 2,
           // react-admin's overridesResolver only applies `root` — hide the
           // default lock-icon avatar using a nested selector instead of the
@@ -248,6 +256,7 @@ export const theme = createTheme({
           boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
           width: '100%',
           maxWidth: 400,
+          margin: 'auto',
         },
       },
     },

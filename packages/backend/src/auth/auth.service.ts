@@ -8,7 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { UsersService } from '../users/users.service';
-import { User } from '@prisma/client';
+import { AuthProvider, User } from '@prisma/client';
 import { addDays } from '../utils/date.util';
 
 /** Refresh-token lifetime when the client didn't ask to be remembered. */
@@ -38,9 +38,23 @@ export class AuthService {
 
   // ── Local validation ────────────────────────────────────────────────────────
 
+  /** Global kill switch — no MFA on the password path, see `DISABLE_LOCAL_LOGIN`. */
+  isLocalLoginEnabled(): boolean {
+    return this.config.get<string>('DISABLE_LOCAL_LOGIN') !== 'true';
+  }
+
   async validateLocalUser(email: string, password: string): Promise<User | null> {
+    if (!this.isLocalLoginEnabled()) return null;
+
     const user = await this.usersService.findByEmail(email);
     if (!user || !user.passwordHash) return null;
+    // Once an account has been linked to an OAuth provider it can only sign
+    // in that way — see `UsersService.findOrLinkOAuthUser`, which also wipes
+    // `passwordHash` on link. This check stays even though that already
+    // makes `!user.passwordHash` above true for a linked account, so the
+    // rule holds even if a password is ever restored without also flipping
+    // `provider` back to LOCAL.
+    if (user.provider !== AuthProvider.LOCAL) return null;
     if (!user.isActive) return null;
 
     const valid = await bcrypt.compare(password, user.passwordHash);

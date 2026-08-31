@@ -35,6 +35,20 @@ export class AuthController {
     return this.authService.login((req.user as User).id, dto.remember ?? false);
   }
 
+  // ── Public config ────────────────────────────────────────────────────────────
+
+  /**
+   * Whether the login screen should show the password form at all —
+   * unauthenticated by necessity (it's what the login screen itself uses),
+   * but a single global boolean, not tied to any particular account, so it
+   * carries none of the per-email enumeration risk a lookup would.
+   */
+  @Get('config')
+  @ApiExcludeEndpoint()
+  getConfig() {
+    return { localLoginEnabled: this.authService.isLocalLoginEnabled() };
+  }
+
   // ── Refresh ─────────────────────────────────────────────────────────────────
 
   @Post('refresh')
@@ -73,9 +87,13 @@ export class AuthController {
   @ApiExcludeEndpoint()
   @UseGuards(GoogleAuthGuard)
   async googleCallback(@Req() req: any, @Res() res: any) {
+    const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:5173';
+    // No matching admin-provisioned account — see `GoogleAuthGuard.handleRequest`.
+    if (!req.user) {
+      return res.redirect(`${frontendUrl}/login?error=oauth_account_not_found`);
+    }
     const remember = req.query.state === 'true';
     const tokens = await this.authService.login((req.user as User).id, remember);
-    const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:5173';
     res.redirect(
       `${frontendUrl}/auth/callback?accessToken=${tokens.accessToken}&refreshToken=${tokens.refreshToken}&remember=${remember}`,
     );
@@ -94,9 +112,12 @@ export class AuthController {
   @ApiExcludeEndpoint()
   @UseGuards(MicrosoftAuthGuard)
   async microsoftCallback(@Req() req: any, @Res() res: any) {
+    const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:5173';
+    if (!req.user) {
+      return res.redirect(`${frontendUrl}/login?error=oauth_account_not_found`);
+    }
     const remember = req.query.state === 'true';
     const tokens = await this.authService.login((req.user as User).id, remember);
-    const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:5173';
     res.redirect(
       `${frontendUrl}/auth/callback?accessToken=${tokens.accessToken}&refreshToken=${tokens.refreshToken}&remember=${remember}`,
     );

@@ -1,6 +1,10 @@
 import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
 import { AuthProvider, Prisma, UserRole } from '@prisma/client';
-import { CertificationType, UserRole as SharedUserRole } from '@redinfo/shared';
+import {
+  AuthProvider as SharedAuthProvider,
+  CertificationType,
+  UserRole as SharedUserRole,
+} from '@redinfo/shared';
 import { UsersService } from './users.service';
 
 // ── Deleting people who are named on records that outlive them ────────────────
@@ -335,6 +339,146 @@ describe('UsersService.create', () => {
     const person = await service.create({ email: 'new@example.test', firstName: 'A', lastName: 'B' });
     expect(person.isDriver).toBe(false);
     expect(person.isActiveEmergencyOperational).toBe(false);
+  });
+
+  it('defaults a new account to LOCAL and hashes the given password', async () => {
+    const { service, prisma } = makeService({
+      user: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue(BASE_ROW) },
+    });
+    await service.create({ email: 'new@example.test', firstName: 'A', lastName: 'B', password: 'SecurePass1!' });
+    const data = prisma.user.create.mock.calls[0][0].data;
+    expect(data.provider).toBe(AuthProvider.LOCAL);
+    expect(data.passwordHash).toEqual(expect.any(String));
+  });
+
+  it('never stores a password for a GOOGLE/MICROSOFT account, even if one was submitted', async () => {
+    const { service, prisma } = makeService({
+      user: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue(BASE_ROW) },
+    });
+    await service.create({
+      email: 'sso@example.test',
+      firstName: 'A',
+      lastName: 'B',
+      provider: SharedAuthProvider.GOOGLE,
+      password: 'SecurePass1!',
+    });
+    const data = prisma.user.create.mock.calls[0][0].data;
+    expect(data.provider).toBe(AuthProvider.GOOGLE);
+    expect(data.passwordHash).toBeNull();
+  });
+});
+
+// ── OAuth login only ever authenticates an existing, admin-provisioned ────────
+// account — never creates one. See the doc comment on `findOrLinkOAuthUser`.
+
+describe('UsersService.findOrLinkOAuthUser', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  const oauthParams = {
+    email: USER.email,
+    firstName: 'Ana',
+    lastName: 'Silva',
+    provider: AuthProvider.GOOGLE,
+    providerId: 'google-sub-123',
+  };
+
+  it('returns the account already linked to this provider + providerId', async () => {
+    const linked = { ...BASE_ROW, provider: AuthProvider.GOOGLE };
+    const { service, prisma } = makeService({ user: { findFirst: jest.fn().mockResolvedValue(linked) } });
+
+    await expect(service.findOrLinkOAuthUser(oauthParams)).resolves.toBe(linked);
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+
+  it('refuses a provider+providerId match that has since been deactivated', async () => {
+    const linked = { ...BASE_ROW, provider: AuthProvider.GOOGLE, isActive: false };
+    const { service } = makeService({ user: { findFirst: jest.fn().mockResolvedValue(linked) } });
+
+    await expect(service.findOrLinkOAuthUser(oauthParams)).resolves.toBeNull();
+  });
+
+  it('auto-links a still-LOCAL account found by email, and wipes its password', async () => {
+    const local = { ...BASE_ROW, provider: AuthProvider.LOCAL };
+    const { service, prisma } = makeService({
+      user: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findUnique: jest.fn().mockResolvedValue(local),
+      },
+    });
+
+    await service.findOrLinkOAuthUser(oauthParams);
+
+    expect(prisma.user.update).toHaveBeenCalledWith({
+      where: { id: local.id },
+      data: { provider: AuthProvider.GOOGLE, providerId: 'google-sub-123', passwordHash: null },
+    });
+  });
+
+  it('never creates a new account — no admin-provisioned row means no login', async () => {
+    const { service, prisma } = makeService({
+      user: { findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn().mockResolvedValue(null) },
+    });
+
+    await expect(service.findOrLinkOAuthUser(oauthParams)).resolves.toBeNull();
+    expect(prisma.user.create).not.toHaveBeenCalled();
+  });
+
+  it('refuses to relink an account already tied to a different OAuth provider', async () => {
+    const linkedElsewhere = { ...BASE_ROW, provider: AuthProvider.MICROSOFT, providerId: 'ms-sub-1' };
+    const { service, prisma } = makeService({
+      user: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findUnique: jest.fn().mockResolvedValue(linkedElsewhere),
+      },
+    });
+
+    await expect(service.findOrLinkOAuthUser(oauthParams)).resolves.toBeNull();
+    expect(prisma.user.update).not.toHaveBeenCalled();
+  });
+
+  it('refuses a deactivated account found by email', async () => {
+    const inactive = { ...BASE_ROW, provider: AuthProvider.LOCAL, isActive: false };
+    const { service } = makeService({
+      user: { findFirst: jest.fn().mockResolvedValue(null), findUnique: jest.fn().mockResolvedValue(inactive) },
+    });
+
+    await expect(service.findOrLinkOAuthUser(oauthParams)).resolves.toBeNull();
+  });
+});
+
+// ── Moving an account off LOCAL is admin-only and one-way at login time ───────
+// (`findOrLinkOAuthUser` never moves an account back) — see `update`.
+
+describe('UsersService.update — provider', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  const ADMIN = { id: 'u-admin', role: SharedUserRole.SYSTEM_ADMIN };
+
+  it('an admin moving an account to GOOGLE also clears any password', async () => {
+    const { service, prisma } = makeService();
+    await service.update(USER.id, { provider: SharedAuthProvider.GOOGLE }, ADMIN);
+
+    expect(prisma.user.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ provider: AuthProvider.GOOGLE, passwordHash: null }),
+      }),
+    );
+  });
+
+  it('a submitted password is ignored once the account is moved off LOCAL in the same request', async () => {
+    const { service, prisma } = makeService();
+    await service.update(USER.id, { provider: SharedAuthProvider.MICROSOFT, password: 'IgnoredPass1!' }, ADMIN);
+
+    const data = prisma.user.update.mock.calls[0][0].data;
+    expect(data.passwordHash).toBeNull();
+  });
+
+  it('coordinator cannot change provider — it is account-level, admin-only', async () => {
+    const { service } = makeService();
+    const COORDINATOR = { id: 'u-coord', role: SharedUserRole.EMERGENCY_COORDINATOR };
+    await expect(
+      service.update(USER.id, { provider: SharedAuthProvider.GOOGLE }, COORDINATOR),
+    ).rejects.toBeInstanceOf(ForbiddenException);
   });
 });
 

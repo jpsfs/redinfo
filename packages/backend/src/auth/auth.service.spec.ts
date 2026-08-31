@@ -1,4 +1,5 @@
-import { UserRole } from '@prisma/client';
+import { AuthProvider, UserRole } from '@prisma/client';
+import * as bcrypt from 'bcryptjs';
 import { AuthService } from './auth.service';
 
 // ── "Keep me signed in" — remember-token TTL class ─────────────────────────
@@ -23,7 +24,7 @@ function makeService(configOverrides: Record<string, string> = {}) {
       update: jest.fn().mockResolvedValue(undefined),
     },
   };
-  const usersService = { findOne: jest.fn().mockResolvedValue(person) };
+  const usersService = { findOne: jest.fn().mockResolvedValue(person), findByEmail: jest.fn() };
   const jwtService = { sign: jest.fn(() => 'signed-token') };
   const config = { get: jest.fn((key: string) => configOverrides[key]) };
 
@@ -144,5 +145,68 @@ describe('AuthService.refresh — carries remember through rotation', () => {
     });
 
     await expect(service.refresh('old-token')).rejects.toThrow('Invalid or expired refresh token');
+  });
+});
+
+// ── validateLocalUser — the DISABLE_LOCAL_LOGIN kill switch and the ────────
+// one-way lock once an account is linked to OAuth (see
+// `UsersService.findOrLinkOAuthUser`).
+
+describe('AuthService.validateLocalUser', () => {
+  const localUser = {
+    id: 'u-2',
+    email: 'ana.silva@example.test',
+    role: UserRole.EMERGENCY_OPERATIONAL,
+    provider: AuthProvider.LOCAL,
+    isActive: true,
+    passwordHash: bcrypt.hashSync('CorrectPass1!', 12),
+  };
+
+  it('accepts the right password for a LOCAL, active account', async () => {
+    const { service, usersService } = makeService();
+    usersService.findByEmail.mockResolvedValue(localUser);
+
+    await expect(service.validateLocalUser(localUser.email, 'CorrectPass1!')).resolves.toEqual(localUser);
+  });
+
+  it('rejects the wrong password', async () => {
+    const { service, usersService } = makeService();
+    usersService.findByEmail.mockResolvedValue(localUser);
+
+    await expect(service.validateLocalUser(localUser.email, 'WrongPass!')).resolves.toBeNull();
+  });
+
+  it('rejects an account with no password hash (OAuth-only)', async () => {
+    const { service, usersService } = makeService();
+    usersService.findByEmail.mockResolvedValue({ ...localUser, passwordHash: null });
+
+    await expect(service.validateLocalUser(localUser.email, 'CorrectPass1!')).resolves.toBeNull();
+  });
+
+  it('rejects an account already linked to OAuth even if a password hash still exists', async () => {
+    const { service, usersService } = makeService();
+    usersService.findByEmail.mockResolvedValue({ ...localUser, provider: AuthProvider.GOOGLE });
+
+    await expect(service.validateLocalUser(localUser.email, 'CorrectPass1!')).resolves.toBeNull();
+  });
+
+  it('rejects a deactivated account', async () => {
+    const { service, usersService } = makeService();
+    usersService.findByEmail.mockResolvedValue({ ...localUser, isActive: false });
+
+    await expect(service.validateLocalUser(localUser.email, 'CorrectPass1!')).resolves.toBeNull();
+  });
+
+  it('rejects everyone, right password included, when DISABLE_LOCAL_LOGIN is set', async () => {
+    const { service, usersService } = makeService({ DISABLE_LOCAL_LOGIN: 'true' });
+    usersService.findByEmail.mockResolvedValue(localUser);
+
+    await expect(service.validateLocalUser(localUser.email, 'CorrectPass1!')).resolves.toBeNull();
+    expect(usersService.findByEmail).not.toHaveBeenCalled();
+  });
+
+  it('isLocalLoginEnabled reflects the flag', () => {
+    expect(makeService().service.isLocalLoginEnabled()).toBe(true);
+    expect(makeService({ DISABLE_LOCAL_LOGIN: 'true' }).service.isLocalLoginEnabled()).toBe(false);
   });
 });

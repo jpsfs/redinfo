@@ -1,6 +1,7 @@
 import {
   BooleanInput,
   Edit,
+  FormDataConsumer,
   PasswordInput,
   SelectInput,
   SimpleForm,
@@ -10,8 +11,8 @@ import {
   usePermissions,
 } from 'react-admin';
 import { Divider, Typography } from '@mui/material';
-import { Action, BLOOD_TYPE_LABEL, BloodType, UserRole, hasPermission } from '@redinfo/shared';
-import { accountRoleLabel } from '../../i18n/labels';
+import { Action, AuthProvider, BLOOD_TYPE_LABEL, BloodType, UserRole, hasPermission } from '@redinfo/shared';
+import { accountRoleLabel, authProviderLabel } from '../../i18n/labels';
 import { useT } from '../../i18n/useT';
 
 /**
@@ -31,6 +32,10 @@ export const UserEdit = () => {
     id: role,
     name: accountRoleLabel(t, role),
   }));
+  const providerChoices = Object.values(AuthProvider).map((provider) => ({
+    id: provider,
+    name: authProviderLabel(t, provider),
+  }));
   const bloodTypeChoices = Object.values(BloodType).map((type) => ({
     id: type,
     name: BLOOD_TYPE_LABEL[type],
@@ -46,7 +51,20 @@ export const UserEdit = () => {
           <>
             <TextInput source="email" validate={[required(), email()]} />
             <SelectInput source="role" choices={roleChoices} validate={required()} />
-            <PasswordInput source="password" helperText={t('userForm.newPasswordHint')} />
+            <SelectInput
+              source="provider"
+              choices={providerChoices}
+              helperText={t('userForm.providerHint')}
+              validate={required()}
+            />
+            {/* A GOOGLE/MICROSOFT account keeps no password — see `UsersService.update`. */}
+            <FormDataConsumer>
+              {({ formData }) =>
+                (formData.provider ?? AuthProvider.LOCAL) === AuthProvider.LOCAL && (
+                  <PasswordInput source="password" helperText={t('userForm.newPasswordHint')} />
+                )
+              }
+            </FormDataConsumer>
           </>
         ) : (
           <Typography variant="caption" color="text.secondary">

@@ -1,6 +1,6 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
-import { AdminContext, testDataProvider, AuthProvider } from 'react-admin';
+import { AdminContext, Notification, testDataProvider, AuthProvider } from 'react-admin';
 import polyglotI18nProvider from 'ra-i18n-polyglot';
 import { messages } from '../../i18n/i18nProvider';
 import { LoginPage } from './LoginPage';
@@ -25,6 +25,7 @@ function renderLoginPage(authProviderOverrides: Partial<AuthProvider> = {}) {
   render(
     <AdminContext dataProvider={testDataProvider()} authProvider={authProvider} i18nProvider={i18nProvider}>
       <LoginPage />
+      <Notification />
     </AdminContext>,
   );
 
@@ -78,5 +79,47 @@ describe('LoginPage — keep me signed in', () => {
     await waitFor(() => expect(authProvider.login).toHaveBeenCalled());
     const values = (authProvider.login as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(values).toMatchObject({ username: 'ana@example.test', password: 'S3cret!!', remember: false });
+  });
+});
+
+// ── DISABLE_LOCAL_LOGIN — the password form asks the backend before showing ─
+// itself, since the flag is server-side (see `AuthService.isLocalLoginEnabled`).
+
+describe('LoginPage — local login disabled', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    window.history.replaceState(null, '', '/');
+  });
+
+  it('hides the username/password form and keeps the OAuth buttons when the backend says local login is off', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() =>
+        Promise.resolve(new Response(JSON.stringify({ localLoginEnabled: false }), { status: 200 })),
+      ),
+    );
+    renderLoginPage();
+
+    await waitFor(() => expect(screen.queryByLabelText(/username/i)).not.toBeInTheDocument());
+    expect(screen.getByRole('link', { name: /sign in with google/i })).toBeInTheDocument();
+  });
+
+  it('keeps the form up if the backend is unreachable, rather than locking out the only working method', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => Promise.reject(new Error('network error'))));
+    renderLoginPage();
+
+    expect(await screen.findByLabelText(/username/i)).toBeInTheDocument();
+  });
+
+  it('shows an error notification when redirected back with no matching OAuth account', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response(JSON.stringify({ localLoginEnabled: true }), { status: 200 }))),
+    );
+    window.history.replaceState(null, '', '/login?error=oauth_account_not_found');
+
+    renderLoginPage();
+
+    expect(await screen.findByText(/no account for that google\/microsoft sign-in/i)).toBeInTheDocument();
   });
 });

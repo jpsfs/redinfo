@@ -1,5 +1,5 @@
-import { useState, ChangeEvent } from 'react';
-import { Login, LoginForm, TextInput, PasswordInput, BooleanInput, required } from 'react-admin';
+import { useEffect, useState, ChangeEvent } from 'react';
+import { Login, LoginForm, TextInput, PasswordInput, BooleanInput, required, useNotify } from 'react-admin';
 import { Box, Divider, Button, Typography } from '@mui/material';
 import GoogleIcon from '@mui/icons-material/Google';
 import MicrosoftIcon from '@mui/icons-material/Window';
@@ -16,16 +16,18 @@ const LoginHeader = () => {
         display: 'flex',
         flexDirection: 'column',
         alignItems: 'center',
-        pt: { xs: 2, sm: 3 },
+        pt: { xs: 1.5, sm: 3 },
         pb: 1,
         px: 2,
       }}
     >
       <DelegacaoCampoLogo
         sx={{
-          maxWidth: 200,
+          // Smaller on every size, not just mobile — 200px read as oversized
+          // next to the rest of the card even on desktop.
+          maxWidth: { xs: 96, sm: 120 },
           height: 'auto',
-          mb: { xs: 1, sm: 2 },
+          mb: { xs: 1, sm: 1.5 },
           borderRadius: 1,
         }}
       />
@@ -108,29 +110,78 @@ const OAuthButtons = ({ remember }: { remember: boolean }) => {
   );
 };
 
+/**
+ * Whether the password form should show at all — `DISABLE_LOCAL_LOGIN` is a
+ * server-side kill switch (no MFA on that path), so the frontend has to ask
+ * rather than assume. A single global boolean, not tied to any account, so
+ * unlike a per-email lookup it carries no enumeration risk. Defaults to
+ * `true` while loading so the form doesn't flash in and back out on the
+ * common case (enabled).
+ */
+function useLocalLoginEnabled(): boolean {
+  const [enabled, setEnabled] = useState(true);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_URL}/auth/config`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled && data && typeof data.localLoginEnabled === 'boolean') {
+          setEnabled(data.localLoginEnabled);
+        }
+      })
+      .catch(() => {
+        // Backend unreachable — leave the form up rather than locking
+        // someone out of the only sign-in method that might still work.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  return enabled;
+}
+
 export const LoginPage = () => {
   const t = useT();
+  const notify = useNotify();
   const [remember, setRemember] = useState(true);
+  const localLoginEnabled = useLocalLoginEnabled();
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get('error') === 'oauth_account_not_found') {
+      notify(t('login.oauthAccountNotFound'), { type: 'error' });
+      // One-shot flash param — strip it so a manual refresh doesn't re-show it.
+      window.history.replaceState(null, '', window.location.pathname);
+    }
+  }, [notify, t]);
 
   return (
     <Login>
       <LoginHeader />
-      <LoginForm>
-        <TextInput
-          autoFocus
-          source="username"
-          label={t('ra.auth.username')}
-          autoComplete="username"
-          validate={required()}
-        />
-        <PasswordInput
-          source="password"
-          label={t('ra.auth.password')}
-          autoComplete="current-password"
-          validate={required()}
-        />
-        <RememberMeInput onRememberChange={setRemember} />
-      </LoginForm>
+      {localLoginEnabled ? (
+        <LoginForm>
+          <TextInput
+            autoFocus
+            source="username"
+            label={t('ra.auth.username')}
+            autoComplete="username"
+            validate={required()}
+          />
+          <PasswordInput
+            source="password"
+            label={t('ra.auth.password')}
+            autoComplete="current-password"
+            validate={required()}
+          />
+          <RememberMeInput onRememberChange={setRemember} />
+        </LoginForm>
+      ) : (
+        <Typography variant="body2" color="text.secondary" textAlign="center" sx={{ px: 2, mb: 1 }}>
+          {t('login.localLoginDisabled')}
+        </Typography>
+      )}
       <OAuthButtons remember={remember} />
     </Login>
   );

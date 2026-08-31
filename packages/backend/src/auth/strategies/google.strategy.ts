@@ -47,7 +47,7 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
     const { id, name, emails } = profile;
     const email = emails?.[0]?.value ?? '';
 
-    const user = await this.usersService.findOrCreateOAuthUser({
+    const user = await this.usersService.findOrLinkOAuthUser({
       email,
       firstName: name?.givenName ?? '',
       lastName: name?.familyName ?? '',
@@ -55,6 +55,9 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google') {
       providerId: id,
     });
 
-    done(null, user);
+    // No matching admin-provisioned account (or it's tied to a different
+    // provider) — `false` fails the auth without throwing, so the guard can
+    // redirect the browser back to the login page instead of a raw error.
+    done(null, user ?? false);
   }
 }

@@ -55,7 +55,7 @@ export class MicrosoftOAuthStrategy extends PassportStrategy(MicrosoftStrategy, 
       profile._json?.userPrincipalName ??
       '';
 
-    const user = await this.usersService.findOrCreateOAuthUser({
+    const user = await this.usersService.findOrLinkOAuthUser({
       email,
       firstName: profile.name?.givenName ?? profile.displayName ?? '',
       lastName: profile.name?.familyName ?? '',
@@ -63,6 +63,7 @@ export class MicrosoftOAuthStrategy extends PassportStrategy(MicrosoftStrategy, 
       providerId: profile.id,
     });
 
-    done(null, user);
+    // See GoogleStrategy's comment — same "fail without throwing" contract.
+    done(null, user ?? false);
   }
 }
