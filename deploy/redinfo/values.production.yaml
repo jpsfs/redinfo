@@ -27,25 +27,15 @@ service:
 ingress:
   enabled: true
   className: public
-  # See the matching comment in values.staging.yaml: wires this Ingress to the
-  # ClusterIssuer from deploy/cluster-bootstrap/cluster-issuer.yaml (one-time,
-  # per-cluster — apply that before this takes effect). FRONTEND_URL below is
-  # already https, so once the cert shows READY nothing else needs to change here —
-  # GOOGLE_CALLBACK_URL/MICROSOFT_CALLBACK_URL in the redinfo-production ADO
-  # variable group should already be the matching https callback URLs; if not,
-  # update those and the OAuth app registrations' redirect URIs to match.
-  annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-prod
   hosts:
     - host: app.cvpcampo.org
       paths:
         - path: /
           service: frontend
           servicePort: 80
-  tls:
-    - secretName: redinfo-production-tls
-      hosts:
-        - app.cvpcampo.org
+  # TODO: production needs real TLS (cert-manager + ClusterIssuer), not HTTP-only —
+  # OAuth login will not work without it. See deploy/redinfo/README.md.
+  tls: []
 
 resources:
   backend:

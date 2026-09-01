@@ -43,20 +43,8 @@ When `seed.enabled: true`, a post-install/post-upgrade Job (`templates/job-seed.
 to create the admin user and Portuguese geography reference data. Idempotent; safe to leave enabled
 across upgrades.
 
-## TLS
+## Known limitation: TLS
 
-Ingress is HTTP-only until `cert-manager` is enabled on the cluster and a `ClusterIssuer` is
-added — until then, Google/Microsoft OAuth login will not work on any environment deployed by
-this chart (both providers reject a non-localhost `http://` redirect_uri), so use the seeded
-local admin account instead.
-
-Both `values.staging.yaml` and `values.production.yaml` already carry the `ingress.annotations`
-(`cert-manager.io/cluster-issuer: letsencrypt-prod`) and `ingress.tls` needed once that issuer
-exists — the one-time, cluster-scoped bootstrap itself (not part of this chart, since a
-`ClusterIssuer` is shared infrastructure, not per-environment) lives at
-`deploy/cluster-bootstrap/cluster-issuer.yaml`; see that file for the exact
-`microk8s enable cert-manager` + `kubectl apply` steps. After it's applied and each
-environment's certificate shows `READY` (`kubectl get certificate -n <env>`), flip that
-environment's `FRONTEND_URL`/`GOOGLE_CALLBACK_URL`/`MICROSOFT_CALLBACK_URL` to `https://` (the
-ADO variable group values for the latter two, plus the matching redirect URIs in the Google/
-Microsoft OAuth app registrations) and redeploy.
+Ingress is HTTP-only until `cert-manager` is enabled on the cluster and a `ClusterIssuer` is added.
+Until then, Google/Microsoft OAuth login will not work on any environment deployed by this chart —
+use the seeded local admin account instead.

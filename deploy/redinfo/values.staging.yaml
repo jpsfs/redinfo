@@ -29,35 +29,16 @@ service:
 ingress:
   enabled: true
   className: public
-  # cert-manager.io/cluster-issuer wires this Ingress up to the ClusterIssuer applied
-  # once per cluster by deploy/cluster-bootstrap/cluster-issuer.yaml — see that file
-  # for the one-time `microk8s enable cert-manager` + `kubectl apply` bootstrap. Safe
-  # to leave here even before that bootstrap has run: cert-manager simply doesn't
-  # exist yet to act on the annotation, and the `tls` secret below stays unissued —
-  # HTTP keeps working exactly as it does today (ingress-nginx falls back to its own
-  # default self-signed cert on 443 for an unmatched/unissued secret, same as an
-  # Ingress with no `tls` block at all).
-  annotations:
-    cert-manager.io/cluster-issuer: letsencrypt-prod
   hosts:
     - host: staging-redcross.jpsfs.com
       paths:
         - path: /
           service: frontend
           servicePort: 80
-  # Once the ClusterIssuer bootstrap has run and this cert shows READY (`kubectl get
-  # certificate -n staging` / `describe` to watch the HTTP-01 challenge resolve — can
-  # take a couple of minutes on the first issuance), flip FRONTEND_URL below and the
-  # redinfo-staging ADO variable group's GOOGLE_CALLBACK_URL/MICROSOFT_CALLBACK_URL to
-  # `https://staging-redcross.jpsfs.com/...`, and update the matching redirect URIs in
-  # the Google/Microsoft OAuth app registrations to match — Google and Microsoft both
-  # reject a non-localhost `http://` redirect_uri, which is why OAuth login (Google/
-  # Microsoft) does not work on staging until this is done; the seeded local admin
-  # account (admin@redcross.local) works regardless.
-  tls:
-    - secretName: redinfo-staging-tls
-      hosts:
-        - staging-redcross.jpsfs.com
+  # HTTP only for now — cert-manager is not enabled on this cluster yet. This means
+  # OAuth login (Google/Microsoft) will not work on staging until TLS is added; use
+  # the seeded local admin account (admin@redcross.local) in the meantime.
+  tls: []
 
 resources:
   backend:
