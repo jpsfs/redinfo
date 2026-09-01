@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { UpdateParams } from 'react-admin';
 import { dataProvider } from './dataProvider';
 import { setTokens, getAccessToken } from './authStorage';
 
@@ -138,10 +139,15 @@ describe('dataProvider.update — diffs against previousData', () => {
     });
     vi.stubGlobal('fetch', fetchMock);
 
+    // No `previousData` — deliberately, to exercise dataProvider.update's
+    // documented "hand-built UpdateParams" fallback (see changedFields'
+    // doc comment in dataProvider.ts). react-admin's own type declares it
+    // required, so this literal needs the same cast a real hand-built
+    // caller would.
     await dataProvider.update('users', {
       id: 'u-1',
       data: { id: 'u-1', firstName: 'Ana' },
-    });
+    } as unknown as UpdateParams);
 
     expect(sentBody).toEqual({ firstName: 'Ana' });
   });
