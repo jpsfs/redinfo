@@ -61,7 +61,13 @@ env:
     NODE_ENV: "production"
     PORT: "3000"
     ATTACHMENTS_DIR: "/app/uploads"
-    FRONTEND_URL: "http://staging-redcross.jpsfs.com"
+    # Cloudflare terminates TLS in front of this host — the site is only ever
+    # reachable over https (plain http to the origin 522s at Cloudflare's edge).
+    # This must match the scheme browsers actually see: it's used verbatim to
+    # build the post-OAuth redirect Location (auth.controller.ts's
+    # googleCallback/microsoftCallback), so an http value here sends the
+    # browser to a URL Cloudflare won't serve, breaking Google/Microsoft login.
+    FRONTEND_URL: "https://staging-redcross.jpsfs.com"
   frontend: {}
 
 # Populated by the pipeline from the `redinfo-staging` ADO variable group via
