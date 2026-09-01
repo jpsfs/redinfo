@@ -221,12 +221,26 @@ describe('AvailabilityService.getMine', () => {
 
   it('keeps a closed window on the list while it is the one being shown', async () => {
     // Otherwise the screen shows a window the selector cannot get back to.
+    // Reached only by explicit id now — a closed window is never the default.
     const { service } = buildService({ windows: buildWindowsStub(CLOSED_WINDOW, []) });
 
-    const result = await service.getMine(ANA.id);
+    const result = await service.getMine(ANA.id, CLOSED_WINDOW.id);
 
     expect(result.canSubmit).toBe(false);
     expect(result.windows.map((window) => window.id)).toEqual([CLOSED_WINDOW.id]);
+  });
+
+  it('does not fall back to a closed window when nothing is open', async () => {
+    // Regression guard: a closed window (e.g. a stale-`openedAt` migration
+    // artefact) must never be picked as the default — only `findActive`
+    // (OPEN-only) feeds the no-windowId path.
+    const { service, windows } = buildService({ windows: buildWindowsStub(null) });
+
+    const result = await service.getMine(ANA.id);
+
+    expect(windows.findActive).toHaveBeenCalled();
+    expect(windows.findActiveOrLatest).not.toHaveBeenCalled();
+    expect(result.window).toBeNull();
   });
 
   it('does not list the shown window twice when it is itself open', async () => {
@@ -321,7 +335,8 @@ describe('AvailabilityService.getMine', () => {
       windows: buildWindowsStub(CLOSED_WINDOW),
     });
 
-    const result = await service.getMine(ANA.id);
+    // Explicit id: a closed window is never the default pick any more.
+    const result = await service.getMine(ANA.id, CLOSED_WINDOW.id);
 
     expect(result.canSubmit).toBe(false);
     expect(result.entries).toHaveLength(1);

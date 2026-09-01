@@ -80,16 +80,35 @@ export async function loadSchedules(
   const scheduleIdByMonth = new Map<string, string>();
   for (const [monthKey, publishedAt] of publishedAtByMonth) {
     const window = windows.get(monthKey);
-    if (!window) continue; // Should not happen — loader 08 builds its month set from this same table.
+    if (!window) {
+      // Loader 08 rejected this month (e.g. an implausible `ano`) — see
+      // `rejects-AvailabilityWindow.csv`, not a bug in this loader.
+      ctx.counters.reject(SCHEDULE_ENTITY);
+      ctx.rejects.write(SCHEDULE_ENTITY, {
+        legacyKey: legacyKey('escala-schedule', monthKey),
+        reasonCode: 'NO_WINDOW',
+        reason: `No synthesised window for ${monthKey}.`,
+      });
+      continue;
+    }
     scheduleIdByMonth.set(monthKey, await loadOneSchedule(ctx, monthKey, window.windowId, publishedAt));
   }
 
   for (const batch of chunk(validRows, ctx.options.batchSize)) {
     await runInLoaderTransaction(ctx, async (tx) => {
       for (const { row, month } of batch) {
-        const window = windows.get(`${row.ano}-${month}`);
-        const scheduleId = scheduleIdByMonth.get(`${row.ano}-${month}`);
-        if (!window || !scheduleId) continue;
+        const monthKey = `${row.ano}-${month}`;
+        const window = windows.get(monthKey);
+        const scheduleId = scheduleIdByMonth.get(monthKey);
+        if (!window || !scheduleId) {
+          ctx.counters.reject(ASSIGNMENT_ENTITY);
+          ctx.rejects.write(ASSIGNMENT_ENTITY, {
+            legacyKey: legacyKey('escala', row.mes, row.turno, row.ano, row.dia),
+            reasonCode: 'NO_WINDOW',
+            reason: `No synthesised window for ${monthKey}.`,
+          });
+          continue;
+        }
         await loadAssignmentsForRow(ctx, tx, row, scheduleId, window, userResolver);
       }
     });

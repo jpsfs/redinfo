@@ -29,6 +29,48 @@ export interface SynthesisedWindow {
   roleIdByName: Record<string, string>;
 }
 
+/**
+ * The plausible range for a legacy `ano`. Anything outside it — most often
+ * `0` from a NULL numeric column the driver coerced away — is not a year
+ * this association ever operated in, so it must not become a window.
+ *
+ * Without this check, `monthBounds`'s `Date.UTC(0, ...)` hits JS's two-digit
+ * year rule (0 → 1900) and, for `mes: 1`, "day 0 of the following month"
+ * rolls back to 1899-12-31 — a real `CLOSED` window silently created with a
+ * 19th-century date that then wins "most recently opened" tie-breaks against
+ * legitimate windows (this shipped once: a stray `ano` of `0` surfaced on
+ * `MyAvailabilityPage` as "today's" window).
+ */
+const MIN_LEGACY_YEAR = 2000;
+const MAX_LEGACY_YEAR = new Date().getUTCFullYear();
+
+/** `ano`/`mes` sane enough to build a real calendar month out of. */
+export function isPlausibleLegacyMonth(ano: number, mes: number): boolean {
+  return (
+    Number.isInteger(ano) &&
+    ano >= MIN_LEGACY_YEAR &&
+    ano <= MAX_LEGACY_YEAR &&
+    Number.isInteger(mes) &&
+    mes >= 1 &&
+    mes <= 12
+  );
+}
+
+/** Rejects one source row instead of letting it synthesise a bogus window. */
+function rejectImplausibleMonth(ctx: RunContext, legacyId: string, ano: number, mes: number, anoField: string): void {
+  const badYear = !Number.isInteger(ano) || ano < MIN_LEGACY_YEAR || ano > MAX_LEGACY_YEAR;
+  ctx.counters.reject(WINDOW_ENTITY);
+  ctx.rejects.write(WINDOW_ENTITY, {
+    legacyKey: legacyId,
+    reasonCode: badYear ? 'IMPLAUSIBLE_YEAR' : 'INVALID_MONTH',
+    reason: badYear
+      ? `${anoField} "${ano}" is not a plausible year (expected ${MIN_LEGACY_YEAR}–${MAX_LEGACY_YEAR}); no window was synthesised for it.`
+      : `${anoField.replace('.ano', '.mes')} "${mes}" is not a valid calendar month (1–12); no window was synthesised for it.`,
+    field: badYear ? 'ano' : 'mes',
+    valueRedacted: badYear ? String(ano) : String(mes),
+  });
+}
+
 /** `${ano}-${mes}` (mes 1-12) → the window and its three roles. */
 export async function loadAvailabilityWindows(ctx: RunContext): Promise<Map<string, SynthesisedWindow>> {
   const [escala, disponibilidade] = await Promise.all([ctx.source.escala(), ctx.source.disponibilidade()]);
@@ -36,10 +78,30 @@ export async function loadAvailabilityWindows(ctx: RunContext): Promise<Map<stri
   const months = new Set<string>();
   for (const row of escala) {
     const month = lookupMonth(row.mes);
-    if (month) months.add(`${row.ano}-${month}`);
-    // An unparseable label rejects the *escala* row itself in loader 10, not here.
+    if (!month) continue; // An unparseable label rejects the *escala* row itself in loader 10, not here.
+    if (!isPlausibleLegacyMonth(row.ano, month)) {
+      rejectImplausibleMonth(
+        ctx,
+        legacyKey('escala', row.mes, row.turno, row.ano, row.dia),
+        row.ano,
+        month,
+        'escala.ano',
+      );
+      continue;
+    }
+    months.add(`${row.ano}-${month}`);
   }
   for (const row of disponibilidade) {
+    if (!isPlausibleLegacyMonth(row.ano, row.mes)) {
+      rejectImplausibleMonth(
+        ctx,
+        legacyKey('disponibilidade', row.ano, row.mes, row.dia, row.turno, row.socorrista),
+        row.ano,
+        row.mes,
+        'disponibilidade.ano',
+      );
+      continue;
+    }
     months.add(`${row.ano}-${row.mes}`);
   }
 

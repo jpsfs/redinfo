@@ -1015,7 +1015,25 @@ describeIntegration('Availability module (integration)', () => {
       expect(rows).toHaveLength(1); // the pre-close submission, unchanged
     });
 
-    it('still shows a volunteer their final submissions after close, read-only', async () => {
+    it('still shows a volunteer their final submissions after close, read-only, by explicit id', async () => {
+      const window = await openWindow();
+      await availability.submitMine(volunteer, {
+        entries: [{ date: '2026-09-28', slots: [1] }],
+      });
+      await windowsService.close(window.id, coordinator.id);
+
+      const mine = await availability.getMine(ana.id, window.id);
+
+      expect(mine.window?.id).toBe(window.id);
+      expect(mine.canSubmit).toBe(false);
+      expect(mine.entries).toEqual([
+        { date: '2026-09-28', slots: [1] },
+      ]);
+    });
+
+    it('does not default to a closed window once nothing is open', async () => {
+      // Regression guard for a closed window (e.g. a stale-`openedAt`
+      // migration artefact) winning the no-windowId default pick.
       const window = await openWindow();
       await availability.submitMine(volunteer, {
         entries: [{ date: '2026-09-28', slots: [1] }],
@@ -1024,11 +1042,7 @@ describeIntegration('Availability module (integration)', () => {
 
       const mine = await availability.getMine(ana.id);
 
-      expect(mine.window?.id).toBe(window.id);
-      expect(mine.canSubmit).toBe(false);
-      expect(mine.entries).toEqual([
-        { date: '2026-09-28', slots: [1] },
-      ]);
+      expect(mine.window).toBeNull();
     });
   });
 
