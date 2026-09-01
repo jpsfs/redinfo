@@ -256,15 +256,23 @@ export const theme = createTheme({
           // default lock-icon avatar using a nested selector instead of the
           // `avatar` slot key, which is not processed by overridesResolver.
           '& .RaLogin-avatar': { display: 'none' },
-        },
-        card: {
-          borderRadius: borderRadiusMedium,
-          borderTop: `4px solid ${colorRedCrossRed}`,
-          padding: `${spacingUnit}px`,
-          boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
-          width: '100%',
-          maxWidth: 400,
-          margin: 'auto',
+          // Same reason the card styling lives here instead of in a
+          // sibling `card:` key: that key is never read (overridesResolver
+          // above returns `styles.root` only), so a `card:` block just sits
+          // there doing nothing — it did for all of borderRadius/
+          // borderTop/boxShadow/width/maxWidth/margin before this comment
+          // existed. The `margin: auto` here is what actually centers the
+          // card vertically when it fits inside `min-height`, and degrades
+          // to top-alignment (no clipping) once content needs to scroll.
+          '& .RaLogin-card': {
+            borderRadius: borderRadiusMedium,
+            borderTop: `4px solid ${colorRedCrossRed}`,
+            padding: `${spacingUnit}px`,
+            boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
+            width: '100%',
+            maxWidth: 400,
+            margin: 'auto',
+          },
         },
       },
     },
