@@ -57,9 +57,11 @@ export class AvailabilityService {
    * applicable shifts per day.
    */
   async getMine(userId: string, windowId?: string): Promise<MyAvailabilityResponse> {
-    const window = windowId
-      ? await this.windows.findOne(windowId)
-      : await this.windows.findActiveOrLatest();
+    // No default fallback to a closed window: a stale-openedAt row (e.g. a
+    // migration artefact) could otherwise outrank the window actually in
+    // play. A closed window is still reachable, just not by default — only
+    // by its own id, same as `resolveSubmittableWindow`'s read-only cousin.
+    const window = windowId ? await this.windows.findOne(windowId) : await this.windows.findActive();
 
     if (!window) {
       return {
