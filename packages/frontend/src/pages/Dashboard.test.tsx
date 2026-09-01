@@ -3,10 +3,11 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { AdminContext, testDataProvider } from 'react-admin';
 import polyglotI18nProvider from 'ra-i18n-polyglot';
 import { MemoryRouter } from 'react-router-dom';
-import { UserRole } from '@redinfo/shared';
+import { AvailabilityWindowCategory, UserRole } from '@redinfo/shared';
 import { messages } from '../i18n/i18nProvider';
-import { CertificationAlertsTile, Dashboard } from './Dashboard';
+import { CertificationAlertsTile, Dashboard, UpcomingShiftsPanel } from './Dashboard';
 import { apiFetch } from '../api';
+import { addIsoDays, toIsoDate } from '../utils/dates';
 
 vi.mock('../api', () => ({ apiFetch: vi.fn(), apiDownload: vi.fn(), apiUpload: vi.fn() }));
 
@@ -34,6 +35,97 @@ function renderTile(roles: UserRole[]) {
     </MemoryRouter>,
   );
 }
+
+function renderUpcomingShifts() {
+  const authProvider = {
+    login: () => Promise.resolve(),
+    logout: () => Promise.resolve(),
+    checkAuth: () => Promise.resolve(),
+    checkError: () => Promise.resolve(),
+    getPermissions: () => Promise.resolve([UserRole.EMERGENCY_OPERATIONAL]),
+  };
+
+  render(
+    <MemoryRouter>
+      <AdminContext dataProvider={testDataProvider()} authProvider={authProvider} i18nProvider={i18nProvider}>
+        <UpcomingShiftsPanel />
+      </AdminContext>
+    </MemoryRouter>,
+  );
+}
+
+// Built off the real clock rather than a faked one — `vi.useFakeTimers()`
+// freezes the `setTimeout` polling `waitFor`/`findBy*` rely on internally,
+// which hangs this suite instead of failing it.
+const TODAY = toIsoDate(new Date());
+const inDays = (days: number) => addIsoDays(TODAY, days);
+
+const duty = (overrides: Partial<Record<string, unknown>> = {}) => ({
+  id: 'duty-1',
+  scheduleId: 'sch-1',
+  windowId: 'win-1',
+  windowCategory: AvailabilityWindowCategory.EMERGENCY,
+  windowLabel: 'Emergency — September',
+  date: inDays(2),
+  slot: 0,
+  startMinute: 480,
+  endMinute: 1200,
+  label: '08:00–20:00',
+  vehiclesNeeded: 1,
+  roleName: null,
+  ...overrides,
+});
+
+// The card groups by schedule, so two shifts on the same rota collapse under
+// one heading and a third shift on a different rota gets its own.
+describe('UpcomingShiftsPanel', () => {
+  beforeEach(() => mockApiFetch.mockReset());
+
+  it('renders nothing while there is nothing due within 7 days', async () => {
+    mockApiFetch.mockResolvedValue({ upcoming: [], past: [] });
+    renderUpcomingShifts();
+
+    await waitFor(() => expect(mockApiFetch).toHaveBeenCalledWith('/schedules/me'));
+    expect(screen.queryByTestId('upcoming-shifts-panel')).not.toBeInTheDocument();
+  });
+
+  it('drops a shift beyond the 7-day horizon', async () => {
+    mockApiFetch.mockResolvedValue({
+      upcoming: [duty({ id: 'far', date: inDays(20) })],
+      past: [],
+    });
+    renderUpcomingShifts();
+
+    await waitFor(() => expect(mockApiFetch).toHaveBeenCalledWith('/schedules/me'));
+    expect(screen.queryByTestId('upcoming-shifts-panel')).not.toBeInTheDocument();
+  });
+
+  it('groups shifts on the same schedule under one heading', async () => {
+    mockApiFetch.mockResolvedValue({
+      upcoming: [
+        duty({ id: 'd1', date: inDays(2), roleName: 'Motorista' }),
+        duty({ id: 'd2', date: inDays(4) }),
+        duty({
+          id: 'd3',
+          scheduleId: 'sch-2',
+          windowCategory: AvailabilityWindowCategory.LOCAL_SUPPORT,
+          windowLabel: 'Apoio Local — Feira',
+          date: inDays(5),
+          label: '10:00–18:00',
+        }),
+      ],
+      past: [],
+    });
+    renderUpcomingShifts();
+
+    expect(await screen.findByText('Your upcoming shifts')).toBeInTheDocument();
+    expect(screen.getByText('Emergency — September')).toBeInTheDocument();
+    expect(screen.getByText('Apoio Local — Feira')).toBeInTheDocument();
+    expect(screen.getAllByText('08:00–20:00')).toHaveLength(2);
+    expect(screen.getByText('10:00–18:00')).toBeInTheDocument();
+    expect(screen.getByText('Motorista')).toBeInTheDocument();
+  });
+});
 
 // #182 AC: "A coordinator/admin sees a dashboard tile counting personnel with
 // a certification expiring within 6 months and personnel with one already
@@ -87,6 +179,7 @@ describe('Dashboard', () => {
       if (url === '/live-runs') return Promise.resolve([]);
       if (url === '/users/certification-alerts') return Promise.resolve({ expiring: 0, expired: 0 });
       if (url === '/vehicles/low-stock') return Promise.resolve({ grouped: {}, total: 0 });
+      if (url === '/schedules/me') return Promise.resolve({ upcoming: [], past: [] });
       return Promise.reject(new Error(`unexpected apiFetch(${url})`));
     });
   });
@@ -130,6 +223,7 @@ describe('Dashboard', () => {
       if (url === '/live-runs') return Promise.resolve([]);
       if (url === '/users/certification-alerts') return Promise.resolve({ expiring: 0, expired: 0 });
       if (url === '/vehicles/low-stock') return Promise.reject(new Error('Unauthorized'));
+      if (url === '/schedules/me') return Promise.resolve({ upcoming: [], past: [] });
       return Promise.reject(new Error(`unexpected apiFetch(${url})`));
     });
 

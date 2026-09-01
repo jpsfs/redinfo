@@ -1161,10 +1161,12 @@ describe('validateAttachment', () => {
 });
 
 describe('report permissions', () => {
-  it('lets an operational file a report but not read the whole archive', () => {
+  it('lets an operational file a report and read the whole archive, but not manage it', () => {
     const role = UserRole.EMERGENCY_OPERATIONAL;
     expect(hasPermission(role, Action.CREATE_EVENT_REPORT)).toBe(true);
-    expect(hasPermission(role, Action.VIEW_EVENT_REPORTS)).toBe(false);
+    // The archive is org-wide reading now — see `VIEW_EVENT_REPORTS`'s doc
+    // comment in shared. Only editing someone else's report stays gated.
+    expect(hasPermission(role, Action.VIEW_EVENT_REPORTS)).toBe(true);
     expect(hasPermission(role, Action.MANAGE_EVENT_REPORTS)).toBe(false);
     expect(hasPermission(role, Action.MANAGE_HOSPITALS)).toBe(false);
   });
@@ -1181,11 +1183,11 @@ describe('report permissions', () => {
     }
   });
 
-  it('keeps reports away from logistics', () => {
+  it('lets logistics read the archive, but not file, manage reports or keep the hospital list', () => {
     const role = UserRole.LOGISTICS_COORDINATOR;
+    expect(hasPermission(role, Action.VIEW_EVENT_REPORTS)).toBe(true);
     for (const action of [
       Action.CREATE_EVENT_REPORT,
-      Action.VIEW_EVENT_REPORTS,
       Action.MANAGE_EVENT_REPORTS,
       Action.MANAGE_HOSPITALS,
     ]) {

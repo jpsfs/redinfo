@@ -150,7 +150,7 @@ export class SchedulesService {
         where,
         skip,
         take: perPage,
-        orderBy: { createdAt: 'desc' },
+        orderBy: { window: { startDate: 'desc' } },
         include: SCHEDULE_INCLUDE,
       }),
       this.prisma.schedule.count({ where }),

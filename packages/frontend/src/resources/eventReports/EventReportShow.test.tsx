@@ -10,6 +10,7 @@ import {
   Gender,
   InemSupportUnitType,
   InventoryItemType,
+  UserRole,
   VictimDestinationKind,
 } from '@redinfo/shared';
 import { EventReportShow } from './EventReportShow';
@@ -109,11 +110,28 @@ const report = (overrides: Partial<EventReport> = {}): EventReport =>
     ...overrides,
   }) as EventReport;
 
-function renderShow(loaded: EventReport = report()) {
+function renderShow(
+  loaded: EventReport = report(),
+  viewer?: { id: string; roles: UserRole[] },
+) {
   mockApiFetch.mockResolvedValue(loaded);
+  const authProvider = viewer
+    ? {
+        login: () => Promise.resolve(),
+        logout: () => Promise.resolve(),
+        checkAuth: () => Promise.resolve(),
+        checkError: () => Promise.resolve(),
+        getPermissions: () => Promise.resolve(viewer.roles),
+        getIdentity: () => Promise.resolve({ id: viewer.id }),
+      }
+    : undefined;
   render(
     <MemoryRouter initialEntries={[`/event-reports/${loaded.id}/show`]}>
-      <AdminContext dataProvider={testDataProvider()} i18nProvider={i18nProvider}>
+      <AdminContext
+        dataProvider={testDataProvider()}
+        authProvider={authProvider}
+        i18nProvider={i18nProvider}
+      >
         <Routes>
           <Route path="/event-reports/:id/show" element={<EventReportShow />} />
         </Routes>
@@ -142,6 +160,35 @@ describe('the header', () => {
   it('renders a support report with its own prefix', async () => {
     renderShow(report({ type: EventReportType.LOCAL_SUPPORT, number: 14 }));
     expect(await screen.findByText('APL 014/2026')).toBeInTheDocument();
+  });
+});
+
+// Everyone can now read this screen (the archive is org-wide reading), but
+// editing stays scoped to the crew of this one activity — see
+// `isEventReportInvolved` and the backend's `assertCanWrite`.
+describe('the Edit button', () => {
+  it('is offered to a crew member', async () => {
+    renderShow(report(), { id: 'u-tiago', roles: [UserRole.EMERGENCY_OPERATIONAL] });
+    expect(await screen.findByRole('button', { name: 'Editar' })).toBeInTheDocument();
+  });
+
+  it('is offered to the report’s author even off the crew list', async () => {
+    renderShow(report({ createdById: 'u-author', crew: [] }), {
+      id: 'u-author',
+      roles: [UserRole.EMERGENCY_OPERATIONAL],
+    });
+    expect(await screen.findByRole('button', { name: 'Editar' })).toBeInTheDocument();
+  });
+
+  it('is withheld from an operational who was not on this activity', async () => {
+    renderShow(report(), { id: 'u-someone-else', roles: [UserRole.EMERGENCY_OPERATIONAL] });
+    await screen.findByText('EMG 128/2026');
+    expect(screen.queryByRole('button', { name: 'Editar' })).not.toBeInTheDocument();
+  });
+
+  it('is offered to a coordinator regardless of the crew', async () => {
+    renderShow(report(), { id: 'u-someone-else', roles: [UserRole.EMERGENCY_COORDINATOR] });
+    expect(await screen.findByRole('button', { name: 'Editar' })).toBeInTheDocument();
   });
 });
 

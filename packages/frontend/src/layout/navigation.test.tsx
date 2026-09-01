@@ -38,21 +38,28 @@ describe('NAV_SECTIONS', () => {
       '/my-hours',
       '/my-reports',
       '/my-notices',
+      // The event-reports archive and the published schedule list are both
+      // org-wide reading now — `VIEW_EVENT_REPORTS` is held by every role,
+      // and `/schedules` carries no `requires` at all (see navigation.tsx).
+      '/event-reports',
+      '/schedules',
       '/statistics',
       '/vehicles',
     ]);
   });
 
-  it('gives a Logistics Coordinator exactly ten entries and no live mode', () => {
-    // Ten, not seven: #165 added an ungated /my-notices (everyone gets it,
-    // like /my-duties) plus /notices and /notification-config, both gated on
-    // MANAGE_NOTICES — which this role holds, alongside logistics/fleet.
+  it('gives a Logistics Coordinator exactly twelve entries and no live mode', () => {
+    // Twelve: #165's /my-notices, /notices and /notification-config (seven
+    // to ten), plus /event-reports and /schedules — both org-wide reading
+    // now, same as for every other role (ten to twelve).
     const routes = visibleRoutes(UserRole.LOGISTICS_COORDINATOR);
     expect(routes).toEqual([
       '/',
       '/my-duties',
       '/my-hours',
       '/my-notices',
+      '/event-reports',
+      '/schedules',
       '/statistics',
       '/notices',
       '/vehicles',

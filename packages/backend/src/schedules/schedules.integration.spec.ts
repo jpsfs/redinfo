@@ -647,6 +647,29 @@ describeIntegration('Schedules module (integration)', () => {
 
   // ── History and export ───────────────────────────────────────────────────────
 
+  it('integration: orders by the window it covers, not by when the schedule was created', async () => {
+    // Built out of period order: the October schedule is created second, but
+    // its window covers the earliest dates, and must still sort after
+    // November's — same ordering `/availability-windows` already applies.
+    const november = await windows.open(
+      { startDate: '2026-11-01', endDate: '2026-11-02', category: EMERGENCY },
+      coordinator.id,
+    );
+    const october = await windows.open(
+      { startDate: '2026-10-01', endDate: '2026-10-02', category: SALOP_SUPPORT },
+      coordinator.id,
+    );
+    createdWindowIds.push(november.id, october.id);
+
+    const octoberSchedule = await schedules.create({ windowId: october.id }, coordinator.id);
+    const novemberSchedule = await schedules.create({ windowId: november.id }, coordinator.id);
+
+    const { data } = await schedules.findAll(coordinatorUser, 1, 25, {});
+    const ids = data.map((schedule) => schedule.id);
+
+    expect(ids.indexOf(novemberSchedule.id)).toBeLessThan(ids.indexOf(octoberSchedule.id));
+  });
+
   it('integration: lists schedules per window with their fill figures', async () => {
     const window = await openWindow();
     const schedule = await schedules.create({ windowId: window.id }, coordinator.id);

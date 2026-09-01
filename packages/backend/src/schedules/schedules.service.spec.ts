@@ -278,6 +278,18 @@ describe('SchedulesService visibility', () => {
     );
   });
 
+  // Same ordering as `/availability-windows`: the period a schedule covers,
+  // not when it was created — see `AvailabilityWindowsService.findAll`.
+  it('orders by the window it covers, latest period first', async () => {
+    const { service, prisma } = makeService();
+
+    await service.findAll(COORDINATOR);
+
+    expect(prisma.schedule.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ orderBy: { window: { startDate: 'desc' } } }),
+    );
+  });
+
   it('will not let a member widen the list back to drafts with a filter', async () => {
     const { service, prisma } = makeService();
 

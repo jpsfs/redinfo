@@ -399,6 +399,10 @@ const MESSAGES = {
   'report.kilometresPending': { pt: 'por calcular', en: 'not computed yet' },
   'report.kilometresComputed': { pt: 'Calculado a partir do percurso', en: 'Computed from the route' },
   'report.kilometresOverridden': { pt: 'Alterado à mão', en: 'Edited by hand' },
+  'report.editForbidden': {
+    pt: 'Só a equipa desta atividade, a coordenação de emergência e os administradores podem editar este relatório.',
+    en: 'Only this activity’s crew, the emergency coordinator and admins can edit this report.',
+  },
 
   // ── My profile ──
   'profile.title': { pt: 'O meu perfil', en: 'My profile' },
@@ -1159,6 +1163,10 @@ const MESSAGES = {
     pt: 'Uma escala é construída para uma janela de disponibilidade, sobre as datas dessa janela e contra os seus próprios turnos e funções. Janelas de categorias diferentes são escaladas de forma independente, mesmo quando as suas datas se sobrepõem.',
     en: "A schedule is built for one availability window, over that window's dates and against its own shifts and roles. Windows of different categories are scheduled independently, even when their dates overlap.",
   },
+  'scheduleList.filterCategoryLabel': { pt: 'Categoria', en: 'Category' },
+  'scheduleList.filterStatusLabel': { pt: 'Estado', en: 'Status' },
+  'scheduleList.allCategories': { pt: 'Todas as categorias', en: 'All categories' },
+  'scheduleList.statusAll': { pt: 'Todas', en: 'All' },
   'scheduleList.colWindow': { pt: 'Janela', en: 'Window' },
   'scheduleList.colDates': { pt: 'Datas', en: 'Dates' },
   'scheduleList.colSlotsFilled': { pt: 'Lugares preenchidos', en: 'Slots filled' },
@@ -2084,6 +2092,7 @@ const MESSAGES = {
     en: 'Upcoming Renewals & Inspections (%{count})',
   },
   'dashboard.insuranceLabel': { pt: 'Seguro', en: 'Insurance' },
+  'dashboard.upcomingShiftsTitle': { pt: 'Os teus próximos turnos', en: 'Your upcoming shifts' },
 
   // ── Live Runs page (#180 phase 3) — the drawer's own key, reused here ──
   'liveRunsPage.noRunsRightNow': {

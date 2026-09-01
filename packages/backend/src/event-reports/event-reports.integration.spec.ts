@@ -857,13 +857,15 @@ describeIntegration('Event reports (integration)', () => {
   // ── Who may see what ────────────────────────────────────────────────────────
 
   describe('access', () => {
-    it('lets the crew read their own report and refuses an outsider', async () => {
+    it('lets the crew, and everyone else, read a report — the archive is org-wide reading', async () => {
       const report = await file({ crew: [{ userId: tiago.id }] }, coordinator.id);
 
       await expect(reports.findOne(report.id, tiagoUser)).resolves.toMatchObject({
         id: report.id,
       });
-      await expect(reports.findOne(report.id, outsiderUser)).rejects.toThrow(ForbiddenException);
+      await expect(reports.findOne(report.id, outsiderUser)).resolves.toMatchObject({
+        id: report.id,
+      });
     });
 
     it('lists only the reports someone was on', async () => {

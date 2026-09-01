@@ -139,9 +139,10 @@ export default function App() {
             (#164). Ungated, like /my-duties above — scoped to the caller by
             the API, not by capability. */}
         <Route path="/my-hours" element={<MyHoursPage />} />
-        {/* Reading the whole archive needs VIEW_EVENT_REPORTS, so an
-            operational reaches their own reports — and the form to file a new
-            one — through here rather than the resource list. */}
+        {/* "What did I file" stays a different, faster question than "what
+            happened" even though every role can now read the full archive —
+            this is also the form to file a new report, and where an
+            unfinished draft is surfaced. */}
         <Route path="/my-reports" element={<MyReportsPage />} />
         {/* Everyone's own record — certifications (read-only, coordinator-
             maintained) and the contact details they keep current themselves.

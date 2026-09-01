@@ -4,14 +4,22 @@ import {
   DateField,
   FunctionField,
   List,
-  SelectInput,
   TopToolbar,
+  useListContext,
   usePermissions,
 } from 'react-admin';
-import { Alert, Box, Button, Chip, LinearProgress, Stack, Tooltip, Typography } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
+import {
+  Alert,
+  Box,
+  Button,
+  Chip,
+  CircularProgress,
+  Paper,
+  Stack,
+  Typography,
+} from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
-import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
-import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import {
   Action,
   AVAILABILITY_WINDOW_CATEGORIES,
@@ -20,20 +28,17 @@ import {
   ScheduleStatus,
   UserRole,
 } from '@redinfo/shared';
+import { CategoryChip } from '../../components/CategoryChip';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { windowCategoryLabel } from '../../i18n/labels';
 import { useT } from '../../i18n/useT';
 import { formatDateRange } from '../../utils/dates';
 import { WindowCategoryChip } from '../availability/WindowIdentity';
 import { CreateScheduleDialog } from './CreateScheduleDialog';
+import { actorName, FillBar, ScheduleFlags, ScheduleStatusChip } from './ScheduleIdentity';
+import { ScheduleListCard } from './ScheduleListCard';
 
-export const ScheduleStatusChip = ({ status }: { status?: string }) => {
-  const t = useT();
-  return status === ScheduleStatus.PUBLISHED ? (
-    <Chip size="small" label={t('schedule.statusPublished')} color="success" />
-  ) : (
-    <Chip size="small" label={t('schedule.statusDraft')} variant="outlined" />
-  );
-};
+export { ScheduleStatusChip };
 
 /**
  * Only a coordinator starts a schedule. Everyone else reaches this list to read
@@ -57,152 +62,194 @@ const ScheduleListActions = () => {
   );
 };
 
-/** How full a schedule is, at a glance, without loading its whole board. */
-const FillBar = ({ schedule }: { schedule: Schedule }) => {
-  const stats = schedule.stats;
-  if (!stats || stats.requiredSlots === 0) {
+/** Stacked cards instead of a table — the mobile replacement for `Datagrid`. */
+const MobileScheduleList = () => {
+  const { data, isLoading } = useListContext<Schedule>();
+  const navigate = useNavigate();
+
+  if (isLoading) {
     return (
-      <Typography variant="caption" color="text.secondary">
-        —
-      </Typography>
+      <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+        <CircularProgress size={24} />
+      </Box>
     );
   }
-  const percent = Math.min(100, Math.round((stats.filledSlots / stats.requiredSlots) * 100));
-  const complete = stats.filledSlots >= stats.requiredSlots;
 
   return (
-    <Stack direction="row" spacing={1} alignItems="center">
-      <LinearProgress
-        variant="determinate"
-        value={percent}
-        color={complete ? 'success' : 'warning'}
-        sx={{ width: 96, height: 6, borderRadius: 3 }}
-      />
-      <Typography variant="caption" color="text.secondary">
-        {stats.filledSlots} / {stats.requiredSlots}
-      </Typography>
+    <Stack spacing={1.5}>
+      {(data ?? []).map((schedule) => (
+        <ScheduleListCard
+          key={schedule.id}
+          schedule={schedule}
+          onOpen={() => navigate(`/schedules/${schedule.id}/show`)}
+        />
+      ))}
     </Stack>
   );
 };
-
-/** Gaps and overrides as counts, so a coordinator can triage the list. */
-const ScheduleFlags = ({ schedule }: { schedule: Schedule }) => {
-  const t = useT();
-  const stats = schedule.stats;
-  if (!stats || (stats.shiftsWithGaps === 0 && stats.overrideCount === 0)) {
-    return (
-      <Typography variant="caption" color="text.secondary">
-        —
-      </Typography>
-    );
-  }
-  return (
-    <Stack direction="row" spacing={1.5} alignItems="center">
-      {stats.shiftsWithGaps > 0 && (
-        <Tooltip title={t('scheduleList.gapsTooltip', { count: stats.shiftsWithGaps })}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'error.dark' }}>
-            <WarningAmberIcon sx={{ fontSize: 16 }} />
-            <Typography variant="caption" sx={{ fontWeight: 600 }}>
-              {stats.shiftsWithGaps}
-            </Typography>
-          </Box>
-        </Tooltip>
-      )}
-      {stats.overrideCount > 0 && (
-        <Tooltip title={t('scheduleList.overridesTooltip', { count: stats.overrideCount })}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.5, color: 'warning.dark' }}>
-            <SwapHorizIcon sx={{ fontSize: 16 }} />
-            <Typography variant="caption" sx={{ fontWeight: 600 }}>
-              {stats.overrideCount}
-            </Typography>
-          </Box>
-        </Tooltip>
-      )}
-    </Stack>
-  );
-};
-
-const actorName = (actor?: { firstName: string; lastName: string } | null) =>
-  actor ? `${actor.firstName} ${actor.lastName}` : '—';
 
 /**
- * Every schedule, newest first — which is also the history the ACs ask for:
- * one row per window, filterable by the window's category and by status.
+ * Category and status, together.
+ *
+ * A plain body element rather than `<List filters>`: `ScheduleListActions` is
+ * a custom `actions` element, and `ListToolbar` only threads `filters` into
+ * react-admin's *default* toolbar — with a custom one it renders the actions
+ * untouched and the filter form never appears
+ * (`ra-ui-materialui/dist/list/ListToolbar.js`), same trap fixed on
+ * `/availability-windows`' `WindowFilterBar`.
+ */
+export const ScheduleFilterBar = () => {
+  const t = useT();
+  const { filterValues, setFilters, displayedFilters } = useListContext();
+
+  const activeCategory = filterValues.category as string | undefined;
+  const selectCategory = (category?: string) => {
+    const { category: _dropped, ...rest } = filterValues;
+    setFilters(category ? { ...rest, category } : rest, displayedFilters);
+  };
+
+  const activeStatus = (filterValues.status as string | undefined) ?? '';
+  const selectStatus = (status: string) => {
+    setFilters({ ...filterValues, status }, displayedFilters);
+  };
+
+  return (
+    <Paper
+      variant="outlined"
+      sx={{ p: 2, mb: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }}
+    >
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+        <Typography variant="caption" color="text.secondary" sx={{ minWidth: 64 }}>
+          {t('scheduleList.filterCategoryLabel')}
+        </Typography>
+        <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }} useFlexGap>
+          <Chip
+            label={t('scheduleList.allCategories')}
+            color={activeCategory ? 'default' : 'primary'}
+            variant={activeCategory ? 'outlined' : 'filled'}
+            onClick={() => selectCategory(undefined)}
+            sx={{ height: 32, fontWeight: 600 }}
+          />
+          {AVAILABILITY_WINDOW_CATEGORIES.map((category) => (
+            <CategoryChip
+              key={category}
+              category={category}
+              label={windowCategoryLabel(t, category)}
+              selected={activeCategory === category}
+              onClick={() => selectCategory(category)}
+              sx={{ height: 32, fontWeight: 600, cursor: 'pointer' }}
+            />
+          ))}
+        </Stack>
+      </Box>
+
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+        <Typography variant="caption" color="text.secondary" sx={{ minWidth: 64 }}>
+          {t('scheduleList.filterStatusLabel')}
+        </Typography>
+        <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }} useFlexGap>
+          <Chip
+            size="small"
+            label={t('scheduleList.statusAll')}
+            color={activeStatus === '' ? 'primary' : 'default'}
+            variant={activeStatus === '' ? 'filled' : 'outlined'}
+            onClick={() => selectStatus('')}
+          />
+          <Chip
+            size="small"
+            label={t('schedule.statusDraft')}
+            color={activeStatus === ScheduleStatus.DRAFT ? 'primary' : 'default'}
+            variant={activeStatus === ScheduleStatus.DRAFT ? 'filled' : 'outlined'}
+            onClick={() => selectStatus(ScheduleStatus.DRAFT)}
+          />
+          <Chip
+            size="small"
+            label={t('schedule.statusPublished')}
+            color={activeStatus === ScheduleStatus.PUBLISHED ? 'success' : 'default'}
+            variant={activeStatus === ScheduleStatus.PUBLISHED ? 'filled' : 'outlined'}
+            onClick={() => selectStatus(ScheduleStatus.PUBLISHED)}
+          />
+        </Stack>
+      </Box>
+    </Paper>
+  );
+};
+
+/**
+ * Every schedule, ordered by the window it covers — latest date range first,
+ * same as `/availability-windows` — one row per window, filterable by the
+ * window's category and by status.
+ *
+ * The order is fixed server-side (`SchedulesService.findAll` has no sort
+ * parameter — it's a fixed `window.startDate desc`), so every column below
+ * is marked `sortable={false}`: a clickable header would promise a reorder
+ * the backend can't deliver.
  */
 export const ScheduleList = () => {
   const t = useT();
-
-  const scheduleFilters = [
-    <SelectInput
-      key="category"
-      source="category"
-      alwaysOn
-      choices={AVAILABILITY_WINDOW_CATEGORIES.map((category) => ({
-        id: category,
-        name: windowCategoryLabel(t, category),
-      }))}
-    />,
-    <SelectInput
-      key="status"
-      source="status"
-      choices={[
-        { id: ScheduleStatus.DRAFT, name: t('schedule.statusDraft') },
-        { id: ScheduleStatus.PUBLISHED, name: t('schedule.statusPublished') },
-      ]}
-    />,
-  ];
+  const isMobile = useIsMobile();
 
   return (
-  <List
-    actions={<ScheduleListActions />}
-    filters={scheduleFilters}
-    sort={{ field: 'createdAt', order: 'DESC' }}
-    empty={false}
-  >
+    <List
+      actions={<ScheduleListActions />}
+      sort={{ field: 'startDate', order: 'DESC' }}
+      empty={false}
+    >
     <>
+      <ScheduleFilterBar />
       <Alert severity="info" sx={{ mb: 2 }}>
         {t('scheduleList.overlapRuleInfo')}
       </Alert>
-      <Datagrid rowClick="show" bulkActionButtons={false}>
-        <FunctionField
-          label={t('scheduleList.colWindow')}
-          render={(record: Schedule) => (
-            <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-              <WindowCategoryChip category={record.window?.category} />
-              <Typography variant="body2" color="text.secondary">
-                {record.window?.name || '—'}
-              </Typography>
-            </Stack>
-          )}
-        />
-        <FunctionField
-          label={t('scheduleList.colDates')}
-          render={(record: Schedule) =>
-            record.window
-              ? formatDateRange(t, record.window.startDate, record.window.endDate)
-              : '—'
-          }
-        />
-        <FunctionField
-          label={t('scheduleList.colSlotsFilled')}
-          render={(record: Schedule) => <FillBar schedule={record} />}
-        />
-        <FunctionField
-          label={t('scheduleList.colFlags')}
-          render={(record: Schedule) => <ScheduleFlags schedule={record} />}
-        />
-        <FunctionField
-          source="status"
-          render={(record: Schedule) => <ScheduleStatusChip status={record.status} />}
-        />
-        <FunctionField
-          source="publishedBy"
-          render={(record: Schedule) =>
-            record.publishedAt ? actorName(record.publishedBy) : '—'
-          }
-        />
-        <DateField source="publishedAt" showTime emptyText="—" />
-      </Datagrid>
+      {isMobile ? (
+        <MobileScheduleList />
+      ) : (
+        <Datagrid rowClick="show" bulkActionButtons={false}>
+          <FunctionField
+            label={t('scheduleList.colWindow')}
+            sortable={false}
+            render={(record: Schedule) => (
+              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                <WindowCategoryChip category={record.window?.category} />
+                <Typography variant="body2" color="text.secondary">
+                  {record.window?.name || '—'}
+                </Typography>
+              </Stack>
+            )}
+          />
+          <FunctionField
+            label={t('scheduleList.colDates')}
+            sortable={false}
+            render={(record: Schedule) =>
+              record.window
+                ? formatDateRange(t, record.window.startDate, record.window.endDate)
+                : '—'
+            }
+          />
+          <FunctionField
+            label={t('scheduleList.colSlotsFilled')}
+            sortable={false}
+            render={(record: Schedule) => <FillBar schedule={record} />}
+          />
+          <FunctionField
+            label={t('scheduleList.colFlags')}
+            sortable={false}
+            render={(record: Schedule) => <ScheduleFlags schedule={record} />}
+          />
+          <FunctionField
+            source="status"
+            sortable={false}
+            render={(record: Schedule) => <ScheduleStatusChip status={record.status} />}
+          />
+          <FunctionField
+            source="publishedBy"
+            sortable={false}
+            render={(record: Schedule) =>
+              record.publishedAt ? actorName(record.publishedBy) : '—'
+            }
+          />
+          <DateField source="publishedAt" showTime emptyText="—" sortable={false} />
+        </Datagrid>
+      )}
     </>
   </List>
   );

@@ -112,16 +112,22 @@ export const NAV_SECTIONS: NavSection[] = [
         requires: [Action.VIEW_LIVE_RUNS],
       },
       {
+        // `VIEW_EVENT_REPORTS` is held by every role — the archive is
+        // org-wide reading — so this is effectively ungated; kept as a
+        // `requires` rather than dropped so a future role missing the
+        // action is still handled correctly.
         to: '/event-reports',
         label: 'nav.eventReports',
         icon: <DescriptionIcon />,
         requires: [Action.VIEW_EVENT_REPORTS],
       },
       {
+        // Ungated: published schedules are readable by everyone (the
+        // service filters drafts to `VIEW_SCHEDULES` holders), same as the
+        // event reports archive above.
         to: '/schedules',
         label: 'nav.schedules',
         icon: <EventNoteIcon />,
-        requires: [Action.VIEW_SCHEDULES],
       },
       {
         to: '/availability-windows',

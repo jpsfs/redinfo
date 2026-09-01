@@ -233,9 +233,9 @@ describe('reading a report', () => {
     expect(() => service.assertCanRead(row({ crew: [] }), filer)).not.toThrow();
   });
 
-  it('refuses an operational who was neither', () => {
+  it('lets an operational who was neither read it too — the archive is org-wide reading', () => {
     const { service } = makeService();
-    expect(() => service.assertCanRead(row(), OTHER_OPERATIONAL)).toThrow(ForbiddenException);
+    expect(() => service.assertCanRead(row(), OTHER_OPERATIONAL)).not.toThrow();
   });
 
   it('an operational who also holds EMERGENCY_COORDINATOR may read a report they were not on', () => {
@@ -993,14 +993,29 @@ describe('counts for the filter tabs', () => {
     expect(JSON.stringify(where)).not.toContain('EMERGENCY');
   });
 
-  it('scopes the tabs to what an operational may actually read', async () => {
+  it('does not scope the tabs for an operational — the archive is org-wide reading', async () => {
     const prisma = makePrisma();
     const { service } = makeService(prisma);
 
     await service.counts({}, OPERATIONAL);
 
-    expect(JSON.stringify((prisma.calls.groupBy[0] as { where: unknown }).where)).toContain(
+    expect(JSON.stringify((prisma.calls.groupBy[0] as { where: unknown }).where)).not.toContain(
       OPERATIONAL.id,
+    );
+  });
+
+  it('still scopes the tabs to the caller for a role without VIEW_EVENT_REPORTS', async () => {
+    // No real role lacks it any more (every role reads the archive), but the
+    // scoping stays correct defensively for whatever caller shape shows up —
+    // same reasoning as `assertCanRead`'s crew fallback.
+    const prisma = makePrisma();
+    const { service } = makeService(prisma);
+    const noPermissions: RequestUser = { id: 'user-nobody', roles: [] };
+
+    await service.counts({}, noPermissions);
+
+    expect(JSON.stringify((prisma.calls.groupBy[0] as { where: unknown }).where)).toContain(
+      noPermissions.id,
     );
   });
 });
