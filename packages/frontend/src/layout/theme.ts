@@ -232,17 +232,25 @@ export const theme = createTheme({
           // card rather than cutting anything off. `100dvh` tracks the
           // actual visible viewport instead.
           minHeight: '100dvh',
+          // react-admin's base root pairs `min-height: 100vh` with `height:
+          // 1px` — a WebKit workaround so old it predates every browser this
+          // app supports. Left in place, it pins this box to exactly one
+          // viewport tall and makes `overflow-y: auto` on it the only way to
+          // reach content past the fold — which is itself unreliable for
+          // touch-scrolling on mobile Safari (nested `overflow: auto`
+          // regions sized in viewport units are a well-known source of
+          // "can't scroll" bugs there, worse once the address bar's
+          // show/hide resizes the viewport mid-gesture). `height: auto`
+          // cancels the hack: the box grows to fit its content past
+          // `min-height`, so the *page* scrolls — the one mechanism every
+          // mobile browser gets right — instead of a nested pane.
+          height: 'auto',
           display: 'flex',
-          // NOT `alignItems`/`justifyContent: center`. react-admin's base
-          // root pairs `min-height: 100vh` with `height: 1px` — a
-          // known WebKit workaround that only works with top-alignment
-          // (`justify-content: flex-start`, its default); centering the
-          // flex box directly re-triggers the bug it exists to avoid,
-          // clipping overflow instead of letting it scroll (mobile Safari
-          // couldn't reach the OAuth buttons once the card grew past one
-          // screen with the remember-me row added). Centering via `margin:
-          // auto` on the card below gets the same look without it.
-          overflowY: 'auto',
+          // NOT `alignItems`/`justifyContent: center` — with `height: auto`
+          // above, centering via `margin: auto` on the card below (which
+          // degrades to top-alignment once content is taller than the
+          // viewport, instead of clipping it) does the same job without
+          // reintroducing the WebKit trick's constraints.
           padding: spacingUnit * 2,
           // react-admin's overridesResolver only applies `root` — hide the
           // default lock-icon avatar using a nested selector instead of the

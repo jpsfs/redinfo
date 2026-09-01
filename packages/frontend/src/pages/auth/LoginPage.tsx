@@ -8,6 +8,11 @@ import { DelegacaoCampoLogo } from '../../components/DelegacaoCampoLogo';
 import { useT } from '../../i18n/useT';
 
 const API_URL = import.meta.env.VITE_API_URL ?? '';
+// Same source as the browser tab title (see vite.config.ts's injectAppTitle
+// plugin, which stamps index.html's <title> from this at build time) — falls
+// back identically so a bare `vite`/`vite build` with no env configured
+// matches the tab instead of silently going blank.
+const APP_TITLE = import.meta.env.VITE_APP_TITLE ?? 'RedInfo - Dev';
 
 const LoginHeader = () => {
   const t = useT();
@@ -40,7 +45,7 @@ const LoginHeader = () => {
         color="text.primary"
         gutterBottom
       >
-        RedInfo
+        {APP_TITLE}
       </Typography>
       <Typography
         variant="body2"
