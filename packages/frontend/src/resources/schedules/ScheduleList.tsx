@@ -176,13 +176,14 @@ export const ScheduleFilterBar = () => {
 };
 
 /**
- * Every schedule, newest first — which is also the history the ACs ask for:
- * one row per window, filterable by the window's category and by status.
+ * Every schedule, ordered by the window it covers — latest date range first,
+ * same as `/availability-windows` — one row per window, filterable by the
+ * window's category and by status.
  *
- * The list is always newest-first server-side (`SchedulesService.findAll`
- * has no sort parameter — it's a fixed `createdAt desc`), so every column
- * below is marked `sortable={false}`: a clickable header would promise a
- * reorder the backend can't deliver.
+ * The order is fixed server-side (`SchedulesService.findAll` has no sort
+ * parameter — it's a fixed `window.startDate desc`), so every column below
+ * is marked `sortable={false}`: a clickable header would promise a reorder
+ * the backend can't deliver.
  */
 export const ScheduleList = () => {
   const t = useT();
@@ -191,7 +192,7 @@ export const ScheduleList = () => {
   return (
     <List
       actions={<ScheduleListActions />}
-      sort={{ field: 'createdAt', order: 'DESC' }}
+      sort={{ field: 'startDate', order: 'DESC' }}
       empty={false}
     >
     <>
