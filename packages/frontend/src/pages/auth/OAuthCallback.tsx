@@ -1,20 +1,25 @@
 import { useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { CircularProgress, Box, Typography } from '@mui/material';
 import { setTokens } from '../../authStorage';
 
 /**
  * Handles the OAuth redirect callback.
- * The backend redirects to /auth/callback?accessToken=...&refreshToken=...&remember=...
+ * The backend redirects to /#/auth/callback?accessToken=...&refreshToken=...&remember=...
  * We persist the tokens (per the "keep me signed in" choice carried through
  * the OAuth round-trip via `remember` — see `GoogleAuthGuard`'s doc comment)
  * and redirect to the home page.
+ *
+ * The query string is read off the *router* location, not
+ * `window.location.search`: under the HashRouter `<Admin>` mounts, these
+ * params live inside the fragment, where `window.location.search` is blank.
  */
 export const OAuthCallback = () => {
   const navigate = useNavigate();
+  const { search } = useLocation();
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
+    const params = new URLSearchParams(search);
     const accessToken = params.get('accessToken');
     const refreshToken = params.get('refreshToken');
     const remember = params.get('remember') !== 'false';
@@ -25,7 +30,7 @@ export const OAuthCallback = () => {
     } else {
       navigate('/login', { replace: true });
     }
-  }, [navigate]);
+  }, [navigate, search]);
 
   return (
     <Box

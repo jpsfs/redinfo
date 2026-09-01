@@ -1,5 +1,6 @@
 import { useEffect, useState, ChangeEvent } from 'react';
 import { Login, LoginForm, TextInput, PasswordInput, BooleanInput, required, useNotify } from 'react-admin';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { Box, Divider, Button, Typography } from '@mui/material';
 import GoogleIcon from '@mui/icons-material/Google';
 import MicrosoftIcon from '@mui/icons-material/Window';
@@ -145,17 +146,29 @@ function useLocalLoginEnabled(): boolean {
 export const LoginPage = () => {
   const t = useT();
   const notify = useNotify();
+  const navigate = useNavigate();
+  const { search } = useLocation();
   const [remember, setRemember] = useState(true);
   const localLoginEnabled = useLocalLoginEnabled();
 
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('error') === 'oauth_account_not_found') {
-      notify(t('login.oauthAccountNotFound'), { type: 'error' });
-      // One-shot flash param — strip it so a manual refresh doesn't re-show it.
-      window.history.replaceState(null, '', window.location.pathname);
+    // The backend sends this flash param inside the fragment
+    // (`/#/login?error=...`, see `AuthController.frontendRoute`), so the
+    // router's search is where it normally shows up. `window.location.search`
+    // is the fallback for a backend still redirecting to the bare path.
+    const hasError = [search, window.location.search].some(
+      (qs) => new URLSearchParams(qs).get('error') === 'oauth_account_not_found',
+    );
+    if (!hasError) return;
+
+    notify(t('login.oauthAccountNotFound'), { type: 'error' });
+    // One-shot flash param — strip it from both places so a manual refresh
+    // doesn't re-show it. Never touch the hash here: it *is* the route.
+    navigate('/login', { replace: true });
+    if (window.location.search) {
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.hash}`);
     }
-  }, [notify, t]);
+  }, [notify, t, navigate, search]);
 
   return (
     <Login>

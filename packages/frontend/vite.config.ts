@@ -78,10 +78,12 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           // Mirrors nginx's exact-match carve-out (nginx/nginx.conf,
           // deploy/redinfo/templates/configmap-nginx.yaml): /auth/callback is
-          // the SPA route that receives the OAuth redirect, not a backend
-          // route, so it must NOT be forwarded like the rest of /auth/* is.
-          // Without this, the backend 404s on it (no such route) and the
-          // OAuthCallback component never gets a chance to run.
+          // the SPA's own OAuth landing route, not a backend route, so it must
+          // NOT be forwarded like the rest of /auth/* is. Without this, the
+          // backend 404s on it (no such route) and the OAuthCallback component
+          // never gets a chance to run. Only the path form reaches here — the
+          // backend redirects to /#/auth/callback, which the dev server sees
+          // as a plain request for /.
           bypass: (req) => {
             const path = req.url?.split('?')[0];
             if (path === '/auth/callback') return req.url;

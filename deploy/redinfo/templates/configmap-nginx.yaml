@@ -38,10 +38,17 @@ data:
             proxy_cache_bypass $http_upgrade;
         }
 
-        # SPA route that receives the OAuth redirect — must be declared before
-        # the /auth/ proxy below. nginx always prefers an exact match over a
-        # prefix match, so this wins regardless of block order, but keep it
-        # here for readability.
+        # The SPA's own OAuth landing route, not a backend one — it must serve
+        # index.html rather than be proxied like the rest of /auth/*, which
+        # would 404. The backend redirects to the hash form
+        # (/#/auth/callback, see AuthController.frontendRoute) so this normally
+        # isn't hit; it stays as the fallback for old links and for a backend
+        # not yet redeployed, which src/oauthRedirectBridge.ts then rewrites
+        # into the hash route.
+        #
+        # Must be declared before the /auth/ proxy below. nginx always prefers
+        # an exact match over a prefix match, so this wins regardless of block
+        # order, but keep it here for readability.
         location = /auth/callback {
             try_files $uri /index.html;
         }

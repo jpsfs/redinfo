@@ -111,15 +111,24 @@ describe('LoginPage — local login disabled', () => {
     expect(await screen.findByLabelText(/username/i)).toBeInTheDocument();
   });
 
-  it('shows an error notification when redirected back with no matching OAuth account', async () => {
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(() => Promise.resolve(new Response(JSON.stringify({ localLoginEnabled: true }), { status: 200 }))),
-    );
-    window.history.replaceState(null, '', '/login?error=oauth_account_not_found');
+  // The backend redirects into the hash route (`/#/login?error=...`) because
+  // `<Admin>` mounts a HashRouter; the bare-path form is what a backend that
+  // has not been redeployed yet still sends, and must keep working.
+  it.each([
+    ['hash route', '/#/login?error=oauth_account_not_found'],
+    ['bare path', '/login?error=oauth_account_not_found'],
+  ])(
+    'shows an error notification when redirected back with no matching OAuth account (%s)',
+    async (_shape, url) => {
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(() => Promise.resolve(new Response(JSON.stringify({ localLoginEnabled: true }), { status: 200 }))),
+      );
+      window.history.replaceState(null, '', url);
 
-    renderLoginPage();
+      renderLoginPage();
 
-    expect(await screen.findByText(/no account for that google\/microsoft sign-in/i)).toBeInTheDocument();
-  });
+      expect(await screen.findByText(/no account for that google\/microsoft sign-in/i)).toBeInTheDocument();
+    },
+  );
 });
