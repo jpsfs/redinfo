@@ -314,7 +314,7 @@ describeIntegration('Legacy migration harness (integration)', () => {
     it('adopts a pre-existing User with a matching email instead of erroring or duplicating', async () => {
       const email = `pre-existing.${RUN}@example.test`;
       const preExisting = await prisma.user.create({
-        data: { email, firstName: 'Pre', lastName: 'Existing', role: 'EMERGENCY_OPERATIONAL' },
+        data: { email, firstName: 'Pre', lastName: 'Existing', roles: ['EMERGENCY_OPERATIONAL'] },
       });
 
       const source = new FixtureLegacySource();

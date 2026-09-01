@@ -8,6 +8,10 @@
  * is no OAuth `providerId`, and `@@index([isActive, role])`-driven listings
  * exclude it — so this row cannot log in and does not appear in an "assign
  * to a coordinator" picker.
+ *
+ * `roles` (not `role`): `User.role` was replaced by a `roles: UserRole[]`
+ * array — see `schema.prisma`'s multi-role migration — so this actor gets a
+ * one-element array, same as every other loader touching `User`.
  */
 import { AuthProvider } from '@prisma/client';
 import { DEFAULT_IMPORT_ACTOR_EMAIL, IMPORT_ACTOR_ROLE } from '../mapping.config';
@@ -19,7 +23,7 @@ const LEGACY_ID = 'system';
 
 export async function loadSystemActor(ctx: RunContext): Promise<string> {
   const email = process.env.LEGACY_IMPORT_ACTOR_EMAIL ?? DEFAULT_IMPORT_ACTOR_EMAIL;
-  const hash = sourceHash({ email, role: IMPORT_ACTOR_ROLE });
+  const hash = sourceHash({ email, roles: [IMPORT_ACTOR_ROLE] });
 
   const result = await runInLoaderTransaction(ctx, (tx) =>
     adoptOrCreate({
@@ -35,7 +39,7 @@ export async function loadSystemActor(ctx: RunContext): Promise<string> {
             email,
             firstName: 'Importação',
             lastName: 'Legacy',
-            role: IMPORT_ACTOR_ROLE,
+            roles: [IMPORT_ACTOR_ROLE],
             provider: AuthProvider.LOCAL,
             passwordHash: null,
             isActive: false,
@@ -46,7 +50,7 @@ export async function loadSystemActor(ctx: RunContext): Promise<string> {
       update: async (id) => {
         await tx.user.update({
           where: { id },
-          data: { role: IMPORT_ACTOR_ROLE, isActive: false, passwordHash: null },
+          data: { roles: [IMPORT_ACTOR_ROLE], isActive: false, passwordHash: null },
         });
       },
     }),

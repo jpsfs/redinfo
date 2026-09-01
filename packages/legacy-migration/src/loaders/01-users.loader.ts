@@ -96,7 +96,7 @@ async function loadOneUser(
     email: emailResolution.email,
     firstName,
     lastName,
-    role: DEFAULT_VOLUNTEER_ROLE,
+    roles: [DEFAULT_VOLUNTEER_ROLE],
     provider: AuthProvider.LOCAL,
     passwordHash: null,
     isActive: usuario.activo === 1,
