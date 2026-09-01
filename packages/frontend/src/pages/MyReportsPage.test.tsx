@@ -99,8 +99,9 @@ beforeEach(() => {
 
 // ── The activities you were on ─────────────────────────────────────────────────
 //
-// A personal page, because reading the whole archive needs VIEW_EVENT_REPORTS
-// and an operational does not have it. It is also where a new report starts.
+// A personal page, kept alongside the full `/event-reports` archive (which
+// every role can now read): "what did I file" is still a different question
+// from "what happened", and this is also where a new report starts.
 
 describe('my reports', () => {
   it('asks only for the reports the caller was on', async () => {

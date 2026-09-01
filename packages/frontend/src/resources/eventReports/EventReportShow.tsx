@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Title, useLocaleState, usePermissions } from 'react-admin';
+import { Title, useGetIdentity, useLocaleState, usePermissions } from 'react-admin';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Alert,
@@ -30,6 +30,7 @@ import {
   eventReportRules,
   formatEventReportCode,
   hasPermission,
+  isEventReportInvolved,
   materialItemDisplayName,
   totalKilometres,
 } from '@redinfo/shared';
@@ -153,6 +154,7 @@ export const EventReportShow = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { permissions } = usePermissions<UserRole[]>();
+  const { identity } = useGetIdentity();
   const [report, setReport] = useState<EventReport | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -194,8 +196,16 @@ export const EventReportShow = () => {
   // beats inventing a number another report is going to be given.
   const code = formatEventReportCode(report) ?? t('report.noNumberYet');
   const rules = eventReportRules(report.type);
-  const canEdit =
-    permissions ? hasPermission(permissions, Action.CREATE_EVENT_REPORT) : false;
+  const viewerId = identity?.id !== undefined ? String(identity.id) : undefined;
+  // Mirrors the backend's `assertCanWrite`: managing anyone's report needs
+  // `MANAGE_EVENT_REPORTS`; otherwise editing is only for the crew of this
+  // one activity, even though everyone can now read the whole archive.
+  const canEdit = permissions
+    ? hasPermission(permissions, Action.MANAGE_EVENT_REPORTS) ||
+      (hasPermission(permissions, Action.CREATE_EVENT_REPORT) &&
+        viewerId !== undefined &&
+        isEventReportInvolved(report, viewerId))
+    : false;
 
   return (
     <Container maxWidth="lg" sx={{ py: 2 }}>

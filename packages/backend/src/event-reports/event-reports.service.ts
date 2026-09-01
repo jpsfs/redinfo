@@ -24,6 +24,7 @@ import {
   applyShiftOverrides,
   eventReportRules,
   hasPermission,
+  isEventReportInvolved,
   parseEventReportCode,
   validateEventReport,
 } from '@redinfo/shared';
@@ -474,8 +475,7 @@ export class EventReportsService {
   }
 
   private isInvolved(row: EventReportRow, userId: string): boolean {
-    if (row.createdById === userId) return true;
-    return row.crew.some((member) => member.userId === userId);
+    return isEventReportInvolved(row, userId);
   }
 
   async loadRow(id: string): Promise<EventReportRow> {

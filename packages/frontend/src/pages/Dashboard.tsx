@@ -17,11 +17,14 @@ import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import InventoryIcon from '@mui/icons-material/Inventory';
 import AssignmentLateIcon from '@mui/icons-material/AssignmentLate';
-import { Action, hasPermission, UserRole } from '@redinfo/shared';
+import EventNoteIcon from '@mui/icons-material/EventNote';
+import { Action, MyDutiesResponse, MyDuty, hasPermission, UserRole } from '@redinfo/shared';
 import { apiFetch } from '../api';
 import { useIntlLocale } from '../i18n/useIntlLocale';
 import { useT } from '../i18n/useT';
 import { LiveRunBoard } from '../resources/liveRuns';
+import { WindowCategoryChip } from '../resources/availability/WindowIdentity';
+import { addIsoDays, formatDayLabel, toIsoDate } from '../utils/dates';
 
 const DAYS_WARN = 30;
 
@@ -134,6 +137,101 @@ const LowStockPanel = () => {
               </Box>
             )),
           )}
+        </Stack>
+      </CardContent>
+    </Card>
+  );
+};
+
+/** One card per schedule the caller is on, grouping its shifts together. */
+interface UpcomingShiftGroup {
+  scheduleId: string;
+  windowCategory: MyDuty['windowCategory'];
+  windowLabel: string;
+  duties: MyDuty[];
+}
+
+const DAYS_AHEAD = 7;
+
+/**
+ * What's next for the signed-in person, across every rota they're on.
+ *
+ * Grouped by schedule rather than listed flat: two Emergency shifts and one
+ * Apoio Local shift is one heading each, not three unrelated rows — the same
+ * reading `MyDutiesPage` gives the full list, condensed to a week and to a
+ * dashboard-sized card. Ungated and self-scoped, the same way `/my-duties`
+ * itself is; renders nothing when there is nothing due this week.
+ */
+export const UpcomingShiftsPanel = () => {
+  const t = useT();
+  const [duties, setDuties] = useState<MyDutiesResponse | null>(null);
+
+  useEffect(() => {
+    apiFetch<MyDutiesResponse>('/schedules/me')
+      .then(setDuties)
+      .catch(() => setDuties(null));
+  }, []);
+
+  if (!duties) return null;
+
+  const horizon = addIsoDays(toIsoDate(new Date()), DAYS_AHEAD);
+  const dueThisWeek = duties.upcoming.filter((duty) => duty.date <= horizon);
+  if (dueThisWeek.length === 0) return null;
+
+  // `duties.upcoming` is already date-then-slot ordered, so grouping while
+  // walking it keeps each group's own shifts in that order too, and gives
+  // the groups themselves the order their earliest shift falls in.
+  const groups: UpcomingShiftGroup[] = [];
+  for (const duty of dueThisWeek) {
+    const group = groups.find((candidate) => candidate.scheduleId === duty.scheduleId);
+    if (group) {
+      group.duties.push(duty);
+    } else {
+      groups.push({
+        scheduleId: duty.scheduleId,
+        windowCategory: duty.windowCategory,
+        windowLabel: duty.windowLabel,
+        duties: [duty],
+      });
+    }
+  }
+
+  return (
+    <Card sx={{ mt: 2 }} data-testid="upcoming-shifts-panel">
+      <CardContent>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+          <EventNoteIcon color="primary" />
+          <Typography variant="h6" fontWeight={700}>
+            {t('dashboard.upcomingShiftsTitle')}
+          </Typography>
+        </Box>
+        <Stack spacing={2} divider={<Divider flexItem />}>
+          {groups.map((group) => (
+            <Box key={group.scheduleId}>
+              <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 1 }}>
+                <WindowCategoryChip category={group.windowCategory} />
+                <Typography variant="subtitle2">{group.windowLabel}</Typography>
+              </Stack>
+              <Stack spacing={0.75}>
+                {group.duties.map((duty) => (
+                  <Box
+                    key={duty.id}
+                    sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}
+                  >
+                    <Typography variant="body2" fontWeight={600}>
+                      {formatDayLabel(t, duty.date)}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {duty.label}
+                    </Typography>
+                    {duty.roleName && (
+                      <Chip size="small" variant="outlined" label={duty.roleName} />
+                    )}
+                  </Box>
+                ))}
+              </Stack>
+            </Box>
+          ))}
         </Stack>
       </CardContent>
     </Card>
@@ -306,6 +404,10 @@ export const Dashboard = () => {
     <Box sx={{ mt: 2 }}>
       <LiveRunBoard />
     </Box>
+    {/* What's next for the signed-in person, not just for oversight — placed
+        right after the live board for the same reason: it's the other thing
+        someone opens the Dashboard to check. */}
+    <UpcomingShiftsPanel />
     <CertificationAlertsTile />
     <UpcomingAlertsPanel />
     <LowStockPanel />

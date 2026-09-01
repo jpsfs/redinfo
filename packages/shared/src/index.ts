@@ -103,7 +103,13 @@ export enum Action {
   VIEW_SCHEDULES = 'VIEW_SCHEDULES',
   /** File a report for an activity you were on, and edit your own. */
   CREATE_EVENT_REPORT = 'CREATE_EVENT_REPORT',
-  /** Read every report, not only the ones you attended. */
+  /**
+   * Read every report, not only the ones you attended. Held by every role —
+   * the archive is organisation-wide reading, same as the schedule list —
+   * so this is really "may read the `/event-reports` list route" rather than
+   * a privilege some roles lack. `MANAGE_EVENT_REPORTS` is the actual
+   * boundary: editing someone else's report.
+   */
   VIEW_EVENT_REPORTS = 'VIEW_EVENT_REPORTS',
   /** Edit anyone's filed report. */
   MANAGE_EVENT_REPORTS = 'MANAGE_EVENT_REPORTS',
@@ -142,6 +148,9 @@ export const ROLE_PERMISSIONS: Record<UserRole, Action[]> = {
     Action.MANAGE_VEHICLE_INVENTORY,
     Action.SUBMIT_AVAILABILITY,
     Action.CREATE_EVENT_REPORT,
+    // The archive is org-wide reading; only editing someone else's report
+    // needs `MANAGE_EVENT_REPORTS`.
+    Action.VIEW_EVENT_REPORTS,
   ],
   [UserRole.EMERGENCY_COORDINATOR]: [
     Action.EMERGENCY_OPERATION,
@@ -179,6 +188,9 @@ export const ROLE_PERMISSIONS: Record<UserRole, Action[]> = {
     Action.VIEW_VEHICLES,
     Action.MANAGE_VEHICLE_INVENTORY,
     Action.MANAGE_NOTICES,
+    // The archive is org-wide reading, same as for every other role — see
+    // `VIEW_EVENT_REPORTS`'s doc comment above.
+    Action.VIEW_EVENT_REPORTS,
   ],
 };
 
@@ -3495,6 +3507,24 @@ export interface EventReport extends EventReportClinical {
 /** Whether a report has been filed, as opposed to being an open draft. */
 export function isEventReportSubmitted(report: Pick<EventReport, 'submittedAt'>): boolean {
   return !isBlank(report.submittedAt);
+}
+
+/**
+ * Was this person part of the activity — on the crew, or the one who filed
+ * it?
+ *
+ * The single definition of "the team" for a report, shared by the backend's
+ * write guard (`EventReportsService.assertCanWrite`) and the frontend's Edit
+ * button: everyone reads the whole archive (`VIEW_EVENT_REPORTS`), but only
+ * `MANAGE_EVENT_REPORTS` or being on this list may change a report that
+ * isn't yours.
+ */
+export function isEventReportInvolved(
+  report: Pick<EventReport, 'createdById' | 'crew'>,
+  userId: string,
+): boolean {
+  if (report.createdById === userId) return true;
+  return report.crew.some((member) => member.userId === userId);
 }
 
 // ─── Event report input ───────────────────────────────────────────────────────

@@ -399,6 +399,10 @@ const MESSAGES = {
   'report.kilometresPending': { pt: 'por calcular', en: 'not computed yet' },
   'report.kilometresComputed': { pt: 'Calculado a partir do percurso', en: 'Computed from the route' },
   'report.kilometresOverridden': { pt: 'Alterado à mão', en: 'Edited by hand' },
+  'report.editForbidden': {
+    pt: 'Só a equipa desta atividade, a coordenação de emergência e os administradores podem editar este relatório.',
+    en: 'Only this activity’s crew, the emergency coordinator and admins can edit this report.',
+  },
 
   // ── My profile ──
   'profile.title': { pt: 'O meu perfil', en: 'My profile' },
@@ -2084,6 +2088,7 @@ const MESSAGES = {
     en: 'Upcoming Renewals & Inspections (%{count})',
   },
   'dashboard.insuranceLabel': { pt: 'Seguro', en: 'Insurance' },
+  'dashboard.upcomingShiftsTitle': { pt: 'Os teus próximos turnos', en: 'Your upcoming shifts' },
 
   // ── Live Runs page (#180 phase 3) — the drawer's own key, reused here ──
   'liveRunsPage.noRunsRightNow': {
