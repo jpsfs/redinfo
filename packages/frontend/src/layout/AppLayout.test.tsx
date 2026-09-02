@@ -64,6 +64,8 @@ describe('RedInfoMenu', () => {
       '/schedules',
       '/statistics',
       '/vehicles',
+      // The crew on shift is who actually knows a unit is out of service (#216).
+      '/inem-status',
     ]);
   });
 
@@ -111,6 +113,8 @@ describe('RedInfoMenu', () => {
       // '/material-items' IS included, unlike '/inventory-templates' above:
       // it's gated on MANAGE_VEHICLES (#206), which this role does hold.
       '/material-items',
+      // The crew on shift is who actually knows a unit is out of service (#216).
+      '/inem-status',
       '/hospitals',
       '/holidays',
       '/notification-config',
@@ -138,6 +142,7 @@ describe('RedInfoMenu', () => {
       '/vehicles',
       '/inventory-templates',
       '/material-items',
+      '/inem-status',
       '/hospitals',
       '/holidays',
       '/notification-config',

@@ -56,6 +56,7 @@ import { StatisticsPage } from './pages/StatisticsPage';
 import { MyNoticesPage } from './pages/MyNoticesPage';
 import { NoticesPage } from './pages/NoticesPage';
 import { NotificationConfigPage } from './pages/NotificationConfigPage';
+import { INEMStatusPage } from './pages/INEMStatusPage';
 import PeopleIcon from '@mui/icons-material/People';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import BuildIcon from '@mui/icons-material/Build';
@@ -168,6 +169,11 @@ export default function App() {
         {/* Org-wide default delivery channels per notification type (#165),
             gated by MANAGE_NOTICES the same as the notices screen above. */}
         <Route path="/notification-config" element={<NotificationConfigPage />} />
+        {/* The delegation's INEM units — availability toggle, INOP reason,
+            syncing badge and degraded-session banner (#216), gated by
+            MANAGE_INEM_STATUS in the drawer manifest. Not react-admin CRUD:
+            there is nothing to create or delete, only status to set. */}
+        <Route path="/inem-status" element={<INEMStatusPage />} />
       </CustomRoutes>
 
       <Resource

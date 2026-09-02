@@ -493,6 +493,7 @@ const MESSAGES = {
   'nav.vehicles': { pt: 'Viaturas', en: 'Vehicles' },
   'nav.inventoryTemplates': { pt: 'Modelos de inventário', en: 'Inventory Templates' },
   'nav.materialItems': { pt: 'Catálogo de materiais', en: 'Material Catalogue' },
+  'nav.inemStatus': { pt: 'Estado INEM', en: 'INEM Status' },
   'nav.hospitals': { pt: 'Hospitais', en: 'Hospitals' },
   'nav.holidays': { pt: 'Feriados', en: 'Holidays' },
   'nav.myProfile': { pt: 'O meu perfil', en: 'My Profile' },
@@ -1569,6 +1570,45 @@ const MESSAGES = {
   'notificationConfig.saved': { pt: 'Configuração guardada.', en: 'Configuration saved.' },
   'notificationConfig.noticeType': { pt: 'Avisos operacionais', en: 'Operational notices' },
 
+  // ── INEM unit status (#216) — the delegation's ambulances on INEM's own portal ──
+  'inem.pageTitle': { pt: 'Estado dos meios INEM', en: 'INEM unit status' },
+  'inem.heading': { pt: 'Estado dos meios INEM', en: 'INEM unit status' },
+  'inem.subheading': {
+    pt: 'Disponibilidade das ambulâncias no portal do INEM. As alterações são enviadas em segundo plano — o emblema "A sincronizar" é normal enquanto isso acontece.',
+    en: 'Ambulance availability on INEM’s own portal. Changes are pushed in the background — the “Syncing” badge is normal while that happens.',
+  },
+  'inem.loadFailed': { pt: 'Não foi possível carregar o estado dos meios INEM.', en: 'Could not load INEM unit status.' },
+  'inem.saveFailed': { pt: 'Não foi possível guardar o estado deste meio.', en: 'Could not save this unit’s status.' },
+  'inem.noUnits': { pt: 'Não há meios INEM configurados.', en: 'No INEM units configured.' },
+  'inem.available': { pt: 'Disponível', en: 'Available' },
+  'inem.reasonLabel': { pt: 'Motivo', en: 'Reason' },
+  'inem.reasonPlaceholder': { pt: 'Escolhe um motivo', en: 'Choose a reason' },
+  'inem.syncing': { pt: 'A sincronizar…', en: 'Syncing…' },
+  'inem.lastSyncedAt': { pt: 'Última sincronização: %{time}', en: 'Last synced: %{time}' },
+  'inem.neverSynced': { pt: 'Ainda sem sincronização', en: 'Not synced yet' },
+  'inem.lastError': { pt: 'Último erro: %{error}', en: 'Last error: %{error}' },
+  'inem.noVehicleMatch': { pt: 'Sem viatura correspondente', en: 'No matching vehicle' },
+  'inem.degradedBanner.EXPIRED': {
+    pt: 'A ligação ao portal do INEM expirou e está a ser restabelecida. Até lá, define o estado deste meio diretamente no portal do INEM.',
+    en: 'The connection to the INEM portal has expired and is being re-established. Until then, set this unit’s status directly in the INEM portal.',
+  },
+  'inem.degradedBanner.FAILED': {
+    pt: 'O redinfo não consegue neste momento contactar o portal do INEM. Define o estado deste meio diretamente no portal do INEM.',
+    en: 'redinfo cannot currently reach the INEM portal. Set this unit’s status directly in the INEM portal instead.',
+  },
+
+  // Reason codes: `pt` is INEM's own display label, copied verbatim from
+  // `GET /api/INOP` (docs/inem-portal-contract.md) — so a Portuguese-speaking
+  // coordinator reads the exact same words here, on INEM's own portal, and on
+  // the phone with CODU. Translate from the *label*, not the code: the code is
+  // INEM's internal identifier and is not always an accurate description (see
+  // `INEM_INOP_REASONS`'s doc comment in `@redinfo/shared`).
+  'inem.inopReason.TEPH_Falta': { pt: 'Sem Tripulação', en: 'No crew' },
+  'inem.inopReason.Acidente_Viatura': { pt: 'Avaria Viatura', en: 'Vehicle breakdown' },
+  'inem.inopReason.Limpar_Repor_Material': { pt: 'Limpar/Repor_Mat', en: 'Clean / restock' },
+  'inem.inopReason.Alimentacao': { pt: 'Alimentação', en: 'Meal break' },
+  'inem.inopReason.Fora_de_turno': { pt: 'Ocupada – ExtraSIEM', en: 'Busy – extra-SIEM' },
+
   // ── My hours (#164) ──
   'myHours.pageTitle': { pt: 'As minhas horas', en: 'My Hours' },
   'myHours.heading': { pt: 'As minhas horas', en: 'My Hours' },
@@ -2224,6 +2264,10 @@ const MESSAGES = {
     pt: 'Esta é a única pessoa com a função de Administrador de Sistema — atribui essa função a outra pessoa primeiro.',
     en: 'This is the only System Administrator left — give someone else that role first.',
   },
+  'apiError.INEM_SESSION_NOT_ACTIVE': {
+    pt: 'A integração com o INEM está indisponível — define o estado deste meio diretamente no portal do INEM.',
+    en: 'The INEM integration is currently unavailable — set this unit’s status directly in the INEM portal instead.',
+  },
 
   // ── Calendar headers (#180 phase 5) ──
   // Hand-spelled rather than delegated to `Intl`/`toLocaleDateString`: ICU
@@ -2851,6 +2895,18 @@ export const roleLabel = (t: Translate, name?: string | null): string => {
 
 export const certificationLabel = (t: Translate, type: string): string =>
   t(`certification.${type}`);
+
+/**
+ * An INEM INOP reason code's display label — translated from `pt`'s verbatim
+ * INEM copy when redinfo has shipped a key for it, falling back to the label
+ * the live `GET /api/INOP` call itself supplied otherwise. INEM can add a
+ * reason redinfo has no key for yet; this is what keeps that reading as
+ * untranslated-but-legible instead of falling back to some other code's text.
+ */
+export const inemReasonLabel = (t: Translate, code: string, apiLabel: string): string => {
+  const key = `inem.inopReason.${code}`;
+  return key in ALL_MESSAGES ? t(key) : apiLabel;
+};
 
 export const bloodTypeLabel = (t: Translate, type: string): string => t(`bloodType.${type}`);
 

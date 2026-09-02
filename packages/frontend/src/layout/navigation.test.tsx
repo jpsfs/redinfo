@@ -45,6 +45,8 @@ describe('NAV_SECTIONS', () => {
       '/schedules',
       '/statistics',
       '/vehicles',
+      // The crew on shift is who actually knows a unit is out of service (#216).
+      '/inem-status',
     ]);
   });
 

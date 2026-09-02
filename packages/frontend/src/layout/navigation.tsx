@@ -14,6 +14,7 @@ import PeopleIcon from '@mui/icons-material/People';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import InventoryIcon from '@mui/icons-material/Inventory';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
+import SyncIcon from '@mui/icons-material/Sync';
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
 import QueryStatsIcon from '@mui/icons-material/QueryStats';
@@ -189,6 +190,14 @@ export const NAV_SECTIONS: NavSection[] = [
         label: 'nav.materialItems',
         icon: <Inventory2Icon />,
         requires: [Action.MANAGE_VEHICLES],
+      },
+      {
+        // The delegation's ambulances on INEM's own portal — availability
+        // toggle and INOP reason (#216).
+        to: '/inem-status',
+        label: 'nav.inemStatus',
+        icon: <SyncIcon />,
+        requires: [Action.MANAGE_INEM_STATUS],
       },
     ],
   },
