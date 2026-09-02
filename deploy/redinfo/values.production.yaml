@@ -62,15 +62,16 @@ env:
     PORT: "3000"
     ATTACHMENTS_DIR: "/app/uploads"
     FRONTEND_URL: "https://app.cvpcampo.org"
+    # #211 — #214 (backend inem module) and #215 (packages/inem-worker) have
+    # shipped; this is the deploy-prep step the old comment here pointed at.
+    # Still inert until INEM_USERNAME/INEM_PASSWORD/INEM_WORKER_TOKEN are
+    # actually populated in the `redinfo-production` variable group (see
+    # `secrets` below) — InemSessionService only enables itself once
+    # INEM_ENABLED=true *and* INEM_USERNAME is non-empty.
+    INEM_ENABLED: "true"
+    INEM_ENTITY: "CVCAMPO"
+    INEM_BASE_URL: "https://portalpem.inem.pt"
   frontend: {}
-
-# INEM_ENABLED/INEM_ENTITY/INEM_BASE_URL (#211) are deliberately not set yet —
-# #214 (backend inem module) and #215 (packages/inem-worker) don't exist yet,
-# so there is nothing for the flag to enable. Add them to `env.backend` above
-# (INEM_ENABLED: "true", INEM_ENTITY: "CVCAMPO", INEM_BASE_URL:
-# "https://portalpem.inem.pt") as a later deploy-prep step, once the worker
-# image exists and INEM_USERNAME/INEM_PASSWORD/INEM_WORKER_TOKEN below are
-# populated in the `redinfo-production` variable group.
 
 # Populated by the pipeline from a `redinfo-production` ADO variable group via
 # --set-string; left empty here so nothing sensitive is ever committed. Now
@@ -81,7 +82,10 @@ env:
 # (see .ado/templates/deploy-env.yml and the matching comment in
 # values.staging.yaml) — real notice emails and push notifications go out
 # from here only. Same for INEM_USERNAME / INEM_PASSWORD / INEM_WORKER_TOKEN
-# (#211) once they're ready to populate — see the `env.backend` comment above.
+# (#211): populate them in the `redinfo-production` variable group (not here)
+# once the shared INEM credential is in hand — see
+# packages/inem-worker/README.md for the one-time OWA bootstrap that must run
+# after that.
 secrets: {}
 
 uploads:
@@ -110,6 +114,14 @@ legacyMigration:
   cron:
     enabled: true
     schedule: "0 * * * *"
+
+# packages/inem-worker (#215) — the only environment that should ever flip
+# this on (see values.yaml's own comment on `inemWorker`). Still idle without
+# INEM_USERNAME/INEM_PASSWORD/INEM_WORKER_TOKEN populated above, and useless
+# without the one-time OWA bootstrap (packages/inem-worker/README.md) having
+# run against this environment's backend at least once.
+inemWorker:
+  enabled: true
 
 postgresql:
   enabled: true

@@ -64,6 +64,9 @@ steps:
         VAPID_PUBLIC_KEY="$(unmacro "${VAPID_PUBLIC_KEY:-}")"
         VAPID_PRIVATE_KEY="$(unmacro "${VAPID_PRIVATE_KEY:-}")"
         VAPID_SUBJECT="$(unmacro "${VAPID_SUBJECT:-}")"
+        INEM_USERNAME="$(unmacro "${INEM_USERNAME:-}")"
+        INEM_PASSWORD="$(unmacro "${INEM_PASSWORD:-}")"
+        INEM_WORKER_TOKEN="$(unmacro "${INEM_WORKER_TOKEN:-}")"
 
         cat > "$(Build.ArtifactStagingDirectory)/secrets.yaml" <<EOF
         secrets:
@@ -87,6 +90,9 @@ steps:
           VAPID_PUBLIC_KEY: "${VAPID_PUBLIC_KEY:-}"
           VAPID_PRIVATE_KEY: "${VAPID_PRIVATE_KEY:-}"
           VAPID_SUBJECT: "${VAPID_SUBJECT:-}"
+          INEM_USERNAME: "${INEM_USERNAME:-}"
+          INEM_PASSWORD: "${INEM_PASSWORD:-}"
+          INEM_WORKER_TOKEN: "${INEM_WORKER_TOKEN:-}"
         postgresql:
           auth:
             password: "${POSTGRES_PASSWORD}"
@@ -112,6 +118,12 @@ steps:
       VAPID_PUBLIC_KEY: $(VAPID_PUBLIC_KEY)
       VAPID_PRIVATE_KEY: $(VAPID_PRIVATE_KEY)
       VAPID_SUBJECT: $(VAPID_SUBJECT)
+      # #211 — same "production only" reasoning as RESEND_API_KEY/VAPID_* above;
+      # never add these to redinfo-staging. See values.staging.yaml's comment
+      # on `secrets` and packages/inem-worker/README.md for the credential.
+      INEM_USERNAME: $(INEM_USERNAME)
+      INEM_PASSWORD: $(INEM_PASSWORD)
+      INEM_WORKER_TOKEN: $(INEM_WORKER_TOKEN)
       POSTGRES_PASSWORD: $(POSTGRES_PASSWORD)
       # Legacy production's own connection details — read only by
       # job-legacy-migration.yaml's Job, while legacyMigration.enabled is true
