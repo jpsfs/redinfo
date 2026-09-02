@@ -1,0 +1,42 @@
+{
+  "name": "@redinfo/inem-worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Stateless Playwright session-minter for the INEM portalpem integration (#211/#215). Polls packages/backend's /internal/inem/login-jobs for cold-login work, drives the FortiAuthenticator + OTP + SAML flow, and reads the OTP from an already-bootstrapped OWA session. No Prisma client, no DATABASE_URL, no IDENTITY_ENCRYPTION_KEYS — see README.md.",
+  "scripts": {
+    "start": "ts-node src/main.ts",
+    "bootstrap": "ts-node src/bootstrap.ts",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@redinfo/shared": "workspace:*",
+    "playwright": "^1.48.0",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^22.0.0",
+    "jest": "^30.3.0",
+    "ts-jest": "^29.4.6"
+  },
+  "jest": {
+    "moduleFileExtensions": ["js", "json", "ts"],
+    "rootDir": "src",
+    "maxWorkers": 1,
+    "testRegex": ".*\\.spec\\.ts$",
+    "transform": {
+      "^.+\\.(t|j)s$": [
+        "ts-jest",
+        {
+          "tsconfig": "./tsconfig.json"
+        }
+      ]
+    },
+    "moduleNameMapper": {
+      "^@redinfo/shared$": "<rootDir>/../../shared/src/index.ts"
+    },
+    "testEnvironment": "node"
+  }
+}

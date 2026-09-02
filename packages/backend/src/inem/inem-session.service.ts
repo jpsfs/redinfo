@@ -161,6 +161,23 @@ export class InemSessionService {
     };
   }
 
+  /**
+   * The bootstrap script's (#215) one write: a human completed MFA in a
+   * headed browser once, and the script posts the resulting `storageState`
+   * here to be sealed and stored. Never called by the poll-loop worker
+   * itself — only `submitLoginResult` (`refreshedStorageState`) refreshes it
+   * after that.
+   */
+  async bootstrapOwaSession(storageState: unknown): Promise<void> {
+    await this.prisma.oWASession.update({
+      where: { id: OWA_SESSION_ID },
+      data: {
+        status: OWASessionStatus.ACTIVE,
+        storageState: this.cipher.seal(OWA_SESSION_SCOPE, OWA_SESSION_ID, storageState),
+      },
+    });
+  }
+
   /** The other half: the worker's `{ cookies, expiresAt, refreshedStorageState } | { ok: false, ... }` result. */
   async submitLoginResult(jobId: string, result: INEMLoginJobResult): Promise<void> {
     await this.prisma.$transaction(async (tx) => {

@@ -7,7 +7,7 @@ import { InemQueueService } from './inem-queue.service';
 import { InemReconcilerService } from './inem-reconciler.service';
 import { InemService } from './inem.service';
 import { InemSessionService } from './inem-session.service';
-import { InemWorkerController } from './inem-worker.controller';
+import { InemOwaBootstrapController, InemWorkerController } from './inem-worker.controller';
 import { InemWorkerGuard } from './inem-worker.guard';
 
 /**
@@ -30,7 +30,7 @@ import { InemWorkerGuard } from './inem-worker.guard';
     InemWorkerGuard,
     AuditInterceptor,
   ],
-  controllers: [InemController, InemWorkerController],
+  controllers: [InemController, InemWorkerController, InemOwaBootstrapController],
   exports: [InemService],
 })
 export class InemModule {}

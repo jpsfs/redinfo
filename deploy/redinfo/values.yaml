@@ -17,6 +17,12 @@ image:
     repository: jpsfs/redinfo-legacy-migration
     tag: "dev"
     pullPolicy: IfNotPresent
+  # Built from packages/inem-worker/Dockerfile — see templates/deployment-worker.yaml.
+  # Irrelevant while inemWorker.enabled is false (the default).
+  inemWorker:
+    repository: jpsfs/redinfo-inem-worker
+    tag: "dev"
+    pullPolicy: IfNotPresent
 
 service:
   backend:
@@ -36,6 +42,16 @@ ingress:
 resources:
   backend: {}
   frontend: {}
+  # A browser, not an API server (#215's own guidance) — real headroom by
+  # default rather than {}, even though the Deployment itself stays disabled
+  # (inemWorker.enabled: false) until an environment opts in.
+  inemWorker:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+      cpu: "1"
 
 # Non-secret env vars only (NODE_ENV, FRONTEND_URL, PORT, ATTACHMENTS_DIR, ...).
 # Secret-shaped vars (JWT_SECRET, IDENTITY_ENCRYPTION_KEYS, OAuth, Maps, DATABASE_URL)
@@ -109,6 +125,24 @@ legacyMigration:
     schedule: "0 * * * *"
     concurrencyPolicy: Forbid
     startingDeadlineSeconds: 300
+
+# packages/inem-worker (#215) — the stateless Playwright session-minter for
+# the INEM integration (#211). Off everywhere by default; only production
+# should ever flip this to true, once INEM_USERNAME/INEM_PASSWORD/
+# INEM_WORKER_TOKEN are populated (see values.production.yaml) and the OWA
+# session has been bootstrapped by hand (packages/inem-worker/README.md).
+# `replicas: 1` is fixed in templates/deployment-worker.yaml, not driven by
+# `replicaCount` above — the shared INEM/OWA credential and the backend's
+# single-flight advisory lock both assume exactly one worker polling at a
+# time.
+inemWorker:
+  enabled: false
+  # Kept independent of env.backend.INEM_BASE_URL (same value, different
+  # values-file section) rather than cross-referenced — Helm has no clean way
+  # to read a possibly-list-shaped env.backend map from here. Keep the two in
+  # sync by hand if this is ever overridden.
+  inemBaseUrl: "https://portalpem.inem.pt"
+  pollIntervalSeconds: 15
 
 autoscaling: {}
 nodeSelector: {}

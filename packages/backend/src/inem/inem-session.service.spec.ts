@@ -347,6 +347,34 @@ describe('InemSessionService', () => {
       expect(sessionRow.failureCount).toBe(1);
     });
   });
+
+  describe('bootstrapOwaSession', () => {
+    it('seals the storageState and marks the OWA session ACTIVE', async () => {
+      const { stub, owaRow } = buildPrismaStub(inemSessionRow(), owaSessionRow({ status: OWASessionStatus.UNSET }));
+      const service = new InemSessionService(stub as never, cipher, client);
+
+      await service.bootstrapOwaSession({ cookies: ['a'], origins: [] });
+
+      expect(owaRow.status).toBe(OWASessionStatus.ACTIVE);
+      expect(cipher.open('owa-session', 'owa', owaRow.storageState as Buffer)).toEqual({
+        cookies: ['a'],
+        origins: [],
+      });
+    });
+
+    it('overwrites a previously EXPIRED session, same as a re-run of the bootstrap script', async () => {
+      const { stub, owaRow } = buildPrismaStub(
+        inemSessionRow(),
+        owaSessionRow({ status: OWASessionStatus.EXPIRED, storageState: Buffer.from('stale') }),
+      );
+      const service = new InemSessionService(stub as never, cipher, client);
+
+      await service.bootstrapOwaSession({ cookies: ['fresh'] });
+
+      expect(owaRow.status).toBe(OWASessionStatus.ACTIVE);
+      expect(cipher.open('owa-session', 'owa', owaRow.storageState as Buffer)).toEqual({ cookies: ['fresh'] });
+    });
+  });
 });
 
 function loginFormResponse(): Response {

@@ -1,0 +1,18 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    // Only for typechecking the DOM callbacks passed to Playwright's
+    // page.evaluate()/$$eval() (inem-forms usage, owa-reader.ts scraping) —
+    // those run inside the browser page, not this Node process.
+    "lib": ["ES2022", "DOM"],
+    "baseUrl": ".",
+    "paths": {
+      "@redinfo/shared": ["../shared/dist/index.d.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist"]
+}

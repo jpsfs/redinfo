@@ -107,6 +107,18 @@ stages:
                 $(Build.BuildId)
                 $(Build.SourceBranchName)
 
+          - task: Docker@2
+            displayName: "Build and push inem-worker image"
+            inputs:
+              containerRegistry: "$(DOCKER_SERVICE_CONNECTION)"
+              repository: "jpsfs/redinfo-inem-worker"
+              command: "buildAndPush"
+              Dockerfile: "packages/inem-worker/Dockerfile"
+              buildContext: "$(Build.SourcesDirectory)"
+              tags: |
+                $(Build.BuildId)
+                $(Build.SourceBranchName)
+
   - stage: DeployStaging
     displayName: Deploy to staging
     dependsOn: BuildAndPush

@@ -2,6 +2,7 @@ import { Body, Controller, Get, HttpCode, Param, Post, UseGuards } from '@nestjs
 import { ApiExcludeController } from '@nestjs/swagger';
 import { INEMLoginJob } from '@redinfo/shared';
 import { InemLoginResultDto } from './dto/inem-login-result.dto';
+import { SetOwaSessionDto } from './dto/set-owa-session.dto';
 import { InemSessionService } from './inem-session.service';
 import { InemWorkerGuard } from './inem-worker.guard';
 
@@ -27,5 +28,25 @@ export class InemWorkerController {
   @HttpCode(204)
   async submitResult(@Param('id') id: string, @Body() dto: InemLoginResultDto): Promise<void> {
     await this.session.submitLoginResult(id, dto.toResult());
+  }
+}
+
+/**
+ * The bootstrap script's (#215) one write: a human completes MFA in a headed
+ * browser once, and this stores the resulting `storageState`. Split from
+ * `InemWorkerController` so the routine poll-loop guard and the one-off
+ * bootstrap write aren't on the same controller class by coincidence — both
+ * still share `InemWorkerGuard` and the same shared secret.
+ */
+@ApiExcludeController()
+@UseGuards(InemWorkerGuard)
+@Controller('internal/inem/owa-session')
+export class InemOwaBootstrapController {
+  constructor(private readonly session: InemSessionService) {}
+
+  @Post()
+  @HttpCode(204)
+  async setOwaSession(@Body() dto: SetOwaSessionDto): Promise<void> {
+    await this.session.bootstrapOwaSession(dto.storageState);
   }
 }

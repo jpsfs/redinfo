@@ -151,7 +151,7 @@ steps:
         VALUES_FILE="/tmp/redinfo/values.${ENV_NAME}.yaml"
         # Tag by immutable Build.BuildId rather than the moving env-name tag used
         # previously — guarantees a real rollout without relying on pullPolicy=Always.
-        IMAGE_OVERRIDES="--set-string image.backend.repository=jpsfs/redinfo-backend,image.backend.tag=${{ parameters.imageTag }},image.backend.pullPolicy=IfNotPresent,image.frontend.repository=jpsfs/redinfo-frontend,image.frontend.tag=${{ parameters.imageTag }},image.frontend.pullPolicy=IfNotPresent,image.legacyMigration.repository=jpsfs/redinfo-legacy-migration,image.legacyMigration.tag=${{ parameters.imageTag }},image.legacyMigration.pullPolicy=IfNotPresent"
+        IMAGE_OVERRIDES="--set-string image.backend.repository=jpsfs/redinfo-backend,image.backend.tag=${{ parameters.imageTag }},image.backend.pullPolicy=IfNotPresent,image.frontend.repository=jpsfs/redinfo-frontend,image.frontend.tag=${{ parameters.imageTag }},image.frontend.pullPolicy=IfNotPresent,image.legacyMigration.repository=jpsfs/redinfo-legacy-migration,image.legacyMigration.tag=${{ parameters.imageTag }},image.legacyMigration.pullPolicy=IfNotPresent,image.inemWorker.repository=jpsfs/redinfo-inem-worker,image.inemWorker.tag=${{ parameters.imageTag }},image.inemWorker.pullPolicy=IfNotPresent"
 
         mkdir -p /tmp/redinfo
         tar -xzf /tmp/redinfo-chart.tgz -C /tmp

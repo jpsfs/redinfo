@@ -55,6 +55,27 @@ services:
     ports:
       - "3000:3000"
 
+  # ── INEM worker (#215) ──────────────────────────────────────────────────────
+  # Stateless Playwright session-minter — see packages/inem-worker/README.md.
+  # Off by default (profile-gated): `docker compose --profile inem-worker up`.
+  # Idle and harmless with none of INEM_USERNAME/INEM_PASSWORD/INEM_WORKER_TOKEN
+  # set in .env; it just fails MissingConfigError and exits, same fail-soft
+  # posture as the backend module it polls. Needs an OWA session already
+  # bootstrapped (`pnpm --filter @redinfo/inem-worker bootstrap`, run
+  # locally/headed — never in this container) before a cold login can do
+  # anything useful.
+  inem-worker:
+    build:
+      context: .
+      dockerfile: packages/inem-worker/Dockerfile
+    profiles: ["inem-worker"]
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      BACKEND_URL: http://backend:3000
+    depends_on:
+      - backend
+
   # ── Frontend (React + Vite) ─────────────────────────────────────────────────
   frontend:
     build:
