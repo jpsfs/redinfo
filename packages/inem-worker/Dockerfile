@@ -15,7 +15,15 @@
 # build, and every OS-level dependency Chromium needs already installed —
 # pulling those in by hand on a plain node:*-slim base is exactly the kind
 # of drift `playwright install --with-deps` exists to avoid.
-FROM mcr.microsoft.com/playwright:v1.48.0-jammy
+#
+# This tag must match the `playwright` npm package version actually resolved
+# in pnpm-lock.yaml exactly, or the bundled Chromium won't match what
+# Playwright expects and every launch fails with "Executable doesn't exist"
+# — found live in production (#211 go-live) when this was still pinned to
+# v1.48.0 while the lockfile had long since drifted to 1.62.1 on `^1.48.0`'s
+# floating range. `package.json` now pins an exact version for the same
+# reason; bump both together, deliberately, never one without the other.
+FROM mcr.microsoft.com/playwright:v1.62.1-jammy
 
 # Not `corepack prepare` (what packages/legacy-migration/Dockerfile uses on a
 # plain node:22 base): this image's bundled corepack (0.29.3) fails

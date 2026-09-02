@@ -287,7 +287,7 @@ importers:
         specifier: workspace:*
         version: link:../shared
       playwright:
-        specifier: ^1.48.0
+        specifier: 1.62.1
         version: 1.62.1
       ts-node:
         specifier: ^10.9.2
