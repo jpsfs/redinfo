@@ -1,0 +1,55 @@
+{{- if and .Values.legacyMigration.enabled .Values.legacyMigration.cron.enabled -}}
+{{- /*
+  Sibling to templates/job-legacy-migration.yaml (the deploy-time hook): same
+  image, same env, same "legacy always wins" semantics (upsert-engine.ts) —
+  the only difference is *when* it runs. This repeats the fetch+migrate cycle
+  hourly (by default), decoupled from deploys, for as long as legacy
+  production is still the system of record and this environment wants fresher
+  data than "whenever someone last deployed" — see migration/README.md.
+
+  Deliberately its own CronJob rather than a replacement for the hook: the
+  hook still gives a fresh deploy current data immediately (and runs after
+  job-seed, weight "1" vs "0", for the same geography/hospitals preflight
+  reason); this covers the gap between deploys. Either or both can be
+  disabled independently per environment via legacyMigration.enabled (kills
+  both) and legacyMigration.cron.enabled (kills just this one).
+*/ -}}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "redinfo.fullname" . }}-legacy-migration-cron
+  labels:
+    app.kubernetes.io/name: {{ include "redinfo.name" . }}
+    app.kubernetes.io/component: legacy-migration-cron
+spec:
+  schedule: {{ .Values.legacyMigration.cron.schedule | quote }}
+  # A run is a fresh mysqldump against legacy production's finite patience —
+  # never let two overlap, and skip rather than pile up a backlog if the
+  # cluster was down when a tick was due.
+  concurrencyPolicy: {{ .Values.legacyMigration.cron.concurrencyPolicy | default "Forbid" }}
+  startingDeadlineSeconds: {{ .Values.legacyMigration.cron.startingDeadlineSeconds | default 300 }}
+  jobTemplate:
+    spec:
+      # Same reasoning as the hook: don't blindly retry a run that failed partway through.
+      backoffLimit: 0
+      activeDeadlineSeconds: {{ .Values.legacyMigration.activeDeadlineSeconds }}
+      template:
+        metadata:
+          labels:
+            app.kubernetes.io/name: {{ include "redinfo.name" . }}
+            app.kubernetes.io/component: legacy-migration-cron
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: legacy-migration
+              image: "{{ .Values.image.legacyMigration.repository }}:{{ .Values.image.legacyMigration.tag }}"
+              imagePullPolicy: {{ .Values.image.legacyMigration.pullPolicy }}
+              envFrom:
+                - secretRef:
+                    name: {{ include "redinfo.fullname" . }}-app-secrets
+              env:
+                - name: LEGACY_TIMEZONE
+                  value: {{ .Values.legacyMigration.timezone | quote }}
+                - name: LEGACY_IMPORT_ACTOR_EMAIL
+                  value: {{ .Values.legacyMigration.importActorEmail | quote }}
+{{- end -}}

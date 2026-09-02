@@ -43,8 +43,12 @@ When `seed.enabled: true`, a post-install/post-upgrade Job (`templates/job-seed.
 to create the admin user and Portuguese geography reference data. Idempotent; safe to leave enabled
 across upgrades.
 
-## Known limitation: TLS
+## TLS
 
-Ingress is HTTP-only until `cert-manager` is enabled on the cluster and a `ClusterIssuer` is added.
-Until then, Google/Microsoft OAuth login will not work on any environment deployed by this chart —
-use the seeded local admin account instead.
+Ingress is HTTP-only at the origin for both staging and production — `cert-manager` is not enabled
+on this cluster (an earlier attempt at that, `cluster-issuer.yaml` + `ingress.tls`, was reverted).
+Both environments' real hosts sit behind Cloudflare, which proxies and terminates TLS for the
+browser; a plain-http origin behind that is the working setup. `env.backend.FRONTEND_URL` must
+still be `https://...` in both `values.staging.yaml` and `values.production.yaml` regardless — it's
+used verbatim to build the post-OAuth redirect Location, so an `http` value there breaks
+Google/Microsoft login even though the origin itself never speaks TLS.

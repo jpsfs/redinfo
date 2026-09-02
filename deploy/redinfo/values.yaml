@@ -91,6 +91,16 @@ legacyMigration:
   activeDeadlineSeconds: 1800
   timezone: "Europe/Lisbon"
   importActorEmail: "import@redinfo.invalid"
+  # Separate CronJob (templates/cronjob-legacy-migration.yaml) that repeats the
+  # same fetch+migrate run on a schedule, decoupled from deploys. Only takes
+  # effect when `enabled` above is also true. Off by default — staging runs
+  # the deploy-time hook only (values.staging.yaml); production runs both
+  # (values.production.yaml).
+  cron:
+    enabled: false
+    schedule: "0 * * * *"
+    concurrencyPolicy: Forbid
+    startingDeadlineSeconds: 300
 
 autoscaling: {}
 nodeSelector: {}

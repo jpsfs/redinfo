@@ -7,6 +7,11 @@
   re-run is "legacy always wins" — an app-side edit to an already-imported row
   does not survive the next deploy, by design (upsert-engine.ts).
 
+  Where legacyMigration.cron.enabled is also true (production), this hook
+  still runs at deploy time so a fresh deploy has current data immediately —
+  see the sibling templates/cronjob-legacy-migration.yaml for the recurring
+  hourly-by-default run in between deploys.
+
   Ordered after job-seed (hook-weight "1" vs. "0"): the loader's own preflight
   hard-requires seeded geography + hospitals (prisma/seed-geography.ts) before
   it will touch anything, and job-seed is what seeds those.

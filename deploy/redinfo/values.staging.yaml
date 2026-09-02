@@ -98,8 +98,14 @@ seed:
 # Staging is the rehearsal environment for this bridge period: kept in sync
 # with legacy production on every deploy for as long as both systems are
 # live. See values.yaml's own comment and migration/README.md.
+#
+# Deploy-time only here (cron off) — unlike production, staging doesn't need
+# fresher-than-a-deploy data, and every run is a real fetch from legacy
+# production, best kept to only when someone's actually looking at this env.
 legacyMigration:
   enabled: true
+  cron:
+    enabled: false
 
 # Enable a bundled Postgres instance for staging, with real persistence.
 postgresql:

@@ -65,22 +65,28 @@ had ever existed — that is the point.
 Three ways to run it, against whichever target `DATABASE_URL` / `LEGACY_MYSQL_*`
 point at:
 
-1. **Automatically, on every staging (and — once it exists — production)
-   deploy.** `deploy/redinfo/templates/job-legacy-migration.yaml`, a
-   post-install/post-upgrade Helm hook gated by `legacyMigration.enabled`
-   (true in `values.staging.yaml` and `values.production.yaml`; false by
-   default). Built with `--target job` from this package's `Dockerfile` — a
-   variant that bundles its own throwaway MariaDB — its container fetches a
-   fresh `mariadb-dump` straight from legacy production
+1. **Automatically, on every staging and production deploy, and — production
+   only — every hour in between deploys too.**
+   `deploy/redinfo/templates/job-legacy-migration.yaml`, a post-install/post-upgrade
+   Helm hook gated by `legacyMigration.enabled` (true in `values.staging.yaml` and
+   `values.production.yaml`; false by default), runs the fetch+migrate cycle at
+   deploy time in both environments. Production additionally runs
+   `deploy/redinfo/templates/cronjob-legacy-migration.yaml`, a `CronJob` gated by
+   `legacyMigration.cron.enabled` (`values.production.yaml` only — hourly by
+   default via `legacyMigration.cron.schedule`; staging leaves this off, deploy-time
+   only). Both are built with `--target job` from this package's `Dockerfile` — a
+   variant that bundles its own throwaway MariaDB — and each run's container
+   fetches a fresh `mariadb-dump` straight from legacy production
    (`LEGACY_PROD_MYSQL_*`, from the `redinfo-<env>` ADO variable group — see
    `secret-app.yaml`), loads it locally, and runs `migrate:legacy --apply`
    against that environment's own Postgres with **no human review step** —
    see `packages/legacy-migration/job-entrypoint.sh`. This is "legacy always
    wins" (`upsert-engine.ts`) on a schedule: an app-side edit to an
-   already-imported row does not survive the next deploy, by design, for as
-   long as this stays enabled. Runs *after* `job-seed` (hook-weight `1` vs.
-   `0`) because the loader's preflight hard-requires seeded geography +
-   hospitals first.
+   already-imported row does not survive the next run, by design, for as
+   long as this stays enabled. The deploy-time hook runs *after* `job-seed`
+   (hook-weight `1` vs. `0`) because the loader's preflight hard-requires seeded
+   geography + hospitals first — the CronJob has the same requirement, so it
+   never runs anywhere with `seed.enabled: false`.
 2. **Directly from an operator's machine**, wherever that machine already has
    network access to the target Postgres and to a legacy MySQL source (a
    `mysqldump` import, or — see `source/queries.ts`'s own "why not a live

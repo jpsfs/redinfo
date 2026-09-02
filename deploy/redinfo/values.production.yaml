@@ -33,8 +33,11 @@ ingress:
         - path: /
           service: frontend
           servicePort: 80
-  # TODO: production needs real TLS (cert-manager + ClusterIssuer), not HTTP-only —
-  # OAuth login will not work without it. See deploy/redinfo/README.md.
+  # HTTP-only at the origin, same as staging — Cloudflare is the proxy in front of
+  # app.cvpcampo.org and terminates TLS for the browser; a plain-http origin behind
+  # it is the working setup (see values.staging.yaml's own comment). FRONTEND_URL
+  # below must stay https regardless, since it's used verbatim to build the
+  # post-OAuth redirect Location.
   tls: []
 
 resources:
@@ -77,18 +80,27 @@ uploads:
   size: 20Gi
   mountPath: /app/uploads
 
-# TODO: decide whether production seeds an initial admin the same way staging does,
-# or that account is created out-of-band before go-live.
+# Same seed job as staging (admin user + PT geography/hospitals reference data —
+# see templates/job-seed.yaml, packages/backend/prisma/seed.ts). Idempotent and
+# also a hard prerequisite for legacyMigration above (its preflight requires
+# geography + hospitals to exist). Creates the same fixed default admin
+# (admin@redcross.local / Admin1234!) as every other environment — rotate or
+# disable that account by hand right after the first production deploy.
 seed:
-  enabled: false
+  enabled: true
 
-# Kept in sync with legacy production on every deploy for as long as both
-# systems are live during this bridge period — same as staging (see
-# values.staging.yaml, values.yaml, migration/README.md). This only takes
-# effect once job-seed above (or an out-of-band equivalent) has actually
-# seeded geography + hospitals — the loader's preflight hard-requires that.
+# Kept in sync with legacy production both at deploy time (job-legacy-migration.yaml,
+# so a fresh deploy has current data immediately) and hourly in between deploys
+# (cron.schedule, templates/cronjob-legacy-migration.yaml) — the only environment
+# that runs the recurring cron; staging stays deploy-time only (see
+# values.staging.yaml, values.yaml, migration/README.md). This only takes effect
+# once seed.enabled above has actually seeded geography + hospitals — the
+# loader's preflight hard-requires that.
 legacyMigration:
   enabled: true
+  cron:
+    enabled: true
+    schedule: "0 * * * *"
 
 postgresql:
   enabled: true
