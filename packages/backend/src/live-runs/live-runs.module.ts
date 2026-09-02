@@ -3,7 +3,7 @@ import { AuditInterceptor } from '../auth/interceptors/audit.interceptor';
 import { EventReportsModule } from '../event-reports/event-reports.module';
 import { LiveRunsService } from './live-runs.service';
 import { LiveRunsController } from './live-runs.controller';
-import { IdentityCipher } from './identity-cipher';
+import { IdentityCipher } from '../common/identity-cipher';
 import { IdentityPurgeService } from './identity-purge.service';
 import { DelegationSettingsService } from './delegation-settings.service';
 import { RouteDistanceService } from './route-distance.service';

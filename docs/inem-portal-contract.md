@@ -216,6 +216,7 @@ step names, status codes and unit ids. No API response may expose the shared INE
 | Why the portal reports `X-ENV: TESTE`, and whether a usable test environment exists | For INEM. `INEM_BASE_URL` is configurable so one can be pointed at. |
 | Purpose of the `device_id` cookie | Unconfirmed, low priority. |
 | Shape of the enhanced unit table | Pending the announced INEM platform update. |
+| `GET /api/unit` shape for an *available* unit | Every capture so far shows a unit that is INOP (`INOPReason` present). #214's reconciler infers "no `INOPReason`" as available (`INEM_AVAILABLE_INOP_CODE`) — a reasonable reading of the write-path sentinel, not something observed on the read path. Re-verify against a real available-unit response before trusting it further. |
 
 ## Provenance
 

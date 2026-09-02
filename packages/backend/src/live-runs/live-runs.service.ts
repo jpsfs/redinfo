@@ -29,7 +29,7 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { parseIsoDate } from '../utils/date.util';
 import { EventReportsService, RequestUser } from '../event-reports/event-reports.service';
-import { IdentityCipher, UnknownIdentityKeyError } from './identity-cipher';
+import { IdentityCipher, UnknownIdentityKeyError } from '../common/identity-cipher';
 import { IdentityPurgeService } from './identity-purge.service';
 import { DelegationSettingsService } from './delegation-settings.service';
 import { RouteDistanceService, RouteWaypoint } from './route-distance.service';
@@ -428,7 +428,7 @@ export class LiveRunsService {
   private openIdentity(row: Pick<LiveRunRow, 'id' | 'identity'>): OpenedIdentity {
     if (!row.identity) return {};
     try {
-      return { identity: this.cipher.open(row.id, Buffer.from(row.identity)) };
+      return { identity: this.cipher.open<LiveRunIdentity>('live-run', row.id, Buffer.from(row.identity)) };
     } catch (cause) {
       if (!(cause instanceof UnknownIdentityKeyError)) {
         this.logger.error(
@@ -463,7 +463,7 @@ export class LiveRunsService {
       });
     if (!hasAnything) return null;
 
-    return this.cipher.seal(runId, identity as LiveRunIdentity);
+    return this.cipher.seal('live-run', runId, identity as LiveRunIdentity);
   }
 
   // ── Input handling ─────────────────────────────────────────────────────────

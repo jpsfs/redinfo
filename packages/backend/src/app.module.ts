@@ -16,6 +16,7 @@ import { VolunteerHoursModule } from './volunteer-hours/volunteer-hours.module';
 import { StatisticsModule } from './statistics/statistics.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { NoticesModule } from './notices/notices.module';
+import { InemModule } from './inem/inem.module';
 
 @Module({
   imports: [
@@ -39,6 +40,7 @@ import { NoticesModule } from './notices/notices.module';
     StatisticsModule,
     NotificationsModule,
     NoticesModule,
+    InemModule,
   ],
 })
 export class AppModule {}

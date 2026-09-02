@@ -14,7 +14,7 @@ NestJS + Prisma. Read `../shared/CLAUDE.md` first if the feature touches shared 
 **`src/schedules/` is the richest exemplar — copy its shape for a new feature module.**
 
 Current modules: `auth`, `availability`, `event-reports`, `geography`, `health`, `hospitals`,
-`inventory`, `live-runs`, `notices`, `notifications`, `schedules`, `statistics`, `storage`,
+`inem`, `inventory`, `live-runs`, `notices`, `notifications`, `schedules`, `statistics`, `storage`,
 `users`, `vehicles`, `volunteer-hours`, `prisma`. New modules are wired into `src/app.module.ts`.
 Bootstrap (global `ValidationPipe`, global `ApiErrorFilter`, port 3000) is in `src/main.ts`.
 
@@ -22,6 +22,16 @@ Bootstrap (global `ValidationPipe`, global `ApiErrorFilter`, port 3000) is in `s
 preferences) — `notices` (#165) is its first consumer, not part of it. A future
 system-triggered notification type is a new producer against the same framework, not a
 redesign; see the banner comment in `notification-delivery.service.ts`.
+
+`inem` (#211/#214) integrates with INEM's own portal (`portalpem.inem.pt`) so a crew can set an
+ambulance's operational status from redinfo. Unit state is desired vs. reported, never a
+fire-and-forget command — `InemService`'s public API only ever writes `desiredInopCode`;
+`InemReconcilerService` (pg-boss, `InemQueueService`) does the actual pushing and polling on a
+schedule. `InemSessionService` owns the scraped SSO session (`alAuth`/`samlsessionid`,
+`IdentityCipher`-sealed) and its circuit breaker; `packages/inem-worker` (#215) is the only thing
+that ever does a cold Playwright login, reachable solely via the polled, shared-secret-guarded
+`/internal/inem/login-jobs` endpoints (`InemWorkerGuard`, off Swagger). See
+`docs/inem-portal-contract.md` for the wire contract this module codes against.
 
 ## Controller pattern
 
@@ -96,5 +106,6 @@ Two traps:
 
 ## Common utilities
 
-`src/common/` (API error handling), `src/utils/date.util.ts`, `src/storage/attachment-storage.ts`
-(file/attachment persistence, `ATTACHMENTS_DIR`).
+`src/common/` (API error handling, `identity-cipher.ts` — column encryption shared by `live-runs`
+and `inem`), `src/utils/date.util.ts`, `src/storage/attachment-storage.ts` (file/attachment
+persistence, `ATTACHMENTS_DIR`).

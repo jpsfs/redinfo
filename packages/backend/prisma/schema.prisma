@@ -1728,6 +1728,15 @@ model INEMSession {
   /// the (currently dormant) login captcha.
   failureCount Int               @default(0)
   lastError    String?
+  /// Identifies the in-flight cold-login attempt (#215's worker job) while
+  /// `status` is `LOGGING_IN`. A generated id rather than a separate job
+  /// table: single-flight (the advisory lock in `InemSessionService`) means
+  /// there is never more than one attempt in flight, so "the current one" is
+  /// all a poll-based worker needs. `null` outside `LOGGING_IN`.
+  pendingLoginId        String?
+  /// So the worker only accepts an OTP mail newer than this attempt — see
+  /// `INEMLoginJob.startedAt` in the shared contract.
+  pendingLoginStartedAt DateTime?
   updatedAt    DateTime          @updatedAt
 }
 

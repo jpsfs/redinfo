@@ -1,15 +1,16 @@
 import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
-import { LiveRunIdentity } from '@redinfo/shared';
 
 /**
- * Column encryption for the identity fields of a live run.
+ * Column encryption, shared by every table in this system that persists
+ * something identity-bearing at rest: `LiveRun`'s victim fields (the original
+ * user), and the INEM integration's (#211) session cookies and OWA
+ * `storageState` (#214/#215) — a scraped SSO session is exactly the kind of
+ * blob a database dump or backup must not hand over in the clear.
  *
- * A live run holds a victim's name, date of birth, SNS number and the street
- * they were found on — for at most 48 hours, and only so the crew can navigate
- * to them and fill in the paper form. Those fields exist nowhere else in this
- * system and must not become readable by anyone who gets a look at a database
- * dump, a backup or a replica.
+ * Originally `src/live-runs/identity-cipher.ts`; relocated here as part of
+ * #214 so a second feature reusing it doesn't create an import from `inem/`
+ * into `live-runs/` for something that has nothing to do with live runs.
  *
  * `node:crypto` rather than a dependency: it is already how `attachment-storage`
  * builds its keys, and AES-256-GCM is fifteen lines here.
@@ -23,19 +24,19 @@ import { LiveRunIdentity } from '@redinfo/shared';
  * next 12       IV, random per seal
  * next 16       GCM authentication tag
  * rest          ciphertext of JSON.stringify(payload)
- * AAD           `live-run:${runId}`
+ * AAD           `${scope}:${id}`
  * ```
  *
- * The key id travels with the blob so a key can be rotated without an
+ * The key id travels with the blob so a key can be rotated without a
  * re-encryption pass: prepend a new key, restart, and old blobs still open.
- * Because every blob is destroyed within 48h of its run closing, the old key can
- * be dropped after one retention window — short retention and column encryption
- * pay for each other.
  *
- * **The AAD binds the blob to its row.** That matters more here than in an
- * ordinary encrypted column: `LiveRun` rows are keyed by *client-supplied* ids,
- * so "copy row A's blob into row B" is a reachable attack rather than a
- * theoretical one. Sealing against the run id makes it fail to open.
+ * **The AAD binds the blob to its row, and now also to its table.** A live
+ * run and an INEM session are keyed by unrelated id spaces (`LiveRun.id` is
+ * client-supplied; `INEMSession.id` is a fixed singleton string) — without a
+ * scope prefix, a coincidental id collision across two tables would let one
+ * table's blob decrypt as if it belonged to the other. `scope` is a
+ * caller-chosen constant per table (`'live-run'`, `'inem-session'`,
+ * `'owa-session'`, …), never a per-request value.
  */
 
 const VERSION = 0x01;
@@ -132,21 +133,21 @@ export class IdentityCipher {
     return this.keys[0].id;
   }
 
-  seal(runId: string, payload: LiveRunIdentity): Buffer {
-    const { id, key } = this.keys[0];
+  seal<T>(scope: string, id: string, payload: T): Buffer {
+    const { id: keyId, key } = this.keys[0];
     const iv = randomBytes(IV_BYTES);
     const cipher = createCipheriv('aes-256-gcm', key, iv);
-    cipher.setAAD(aad(runId));
+    cipher.setAAD(aad(scope, id));
 
     const ciphertext = Buffer.concat([
       cipher.update(JSON.stringify(payload), 'utf8'),
       cipher.final(),
     ]);
 
-    const keyId = Buffer.from(id, 'ascii');
+    const keyIdBuf = Buffer.from(keyId, 'ascii');
     return Buffer.concat([
-      Buffer.from([VERSION, keyId.length]),
-      keyId,
+      Buffer.from([VERSION, keyIdBuf.length]),
+      keyIdBuf,
       iv,
       cipher.getAuthTag(),
       ciphertext,
@@ -157,12 +158,12 @@ export class IdentityCipher {
    * Opens a blob, or throws.
    *
    * Two failures are deliberately different types. A blob sealed with a key this
-   * process does not have is `UnknownIdentityKeyError`, which the service turns
-   * into `identityUnavailable: true` — a key retired an hour early must not take
-   * the coordinator's board down. Anything else is tampering or corruption and
+   * process does not have is `UnknownIdentityKeyError`, which callers turn into a
+   * soft "unavailable" state rather than a 500 — a key retired an hour early must
+   * not take a whole board down. Anything else is tampering or corruption and
    * stays an error.
    */
-  open(runId: string, blob: Buffer): LiveRunIdentity {
+  open<T>(scope: string, id: string, blob: Buffer): T {
     if (blob.length < 2) throw new Error('Identity blob is truncated.');
     const version = blob[0];
     if (version !== VERSION) {
@@ -184,21 +185,20 @@ export class IdentityCipher {
     const ciphertext = blob.subarray(header + IV_BYTES + TAG_BYTES);
 
     const decipher = createDecipheriv('aes-256-gcm', found.key, iv);
-    decipher.setAAD(aad(runId));
+    decipher.setAAD(aad(scope, id));
     decipher.setAuthTag(tag);
 
     const plaintext = Buffer.concat([decipher.update(ciphertext), decipher.final()]);
-    return JSON.parse(plaintext.toString('utf8')) as LiveRunIdentity;
+    return JSON.parse(plaintext.toString('utf8')) as T;
   }
 }
 
 /**
- * The additional authenticated data one blob is bound to.
- *
- * Prefixed rather than being the bare id, so the same construction can bind a
- * future encrypted column to a different kind of row without two blobs ever
- * being interchangeable.
+ * The additional authenticated data one blob is bound to: its table and its
+ * row. Two different tables sealing under the same `id` (a plausible
+ * coincidence once more than one table uses this cipher) must not produce
+ * interchangeable blobs, hence `scope` rather than the bare id.
  */
-function aad(runId: string): Buffer {
-  return Buffer.from(`live-run:${runId}`, 'utf8');
+function aad(scope: string, id: string): Buffer {
+  return Buffer.from(`${scope}:${id}`, 'utf8');
 }

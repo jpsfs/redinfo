@@ -18,4 +18,8 @@ export class PgBoss {
   createQueue = jest.fn().mockResolvedValue(undefined);
   send = jest.fn().mockResolvedValue(null);
   work = jest.fn().mockResolvedValue('worker-id');
+  // Added for InemQueueService (#214) — schedule()/unschedule() are cron-style
+  // registration, unused by NotificationQueueService.
+  schedule = jest.fn().mockResolvedValue(undefined);
+  unschedule = jest.fn().mockResolvedValue(undefined);
 }

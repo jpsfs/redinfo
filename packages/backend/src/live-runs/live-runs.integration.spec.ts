@@ -18,7 +18,7 @@ import { ShiftScheduleService } from '../availability/shift-schedule.service';
 import { EventReportsService, RequestUser } from '../event-reports/event-reports.service';
 import { EventReportNumbering } from '../event-reports/event-report-numbering';
 import { StockMovementsService } from '../inventory/stock-movements.service';
-import { IdentityCipher } from './identity-cipher';
+import { IdentityCipher } from '../common/identity-cipher';
 import { IdentityPurgeService } from './identity-purge.service';
 import { DelegationSettingsService } from './delegation-settings.service';
 import { RouteDistanceService } from './route-distance.service';
