@@ -156,6 +156,7 @@ describe('hasPermission', () => {
     Action.VIEW_AVAILABILITY_MATRIX,
     Action.MANAGE_VOLUNTEER_HOURS,
     Action.VIEW_VOLUNTEER_HOURS,
+    Action.MANAGE_INEM_STATUS,
   ])('LOGISTICS_COORDINATOR cannot %s (cross-domain denied)', (action) => {
     expect(hasPermission(UserRole.LOGISTICS_COORDINATOR, action)).toBe(false);
   });
@@ -167,6 +168,16 @@ describe('hasPermission', () => {
 
   it('EMERGENCY_OPERATIONAL cannot manage notices (reading your own is self-scoped, unactioned)', () => {
     expect(hasPermission(UserRole.EMERGENCY_OPERATIONAL, Action.MANAGE_NOTICES)).toBe(false);
+  });
+
+  // ── INEM status permissions (#211) ────────────────────────────────────────────
+
+  it('EMERGENCY_OPERATIONAL can perform MANAGE_INEM_STATUS (the crew on shift knows a unit is out of service)', () => {
+    expect(hasPermission(UserRole.EMERGENCY_OPERATIONAL, Action.MANAGE_INEM_STATUS)).toBe(true);
+  });
+
+  it('EMERGENCY_COORDINATOR can perform MANAGE_INEM_STATUS', () => {
+    expect(hasPermission(UserRole.EMERGENCY_COORDINATOR, Action.MANAGE_INEM_STATUS)).toBe(true);
   });
 
   // Scenario 3: new emergency action added → EMERGENCY_OPERATIONAL gains it after mapping

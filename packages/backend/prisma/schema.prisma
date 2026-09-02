@@ -131,6 +131,7 @@ model User {
   notificationDeliveries  NotificationDelivery[]         @relation("NotificationDeliveryRecipient")
   pushSubscriptions       PushSubscription[]              @relation("PushSubscriptionOwner")
   notificationPreferences UserNotificationPreference[]   @relation("NotificationPreferenceOwner")
+  inemStatusAudits        INEMStatusAudit[]               @relation("INEMStatusAuditActor")
 
   @@index([email])
   @@index([provider, providerId])
@@ -237,6 +238,7 @@ model Vehicle {
   eventReports          EventReportVehicle[]
   eventReportMaterials  EventReportMaterial[]
   liveRuns              LiveRun[]
+  inemUnits             INEMUnit[]
 
   @@index([vehicleType])
   @@index([isDeleted])
@@ -1683,4 +1685,110 @@ model UserNotificationPreference {
   enabled Boolean             @default(true)
 
   @@unique([userId, channel])
+}
+
+// ─── INEM integration (#211) ───────────────────────────────────────────────────
+//
+// Lets CVP crews set ambulance operational status for INEM's own portal
+// (portalpem.inem.pt) from redinfo. Everything here is backend-owned state —
+// see docs/inem-portal-contract.md for the wire contract this models, and
+// src/inem/ (#214) and packages/inem-worker (#215) for what reads/writes it.
+// `INEMSession`/`OWASession` are singletons, the same shape as
+// `DelegationSettings`: the id is fixed by a CHECK in the migration, so an
+// accidental second row is impossible rather than merely unlikely.
+
+enum INEMSessionStatus {
+  UNKNOWN
+  LOGGING_IN
+  ACTIVE
+  EXPIRED
+  FAILED
+}
+
+enum OWASessionStatus {
+  /// The bootstrap script (#215) has never been run.
+  UNSET
+  /// storageState present and presumed valid.
+  ACTIVE
+  /// The worker landed on a login page instead of the inbox — recovery is
+  /// re-running the bootstrap script, not retrying.
+  EXPIRED
+}
+
+/// The INEM portal session (`alAuth` + friends). One row, sealed with
+/// `IdentityCipher` the same way `LiveRun.identity` is.
+model INEMSession {
+  id           String            @id @default("inem")
+  status       INEMSessionStatus @default(UNKNOWN)
+  /// IdentityCipher-sealed cookie jar (alAuth + the FortiWeb affinity cookie).
+  cookies      Bytes?
+  expiresAt    DateTime?
+  /// Consecutive login failures. The circuit breaker in #214 trips at 2 and
+  /// stops retrying — automated retries are the most likely thing to wake
+  /// the (currently dormant) login captcha.
+  failureCount Int               @default(0)
+  lastError    String?
+  updatedAt    DateTime          @updatedAt
+}
+
+/// The Outlook Web Access session the worker reads the INEM OTP mail from.
+/// Bootstrapped once by hand (a human completes MFA); the worker then only
+/// ever reads it, and must write the refreshed storageState back after every
+/// use — it is a sliding window, not a fixed-lifetime token.
+model OWASession {
+  id           String           @id @default("owa")
+  status       OWASessionStatus @default(UNSET)
+  /// IdentityCipher-sealed Playwright `storageState()` JSON.
+  storageState Bytes?
+  updatedAt    DateTime         @updatedAt
+}
+
+/// One INEM-visible unit. Keyed by INEM's own `unitId` (e.g. `CVCAMPO1`)
+/// rather than a generated id — there is exactly one INEM record per unit,
+/// and the id is how every other table here would want to reference it.
+///
+/// Desired and reported state each collapse to a single nullable INOP code
+/// (never an active/reason pair — see docs/inem-portal-contract.md for why).
+/// `vehicleId` is nullable and `SetNull` on delete: INEM may list a unit
+/// redinfo has no matching `Vehicle` row for, and it must still sync.
+model INEMUnit {
+  unitId           String    @id
+  station          String?
+  /// The licence plate INEM knows the unit by — the join key to
+  /// `Vehicle.licensePlate`.
+  carId            String?
+  unitType         String?
+  /// What redinfo wants INEM to show: `'00'` (available) or an INEM INOP
+  /// code. Null means no one has set a desired state yet.
+  desiredInopCode  String?
+  /// What the reconciler last read back from `GET /api/unit`.
+  reportedInopCode String?
+  /// INEM's own read-only Portuguese label (`Active`), display only — never
+  /// treated as desired state.
+  reportedActive   String?
+  lastSyncedAt     DateTime?
+  lastError        String?
+  vehicleId        String?
+  vehicle          Vehicle?  @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@index([vehicleId])
+}
+
+/// Accountability trail for INEM status changes. Every action collapses onto
+/// one shared INEM identity, so this table — not `AuditInterceptor` — is what
+/// answers "who told INEM this unit was out of service". `unitId` is
+/// deliberately not an FK: the audit trail must outlive a unit INEM stops
+/// listing.
+model INEMStatusAudit {
+  id        String   @id @default(cuid())
+  unitId    String
+  userId    String
+  user      User     @relation("INEMStatusAuditActor", fields: [userId], references: [id], onDelete: Restrict)
+  inopCode  String
+  createdAt DateTime @default(now())
+
+  @@index([unitId])
+  @@index([userId])
 }

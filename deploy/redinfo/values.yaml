@@ -40,6 +40,10 @@ resources:
 # Non-secret env vars only (NODE_ENV, FRONTEND_URL, PORT, ATTACHMENTS_DIR, ...).
 # Secret-shaped vars (JWT_SECRET, IDENTITY_ENCRYPTION_KEYS, OAuth, Maps, DATABASE_URL)
 # live under `secrets` below and are rendered into a Secret, not here.
+#
+# INEM_ENABLED/INEM_ENTITY/INEM_BASE_URL (#211) belong here too, once set —
+# not secret-shaped. INEM_USERNAME/INEM_PASSWORD/INEM_WORKER_TOKEN are the
+# secret-shaped half and live under `secrets` below.
 env:
   backend: {}
   frontend: {}
@@ -53,6 +57,10 @@ env:
 # legacyMigration.enabled is true — legacy production's own connection details,
 # never the throwaway local copy job-legacy-migration.yaml's Job creates for
 # itself (see secret-app.yaml's own comment on this).
+#
+# INEM_USERNAME/INEM_PASSWORD/INEM_WORKER_TOKEN (#211) — the shared INEM
+# credential and the worker's internal-endpoint token. Production only, same
+# as RESEND_API_KEY/VAPID_* — see values.staging.yaml's comment on `secrets`.
 secrets: {}
 
 # Set to override DATABASE_URL outright (external DB). Empty composes it from the

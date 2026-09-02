@@ -85,6 +85,12 @@ env:
 # added to `env.backend` above once that's ready — see
 # packages/backend/src/notifications/channels/email-channel.service.ts for
 # how the transport is chosen.
+#
+# Same reasoning for INEM_USERNAME / INEM_PASSWORD / INEM_WORKER_TOKEN (#211):
+# never add these to the `redinfo-staging` variable group. It's a single
+# shared credential INEM issued for the whole delegation, and only production
+# runs the Playwright worker that spends it — the module fails soft and shows
+# a disabled UI here without them, the same way it does in plain local dev.
 secrets: {}
 
 uploads:

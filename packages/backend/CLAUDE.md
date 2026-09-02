@@ -47,7 +47,7 @@ because it's convenient; match how the module you're editing already does it.
 
 ## Prisma
 
-Schema at `prisma/schema.prisma` — **1443 lines, 36 models**. Never `Read` it in full.
+Schema at `prisma/schema.prisma` — **1794 lines, 50 models**. Never `Read` it in full.
 
 ```bash
 grep -n "^model User" packages/backend/prisma/schema.prisma   # find a model
@@ -69,6 +69,7 @@ Model index by domain (names only — grep for fields/relations):
 - **Notices & notifications** (#165): `Notice`, `NoticeTargetRole`, `NoticeChannel`,
   `NoticeReceipt`, `NotificationDelivery`, `PushSubscription`, `NotificationTypeSetting`,
   `UserNotificationPreference`
+- **INEM integration** (#211): `INEMSession`, `OWASession`, `INEMUnit`, `INEMStatusAudit`
 
 Migrations: `prisma:migrate` (dev, interactive) / `prisma:migrate:deploy` (non-interactive —
 prefer this in scripts/CI, per `.github/AI-GOVERNANCE.md`). Run `prisma:generate` after every

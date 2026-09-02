@@ -138,6 +138,14 @@ export enum Action {
    * self-scoped, the same way reading your own volunteer hours is.
    */
   MANAGE_NOTICES = 'MANAGE_NOTICES',
+  /**
+   * Set an ambulance's operational status on INEM's own portal (#211). Kept
+   * separate from `EMERGENCY_OPERATION` because it is "speaks to INEM on the
+   * delegation's behalf", not "runs emergencies" — every action collapses
+   * onto one shared INEM identity, so this is a narrower, more consequential
+   * capability than ordinary emergency operation.
+   */
+  MANAGE_INEM_STATUS = 'MANAGE_INEM_STATUS',
 }
 
 export const ROLE_PERMISSIONS: Record<UserRole, Action[]> = {
@@ -151,6 +159,8 @@ export const ROLE_PERMISSIONS: Record<UserRole, Action[]> = {
     // The archive is org-wide reading; only editing someone else's report
     // needs `MANAGE_EVENT_REPORTS`.
     Action.VIEW_EVENT_REPORTS,
+    // The crew on shift is who actually knows a unit is out of service.
+    Action.MANAGE_INEM_STATUS,
   ],
   [UserRole.EMERGENCY_COORDINATOR]: [
     Action.EMERGENCY_OPERATION,
@@ -181,6 +191,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Action[]> = {
     Action.MANAGE_VOLUNTEER_HOURS,
     Action.VIEW_VOLUNTEER_HOURS,
     Action.MANAGE_NOTICES,
+    Action.MANAGE_INEM_STATUS,
   ],
   [UserRole.LOGISTICS_COORDINATOR]: [
     Action.MANAGE_LOGISTICS,
@@ -5537,6 +5548,114 @@ export interface FleetStatistics {
   totalEmergencies: number;
 }
 
+// ─── INEM integration (#211) ───────────────────────────────────────────────────
+//
+// Lets CVP crews set ambulance operational status on INEM's own portal
+// (portalpem.inem.pt) from redinfo instead of logging in there directly. See
+// docs/inem-portal-contract.md for the observed wire contract this mirrors,
+// and src/inem/ (#214) / packages/inem-worker (#215) for what reads and
+// writes it. Mirrors the Prisma `INEMSessionStatus` enum in
+// packages/backend/prisma/schema.prisma — keep the two in sync.
+export enum INEMSessionStatus {
+  UNKNOWN = 'UNKNOWN',
+  LOGGING_IN = 'LOGGING_IN',
+  ACTIVE = 'ACTIVE',
+  EXPIRED = 'EXPIRED',
+  FAILED = 'FAILED',
+}
+
+/**
+ * The sentinel `PUT /api/unit` INOP code that means "available". Not a
+ * member of `INEM_INOP_REASONS` — INEM's own `GET /api/INOP` never returns
+ * it, it exists only on the write path. Named rather than left as a literal
+ * `'00'` at call sites, which is otherwise unreadable.
+ */
+export const INEM_AVAILABLE_INOP_CODE = '00' as const;
+
+/**
+ * The reason code → INEM's own Portuguese display label, exactly as
+ * `GET /api/INOP` returns it (see docs/inem-portal-contract.md). Labels are
+ * kept verbatim — accents and odd casing included (`Limpar/Repor_Mat`) — for
+ * two reasons: it's the `pt` source text #216's screen translates against,
+ * and it's the fallback for any code INEM adds later that redinfo has no
+ * key for. The *code* is the contract, wire format and `desiredInopCode`
+ * value; the *label* is display data. Runtime source of truth stays the live
+ * `GET /api/INOP` call (surfaced through `INEMStatusOverview.inopReasons`)
+ * — this constant is the compile-time type and the offline fallback.
+ */
+export const INEM_INOP_REASONS = {
+  TEPH_Falta: 'Sem Tripulação',
+  Acidente_Viatura: 'Avaria Viatura', // breakdown, not accident — translate from the label
+  Limpar_Repor_Material: 'Limpar/Repor_Mat',
+  Alimentacao: 'Alimentação',
+  Fora_de_turno: 'Ocupada – ExtraSIEM',
+} as const satisfies Record<string, string>;
+
+export type INEMInopCode = keyof typeof INEM_INOP_REASONS;
+
+/** A unit as redinfo reports it — the Prisma `INEMUnit` row plus its joined `Vehicle`, if matched. */
+export interface INEMUnit {
+  unitId: string;
+  station: string | null;
+  /** The licence plate INEM knows the unit by — the join key to `Vehicle.licensePlate`. */
+  carId: string | null;
+  unitType: string | null;
+  /** `INEM_AVAILABLE_INOP_CODE` or an `INEMInopCode`. Null = no desired state set yet. */
+  desiredInopCode: string | null;
+  /** What the reconciler last read back from `GET /api/unit`. */
+  reportedInopCode: string | null;
+  /** INEM's own read-only Portuguese label (`Active`) — display only, never desired state. */
+  reportedActive: string | null;
+  lastSyncedAt: string | null;
+  lastError: string | null;
+  /** Null when INEM lists a unit redinfo has no matching `Vehicle` row for. */
+  vehicle: { id: string; licensePlate: string; numeroCauda: string } | null;
+}
+
+export interface SetINEMUnitStatusRequest {
+  unitId: string;
+  inopCode: INEMInopCode | typeof INEM_AVAILABLE_INOP_CODE;
+}
+
+/**
+ * Units plus session status in one call, so #216's screen gets its list and
+ * its degraded-session banner from a single `GET /inem/status`.
+ */
+export interface INEMStatusOverview {
+  sessionStatus: INEMSessionStatus;
+  sessionLastError: string | null;
+  /** The live `GET /api/INOP` map; falls back to `INEM_INOP_REASONS` when the session is down. */
+  inopReasons: Record<string, string>;
+  units: INEMUnit[];
+}
+
+/**
+ * The worker job contract — the one shape that crosses the
+ * `packages/inem-worker` package boundary. The worker imports these rather
+ * than redeclaring them.
+ */
+export interface INEMLoginJob {
+  id: string;
+  /** The OWA `storageState` the backend holds, handed to the worker to read the OTP mail. */
+  storageState: unknown;
+  /** So the worker only accepts an OTP mail newer than this login attempt. */
+  startedAt: string;
+}
+
+export type INEMLoginJobResult =
+  | {
+      ok: true;
+      cookies: unknown;
+      expiresAt: string;
+      /** Must be persisted — OWA's cookie is a sliding window that refreshes on use. */
+      refreshedStorageState: unknown;
+    }
+  | {
+      ok: false;
+      reason: 'captcha_challenge' | 'otp_timeout' | 'owa_session_expired' | 'unknown_error';
+      message: string;
+    };
+
 // ─── API error codes (#180 phase 4) ───────────────────────────────────────────
 //
 // A machine code for the business-rule failures that are genuinely worth a
@@ -5576,7 +5695,8 @@ export type ApiErrorCode =
   | 'SHIFT_ADJUSTMENT_END_BEFORE_START'
   | 'SHIFT_ADJUSTMENT_OVERLAPS'
   | 'MATERIAL_ITEM_BARCODE_CONFLICT'
-  | 'LAST_SYSTEM_ADMIN';
+  | 'LAST_SYSTEM_ADMIN'
+  | 'INEM_SESSION_NOT_ACTIVE';
 
 export interface ApiErrorBody {
   code: ApiErrorCode;

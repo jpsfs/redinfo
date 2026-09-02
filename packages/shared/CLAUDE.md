@@ -1,6 +1,6 @@
 # `packages/shared` — token-efficient lookup
 
-`src/index.ts` is a single **4158-line** file — the domain contract for the whole monorepo
+`src/index.ts` is a single **5707-line** file — the domain contract for the whole monorepo
 (enums, interfaces, constants, pure rule functions). It has 287 top-level exports and is
 imported by 81 backend files and 108 frontend files. **Never `Read` it in full** — that alone
 burns ~50k tokens. Always grep first, then read a ranged window.
@@ -51,6 +51,7 @@ Don't ask for a list of all exports — grep them.
 | Live emergency runs | `LiveRun` shapes and state |
 | Notices & notifications | `Notice`, `NotificationChannel`/`NotificationType`, delivery/preference shapes, `resolveEffectiveNotificationChannels` (#165) |
 | Statistics | `/statistics/*` query and response shapes (people/activity/fleet) |
+| INEM integration | `INEMSessionStatus`, `INEM_AVAILABLE_INOP_CODE`, `INEM_INOP_REASONS`, `INEMInopCode`, `INEMUnit`, `SetINEMUnitStatusRequest`, `INEMStatusOverview`, worker job contract (`INEMLoginJob`/`INEMLoginJobResult`) (#211) |
 | API error codes | `ApiErrorCode` |
 
 ## Edit rules
