@@ -17,7 +17,14 @@ describe('loadConfig', () => {
       username: 'delegation',
       password: 'hunter2',
       pollIntervalMs: 15_000,
+      owaTimeZone: 'Europe/Lisbon',
+      userAgent: undefined,
     });
+  });
+
+  it('defaults the OWA mailbox timezone but lets OWA_TIME_ZONE override it', () => {
+    expect(loadConfig(BASE_ENV).owaTimeZone).toBe('Europe/Lisbon');
+    expect(loadConfig({ ...BASE_ENV, OWA_TIME_ZONE: 'Atlantic/Azores' }).owaTimeZone).toBe('Atlantic/Azores');
   });
 
   it('honours an overridden INEM_BASE_URL and poll interval', () => {

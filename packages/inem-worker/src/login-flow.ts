@@ -67,7 +67,7 @@ export async function runColdLogin(job: INEMLoginJob, config: WorkerConfig, log:
     let code: string;
     let refreshedStorageState: unknown;
     try {
-      const otp = await readOtpFromOwa(owaContext, job.startedAt, log);
+      const otp = await readOtpFromOwa(owaContext, job.startedAt, log, config.owaTimeZone);
       code = otp.code;
       refreshedStorageState = otp.refreshedStorageState;
     } catch (err) {

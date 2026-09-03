@@ -7,6 +7,8 @@
  * nothing useful to do when disabled, so an operator simply doesn't start
  * it rather than the process running and no-op-ing forever.
  */
+import { DEFAULT_OWA_TIME_ZONE } from './otp-mail';
+
 export interface WorkerConfig {
   /** Base URL of packages/backend, e.g. `http://backend:3000` in compose or the k8s Service DNS name. */
   backendUrl: string;
@@ -25,6 +27,12 @@ export interface WorkerConfig {
    * tightens further.
    */
   userAgent?: string;
+  /**
+   * IANA zone the OWA mailbox renders its message list in. OWA uses the
+   * *mailbox's* timezone rather than the browser's, so this cannot be pinned
+   * via Playwright — see `otp-mail.ts`'s `DEFAULT_OWA_TIME_ZONE`.
+   */
+  owaTimeZone: string;
 }
 
 /** Thrown for a missing required var — every one of these is a startup-time configuration mistake. */
@@ -50,5 +58,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): WorkerConfig {
     password: required(env, 'INEM_PASSWORD'),
     pollIntervalMs: Number(env.INEM_WORKER_POLL_INTERVAL_MS ?? 15_000),
     userAgent: env.INEM_USER_AGENT || undefined,
+    owaTimeZone: env.OWA_TIME_ZONE || DEFAULT_OWA_TIME_ZONE,
   };
 }
