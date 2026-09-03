@@ -29,7 +29,11 @@ export async function runColdLogin(job: INEMLoginJob, config: WorkerConfig, log:
 
     let kind = detectPageKind(await page.content());
     if (kind !== 'login') {
-      return { ok: false, reason: 'unknown_error', message: `expected the FortiAuthenticator login page, got "${kind}"` };
+      return {
+        ok: false,
+        reason: 'unknown_error',
+        message: `expected the FortiAuthenticator login page, got "${kind}" (${await pageDiagnostics(page)})`,
+      };
     }
 
     log.info('submitting credentials');
@@ -46,7 +50,11 @@ export async function runColdLogin(job: INEMLoginJob, config: WorkerConfig, log:
       return { ok: false, reason: 'captcha_challenge', message: 'Login form was returned again after credential submit' };
     }
     if (kind !== 'otp') {
-      return { ok: false, reason: 'unknown_error', message: `expected the OTP page, got "${kind}"` };
+      return {
+        ok: false,
+        reason: 'unknown_error',
+        message: `expected the OTP page, got "${kind}" (${await pageDiagnostics(page)})`,
+      };
     }
 
     log.info('reading the OTP from the bootstrapped OWA session');
@@ -98,4 +106,24 @@ export async function runColdLogin(job: INEMLoginJob, config: WorkerConfig, log:
 /** Submits the page's first form via the DOM rather than clicking a guessed submit-button selector — the same auto-submit idiom the assertion page itself uses. */
 async function submitCurrentForm(page: Page): Promise<void> {
   await page.locator('form').first().evaluate((form) => (form as HTMLFormElement).submit());
+}
+
+/**
+ * A safe, non-secret fingerprint of "where did we actually land" for an
+ * `unknown_error` result — the landed URL, the `<title>`, content length,
+ * and whether a handful of known keywords (challenge/block/error pages,
+ * common WAF/bot-check vocabulary) appear. Never the page's own markup —
+ * this is diagnostic breadcrumb, not a substitute for a real HAR capture,
+ * and INEM's forms can carry values worth not echoing into logs even
+ * without being outright secrets.
+ */
+async function pageDiagnostics(page: Page): Promise<string> {
+  const [title, length, hasJsChallenge, hasCaptcha, hasBlocked] = await page.evaluate(() => [
+    document.title,
+    document.documentElement.outerHTML.length,
+    /checking your browser|enable javascript|just a moment/i.test(document.body?.innerText ?? ''),
+    /captcha/i.test(document.body?.innerText ?? ''),
+    /blocked|access denied|forbidden/i.test(document.body?.innerText ?? ''),
+  ]);
+  return `url=${page.url()} title="${title}" htmlLength=${length} jsChallenge=${hasJsChallenge} captchaText=${hasCaptcha} blockedText=${hasBlocked}`;
 }
