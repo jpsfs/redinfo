@@ -1,4 +1,4 @@
-import { chromium, Page } from 'playwright';
+import { Browser, chromium, Page } from 'playwright';
 import { INEMLoginJob, INEMLoginJobResult } from '@redinfo/shared';
 import { WorkerConfig } from './config';
 import { detectPageKind } from './inem-forms';
@@ -21,7 +21,14 @@ const ASSUMED_ALAUTH_LIFETIME_MS = 8 * 60 * 60 * 1000;
 export async function runColdLogin(job: INEMLoginJob, config: WorkerConfig, log: Logger): Promise<INEMLoginJobResult> {
   const browser = await chromium.launch();
   try {
-    const loginContext = await browser.newContext();
+    // portalpem.inem.pt sits behind a FortiGate whose application-control
+    // filter blocks the literal `HeadlessChrome` User-Agent token with a
+    // FortiGuard "URL blocked" page — confirmed 2026-09-03: from the very
+    // same host/egress, a headed Chrome UA is served the login page while the
+    // headless UA is blocked, independent of the FQDN, DNS, or source IP. So
+    // every INEM-facing context must present a normal (non-headless) UA.
+    const userAgent = await resolveUserAgent(browser, config.userAgent);
+    const loginContext = await browser.newContext({ userAgent });
     const page = await loginContext.newPage();
 
     log.info('navigating to /saml/signin');
@@ -58,7 +65,7 @@ export async function runColdLogin(job: INEMLoginJob, config: WorkerConfig, log:
     }
 
     log.info('reading the OTP from the bootstrapped OWA session');
-    const owaContext = await browser.newContext({ storageState: job.storageState as never });
+    const owaContext = await browser.newContext({ storageState: job.storageState as never, userAgent });
     let code: string;
     let refreshedStorageState: unknown;
     try {
@@ -100,6 +107,35 @@ export async function runColdLogin(job: INEMLoginJob, config: WorkerConfig, log:
     };
   } finally {
     await browser.close();
+  }
+}
+
+/**
+ * Chromium's default headless User-Agent carries a literal `HeadlessChrome`
+ * token that INEM's FortiGate application-control filter blocks outright (see
+ * the note in `runColdLogin`). Swap it for `Chrome` so the worker presents the
+ * same UA a normal headed browser would — the Chromium version stays in sync
+ * with the actual build rather than being pinned to a string that ages.
+ */
+export function sanitizeUserAgent(raw: string): string {
+  return raw.replace(/HeadlessChrome/g, 'Chrome');
+}
+
+/**
+ * Resolves the UA to present to INEM: an explicit `INEM_USER_AGENT` override
+ * when configured, otherwise Chromium's own default with the `Headless` marker
+ * stripped. The default is read from a throwaway context so it tracks whatever
+ * Chromium this image actually ships.
+ */
+async function resolveUserAgent(browser: Browser, override?: string): Promise<string> {
+  if (override) return override;
+  const probe = await browser.newContext();
+  try {
+    const page = await probe.newPage();
+    const raw = await page.evaluate(() => navigator.userAgent);
+    return sanitizeUserAgent(raw);
+  } finally {
+    await probe.close();
   }
 }
 

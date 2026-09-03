@@ -83,6 +83,16 @@ such field. If you get a login page, `samlsessionid` is dead — fall back to th
 
 Only when `samlsessionid` is gone.
 
+**The browser must present a non-headless User-Agent.** A FortiGate application-control filter
+in front of `portalpem.inem.pt` blocks any request whose UA carries the literal `HeadlessChrome`
+token, serving a FortiGuard "The URL you requested has been blocked" page (HTTP 500) instead of
+the login flow. Confirmed 2026-09-03 from the production host: over the identical egress, a headed
+`Chrome/…` UA is served the login page while `HeadlessChrome/…` is blocked — independent of the
+FQDN, DNS, or source IP. The worker strips the `Headless` marker from Chromium's default UA
+(`login-flow.ts` `sanitizeUserAgent`); `INEM_USER_AGENT` pins an exact string if the filter ever
+tightens further. This was originally (2026-09-02) mis-diagnosed as a network-level firewall block
+of the whole hostname — it is not; the node reaches INEM fine.
+
 1. `GET /saml/signin` → follow to the IdP, which now serves `form#login_form`.
 2. POST to the same URL: `csrfmiddlewaretoken`, `username`, `password`, `use_token_input=0`,
    `use_token_input_hidden=true`. **No captcha field is sent on a successful login** — the

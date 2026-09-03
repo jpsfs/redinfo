@@ -17,6 +17,14 @@ export interface WorkerConfig {
   username: string;
   password: string;
   pollIntervalMs: number;
+  /**
+   * Optional UA override. When unset the worker strips the `Headless` marker
+   * from Chromium's own default (see login-flow.ts) — INEM's FortiGate blocks
+   * the literal `HeadlessChrome` User-Agent token with a FortiGuard block
+   * page. Set `INEM_USER_AGENT` to pin an exact string if that filter ever
+   * tightens further.
+   */
+  userAgent?: string;
 }
 
 /** Thrown for a missing required var — every one of these is a startup-time configuration mistake. */
@@ -41,5 +49,6 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): WorkerConfig {
     username: required(env, 'INEM_USERNAME'),
     password: required(env, 'INEM_PASSWORD'),
     pollIntervalMs: Number(env.INEM_WORKER_POLL_INTERVAL_MS ?? 15_000),
+    userAgent: env.INEM_USER_AGENT || undefined,
   };
 }

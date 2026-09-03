@@ -26,6 +26,11 @@ describe('loadConfig', () => {
     expect(config.pollIntervalMs).toBe(5000);
   });
 
+  it('leaves userAgent undefined unless INEM_USER_AGENT is set, then passes it through', () => {
+    expect(loadConfig(BASE_ENV).userAgent).toBeUndefined();
+    expect(loadConfig({ ...BASE_ENV, INEM_USER_AGENT: 'Mozilla/5.0 Custom' }).userAgent).toBe('Mozilla/5.0 Custom');
+  });
+
   it.each(['BACKEND_URL', 'INEM_WORKER_TOKEN', 'INEM_USERNAME', 'INEM_PASSWORD'])('throws MissingConfigError when %s is missing', (key) => {
     const env = { ...BASE_ENV };
     delete (env as Record<string, string | undefined>)[key];
