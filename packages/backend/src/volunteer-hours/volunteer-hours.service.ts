@@ -19,6 +19,7 @@ import {
   VolunteerHoursReviewResponse,
   VolunteerHoursSource,
   VolunteerHoursStatus,
+  VOLUNTEER_HOURS_SCHEDULED_GENERATION_START_DATE,
   applyShiftOverrides,
   canDeleteOwnVolunteerHours,
   canReopenVolunteerHours,
@@ -532,10 +533,21 @@ export class VolunteerHoursService {
     // retained row, so `volunteerHoursEntry: null` already excludes its
     // assignment from "pending" — that retained row is exactly what stops a
     // dismissed SCHEDULED entry from being regenerated on the next read.
+    //
+    // Lower-bounded by `VOLUNTEER_HOURS_SCHEDULED_GENERATION_START_DATE`:
+    // legacy migration imported historical rosters as real `Schedule`/
+    // `ScheduleAssignment` rows, and every shift they cover already has its
+    // hours captured by the migrated MANUAL+APPROVED entries (see
+    // `isEligibleForScheduledGeneration`'s doc comment). Without this bound,
+    // this query would also pick up every migrated assignment and generate a
+    // second, duplicate SCHEDULED entry for the same shift.
     const pending = await this.prisma.scheduleAssignment.findMany({
       where: {
         volunteerHoursEntry: null,
-        date: { lt: parseIsoDate(today) },
+        date: {
+          gte: parseIsoDate(VOLUNTEER_HOURS_SCHEDULED_GENERATION_START_DATE),
+          lt: parseIsoDate(today),
+        },
         schedule: { status: 'PUBLISHED' },
       },
       select: { scheduleId: true, date: true, slot: true },

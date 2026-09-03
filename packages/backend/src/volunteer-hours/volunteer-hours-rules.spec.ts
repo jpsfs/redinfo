@@ -8,6 +8,7 @@ import {
   detectShiftExceptions,
   formatMinutes,
   isEligibleForAutoApproval,
+  isEligibleForScheduledGeneration,
   isSweepApprovable,
   proposeScheduledHours,
   shiftMandatoryRolesFilled,
@@ -164,6 +165,20 @@ describe('proposeScheduledHours', () => {
     expect(
       proposeScheduledHours({ baselineMinutes: 240, extraMinutes: 30, possiblyLeftEarly: true }),
     ).toEqual({ proposedMinutes: 270, flags: ['RAN_OVER', 'POSSIBLY_LEFT_EARLY'] });
+  });
+});
+
+describe('isEligibleForScheduledGeneration', () => {
+  it('is not eligible before the legacy-migration cutover date', () => {
+    expect(isEligibleForScheduledGeneration('2026-09-30')).toBe(false);
+  });
+
+  it('is eligible on the cutover date itself', () => {
+    expect(isEligibleForScheduledGeneration('2026-10-01')).toBe(true);
+  });
+
+  it('is eligible for any date after the cutover', () => {
+    expect(isEligibleForScheduledGeneration('2027-01-15')).toBe(true);
   });
 });
 

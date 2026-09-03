@@ -16,7 +16,8 @@
     "prisma:generate": "prisma generate",
     "prisma:studio": "prisma studio",
     "prisma:seed": "ts-node prisma/seed.ts",
-    "prisma:seed:dev": "ts-node prisma/seed.ts && ts-node prisma/seed-dev.ts"
+    "prisma:seed:dev": "ts-node prisma/seed.ts && ts-node prisma/seed-dev.ts",
+    "cleanup:migrated-scheduled-hours": "ts-node scripts/cleanup-migrated-scheduled-hours.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

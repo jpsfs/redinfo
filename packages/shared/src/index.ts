@@ -2480,6 +2480,28 @@ export function proposeScheduledHours({
 }
 
 /**
+ * Legacy migration imported historical duty rosters as real `Schedule`/
+ * `ScheduleAssignment` rows, with nothing on them marking "came from the
+ * import" versus "created in the app" — see `LegacyIdMap`'s own doc comment
+ * for why that distinction is deliberately kept out of the domain models.
+ * Every shift the legacy roster covers already has its hours captured by the
+ * migrated MANUAL+APPROVED `VolunteerHoursEntry` (see
+ * `13-volunteer-hours.loader.ts`), so lazily generating a second SCHEDULED
+ * entry for the same shift would double it.
+ *
+ * Gating generation on the shift's own date, instead of on provenance, keeps
+ * that decision independent of where the `Schedule` row came from: legacy
+ * has nothing to say about a shift on or after go-live, so nothing generated
+ * from that date on was ever legacy's to duplicate.
+ */
+export const VOLUNTEER_HOURS_SCHEDULED_GENERATION_START_DATE = '2026-10-01';
+
+/** Whether a SCHEDULED entry may be generated at all for a shift on this date. */
+export function isEligibleForScheduledGeneration(shiftDate: string): boolean {
+  return shiftDate >= VOLUNTEER_HOURS_SCHEDULED_GENERATION_START_DATE;
+}
+
+/**
  * Days after a SCHEDULED shift's own date before a clean, untouched entry
  * auto-approves. A month gives the volunteer a real window to correct the
  * default before it becomes final, without leaving the review queue holding

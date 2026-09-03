@@ -1,5 +1,10 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { VolunteerActivityType, VolunteerHoursSource, VolunteerHoursStatus } from '@redinfo/shared';
+import {
+  VolunteerActivityType,
+  VolunteerHoursSource,
+  VolunteerHoursStatus,
+  VOLUNTEER_HOURS_SCHEDULED_GENERATION_START_DATE,
+} from '@redinfo/shared';
 import { VolunteerHoursService } from './volunteer-hours.service';
 
 // ── Volunteer hours generation and review (#164) ────────────────────────────────
@@ -241,7 +246,11 @@ function buildPrisma({
   const scheduleAssignmentFindMany = jest.fn(async (args: { where: Record<string, unknown> }) => {
     const { where } = args;
     if ('volunteerHoursEntry' in where) {
-      // The top-level "what's pending" scan.
+      // The top-level "what's pending" scan. Doesn't filter by `where.date`
+      // itself — that bound is asserted directly against the call arguments
+      // instead (see the "bounds the pending scan" test below), so fixture
+      // dates elsewhere in this file don't have to stay ahead of whatever the
+      // real wall clock is on the day these tests happen to run.
       const generatedAssignmentIds = new Set(entryTable.rows.map((r) => r.assignmentId));
       return assignments
         .filter((a) => !generatedAssignmentIds.has(a.id))
@@ -386,6 +395,26 @@ describe('generation', () => {
     await service.getMyHours('u-ana');
 
     expect(prisma.entryTable.create).toHaveBeenCalledTimes(1);
+  });
+
+  it('bounds the pending scan by the legacy-migration generation cutover, not just "before today"', async () => {
+    // Legacy migration imported historical rosters as real ScheduleAssignment
+    // rows whose hours are already captured by the migrated MANUAL+APPROVED
+    // entries (#loader-13) — generating a SCHEDULED one for them here would
+    // double them. Asserted against the query itself, rather than by giving
+    // this file's other fixtures a pre-cutover date and checking nothing
+    // gets generated, because the in-memory double above doesn't filter the
+    // pending scan by date at all (see its own comment) — real Prisma does.
+    const { service, prisma } = makeService();
+    await service.getMyHours('u-ana');
+
+    const pendingScanCall = prisma.scheduleAssignment.findMany.mock.calls.find(
+      ([args]: [{ where: Record<string, unknown> }]) => 'volunteerHoursEntry' in args.where,
+    );
+    expect(pendingScanCall).toBeDefined();
+    expect(pendingScanCall![0].where.date).toMatchObject({
+      gte: new Date(`${VOLUNTEER_HOURS_SCHEDULED_GENERATION_START_DATE}T00:00:00.000Z`),
+    });
   });
 });
 

@@ -1,5 +1,10 @@
 import { PrismaClient } from '@prisma/client';
-import { AvailabilityWindowCategory, UserRole, VolunteerHoursStatus } from '@redinfo/shared';
+import {
+  AvailabilityWindowCategory,
+  UserRole,
+  VolunteerHoursStatus,
+  VOLUNTEER_HOURS_SCHEDULED_GENERATION_START_DATE,
+} from '@redinfo/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { HolidaysService } from '../availability/holidays.service';
 import { ShiftScheduleService } from '../availability/shift-schedule.service';
@@ -26,12 +31,39 @@ const RUN = `it-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 const email = (local: string) => `${local}.${RUN}@volunteer-hours.test`;
 
 /**
- * Days before today, as `YYYY-MM-DD`. Computed relative to the real clock
- * rather than a literal date: generation needs these in the past, but the
- * 30-day auto-approve grace period (`VOLUNTEER_HOURS_AUTO_APPROVE_GRACE_DAYS`)
- * needs them to stay well short of that, however long from now this suite
- * happens to run.
+ * Generation cannot happen at all for a shift dated before
+ * `VOLUNTEER_HOURS_SCHEDULED_GENERATION_START_DATE` (see that constant's own
+ * doc comment) — so fixture dates computed relative to the *real* clock,
+ * `daysAgo()`'s original design, would generate nothing at all for as long
+ * as the real calendar hasn't reached that cutover yet. `Date` is frozen two
+ * weeks past it instead — comfortably clear of the cutover but still well
+ * short of the 30-day auto-approve grace period
+ * (`VOLUNTEER_HOURS_AUTO_APPROVE_GRACE_DAYS`) counted back from `daysAgo`'s
+ * small offsets below — so this suite stays meaningful regardless of when it
+ * actually runs, exactly as `daysAgo` originally intended. Only `Date` is
+ * faked; timers driving real Postgres I/O are left alone.
  */
+if (process.env.DATABASE_URL) {
+  jest.useFakeTimers({
+    doNotFake: [
+      'nextTick',
+      'setImmediate',
+      'clearImmediate',
+      'setInterval',
+      'clearInterval',
+      'setTimeout',
+      'clearTimeout',
+      'queueMicrotask',
+      'hrtime',
+      'performance',
+    ],
+  });
+  jest.setSystemTime(
+    Date.parse(`${VOLUNTEER_HOURS_SCHEDULED_GENERATION_START_DATE}T00:00:00.000Z`) + 14 * 86_400_000,
+  );
+}
+
+/** Days before the (possibly frozen, see above) "today", as `YYYY-MM-DD`. */
 function daysAgo(n: number): string {
   const date = new Date();
   date.setUTCDate(date.getUTCDate() - n);
@@ -149,6 +181,7 @@ describeIntegration('Volunteer hours module (integration)', () => {
       await prisma.user.deleteMany({ where: { id: { in: userIds } } });
     }
     await prisma.$disconnect();
+    jest.useRealTimers();
   });
 
   it('integration: persists mandatoryCount through the schema, distinct per role', async () => {
