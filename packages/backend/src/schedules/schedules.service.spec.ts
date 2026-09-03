@@ -13,6 +13,7 @@ const DRIVER_ROLE = {
   windowId: 'w1',
   name: 'Driver',
   maxPeople: 1,
+  mandatoryCount: 1,
   requiredCertification: CertificationType.DRIVER,
   order: 0,
 };
@@ -21,6 +22,7 @@ const MEMBER_ROLE = {
   windowId: 'w1',
   name: 'Team Member',
   maxPeople: 1,
+  mandatoryCount: 0,
   requiredCertification: null,
   order: 1,
 };
@@ -636,6 +638,9 @@ describe('SchedulesService.getMyDuties', () => {
     scheduleId: 's1',
     date: new Date('2026-10-03T00:00:00.000Z'),
     slot: 1,
+    userId: ANA.id,
+    user: ANA,
+    roleId: DRIVER_ROLE.id,
     role: DRIVER_ROLE,
     schedule: { window: windowRow() },
     ...overrides,
@@ -702,6 +707,54 @@ describe('SchedulesService.getMyDuties', () => {
   it('is empty for someone with no duties', async () => {
     const { service } = makeService();
     await expect(service.getMyDuties('u-nobody')).resolves.toEqual({ upcoming: [], past: [] });
+  });
+
+  it('names whoever else is on the same shift, not the caller themselves', async () => {
+    const { service, prisma } = makeService();
+    prisma.scheduleAssignment.findMany.mockResolvedValue([
+      dutyRow(),
+      dutyRow({ id: 'a2', userId: JOANA.id, user: JOANA, roleId: MEMBER_ROLE.id, role: MEMBER_ROLE }),
+    ]);
+
+    const duties = await service.getMyDuties(ANA.id, '2026-10-01');
+
+    expect(duties.upcoming[0].crewmates).toEqual([
+      { firstName: 'Joana', lastName: 'Pinto', roleName: 'Team Member' },
+    ]);
+  });
+
+  it('flags an upcoming duty whose mandatory posts are not yet filled', async () => {
+    const { service, prisma } = makeService();
+    // Only the Team Member post is taken; the Driver post (mandatoryCount 1) is open.
+    prisma.scheduleAssignment.findMany.mockResolvedValue([
+      dutyRow({ roleId: MEMBER_ROLE.id, role: MEMBER_ROLE }),
+    ]);
+
+    const duties = await service.getMyDuties(ANA.id, '2026-10-01');
+
+    expect(duties.upcoming[0].quorumMet).toBe(false);
+  });
+
+  it('drops a past duty whose shift never reached quorum', async () => {
+    const { service, prisma } = makeService();
+    // Driver post never filled — the shift most likely did not run.
+    prisma.scheduleAssignment.findMany.mockResolvedValue([
+      dutyRow({ roleId: MEMBER_ROLE.id, role: MEMBER_ROLE }),
+    ]);
+
+    const duties = await service.getMyDuties(ANA.id, '2026-10-04');
+
+    expect(duties.past).toEqual([]);
+  });
+
+  it('keeps a past duty whose shift did reach quorum', async () => {
+    const { service, prisma } = makeService();
+    prisma.scheduleAssignment.findMany.mockResolvedValue([dutyRow()]);
+
+    const duties = await service.getMyDuties(ANA.id, '2026-10-04');
+
+    expect(duties.past).toHaveLength(1);
+    expect(duties.past[0]).toMatchObject({ quorumMet: true });
   });
 });
 

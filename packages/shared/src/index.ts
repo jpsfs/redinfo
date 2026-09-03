@@ -1887,6 +1887,13 @@ export interface AutofillReport {
   shiftsWithoutDriver: number;
 }
 
+/** Someone else on the same shift, for "who else is on" context. */
+export interface MyDutyCrewmate {
+  firstName: string;
+  lastName: string;
+  roleName?: string | null;
+}
+
 /** One published duty, as the person it belongs to sees it. */
 export interface MyDuty {
   id: string;
@@ -1902,6 +1909,14 @@ export interface MyDuty {
   label: string;
   vehiclesNeeded: number;
   roleName?: string | null;
+  /** Everyone else assigned to this same shift. */
+  crewmates: MyDutyCrewmate[];
+  /**
+   * Whether the shift's mandatory posts are filled — see
+   * `shiftMandatoryRolesFilled`, the same bar volunteer-hours generation uses.
+   * A shift short of this most likely will not run.
+   */
+  quorumMet: boolean;
 }
 
 /** `GET /schedules/me` — published duties only, split around today. */

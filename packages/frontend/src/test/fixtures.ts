@@ -413,6 +413,8 @@ export const MY_DUTY: MyDuty = {
   label: '08:00–16:00',
   vehiclesNeeded: 2,
   roleName: 'Driver',
+  crewmates: [],
+  quorumMet: true,
 };
 
 export const LIVE_RUN_BOARD_ENTRY: LiveRunBoardEntry = {

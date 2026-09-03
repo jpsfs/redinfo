@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Title } from 'react-admin';
+import { Link, Title } from 'react-admin';
 import {
   Alert,
   Box,
@@ -12,13 +12,15 @@ import {
   Divider,
   Paper,
   Stack,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import BadgeIcon from '@mui/icons-material/Badge';
-import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import GroupIcon from '@mui/icons-material/Group';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import { MyDutiesResponse, MyDuty } from '@redinfo/shared';
 import { apiFetch } from '../api';
 import { useT } from '../i18n/useT';
@@ -58,8 +60,21 @@ const DutyDate = ({ date }: { date: string }) => {
 
 const DutyCard = ({ duty }: { duty: MyDuty }) => {
   const t = useT();
+  const crewNames = duty.crewmates
+    .map((crewmate) => `${crewmate.firstName} ${crewmate.lastName}`)
+    .join(', ');
+
   return (
-    <Paper variant="outlined" sx={{ display: 'flex', alignItems: 'center', gap: 2.5, p: 2 }}>
+    <Paper
+      variant="outlined"
+      sx={{
+        display: 'flex',
+        alignItems: 'center',
+        gap: 2.5,
+        p: 2,
+        ...(duty.quorumMet === false && { borderColor: 'warning.main', borderWidth: 1.5 }),
+      }}
+    >
       <DutyDate date={duty.date} />
       <Box sx={{ flex: 1, minWidth: 0 }}>
         <Stack direction="row" spacing={1} alignItems="center">
@@ -79,21 +94,38 @@ const DutyCard = ({ duty }: { duty: MyDuty }) => {
             />
           )}
           <WindowCategoryChip category={duty.windowCategory} />
-          <Typography variant="body2" color="text.secondary">
+          <Typography
+            component={Link}
+            to={`/schedules/${duty.scheduleId}/show`}
+            variant="body2"
+            sx={{
+              color: 'primary.main',
+              textDecoration: 'none',
+              fontWeight: 500,
+              '&:hover': { textDecoration: 'underline' },
+            }}
+          >
             {duty.windowLabel}
           </Typography>
         </Stack>
+        {crewNames && (
+          <Stack direction="row" spacing={0.5} alignItems="center" sx={{ mt: 0.75 }}>
+            <GroupIcon fontSize="small" sx={{ color: 'text.secondary' }} />
+            <Typography variant="caption" color="text.secondary">
+              {t('myDuties.withOthers', { names: crewNames })}
+            </Typography>
+          </Stack>
+        )}
       </Box>
-      {duty.vehiclesNeeded > 0 && (
-        <Chip
-          size="small"
-          variant="outlined"
-          icon={<DirectionsCarIcon fontSize="small" />}
-          label={t(
-            duty.vehiclesNeeded === 1 ? 'myDuties.vehicleCountOne' : 'myDuties.vehicleCountMany',
-            { count: duty.vehiclesNeeded },
-          )}
-        />
+      {duty.quorumMet === false && (
+        <Tooltip title={t('myDuties.quorumWarningDetail')}>
+          <Chip
+            size="small"
+            color="warning"
+            icon={<WarningAmberIcon fontSize="small" />}
+            label={t('myDuties.quorumWarning')}
+          />
+        </Tooltip>
       )}
     </Paper>
   );

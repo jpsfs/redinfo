@@ -21,6 +21,7 @@ import {
   holdsCertification,
   MyDutiesResponse,
   MyDuty,
+  MyDutyCrewmate,
   Schedule,
   ScheduleAssignment,
   ScheduleBoardResponse,
@@ -38,6 +39,7 @@ import {
   requiredSlotsForShift,
   scheduleFillStats,
   shiftGaps,
+  shiftMandatoryRolesFilled,
   shiftsOverlap,
   validateDayShifts,
 } from '@redinfo/shared';
@@ -743,7 +745,7 @@ export class SchedulesService {
   async getMyDuties(userId: string, today = toIsoDate(new Date())): Promise<MyDutiesResponse> {
     const rows = await this.prisma.scheduleAssignment.findMany({
       where: { userId, schedule: { status: ScheduleStatus.PUBLISHED } },
-      include: { role: true, schedule: { include: { window: true } } },
+      include: { role: true, schedule: { include: { window: { include: { roles: true } } } } },
       orderBy: [{ date: 'asc' }, { slot: 'asc' }],
     });
     if (rows.length === 0) return { upcoming: [], past: [] };
@@ -769,6 +771,7 @@ export class SchedulesService {
     }
 
     const overridesBySchedule = await this.loadOverrideTimesByScheduleId([...schedules.keys()]);
+    const crewByShift = await this.loadCrewByShift([...schedules.keys()]);
 
     const shifts = new Map<string, ShiftDefinition>();
     for (const schedule of schedules.values()) {
@@ -799,6 +802,15 @@ export class SchedulesService {
       // times for it would be worse than leaving it out.
       if (!shift) continue;
 
+      const crew = crewByShift.get(`${row.scheduleId}#${shiftKey(date, row.slot)}`) ?? [];
+      const quorumMet = shiftMandatoryRolesFilled({ roles: window.roles, assignments: crew });
+
+      // A past shift that never reached quorum most likely did not run at
+      // all — showing it among "past duties" would read as something that
+      // happened when it did not. An upcoming one still might, so it stays,
+      // flagged instead (`quorumMet` on the duty).
+      if (date < today && !quorumMet) continue;
+
       const duty: MyDuty = {
         id: row.id,
         scheduleId: row.scheduleId,
@@ -815,6 +827,14 @@ export class SchedulesService {
         label: shift.label,
         vehiclesNeeded: shift.vehiclesNeeded,
         roleName: row.role?.name ?? null,
+        crewmates: crew
+          .filter((assignment) => assignment.userId !== userId)
+          .map<MyDutyCrewmate>((assignment) => ({
+            firstName: assignment.user.firstName,
+            lastName: assignment.user.lastName,
+            roleName: assignment.role?.name ?? null,
+          })),
+        quorumMet,
       };
 
       if (date >= today) upcoming.push(duty);
@@ -824,6 +844,37 @@ export class SchedulesService {
     // Most recent first: the duty someone is looking back at is the last one.
     past.reverse();
     return { upcoming, past };
+  }
+
+  /**
+   * Everyone assigned to every shift of the given schedules, by `date#slot`.
+   *
+   * Fetched once per request rather than per duty: a person with several
+   * duties this week is on a handful of shifts, not one query each.
+   */
+  private async loadCrewByShift(scheduleIds: string[]) {
+    const map = new Map<
+      string,
+      Array<{
+        userId: string;
+        roleId?: string | null;
+        role: { name: string } | null;
+        user: { firstName: string; lastName: string };
+      }>
+    >();
+    if (scheduleIds.length === 0) return map;
+
+    const rows = await this.prisma.scheduleAssignment.findMany({
+      where: { scheduleId: { in: scheduleIds } },
+      include: { user: { select: { firstName: true, lastName: true } }, role: true },
+    });
+    for (const row of rows) {
+      const key = `${row.scheduleId}#${shiftKey(toIsoDate(row.date), row.slot)}`;
+      const bucket = map.get(key) ?? [];
+      bucket.push(row);
+      map.set(key, bucket);
+    }
+    return map;
   }
 
   // ── Internals ───────────────────────────────────────────────────────────────

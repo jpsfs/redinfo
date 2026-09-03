@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { AdminContext, testDataProvider } from 'react-admin';
 import polyglotI18nProvider from 'ra-i18n-polyglot';
+import { MemoryRouter } from 'react-router-dom';
 import userEvent from '@testing-library/user-event';
 import { AvailabilityWindowCategory } from '@redinfo/shared';
 import { messages } from '../i18n/i18nProvider';
@@ -28,9 +29,11 @@ const mockApiFetch = apiFetch as unknown as Mock;
 const i18nProvider = polyglotI18nProvider(messages, 'en');
 const renderPage = () =>
   render(
-    <AdminContext dataProvider={testDataProvider()} i18nProvider={i18nProvider}>
-      <MyDutiesPage />
-    </AdminContext>,
+    <MemoryRouter>
+      <AdminContext dataProvider={testDataProvider()} i18nProvider={i18nProvider}>
+        <MyDutiesPage />
+      </AdminContext>
+    </MemoryRouter>,
   );
 
 describe('MyDutiesPage', () => {
@@ -61,10 +64,40 @@ describe('MyDutiesPage', () => {
     expect(screen.getByText('Oct 2026')).toBeInTheDocument();
   });
 
-  it('says how many vehicles the shift crews', async () => {
+  it('lets you jump from a duty to the schedule it belongs to', async () => {
     renderPage();
 
-    expect(await screen.findByText('2 vehicles')).toBeInTheDocument();
+    const link = await screen.findByRole('link', { name: 'Emergency - October' });
+    expect(link).toHaveAttribute('href', `/schedules/${MY_DUTY.scheduleId}/show`);
+  });
+
+  it('names whoever else is on the same shift', async () => {
+    mockApiFetch.mockResolvedValue({
+      upcoming: [
+        { ...MY_DUTY, crewmates: [{ firstName: 'Bruno', lastName: 'Costa', roleName: 'Team Member' }] },
+      ],
+      past: [],
+    });
+    renderPage();
+
+    expect(await screen.findByText('With: Bruno Costa')).toBeInTheDocument();
+  });
+
+  it('flags a duty whose shift has not reached its minimum crew', async () => {
+    mockApiFetch.mockResolvedValue({
+      upcoming: [{ ...MY_DUTY, quorumMet: false }],
+      past: [],
+    });
+    renderPage();
+
+    expect(await screen.findByText('Understaffed')).toBeInTheDocument();
+  });
+
+  it('does not flag a fully-crewed duty', async () => {
+    renderPage();
+
+    expect(await screen.findByText('08:00–16:00')).toBeInTheDocument();
+    expect(screen.queryByText('Understaffed')).not.toBeInTheDocument();
   });
 
   it('shows a duty with no role at all, for a window that defines none', async () => {

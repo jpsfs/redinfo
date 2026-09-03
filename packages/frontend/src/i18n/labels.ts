@@ -1468,8 +1468,12 @@ const MESSAGES = {
     en: 'No duties scheduled yet. A coordinator will publish the next rota here.',
   },
   'myDuties.pastDuties': { pt: 'Serviços passados', en: 'Past duties' },
-  'myDuties.vehicleCountOne': { pt: '%{count} viatura', en: '%{count} vehicle' },
-  'myDuties.vehicleCountMany': { pt: '%{count} viaturas', en: '%{count} vehicles' },
+  'myDuties.withOthers': { pt: 'Com: %{names}', en: 'With: %{names}' },
+  'myDuties.quorumWarning': { pt: 'Por preencher', en: 'Understaffed' },
+  'myDuties.quorumWarningDetail': {
+    pt: 'Este turno ainda não tem o mínimo de pessoas necessário — pode não se realizar.',
+    en: "This shift hasn't reached its minimum crew yet — it may not run.",
+  },
 
   // ── Notification channels — shared across the notices/settings screens below ──
   'notificationChannel.IN_APP': { pt: 'Na aplicação', en: 'In-app' },
