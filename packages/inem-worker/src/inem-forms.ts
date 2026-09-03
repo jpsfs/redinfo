@@ -17,9 +17,16 @@
 
 export type InemPageKind = 'login' | 'otp' | 'assertion' | 'unknown';
 
-/** The FortiAuthenticator credential page — `id="login_form"`, same signature as the warm re-mint's `isInemLoginForm`. */
+/**
+ * The FortiAuthenticator credential page. `id="login_form"` alone is *not*
+ * enough: confirmed against production 2026-09-03, FortiAuthenticator reuses
+ * the same `login_form` id for the OTP step, so that marker matches both
+ * pages. The password input is what actually separates them — the credential
+ * page carries `username`/`password`/`captcha`, the OTP page replaces them
+ * with a hidden `username` plus `token_code`.
+ */
 export function isLoginForm(html: string): boolean {
-  return /id=["']login_form["']/i.test(html);
+  return /id=["']login_form["']/i.test(html) && /name=["']password["']/i.test(html);
 }
 
 /** The OTP page — identified by its `token_code` input, the one field name unique to this step. */
@@ -49,8 +56,11 @@ export function extractSamlAssertion(html: string): InemSamlAssertion | null {
 }
 
 export function detectPageKind(html: string): InemPageKind {
-  if (isLoginForm(html)) return 'login';
+  // OTP first: both pages share `id="login_form"` (see `isLoginForm`), so the
+  // narrower `token_code` signature has to win to keep a successful credential
+  // submit from being read back as "we landed on the login form again".
   if (isOtpForm(html)) return 'otp';
+  if (isLoginForm(html)) return 'login';
   if (extractSamlAssertion(html)) return 'assertion';
   return 'unknown';
 }

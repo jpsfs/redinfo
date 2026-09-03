@@ -12,12 +12,15 @@ const LOGIN_PAGE = `
 </body></html>
 `;
 
+// Shaped from the live page (captured against production 2026-09-03): the
+// OTP step reuses the credential page's `id="login_form"`, and drops the
+// `password`/`captcha` inputs in favour of a hidden `username` + `token_code`.
 const OTP_PAGE = `
 <html><body>
-  <form method="post" action="/saml-idp/portalpem/login/">
+  <form id="login_form" method="post" action="/saml-idp/portalpem/login/">
     <input type="hidden" name="csrfmiddlewaretoken" value="def456" />
     <input type="hidden" name="username" value="delegation" />
-    <input type="text" name="token_code" />
+    <input type="password" name="token_code" />
   </form>
 </body></html>
 `;
@@ -47,7 +50,7 @@ describe('isLoginForm', () => {
     expect(isLoginForm(LOGIN_PAGE)).toBe(true);
   });
 
-  it('does not mistake the OTP page for the login page', () => {
+  it('does not mistake the OTP page for the login page, despite the shared login_form id', () => {
     expect(isLoginForm(OTP_PAGE)).toBe(false);
   });
 });
@@ -93,5 +96,10 @@ describe('detectPageKind', () => {
 
   it('returns "unknown" for a page that matches none of the three shapes — e.g. the dashboard', () => {
     expect(detectPageKind(DASHBOARD_PAGE)).toBe('unknown');
+  });
+
+  it('reads the OTP page as "otp" even though it carries the credential page\'s login_form id', () => {
+    expect(OTP_PAGE).toContain('id="login_form"');
+    expect(detectPageKind(OTP_PAGE)).toBe('otp');
   });
 });

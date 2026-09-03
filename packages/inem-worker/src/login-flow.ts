@@ -34,7 +34,7 @@ export async function runColdLogin(job: INEMLoginJob, config: WorkerConfig, log:
     log.info('navigating to /saml/signin');
     await page.goto(`${config.inemBaseUrl}/saml/signin`, { waitUntil: 'domcontentloaded' });
 
-    let kind = detectPageKind(await page.content());
+    let kind = detectPageKind(await readSettledContent(page));
     if (kind !== 'login') {
       return {
         ok: false,
@@ -46,10 +46,8 @@ export async function runColdLogin(job: INEMLoginJob, config: WorkerConfig, log:
     log.info('submitting credentials');
     await page.fill('input[name="username"]', config.username);
     await page.fill('input[name="password"]', config.password);
-    await submitCurrentForm(page);
-    await page.waitForLoadState('domcontentloaded');
 
-    kind = detectPageKind(await page.content());
+    kind = detectPageKind(await submitFormAndReadSettledContent(page));
     if (kind === 'login') {
       // Landing back on the same form after a credential submit is the one
       // scenario #215's brief calls out by name — the captcha input is
@@ -82,7 +80,11 @@ export async function runColdLogin(job: INEMLoginJob, config: WorkerConfig, log:
 
     log.info('submitting the OTP');
     await page.fill('input[name="token_code"]', code);
+    const submitted = page
+      .waitForNavigation({ waitUntil: 'domcontentloaded', timeout: NAVIGATION_TIMEOUT_MS })
+      .catch(() => null);
     await submitCurrentForm(page);
+    await submitted;
     // The assertion page auto-submits itself to /saml/acs via its own
     // onload script — Playwright's real browser runs that JS, so this just
     // waits out the whole redirect chain rather than driving it by hand.
@@ -142,6 +144,59 @@ async function resolveUserAgent(browser: Browser, override?: string): Promise<st
 /** Submits the page's first form via the DOM rather than clicking a guessed submit-button selector — the same auto-submit idiom the assertion page itself uses. */
 async function submitCurrentForm(page: Page): Promise<void> {
   await page.locator('form').first().evaluate((form) => (form as HTMLFormElement).submit());
+}
+
+/** How long to give a form submit to commit its navigation and settle into a readable document. */
+const NAVIGATION_TIMEOUT_MS = 30_000;
+
+/** Backoff between `page.content()` attempts while a navigation is still in flight. */
+const CONTENT_RETRY_INTERVAL_MS = 250;
+
+/**
+ * Submits the current form and returns the *resulting* page's HTML.
+ *
+ * `form.submit()` kicks off a navigation asynchronously, so neither half of
+ * the obvious `submit(); waitForLoadState()` pairing is safe on its own:
+ * `waitForLoadState` resolves immediately against the document that is still
+ * on screen (the navigation hasn't committed yet), and the `page.content()`
+ * that follows then races the commit — which is exactly how production failed
+ * with "Unable to retrieve content because the page is navigating and
+ * changing the content", confirmed against the live portal 2026-09-03.
+ * Arming the navigation wait *before* submitting closes that gap.
+ */
+export async function submitFormAndReadSettledContent(page: Page): Promise<string> {
+  const navigated = page
+    .waitForNavigation({ waitUntil: 'domcontentloaded', timeout: NAVIGATION_TIMEOUT_MS })
+    .catch(() => null);
+  await submitCurrentForm(page);
+  await navigated;
+  return readSettledContent(page);
+}
+
+/**
+ * Reads `page.content()` once the document has stopped moving under it,
+ * retrying while Playwright reports a navigation in flight. FortiAuthenticator
+ * can chain more than one navigation per submit, so a single `waitForNavigation`
+ * isn't sufficient by itself — this rides out the rest of the chain.
+ */
+export async function readSettledContent(page: Page): Promise<string> {
+  const deadline = Date.now() + NAVIGATION_TIMEOUT_MS;
+  let lastError: unknown;
+  while (Date.now() < deadline) {
+    try {
+      await page.waitForLoadState('domcontentloaded', { timeout: deadline - Date.now() });
+      return await page.content();
+    } catch (err) {
+      if (!isNavigationInFlightError(err)) throw err;
+      lastError = err;
+      await page.waitForTimeout(CONTENT_RETRY_INTERVAL_MS);
+    }
+  }
+  throw lastError ?? new Error('page never settled into a readable document');
+}
+
+function isNavigationInFlightError(err: unknown): boolean {
+  return err instanceof Error && /navigating and changing the content/i.test(err.message);
 }
 
 /**
