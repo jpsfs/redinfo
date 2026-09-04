@@ -2828,6 +2828,9 @@ export const MAX_LOCALITY_QUERY_LENGTH = 80;
 /** How many localities a search returns — a phone list, not a data dump. */
 export const LOCALITY_SEARCH_LIMIT = 25;
 
+/** How many localities the picker offers, ranked by distance from the origin. */
+export const LOCALITY_PICKER_LIMIT = 10;
+
 /**
  * Great-circle distance in kilometres.
  *
@@ -3237,6 +3240,8 @@ export const MIN_VICTIM_AGE = 0;
 export const MAX_VICTIM_AGE = 130;
 export const MAX_OPERATIONAL_REPORT_LENGTH = 20000;
 export const MAX_EXTERNAL_REFERENCE_LENGTH = 80;
+/** The "número de episódio de urgência" a Portuguese ER issues on admission. */
+export const MAX_HOSPITAL_EPISODE_NUMBER_LENGTH = 32;
 /** Whole kilometres; a guard against a fat-fingered odometer reading. */
 export const MAX_VEHICLE_KILOMETRES = 5000;
 export const MAX_CREW_PER_REPORT = 20;
@@ -3332,6 +3337,12 @@ export interface EventReportVictim {
   destinationKind: VictimDestinationKind;
   destinationHospitalId?: string | null;
   destinationHospital?: Pick<Hospital, 'id' | 'name'> | null;
+  /**
+   * The "número de episódio de urgência" the ER issues on admission, written
+   * down by the crew. Set only when `destinationKind` is HOSPITAL, and only
+   * meaningful when the report carries an external (CODU) reference.
+   */
+  hospitalEpisodeNumber?: string | null;
 }
 
 /**
@@ -3444,9 +3455,10 @@ export interface VitalRange {
 /**
  * Every vital sign a set of observations may carry.
  *
- * The five the product owner named, plus SpO₂, Glasgow and pain score — the
- * other three the *Verbete*'s assessment grid carries, and cheap to collect on
- * the same screen.
+ * The five the product owner named, plus SpO₂ and pain score — the other two
+ * the *Verbete*'s assessment grid carries, and cheap to collect on the same
+ * screen. AVDS (see `AvdsLevel` below) is level-of-consciousness too, but is
+ * an enum rather than a number, so it is not a `VitalKey`.
  */
 export const VITALS_RANGES = {
   spo2: { min: 0, max: 100, unit: '%', decimals: 0 },
@@ -3457,7 +3469,6 @@ export const VITALS_RANGES = {
   diastolic: { min: 0, max: 300, unit: 'mmHg', decimals: 0 },
   bloodGlucose: { min: 0, max: 1000, unit: 'mg/dL', decimals: 0 },
   temperature: { min: 20, max: 45, unit: '°C', decimals: 1 },
-  glasgow: { min: 3, max: 15, unit: '', decimals: 0 },
   painScore: { min: 0, max: 10, unit: '', decimals: 0 },
 } as const satisfies Record<string, VitalRange>;
 
@@ -3481,7 +3492,6 @@ export const VITALS_PLAUSIBLE: Record<VitalKey, { min: number; max: number }> = 
   diastolic: { min: 50, max: 100 },
   bloodGlucose: { min: 70, max: 180 },
   temperature: { min: 35.5, max: 37.5 },
-  glasgow: { min: 15, max: 15 },
   painScore: { min: 0, max: 3 },
 };
 
@@ -3504,6 +3514,22 @@ export const MAX_ASSESSMENT_POSITION_LENGTH = 120;
 export const MAX_ASSESSMENTS_PER_REPORT = 12;
 
 /**
+ * Level of consciousness on the Portuguese AVDS scale — the four-point scale
+ * INEM/Verbete crews actually use, in place of the Glasgow Coma Scale: **A**lerta,
+ * resposta a estímulos **V**erbais, resposta a estímulos **D**olorosos, **S**em
+ * resposta. An enum rather than a number, so it cannot live in `VITALS_RANGES`.
+ */
+export enum AvdsLevel {
+  A = 'A',
+  V = 'V',
+  D = 'D',
+  S = 'S',
+}
+
+/** Declaration order, which is the order the assessment screen offers them in. */
+export const AVDS_LEVELS = Object.values(AvdsLevel);
+
+/**
  * One set of observations, taken at one moment.
  *
  * A list rather than columns on the report because a set of vitals is something
@@ -3522,6 +3548,8 @@ export interface AssessmentInput extends Partial<Record<VitalKey, number | null>
    * sibling tables is how a wrong ORDER BY gets written.
    */
   bodyPosition?: string | null;
+  /** Level of consciousness on the AVDS scale, taken at the same moment as the vitals. */
+  avds?: AvdsLevel | null;
 }
 
 export interface EventReportAssessment extends AssessmentInput {
@@ -3720,6 +3748,12 @@ export interface EventReportVictimInput {
   destinationKind?: VictimDestinationKind;
   /** Required when `destinationKind` is HOSPITAL, refused otherwise. */
   destinationHospitalId?: string | null;
+  /**
+   * The "número de episódio de urgência" the ER issues on admission, written
+   * down by the crew. Set only when `destinationKind` is HOSPITAL, and only
+   * meaningful when the report carries an external (CODU) reference.
+   */
+  hospitalEpisodeNumber?: string | null;
 }
 
 export interface EventReportInemSupportUnitInput {
@@ -3880,6 +3914,9 @@ export type EventReportProblemCode =
   | 'DESTINATION_HOSPITAL_REQUIRED'
   | 'DESTINATION_HOSPITAL_NOT_ALLOWED'
   | 'DESTINATION_NOT_FOR_TYPE'
+  | 'HOSPITAL_EPISODE_NOT_ALLOWED'
+  | 'HOSPITAL_EPISODE_REQUIRES_REFERENCE'
+  | 'HOSPITAL_EPISODE_TOO_LONG'
   // ── INEM support units ──
   | 'INEM_UNITS_NOT_A_LIST'
   | 'INEM_UNITS_NOT_FOR_TYPE'
@@ -3904,6 +3941,7 @@ export type EventReportProblemCode =
   | 'VITAL_NOT_WHOLE'
   | 'DIASTOLIC_ABOVE_SYSTOLIC'
   | 'ASSESSMENT_POSITION_TOO_LONG'
+  | 'AVDS_INVALID'
   // ── Live runs ──
   | 'LIVE_RUN_MISSING_ID'
   | 'LIVE_RUN_INVALID_REVISION'
@@ -4055,7 +4093,7 @@ export function validateEventReport(input: EventReportInput): EventReportProblem
   const materialsProblem = validateMaterials(input.materials, input.vehicles);
   if (materialsProblem) return materialsProblem;
 
-  const victimsProblem = validateVictims(input.victims, rules);
+  const victimsProblem = validateVictims(input.victims, rules, input.externalReference);
   if (victimsProblem) return victimsProblem;
 
   const inemUnitsProblem = validateInemSupportUnits(input.inemSupportUnits, rules);
@@ -4234,11 +4272,23 @@ export function validateAssessment(
     return value !== null && value !== undefined;
   });
 
-  if (measured.length === 0 && isBlank(assessment.bodyPosition)) {
+  if (
+    measured.length === 0 &&
+    isBlank(assessment.bodyPosition) &&
+    (assessment.avds === null || assessment.avds === undefined)
+  ) {
     return problem(
       'ASSESSMENT_EMPTY',
       'A set of observations with nothing measured in it is not an observation.',
     );
+  }
+
+  if (
+    assessment.avds !== null &&
+    assessment.avds !== undefined &&
+    !AVDS_LEVELS.includes(assessment.avds)
+  ) {
+    return problem('AVDS_INVALID', `Unknown AVDS level "${assessment.avds}".`);
   }
 
   for (const key of measured) {
@@ -4412,6 +4462,7 @@ function validateMaterials(
 function validateVictims(
   victims: EventReportVictimInput[],
   rules: EventReportTypeRules,
+  externalReference: string | null | undefined,
 ): EventReportProblem | null {
   if (!Array.isArray(victims)) {
     return problem('VICTIMS_NOT_A_LIST', 'The victims are missing.');
@@ -4424,6 +4475,7 @@ function validateVictims(
         : `A report may list at most ${rules.maxVictims} victims (got ${victims.length}).`,
     );
   }
+  const hasReference = !isBlank(externalReference);
   for (const victim of victims) {
     if (!GENDERS.includes(victim.gender)) {
       return problem('VICTIM_GENDER_MISSING', 'Every victim needs a gender.');
@@ -4440,6 +4492,23 @@ function validateVictims(
     }
     const destinationProblem = validateVictimDestination(victim, rules);
     if (destinationProblem) return destinationProblem;
+    // The gate is the reference, not the report type: a victim's hospital
+    // episode number is only ever legible alongside the CODU/external
+    // reference that ties the report back to the same call.
+    if (!hasReference && !isBlank(victim.hospitalEpisodeNumber)) {
+      return problem(
+        'HOSPITAL_EPISODE_REQUIRES_REFERENCE',
+        'A hospital episode number needs the report to carry an external reference.',
+      );
+    }
+    if (
+      (victim.hospitalEpisodeNumber ?? '').length > MAX_HOSPITAL_EPISODE_NUMBER_LENGTH
+    ) {
+      return problem(
+        'HOSPITAL_EPISODE_TOO_LONG',
+        `The hospital episode number may be at most ${MAX_HOSPITAL_EPISODE_NUMBER_LENGTH} characters.`,
+      );
+    }
   }
   return null;
 }
@@ -4454,7 +4523,10 @@ function validateVictims(
  * sites in the whole repo.
  */
 export function validateVictimDestination(
-  victim: Pick<EventReportVictimInput, 'destinationKind' | 'destinationHospitalId'>,
+  victim: Pick<
+    EventReportVictimInput,
+    'destinationKind' | 'destinationHospitalId' | 'hospitalEpisodeNumber'
+  >,
   rules: EventReportTypeRules,
 ): EventReportProblem | null {
   if (!Object.values(VictimDestinationKind).includes(victim.destinationKind as VictimDestinationKind)) {
@@ -4474,6 +4546,15 @@ export function validateVictimDestination(
     return problem(
       'DESTINATION_HOSPITAL_NOT_ALLOWED',
       'A victim who was not transported cannot have a hospital.',
+    );
+  }
+  if (
+    victim.destinationKind !== VictimDestinationKind.HOSPITAL &&
+    !isBlank(victim.hospitalEpisodeNumber)
+  ) {
+    return problem(
+      'HOSPITAL_EPISODE_NOT_ALLOWED',
+      'A victim who was not taken to a hospital cannot have a hospital episode number.',
     );
   }
   if (victim.destinationKind === VictimDestinationKind.TREATED_ON_SCENE && !rules.allowsTreatedOnScene) {
@@ -4891,6 +4972,11 @@ export interface LiveRunInput {
 
   destinationKind?: VictimDestinationKind | null;
   destinationHospitalId?: string | null;
+  /**
+   * The "número de episódio de urgência" the ER issues on admission, written
+   * down by the crew at the hospital.
+   */
+  hospitalEpisodeNumber?: string | null;
 
   /** Purged on submission, or 48h after close — whichever comes first. */
   identity?: LiveRunIdentity | null;
@@ -5035,6 +5121,7 @@ export function validateLiveRun(input: LiveRunInput): EventReportProblem | null 
       {
         destinationKind: input.destinationKind as VictimDestinationKind,
         destinationHospitalId: input.destinationHospitalId ?? null,
+        hospitalEpisodeNumber: input.hospitalEpisodeNumber ?? null,
       },
       EVENT_REPORT_TYPE_RULES[EventReportType.EMERGENCY],
     );
@@ -5296,6 +5383,7 @@ export function liveRunToEventReportInput(
               run.destinationKind === VictimDestinationKind.HOSPITAL
                 ? run.destinationHospitalId ?? null
                 : null,
+            hospitalEpisodeNumber: run.hospitalEpisodeNumber ?? null,
           },
         ]
       : [],

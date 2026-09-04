@@ -962,6 +962,16 @@ enum InemSupportUnitType {
   UMIP
 }
 
+/// Level of consciousness on the Portuguese AVDS scale, replacing the Glasgow
+/// Coma Scale: A = Alerta, V = resposta a estímulos Verbais, D = resposta a
+/// estímulos Dolorosos, S = Sem resposta.
+enum AvdsLevel {
+  A
+  V
+  D
+  S
+}
+
 /// A completed account of one activity: an emergency, a local-support event, or
 /// a SALOP support job.
 ///
@@ -1142,8 +1152,9 @@ model EventReportAssessment {
   respiratoryRate Int?
   /// %
   spo2            Int?
-  /// 3–15
-  glasgow         Int?
+  /// A = Alerta, V = resposta a estímulos Verbais, D = resposta a estímulos
+  /// Dolorosos, S = Sem resposta.
+  avds            AvdsLevel?
   /// 0–10
   painScore       Int?
 
@@ -1269,6 +1280,10 @@ model EventReportVictim {
   /// the migration enforces both directions.
   destinationHospitalId String?
   destinationHospital   Hospital?             @relation(fields: [destinationHospitalId], references: [id], onDelete: Restrict)
+  /// The "número de episódio de urgência" the ER issues on admission, written
+  /// down by the crew. Only allowed alongside a HOSPITAL destination — see
+  /// `EventReportVictim_episode_requires_hospital`.
+  hospitalEpisodeNumber String?
 
   @@unique([reportId, position])
   @@index([reportId])
@@ -1415,6 +1430,9 @@ model LiveRun {
   destinationKind       VictimDestinationKind?
   destinationHospitalId String?
   destinationHospital   Hospital?              @relation(fields: [destinationHospitalId], references: [id], onDelete: Restrict)
+  /// The "número de episódio de urgência" the ER issues on admission, written
+  /// down by the crew at the hospital.
+  hospitalEpisodeNumber String?
 
   /// Vitals, CHAMU, ABCDE and the narrative in progress. JSON because this is a
   /// *mirror, not a model*: the server never edits a field of it, it replaces

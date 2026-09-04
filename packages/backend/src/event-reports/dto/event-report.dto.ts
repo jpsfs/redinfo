@@ -18,6 +18,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import {
+  AvdsLevel,
   EventLocationType,
   EventReportType,
   Gender,
@@ -29,6 +30,7 @@ import {
   MAX_CHAMU_LENGTH,
   MAX_CREW_PER_REPORT,
   MAX_EXTERNAL_REFERENCE_LENGTH,
+  MAX_HOSPITAL_EPISODE_NUMBER_LENGTH,
   MAX_INEM_SUPPORT_UNITS_PER_TYPE,
   MAX_MATERIALS_PER_REPORT,
   MAX_OPERATIONAL_REPORT_LENGTH,
@@ -132,6 +134,15 @@ export class EventReportVictimDto {
   @IsOptional()
   @IsString()
   destinationHospitalId?: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'The "número de episódio de urgência" the ER issued on admission.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(MAX_HOSPITAL_EPISODE_NUMBER_LENGTH)
+  hospitalEpisodeNumber?: string | null;
 }
 
 export class EventReportInemSupportUnitDto {
@@ -203,10 +214,10 @@ export class EventReportAssessmentDto {
   @IsNumber()
   temperature?: number | null;
 
-  @ApiPropertyOptional({ example: 15, nullable: true })
+  @ApiPropertyOptional({ enum: AvdsLevel, nullable: true })
   @IsOptional()
-  @IsNumber()
-  glasgow?: number | null;
+  @IsEnum(AvdsLevel)
+  avds?: AvdsLevel | null;
 
   @ApiPropertyOptional({ example: 4, nullable: true })
   @IsOptional()

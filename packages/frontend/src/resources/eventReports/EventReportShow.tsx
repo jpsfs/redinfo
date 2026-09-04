@@ -41,6 +41,7 @@ import {
   Translate,
   abcdeBandLabel,
   abcdeStatusLabel,
+  avdsLevelLabel,
   chamuLabel,
   destinationLabel,
   genderLabel,
@@ -410,6 +411,13 @@ export const EventReportShow = () => {
                         destinationLabel(t, victim.destinationKind)}
                     </Typography>
                   </Stack>
+                  {victim.hospitalEpisodeNumber && (
+                    <Chip
+                      size="small"
+                      label={`${t('field.hospitalEpisodeNumber')}: ${victim.hospitalEpisodeNumber}`}
+                      sx={{ fontVariantNumeric: 'tabular-nums' }}
+                    />
+                  )}
                 </Stack>
               ))}
             </Stack>
@@ -580,6 +588,18 @@ const ClinicalCard = ({ report }: { report: EventReport }) => {
                     ))}
                   </tr>
                 ))}
+                {assessments.some((assessment) => assessment.avds) && (
+                  <tr>
+                    <th scope="row">{t('vital.avds')}</th>
+                    {assessments.map((assessment) => (
+                      <td key={assessment.id}>
+                        {assessment.avds
+                          ? `${assessment.avds} — ${avdsLevelLabel(t, assessment.avds)}`
+                          : '—'}
+                      </td>
+                    ))}
+                  </tr>
+                )}
                 {assessments.some((assessment) => assessment.bodyPosition) && (
                   <tr>
                     <th scope="row">{t('field.bodyPosition')}</th>

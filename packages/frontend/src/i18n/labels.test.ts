@@ -280,6 +280,10 @@ describe('every enum value has a label', () => {
     'LIVE_RUN_INVALID_SNS',
     'LIVE_RUN_COMPLAINT_TOO_LONG',
     'LIVE_RUN_NOT_CLOSED',
+    'AVDS_INVALID',
+    'HOSPITAL_EPISODE_NOT_ALLOWED',
+    'HOSPITAL_EPISODE_REQUIRES_REFERENCE',
+    'HOSPITAL_EPISODE_TOO_LONG',
   ] as const satisfies readonly EventReportProblemCode[];
   type MissingProblemCodes = Exclude<EventReportProblemCode, (typeof ALL_PROBLEM_CODES)[number]>;
   // If this line fails to compile, `MissingProblemCodes` names the gap.

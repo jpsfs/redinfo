@@ -26,6 +26,7 @@ import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import EventIcon from '@mui/icons-material/Event';
 import {
   ABCDE_BANDS,
+  AbcdeBand,
   AbcdeFindings,
   AssessmentInput,
   CHAMU_FIELDS,
@@ -44,6 +45,7 @@ import {
   InemSupportUnitType,
   Locale,
   Locality,
+  MAX_HOSPITAL_EPISODE_NUMBER_LENGTH,
   MAX_INEM_SUPPORT_UNITS_PER_TYPE,
   MAX_VICTIM_AGE,
   MIN_VICTIM_AGE,
@@ -71,7 +73,7 @@ import {
 } from '../../i18n/labels';
 import { useT } from '../../i18n/useT';
 import { NowButton } from './NowButton';
-import { AbcdeStatusPicker, VitalControl } from '../liveRuns/VitalField';
+import { AbcdeStatusPicker, AvdsPicker, VitalControl } from '../liveRuns/VitalField';
 import { VITAL_FIELDS } from '../liveRuns/vitalsFields';
 import { StepId, composeInstant, minutesBetween, reattachOrphanedMaterials, timeOfDay } from './reportDraft';
 import { ReportLookups, personName, vehicleLabel } from './useReportLookups';
@@ -673,6 +675,7 @@ const VictimEditor = ({
   locality,
   type,
   hospitalName,
+  externalReference,
   onChange,
   onRemove,
 }: {
@@ -680,6 +683,8 @@ const VictimEditor = ({
   locality: Locality | null;
   type: EventReportType;
   hospitalName?: string;
+  /** The report's own CODU reference — the episode field needs one to mean anything. */
+  externalReference?: string | null;
   onChange: (changes: Partial<EventReportInput['victims'][number]>) => void;
   onRemove?: () => void;
 }) => {
@@ -782,6 +787,29 @@ const VictimEditor = ({
             </Box>
           </Button>
         </Box>
+
+        {/*
+          Only shown when the backend's own rules would actually accept it —
+          HOSPITAL destination and a non-blank CODU reference. An always-visible
+          field would let the crew fill it in and then fail to save with an
+          error they cannot explain from this screen.
+        */}
+        {victim.destinationKind === VictimDestinationKind.HOSPITAL &&
+          (externalReference ?? '').trim() !== '' && (
+            <Box>
+              <SectionLabel>{t('field.hospitalEpisodeNumber')}</SectionLabel>
+              <TextField
+                fullWidth
+                value={victim.hospitalEpisodeNumber ?? ''}
+                onChange={(event) => onChange({ hospitalEpisodeNumber: event.target.value })}
+                inputProps={{
+                  inputMode: 'numeric',
+                  maxLength: MAX_HOSPITAL_EPISODE_NUMBER_LENGTH,
+                  'aria-label': t('field.hospitalEpisodeNumber'),
+                }}
+              />
+            </Box>
+          )}
       </Stack>
 
       <HospitalPicker
@@ -850,6 +878,7 @@ export const VictimsSection = ({ draft, patch, lookups }: SectionProps) => {
             locality={lookups.locality}
             type={draft.type}
             hospitalName={hospitalName(victim.destinationHospitalId)}
+            externalReference={draft.externalReference}
             onChange={(changes) => setVictim(0, changes)}
           />
         ) : (
@@ -889,6 +918,7 @@ export const VictimsSection = ({ draft, patch, lookups }: SectionProps) => {
           locality={lookups.locality}
           type={draft.type}
           hospitalName={hospitalName(victim.destinationHospitalId)}
+          externalReference={draft.externalReference}
           onChange={(changes) => setVictim(index, changes)}
           onRemove={() =>
             patch({ victims: draft.victims.filter((_, at) => at !== index) })
@@ -1517,13 +1547,33 @@ export const ClinicalSection = ({ draft, patch }: SectionProps) => {
                   />
                 </Stack>
 
-                {VITAL_FIELDS.map((field) => (
-                  <VitalControl
-                    key={field.key}
-                    field={field}
-                    assessment={current}
-                    onChange={(changes) => setAssessment(index, changes)}
-                  />
+                {ABCDE_BANDS.map((band) => (
+                  <Box key={band}>
+                    {/*
+                      AVDS is band D's level-of-consciousness, same as it was
+                      when Glasgow held this spot — an enum, not a `VitalKey`,
+                      so it is not part of `VITAL_FIELDS` and renders on its
+                      own here, above the rest of band D's vitals.
+                    */}
+                    {band === AbcdeBand.D && (
+                      <Box sx={{ mb: 2 }}>
+                        <AvdsPicker
+                          value={current.avds ?? null}
+                          onChange={(next) => setAssessment(index, { avds: next })}
+                        />
+                      </Box>
+                    )}
+                    <Stack spacing={2}>
+                      {VITAL_FIELDS.filter((field) => field.band === band).map((field) => (
+                        <VitalControl
+                          key={field.key}
+                          field={field}
+                          assessment={current}
+                          onChange={(changes) => setAssessment(index, changes)}
+                        />
+                      ))}
+                    </Stack>
+                  </Box>
                 ))}
 
                 <TextField

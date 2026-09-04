@@ -56,6 +56,14 @@ const AMBULANCE = {
   vehicleType: 'EMERGENCY',
 };
 
+/** The other half of the fleet, which a live emergency must never dispatch. */
+const VAN = {
+  id: 'veh-2',
+  licensePlate: 'BB-34-CD',
+  numeroCauda: 'Tpt. 02',
+  vehicleType: 'TRANSPORT',
+};
+
 const HOSPITAL = {
   id: 'hosp-braga',
   name: 'Hospital de Braga',
@@ -128,7 +136,9 @@ function respondWith(overrides: Record<string, unknown> = {}) {
     if (path.startsWith('/event-reports/crew-suggestion')) {
       return Promise.resolve({ suggested: null, recent: [] });
     }
-    if (path.startsWith('/vehicles')) return Promise.resolve({ data: [AMBULANCE] });
+    if (path.startsWith('/vehicles')) {
+      return Promise.resolve({ data: (overrides.vehicles as unknown[]) ?? [AMBULANCE] });
+    }
     if (path.startsWith('/hospitals/picker')) {
       return Promise.resolve((overrides.hospitals as unknown[]) ?? []);
     }
@@ -159,6 +169,21 @@ const renderRun = (screenName: string) =>
   renderMobile(
     <Routes>
       <Route path="/live/:runId/:screen" element={<LiveRunPage />} />
+    </Routes>,
+    { route: `/live/${runId}/${screenName}` },
+  );
+
+/**
+ * The same shell, but with the two destinations a close can land on mounted —
+ * the page navigates away on finish, and a route that renders nothing would
+ * make "did it go to the right place" untestable.
+ */
+const renderRunWithExits = (screenName: string) =>
+  renderMobile(
+    <Routes>
+      <Route path="/live/:runId/:screen" element={<LiveRunPage />} />
+      <Route path="/event-reports/:id" element={<div>O RASCUNHO</div>} />
+      <Route path="/" element={<div>O INÍCIO</div>} />
     </Routes>,
     { route: `/live/${runId}/${screenName}` },
   );
@@ -216,6 +241,30 @@ describe('the bottom bar', () => {
     renderRun('scene');
 
     expect(await screen.findByRole('button', { name: 'SAÍDA DO LOCAL' })).toBeInTheDocument();
+  });
+});
+
+describe('the intake screen', () => {
+  /**
+   * A live run is a 112 call. Dispatching the transport van to one is not a
+   * thing that happens, so offering it is a way to lose seconds — or to file a
+   * report naming the wrong vehicle.
+   */
+  it('offers only emergency vehicles, never the transport fleet', async () => {
+    const user = userEvent.setup();
+    respondWith({ vehicles: [AMBULANCE, VAN] });
+    await seed();
+    renderRun('intake');
+
+    // The vehicle picker is the first of the screen's two autocompletes; the
+    // caption above it is a Typography, not a label, so there is nothing to
+    // query it by name.
+    const [vehicle] = await screen.findAllByRole('combobox');
+    await user.click(vehicle);
+
+    const options = await screen.findAllByRole('option');
+    expect(options.map((option) => option.textContent).join(' ')).toContain('Amb. 04');
+    expect(options.map((option) => option.textContent).join(' ')).not.toContain('Tpt. 02');
   });
 });
 
@@ -464,6 +513,34 @@ describe('the scene screen', () => {
     expect(screen.queryByText('Verbete de Socorro')).not.toBeInTheDocument();
   });
 
+  /**
+   * The age is taken on the call, at intake; the date of birth is asked for on
+   * scene. Landing the native date picker on 1959 instead of on today saves
+   * the crew scrolling sixty-seven years one-handed.
+   */
+  it('seeds the date of birth from the age already taken at intake', async () => {
+    await seed({ state: LiveRunState.ON_SCENE, victimAge: 67 });
+    renderRun('scene');
+
+    const expectedYear = new Date().getFullYear() - 67;
+    await waitFor(() =>
+      expect(screen.getByLabelText('Data de nascimento')).toHaveValue(
+        `${expectedYear}-01-01`,
+      ),
+    );
+  });
+
+  it('leaves a date of birth already recorded alone', async () => {
+    await seed({
+      state: LiveRunState.ON_SCENE,
+      victimAge: 67,
+      identity: { occurrenceAddress: ADDRESS, victimDateOfBirth: '1958-03-11' },
+    });
+    renderRun('scene');
+
+    expect(await screen.findByLabelText('Data de nascimento')).toHaveValue('1958-03-11');
+  });
+
   it('warns about an SNS number that is not nine digits, without blocking', async () => {
     const user = userEvent.setup();
     await seed({ state: LiveRunState.ON_SCENE });
@@ -507,12 +584,146 @@ describe('the closing screen', () => {
     expect(notes).toHaveValue('Tensão < 90 e pele fria.');
   });
 
+  /** A run stamped available, which is what puts the two exits on the bar. */
+  const readyToClose = () =>
+    seed({
+      state: LiveRunState.AT_HOSPITAL,
+      activationAt: '2026-08-22T20:14:00.000Z',
+      sceneArrivalAt: '2026-08-22T20:26:00.000Z',
+      availableAt: '2026-08-22T21:02:00.000Z',
+    });
+
+  /**
+   * Closing always leaves the same draft behind. The choice is only about
+   * where the crew goes next — and after a 3am call, "put the ambulance back
+   * in service and go home" is as legitimate an answer as "finish it now".
+   */
+  it('offers finishing into the report and finishing straight home', async () => {
+    await readyToClose();
+    renderRunWithExits('closing');
+
+    expect(
+      await screen.findByRole('button', { name: 'TERMINAR E ABRIR RELATÓRIO' }),
+    ).toBeEnabled();
+    expect(screen.getByRole('button', { name: 'GUARDAR E SAIR' })).toBeEnabled();
+  });
+
+  it('opens the draft it just created', async () => {
+    const user = userEvent.setup();
+    await readyToClose();
+    renderRunWithExits('closing');
+
+    await user.click(await screen.findByRole('button', { name: 'TERMINAR E ABRIR RELATÓRIO' }));
+
+    expect(await screen.findByText('O RASCUNHO')).toBeInTheDocument();
+  });
+
+  it('creates the same draft and goes home instead, when asked to', async () => {
+    const user = userEvent.setup();
+    await readyToClose();
+    renderRunWithExits('closing');
+
+    await user.click(await screen.findByRole('button', { name: 'GUARDAR E SAIR' }));
+
+    // The close still happened — the draft exists, the crew just did not follow it.
+    await waitFor(() =>
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        `/live-runs/${runId}/close`,
+        expect.objectContaining({ method: 'POST' }),
+      ),
+    );
+    expect(await screen.findByText('O INÍCIO')).toBeInTheDocument();
+  });
+
   it('names every unmarked time rather than leaving the row blank', async () => {
     await seed({ state: LiveRunState.AT_HOSPITAL, activationAt: '2026-08-22T20:14:00.000Z' });
     renderRun('closing');
 
     const chronology = (await screen.findByText('Cronologia')).closest('div')!;
     expect(within(chronology).getAllByText('não marcado').length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * Driven through `LiveRunPage` rather than mounting `HandoverSheet` on its own:
+ * the sheet reads a `LiveRunHandle` and the shell's lookups, and the harness
+ * that builds both already lives in this file. Testing it where the crew opens
+ * it also covers the button that opens it.
+ */
+describe('the hospital handover', () => {
+  const atHospital = () =>
+    seed({
+      state: LiveRunState.AT_HOSPITAL,
+      destinationKind: VictimDestinationKind.HOSPITAL,
+      identity: {
+        occurrenceAddress: ADDRESS,
+        victimName: 'Maria Fernandes',
+        victimSnsNumber: '123456789',
+      },
+      capture: {
+        assessments: [{ takenAt: '2026-08-22T20:31:00.000Z', spo2: 97 }],
+        chamuAllergies: 'Penicilina',
+      },
+    });
+
+  /**
+   * Opens the sheet and hands back its own scope. Scoped deliberately: the top
+   * bar carries the CODU number too, and an unscoped query would match it
+   * instead of the one being read out to the hospital.
+   */
+  const openSheet = async (user: ReturnType<typeof userEvent.setup>) => {
+    renderRun('closing');
+    await user.click(await screen.findByRole('button', { name: 'PASSAGEM AO HOSPITAL' }));
+    return within(await screen.findByRole('dialog'));
+  };
+
+  /**
+   * The three the front desk asks for, in the order they are asked for. The
+   * SNS number is grouped in threes because that is how it is read aloud.
+   */
+  it('leads with the CODU reference, the SNS number and the name', async () => {
+    const user = userEvent.setup();
+    await atHospital();
+    const sheet = await openSheet(user);
+
+    expect(sheet.getByText('2608 4471')).toBeInTheDocument();
+    expect(sheet.getByText('123 456 789')).toBeInTheDocument();
+    expect(sheet.getByText('Maria Fernandes')).toBeInTheDocument();
+  });
+
+  /** The one writable control in the sheet, and the reason it exists. */
+  it('takes the episode number the hospital hands back', async () => {
+    const user = userEvent.setup();
+    await atHospital();
+    const sheet = await openSheet(user);
+
+    const field = sheet.getByLabelText(/Nº de Episódio/);
+    await user.type(field, '4471902');
+
+    expect(field).toHaveValue('4471902');
+  });
+
+  it('keeps the episode number apart from the CODU number it must not be confused with', async () => {
+    const user = userEvent.setup();
+    await atHospital();
+    const sheet = await openSheet(user);
+
+    // Different controls entirely: one is read out, the other is typed into.
+    expect(sheet.getByText('2608 4471')).toBeInTheDocument();
+    expect(sheet.getByLabelText(/Nº de Episódio/)).toHaveValue('');
+  });
+
+  it('shows the clinical handover on its own tab', async () => {
+    const user = userEvent.setup();
+    await atHospital();
+    const sheet = await openSheet(user);
+
+    await user.click(sheet.getByRole('tab', { name: 'Triagem' }));
+
+    expect(await sheet.findByText('Queda com traumatismo')).toBeInTheDocument();
+    // The value carries its unit in the same line, as it is read out.
+    expect(sheet.getByText(/97\s*%/)).toBeInTheDocument();
+    expect(sheet.getByText('Penicilina')).toBeInTheDocument();
   });
 });
 
@@ -628,6 +839,42 @@ describe('the assessment screen', () => {
     // Back on Scene: its own heading, with the identity fields on it.
     expect(await screen.findByLabelText('Nome da vítima')).toBeInTheDocument();
   });
+
+  /**
+   * The bug this screen was changed to fix.
+   *
+   * The bottom bar used to mirror the run's real next stamp here, so a crew
+   * filling in vitals on scene had "SAÍDA DO LOCAL" one mis-tap away — and
+   * tapping it moved the run out of ON_SCENE mid-assessment. The assessment
+   * is a branch off the walk, so the bar must offer no transition at all.
+   */
+  it('offers no way to advance the run while the crew is in the assessment', async () => {
+    await seed({
+      state: LiveRunState.ON_SCENE,
+      activationAt: '2026-08-22T20:14:00.000Z',
+      sceneArrivalAt: '2026-08-22T20:26:00.000Z',
+    });
+    renderRun('assessment');
+
+    expect(await screen.findAllByRole('button', { name: 'CONCLUIR AVALIAÇÃO' })).not
+      .toHaveLength(0);
+    expect(screen.queryByRole('button', { name: 'SAÍDA DO LOCAL' })).not.toBeInTheDocument();
+    // Nor the map handoff, which belongs to the screens that travel.
+    expect(screen.queryByRole('link', { name: /NAVEGAR/ })).not.toBeInTheDocument();
+  });
+
+  it('leaves the assessment by the button at the end of the form', async () => {
+    const user = userEvent.setup();
+    await seed({ state: LiveRunState.ON_SCENE });
+    renderRun('assessment');
+
+    // Two of them — one in thumb reach, one at the end of the column for a
+    // crew that has just finished typing. Either lands back on scene.
+    const done = await screen.findAllByRole('button', { name: 'CONCLUIR AVALIAÇÃO' });
+    await user.click(done[done.length - 1]);
+
+    expect(await screen.findByLabelText('Nome da vítima')).toBeInTheDocument();
+  });
 });
 
 describe('the assessment grid', () => {
@@ -673,7 +920,10 @@ describe('the assessment grid', () => {
     // A real SpO₂ of 71 has to be recordable — the whole point of writing a
     // vital down is that it is abnormal.
     expect(await screen.findByText(/Valor invulgar/)).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: 'SAÍDA DO LOCAL' })).toBeEnabled();
+    // Advisory, never a block: the way off this screen stays available.
+    screen
+      .getAllByRole('button', { name: 'CONCLUIR AVALIAÇÃO' })
+      .forEach((button) => expect(button).toBeEnabled());
   });
 
   it('refuses a value outside the possible range, in words', async () => {

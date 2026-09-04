@@ -236,9 +236,9 @@ describe('nextStampForScreen — the bottom bar when browsing history', () => {
     });
   });
 
-  it('always mirrors the real action on assessment, which has no stamp of its own', () => {
+  it('never offers a stamp on assessment — a mis-tap there must not advance the run', () => {
     const run = { ...emptyRun('run-1', NOW), state: LiveRunState.ON_SCENE };
-    expect(nextStampForScreen(run, 'assessment')).toEqual(nextStamp(run));
+    expect(nextStampForScreen(run, 'assessment')).toBeNull();
   });
 });
 

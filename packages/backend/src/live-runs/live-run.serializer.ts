@@ -140,6 +140,7 @@ export function serializeLiveRun(row: LiveRunRow, opened: OpenedIdentity = {}): 
     destinationKind: (row.destinationKind as VictimDestinationKind | null) ?? null,
     destinationHospitalId: row.destinationHospitalId,
     destinationHospital: row.destinationHospital,
+    hospitalEpisodeNumber: row.hospitalEpisodeNumber,
 
     capture: (row.capture as LiveRunCapture | null) ?? null,
     identity: opened.identity ?? null,

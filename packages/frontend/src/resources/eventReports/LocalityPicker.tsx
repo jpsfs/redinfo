@@ -20,10 +20,66 @@ import CloseIcon from '@mui/icons-material/Close';
 import SearchIcon from '@mui/icons-material/Search';
 import MyLocationIcon from '@mui/icons-material/MyLocation';
 import PlaceIcon from '@mui/icons-material/Place';
-import { Locality } from '@redinfo/shared';
+import { LOCALITY_PICKER_LIMIT, Locality } from '@redinfo/shared';
 import { apiFetch } from '../../api';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { useT } from '../../i18n/useT';
+
+/**
+ * A silent, session-cached GPS fix for ranking search results by distance.
+ *
+ * Deliberately separate from the picker's own "usar a minha localização"
+ * button below, which stays an explicit, visible action with its own
+ * `/localities/nearest` call. This one is opportunistic: asked for once, the
+ * moment the picker opens, with a short timeout so it never makes the crew
+ * wait on it — a denial or a timeout is silent, because the backend's
+ * fallback (ranking from the delegation base) is already the right answer and
+ * nothing here should nag about it.
+ *
+ * Cached at module scope, not in component state, so the second time the
+ * picker opens in the same session it is instant rather than a second
+ * permission-flavoured round trip.
+ */
+let sessionFixAttempted = false;
+let sessionFix: { lat: number; lon: number } | null = null;
+let sessionFixPromise: Promise<{ lat: number; lon: number } | null> | null = null;
+
+function getSessionFix(): Promise<{ lat: number; lon: number } | null> {
+  if (sessionFixAttempted) return Promise.resolve(sessionFix);
+  if (sessionFixPromise) return sessionFixPromise;
+
+  sessionFixPromise = new Promise((resolve) => {
+    if (!navigator.geolocation) {
+      sessionFixAttempted = true;
+      resolve(null);
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        sessionFix = { lat: position.coords.latitude, lon: position.coords.longitude };
+        sessionFixAttempted = true;
+        resolve(sessionFix);
+      },
+      () => {
+        sessionFixAttempted = true;
+        resolve(null);
+      },
+      { timeout: 4000 },
+    );
+  });
+  return sessionFixPromise;
+}
+
+/**
+ * Forgets the cached fix. For tests only — the same escape hatch, and for the
+ * same reason, as `resetLiveRunDb`: a cache that lives for the session is
+ * right in a browser and wrong between two test cases.
+ */
+export function resetLocalityFix(): void {
+  sessionFixAttempted = false;
+  sessionFix = null;
+  sessionFixPromise = null;
+}
 
 /** Localities the crew has picked before, most recent first. */
 const RECENT_KEY = 'redinfo.recentLocalities.v1';
@@ -81,18 +137,37 @@ export const LocalityPicker = ({
   const [results, setResults] = useState<Locality[] | null>(null);
   const [locating, setLocating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [fix, setFix] = useState<{ lat: number; lon: number } | null>(null);
   const recent = useMemo(() => (open ? loadRecentLocalities() : []), [open]);
 
   // Bumped on every search; a response whose id is stale is dropped.
   const requestId = useRef(0);
 
+  // The silent GPS fix, asked for once per session — see `getSessionFix`
+  // above. Resolving after the dialog is already open re-triggers `search`
+  // below (its identity changes with `fix`), so the first results the crew
+  // sees can still be distance-ranked even though nothing waited on it.
+  useEffect(() => {
+    if (!open) return undefined;
+    let cancelled = false;
+    void getSessionFix().then((found) => {
+      if (!cancelled) setFix(found);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
+
   const search = useCallback(async (text: string) => {
     const id = (requestId.current += 1);
     setError(null);
     try {
-      const found = await apiFetch<Locality[]>(
-        `/localities?q=${encodeURIComponent(text)}`,
-      );
+      const params = new URLSearchParams({ q: text, limit: String(LOCALITY_PICKER_LIMIT) });
+      if (fix) {
+        params.set('lat', String(fix.lat));
+        params.set('lon', String(fix.lon));
+      }
+      const found = await apiFetch<Locality[]>(`/localities?${params.toString()}`);
       if (requestId.current === id) setResults(found);
     } catch (cause) {
       if (requestId.current === id) {
@@ -100,7 +175,7 @@ export const LocalityPicker = ({
         setError(cause instanceof Error ? cause.message : t('hint.nothingFound'));
       }
     }
-  }, [t]);
+  }, [fix, t]);
 
   useEffect(() => {
     if (!open) return undefined;

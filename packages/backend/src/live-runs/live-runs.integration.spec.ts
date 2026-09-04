@@ -808,7 +808,7 @@ describeIntegration('Live runs (integration)', () => {
             reportId: report.id,
             position: 3,
             takenAt: new Date('2024-08-22T21:00:00Z'),
-            glasgow: 2,
+            painScore: 20,
           },
         }),
       ).rejects.toThrow(/EventReportAssessment_ranges/);

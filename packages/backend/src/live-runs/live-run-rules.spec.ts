@@ -183,6 +183,24 @@ describe('validateLiveRun', () => {
     ).toBe('DESTINATION_NOT_FOR_TYPE');
   });
 
+  it('refuses a hospital episode number on a run not headed to a hospital', () => {
+    expect(
+      codeOf(
+        validateLiveRun(
+          run({
+            destinationKind: VictimDestinationKind.CANCELLED,
+            destinationHospitalId: null,
+            hospitalEpisodeNumber: '12345',
+          }),
+        ),
+      ),
+    ).toBe('HOSPITAL_EPISODE_NOT_ALLOWED');
+  });
+
+  it('accepts a hospital episode number on a run headed to a hospital', () => {
+    expect(codeOf(validateLiveRun(run({ hospitalEpisodeNumber: '12345' })))).toBeNull();
+  });
+
   it('checks the clinical capture with the report’s own rules', () => {
     expect(
       codeOf(
@@ -332,6 +350,17 @@ describe('liveRunToEventReportInput', () => {
       expect(input.victims[0].destinationKind).toBe(kind);
       expect(validateEventReport(input)).toBeNull();
     }
+  });
+
+  it('carries the hospital episode number the crew wrote down at the ER onto the victim', () => {
+    const input = liveRunToEventReportInput(run({ hospitalEpisodeNumber: '12345' }));
+    expect(input.victims[0].hospitalEpisodeNumber).toBe('12345');
+    expect(validateEventReport(input)).toBeNull();
+  });
+
+  it('leaves the episode number unset when the run never carried one', () => {
+    const input = liveRunToEventReportInput(run({ hospitalEpisodeNumber: null }));
+    expect(input.victims[0].hospitalEpisodeNumber).toBeNull();
   });
 
   it('coerces a "treated on scene" outcome — no longer valid for an emergency — to a filable report', () => {

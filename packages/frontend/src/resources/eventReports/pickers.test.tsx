@@ -4,7 +4,12 @@ import userEvent from '@testing-library/user-event';
 import { AdminContext, testDataProvider } from 'react-admin';
 import polyglotI18nProvider from 'ra-i18n-polyglot';
 import { EventReportType, VictimDestinationKind } from '@redinfo/shared';
-import { LocalityPicker, loadRecentLocalities, localityLabel } from './LocalityPicker';
+import {
+  LocalityPicker,
+  loadRecentLocalities,
+  localityLabel,
+  resetLocalityFix,
+} from './LocalityPicker';
 import { HospitalPicker } from './HospitalPicker';
 import { apiFetch } from '../../api';
 import { useIsMobile } from '../../hooks/useIsMobile';
@@ -89,6 +94,14 @@ describe('the locality picker', () => {
   beforeEach(() => {
     onPick.mockReset();
     mockApiFetch.mockResolvedValue([TAVEIRO, CERNACHE]);
+    resetLocalityFix();
+    // jsdom has no geolocation at all, which is also a real Android case: a
+    // crew that refused the permission. The default here is therefore "no
+    // fix", and the backend ranks from the delegation base.
+    Object.defineProperty(navigator, 'geolocation', {
+      value: undefined,
+      configurable: true,
+    });
   });
 
   const open = () =>
@@ -104,7 +117,7 @@ describe('the locality picker', () => {
     // An empty box waiting to be typed into is worse than a starting point.
     expect(await screen.findByText('Taveiro')).toBeInTheDocument();
     expect(screen.getByText('Cernache')).toBeInTheDocument();
-    await waitFor(() => expect(mockApiFetch).toHaveBeenCalledWith('/localities?q='));
+    await waitFor(() => expect(mockApiFetch).toHaveBeenCalledWith('/localities?q=&limit=10'));
   });
 
   it('searches what was typed, folding accents out of it', async () => {
@@ -119,10 +132,48 @@ describe('the locality picker', () => {
     await waitFor(
       () =>
         expect(mockApiFetch).toHaveBeenCalledWith(
-          `/localities?q=${encodeURIComponent('são')}`,
+          `/localities?q=${encodeURIComponent('são')}&limit=10`,
         ),
       { timeout: 2000 },
     );
+  });
+
+  /**
+   * Ranking is the server's job, but it needs somewhere to measure from. A fix
+   * is asked for once, silently, and appended when it arrives — a refusal is
+   * not an error, it just leaves the delegation base as the origin.
+   */
+  it('forwards the phone’s position so results can be ranked from where the crew is', async () => {
+    Object.defineProperty(navigator, 'geolocation', {
+      value: {
+        getCurrentPosition: (success: PositionCallback) =>
+          success({ coords: { latitude: 41.5923, longitude: -8.6117 } } as GeolocationPosition),
+      },
+      configurable: true,
+    });
+
+    open();
+
+    await waitFor(() =>
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        '/localities?q=&limit=10&lat=41.5923&lon=-8.6117',
+      ),
+    );
+  });
+
+  it('says nothing and still searches when the fix is refused', async () => {
+    Object.defineProperty(navigator, 'geolocation', {
+      value: {
+        getCurrentPosition: (_success: PositionCallback, failure?: PositionErrorCallback) =>
+          failure?.({ code: 1, message: 'denied' } as GeolocationPositionError),
+      },
+      configurable: true,
+    });
+
+    open();
+
+    expect(await screen.findByText('Taveiro')).toBeInTheDocument();
+    await waitFor(() => expect(mockApiFetch).toHaveBeenCalledWith('/localities?q=&limit=10'));
   });
 
   it('shows the concelho and distrito under each result', async () => {

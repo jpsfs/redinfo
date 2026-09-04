@@ -499,6 +499,7 @@ export class LiveRunsService {
 
       destinationKind: (input.destinationKind ?? null) as never,
       destinationHospitalId: input.destinationHospitalId || null,
+      hospitalEpisodeNumber: input.hospitalEpisodeNumber?.trim() || null,
 
       capture: (input.capture ?? Prisma.DbNull) as never,
       ...(sealed === undefined ? {} : { identity: sealed as never }),
@@ -584,6 +585,7 @@ export class LiveRunsService {
       availableAt: run.availableAt ?? null,
       destinationKind: run.destinationKind ?? null,
       destinationHospitalId: run.destinationHospitalId ?? null,
+      hospitalEpisodeNumber: run.hospitalEpisodeNumber ?? null,
       identity: run.identity ?? null,
       capture: run.capture ?? null,
       closedAt: run.closedAt ?? null,

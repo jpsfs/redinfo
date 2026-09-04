@@ -210,28 +210,41 @@ export const LiveRunPage = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [form.run.state]);
 
-  const close = useCallback(async () => {
-    setClosing(true);
-    try {
-      const response = await apiFetch<LiveRunCloseResponse>(`/live-runs/${runId}/close`, {
-        method: 'POST',
-      });
+  /**
+   * Closes the run and always leaves a draft report behind — `destination`
+   * only decides where the crew lands afterwards.
+   *
+   * `'report'` is the everyday path: straight into the fresh draft, to finish
+   * while the call is still fresh. `'home'` is the second way out (#213):
+   * same close, same draft, but a crew that will finish the paperwork later
+   * from a desk is not forced through the report editor to get back to the
+   * home page.
+   */
+  const close = useCallback(
+    async (destination: 'report' | 'home') => {
+      setClosing(true);
+      try {
+        const response = await apiFetch<LiveRunCloseResponse>(`/live-runs/${runId}/close`, {
+          method: 'POST',
+        });
 
-      form.replace({ ...form.run, ...response.run });
-      setReportId(response.report.id);
-      await saveRun(form.run, { reportId: response.report.id });
-      await attachPhotosToReport(runId, response.report.id);
-      // The run is finished; the device stops offering to resume it.
-      writeCurrentRunId(null);
+        form.replace({ ...form.run, ...response.run });
+        setReportId(response.report.id);
+        await saveRun(form.run, { reportId: response.report.id });
+        await attachPhotosToReport(runId, response.report.id);
+        // The run is finished; the device stops offering to resume it.
+        writeCurrentRunId(null);
 
-      notify(t('live.closedIntoDraft'), { type: 'success' });
-      navigate(`/event-reports/${response.report.id}`);
-    } catch (cause) {
-      notify(cause instanceof Error ? cause.message : t('sync.failed'), { type: 'error' });
-    } finally {
-      setClosing(false);
-    }
-  }, [form, navigate, notify, runId, t]);
+        notify(t('live.closedIntoDraft'), { type: 'success' });
+        navigate(destination === 'report' ? `/event-reports/${response.report.id}` : '/');
+      } catch (cause) {
+        notify(cause instanceof Error ? cause.message : t('sync.failed'), { type: 'error' });
+      } finally {
+        setClosing(false);
+      }
+    },
+    [form, navigate, notify, runId, t],
+  );
 
   const abandon = useCallback(async () => {
     if (!window.confirm(t('live.abandonConfirm'))) return;
@@ -264,6 +277,9 @@ export const LiveRunPage = () => {
     );
   }
 
+  const current = isLiveScreen(screen) ? screen : 'intake';
+  const stampedAvailable = Boolean(form.run.availableAt);
+
   const screenProps: LiveScreenProps = {
     form,
     lookups,
@@ -282,10 +298,11 @@ export const LiveRunPage = () => {
     onOpenAssessment: () => navigate(`/live/${runId}/assessment`),
     onRefusedFiles: (messages) =>
       messages.forEach((message) => notify(message, { type: 'warning' })),
+    // Only set while the assessment screen is actually on display: the
+    // assessment route is reached and left deliberately, never advanced by a
+    // stamp (see `nextStampForScreen`), so this is its one way back.
+    onDone: current === 'assessment' ? () => navigate(`/live/${runId}/scene`) : undefined,
   };
-
-  const current = isLiveScreen(screen) ? screen : 'intake';
-  const stampedAvailable = Boolean(form.run.availableAt);
 
   return (
     <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
@@ -341,7 +358,11 @@ export const LiveRunPage = () => {
               ? hospitalNavigateHref
               : null
         }
-        onFinish={current === 'closing' && stampedAvailable ? () => void close() : undefined}
+        onDone={screenProps.onDone}
+        onFinish={current === 'closing' && stampedAvailable ? () => void close('report') : undefined}
+        onFinishAndExit={
+          current === 'closing' && stampedAvailable ? () => void close('home') : undefined
+        }
         finishing={closing}
         blockedReason={
           current === 'closing' && form.blockers.length > 0 ? t('live.closeBlocked') : null

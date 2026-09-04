@@ -210,16 +210,20 @@ export function nextStamp(run: Pick<LiveRunInput, 'state'> & Partial<LiveRunInpu
  * sheet for the step being looked at, never the live action for a step that
  * is not on screen.
  *
- * `assessment` has no state or stamp of its own — it is a branch off `scene`,
- * not a stop on the walk — so it always mirrors the real `nextStamp`, exactly
- * as it did before there was a "viewed screen" to tell apart from the real
- * one.
+ * `assessment` is deliberately `null`, never `nextStamp(run)`. It used to
+ * mirror the real stamp — reasoned as "assessment is a branch off `scene`, not
+ * a stop on the walk" — but that made the bottom bar offer "SAÍDA DO LOCAL"
+ * while the crew was mid-vitals: one mis-tap there advances the run out of
+ * ON_SCENE. The assessment screen is reached deliberately and left
+ * deliberately (`LiveBottomBar`'s `onDone`), so its bar carries no stamp
+ * button at all.
  */
 export function nextStampForScreen(
   run: Pick<LiveRunInput, 'state'> & Partial<LiveRunInput>,
   screen: LiveScreen,
 ): NextStamp | null {
-  if (screen === 'assessment' || screen === screenForRun(run)) return nextStamp(run);
+  if (screen === 'assessment') return null;
+  if (screen === screenForRun(run)) return nextStamp(run);
   const entry = (Object.entries(LIVE_RUN_STATE_RULES) as [LiveRunState, LiveRunStateRules][]).find(
     ([, rules]) => rules.screen === screen,
   );

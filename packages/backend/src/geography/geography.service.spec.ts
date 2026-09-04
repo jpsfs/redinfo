@@ -1,14 +1,16 @@
 import { NotFoundException } from '@nestjs/common';
-import { LOCALITY_SEARCH_LIMIT } from '@redinfo/shared';
+import { DEFAULT_DELEGATION_SETTINGS, LOCALITY_SEARCH_LIMIT } from '@redinfo/shared';
 import { GeographyService } from './geography.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { DelegationSettingsService } from '../live-runs/delegation-settings.service';
 
 // ── Finding the place a call came from ─────────────────────────────────────────
 //
-// A crew types two or three letters with one thumb. Two rules make that work:
-// every token has to appear somewhere in the folded name, so word order does
-// not matter; and a name that *starts* with what was typed beats one that
-// merely contains it.
+// A crew types two or three letters with one thumb. Every token has to match
+// somewhere — the locality's own folded name, or its municipality's folded
+// name or district — so word order and "which name carries the word" both
+// stop mattering. What's left, once something matched, is which of the
+// matches is actually closest.
 
 const COIMBRA = {
   id: 'mun-coimbra',
@@ -19,38 +21,85 @@ const COIMBRA = {
   longitude: -8.4289,
 };
 
-const locality = (name: string, searchName: string, id = name) => ({
+const FARO = {
+  id: 'mun-faro',
+  ineCode: '0808',
+  name: 'Faro',
+  district: 'Faro',
+  latitude: 37.0194,
+  longitude: -7.9304,
+};
+
+const BARCELOS = {
+  id: 'mun-barcelos',
+  ineCode: '0303',
+  name: 'Barcelos',
+  district: 'Braga',
+  latitude: 41.5388,
+  longitude: -8.6151,
+};
+
+const locality = (name: string, searchName: string, municipality = COIMBRA, id = name) => ({
   id,
   name,
   searchName,
-  municipalityId: COIMBRA.id,
-  municipality: COIMBRA,
+  municipalityId: municipality.id,
+  municipality,
 });
 
-function makeService(rows: unknown[] = []) {
+function makeService(
+  rows: unknown[] = [],
+  options: {
+    municipalities?: unknown[];
+    base?: { baseLatitude: number; baseLongitude: number };
+  } = {},
+) {
   const prisma = {
     locality: {
       findMany: jest.fn(() => Promise.resolve(rows)),
       findUnique: jest.fn(() => Promise.resolve(rows[0] ?? null)),
     },
-    municipality: { findMany: jest.fn(() => Promise.resolve([COIMBRA])) },
+    municipality: {
+      findMany: jest.fn(() => Promise.resolve(options.municipalities ?? [COIMBRA])),
+    },
   } as unknown as PrismaService;
 
-  return { service: new GeographyService(prisma), prisma };
+  const base = options.base ?? {
+    baseLatitude: DEFAULT_DELEGATION_SETTINGS.baseLatitude,
+    baseLongitude: DEFAULT_DELEGATION_SETTINGS.baseLongitude,
+  };
+  const delegationSettings = {
+    get: jest.fn(() =>
+      Promise.resolve({
+        baseName: DEFAULT_DELEGATION_SETTINGS.baseName,
+        coduDadosPhone: DEFAULT_DELEGATION_SETTINGS.coduDadosPhone,
+        ...base,
+      }),
+    ),
+  } as unknown as DelegationSettingsService;
+
+  return {
+    service: new GeographyService(prisma, delegationSettings),
+    prisma,
+    delegationSettings,
+  };
 }
 
 describe('searching localities', () => {
-  it('asks the database for every token of the query', async () => {
+  it('asks the database for every token of the query, either arm of the OR', async () => {
     const { service, prisma } = makeService();
 
     await service.searchLocalities('martinho bispo');
 
+    // Neither token names Coimbra (the only municipality the mock knows), so
+    // each token's municipality arm degrades to an empty `in` — never an
+    // unconstrained one, which would match every row.
     expect(prisma.locality.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
           AND: [
-            { searchName: { contains: 'martinho' } },
-            { searchName: { contains: 'bispo' } },
+            { OR: [{ searchName: { contains: 'martinho' } }, { municipalityId: { in: [] } }] },
+            { OR: [{ searchName: { contains: 'bispo' } }, { municipalityId: { in: [] } }] },
           ],
         },
       }),
@@ -66,47 +115,117 @@ describe('searching localities', () => {
       expect.objectContaining({
         where: {
           AND: [
-            { searchName: { contains: 'condeixa' } },
-            { searchName: { contains: 'a' } },
-            { searchName: { contains: 'nova' } },
+            { OR: [{ searchName: { contains: 'condeixa' } }, { municipalityId: { in: [] } }] },
+            // "a" folds out of "Coimbra" too — the only municipality the mock
+            // knows — so its arm is not empty, unlike its neighbours.
+            { OR: [{ searchName: { contains: 'a' } }, { municipalityId: { in: ['mun-coimbra'] } }] },
+            { OR: [{ searchName: { contains: 'nova' } }, { municipalityId: { in: [] } }] },
           ],
         },
       }),
     );
   });
 
-  it('offers names that start with the query before names that contain it', async () => {
-    const { service } = makeService([
-      locality('Vila Nova de Coimbra', 'vila nova de coimbra'),
-      locality('Coimbra', 'coimbra'),
-    ]);
+  it('matches a token against the municipality, not just the locality\'s own name', async () => {
+    // "Campo Barcelos": the freguesia's own name never says "Barcelos" — that
+    // is the municipality it sits in. The "campo" token matches the locality's
+    // name directly; "barcelos" only matches via the municipality.
+    const { service, prisma } = makeService([], { municipalities: [COIMBRA, BARCELOS] });
 
-    const result = await service.searchLocalities('coimbra');
+    await service.searchLocalities('campo barcelos');
 
-    expect(result.map((entry) => entry.name)).toEqual(['Coimbra', 'Vila Nova de Coimbra']);
+    expect(prisma.locality.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          AND: [
+            { OR: [{ searchName: { contains: 'campo' } }, { municipalityId: { in: [] } }] },
+            {
+              OR: [
+                { searchName: { contains: 'barcelos' } },
+                { municipalityId: { in: [BARCELOS.id] } },
+              ],
+            },
+          ],
+        },
+      }),
+    );
   });
 
-  it('breaks ties alphabetically, in Portuguese collation', async () => {
+  it('finds a locality via its district too', async () => {
+    const { service, prisma } = makeService([], { municipalities: [COIMBRA, BARCELOS] });
+
+    await service.searchLocalities('braga');
+
+    expect(prisma.locality.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          AND: [
+            {
+              OR: [
+                { searchName: { contains: 'braga' } },
+                { municipalityId: { in: [BARCELOS.id] } },
+              ],
+            },
+          ],
+        },
+      }),
+    );
+  });
+
+  it('ranks matches by distance from the origin, nearest first', async () => {
     const { service } = makeService([
-      locality('Óbidos', 'obidos'),
-      locality('Abrantes', 'abrantes'),
+      locality('Faro city', 'faro city', FARO, 'l-faro'),
+      locality('Ceira', 'ceira', COIMBRA, 'l-ceira'),
     ]);
 
-    const result = await service.searchLocalities('zzz-no-prefix-match');
+    // Standing in Coimbra: Ceira (Coimbra) must outrank Faro city, regardless
+    // of the order the database happened to return them in, and regardless of
+    // name — this is not the old prefix/contains ranking.
+    const result = await service.searchLocalities('a', LOCALITY_SEARCH_LIMIT, {
+      latitude: COIMBRA.latitude,
+      longitude: COIMBRA.longitude,
+    });
+
+    expect(result.map((entry) => entry.id)).toEqual(['l-ceira', 'l-faro']);
+  });
+
+  it('breaks distance ties alphabetically, in Portuguese collation', async () => {
+    const { service } = makeService([
+      locality('Óbidos', 'obidos', COIMBRA, 'l-obidos'),
+      locality('Abrantes', 'abrantes', COIMBRA, 'l-abrantes'),
+    ]);
+
+    const result = await service.searchLocalities('zzz-no-match', LOCALITY_SEARCH_LIMIT, {
+      latitude: COIMBRA.latitude,
+      longitude: COIMBRA.longitude,
+    });
 
     expect(result.map((entry) => entry.name)).toEqual(['Abrantes', 'Óbidos']);
   });
 
-  it('returns the alphabetical head of the list for an empty query', async () => {
-    const { service, prisma } = makeService([locality('Abrantes', 'abrantes')]);
+  it('orders the empty-query branch by distance too, not alphabetically', async () => {
+    const { service } = makeService([
+      locality('Faro city', 'faro city', FARO, 'l-faro'),
+      locality('Ceira', 'ceira', COIMBRA, 'l-ceira'),
+    ]);
 
-    const result = await service.searchLocalities('');
+    const result = await service.searchLocalities('', LOCALITY_SEARCH_LIMIT, {
+      latitude: FARO.latitude,
+      longitude: FARO.longitude,
+    });
 
-    // No `where` at all: an empty picker is worse than a starting point.
-    expect(prisma.locality.findMany).toHaveBeenCalledWith(
-      expect.not.objectContaining({ where: expect.anything() }),
+    expect(result.map((entry) => entry.id)).toEqual(['l-faro', 'l-ceira']);
+  });
+
+  it('falls back to the delegation base when no origin is given', async () => {
+    const { service, delegationSettings } = makeService(
+      [locality('Ceira', 'ceira', COIMBRA, 'l-ceira')],
+      { base: { baseLatitude: COIMBRA.latitude, baseLongitude: COIMBRA.longitude } },
     );
-    expect(result).toHaveLength(1);
+
+    await service.searchLocalities('ceira');
+
+    expect(delegationSettings.get).toHaveBeenCalled();
   });
 
   it('treats a query of only punctuation as no query', async () => {
@@ -121,7 +240,7 @@ describe('searching localities', () => {
 
   it('never returns more than a phone list, whatever the caller asks for', async () => {
     const rows = Array.from({ length: 200 }, (_, index) =>
-      locality(`Aldeia ${index}`, `aldeia ${index}`, `id-${index}`),
+      locality(`Aldeia ${index}`, `aldeia ${index}`, COIMBRA, `id-${index}`),
     );
     const { service } = makeService(rows);
 
@@ -170,28 +289,14 @@ describe('listing municipalities', () => {
 });
 
 describe('nearest localities', () => {
-  const FAR_AWAY = {
-    id: 'mun-faro',
-    ineCode: '0808',
-    name: 'Faro',
-    district: 'Faro',
-    latitude: 37.0194,
-    longitude: -7.9304,
-  };
-
   function makeNearestService() {
-    const prisma = {
-      municipality: { findMany: jest.fn(() => Promise.resolve([FAR_AWAY, COIMBRA])) },
-      locality: {
-        findMany: jest.fn(() =>
-          Promise.resolve([
-            { ...locality('Faro city', 'faro city', 'l-faro'), municipalityId: FAR_AWAY.id, municipality: FAR_AWAY },
-            locality('Ceira', 'ceira', 'l-ceira'),
-          ]),
-        ),
-      },
-    } as unknown as PrismaService;
-    return { service: new GeographyService(prisma), prisma };
+    return makeService(
+      [
+        { ...locality('Faro city', 'faro city', FARO, 'l-faro') },
+        locality('Ceira', 'ceira', COIMBRA, 'l-ceira'),
+      ],
+      { municipalities: [FARO, COIMBRA] },
+    );
   }
 
   it('offers the closest municipality’s localities first', async () => {

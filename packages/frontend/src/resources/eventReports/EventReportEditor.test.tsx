@@ -534,6 +534,87 @@ describe('the victim step', () => {
     expect(screen.queryByRole('button', { name: /adicionar vítima/i })).not.toBeInTheDocument();
   });
 
+  /** Walks the wizard to the victim step, which is six screens in. */
+  const toVictimStep = async (user: ReturnType<typeof userEvent.setup>) => {
+    await screen.findByText('Guardado');
+    for (let step = 0; step < 5; step += 1) {
+      await user.click(screen.getByRole('button', { name: /seguinte/i }));
+    }
+    await screen.findByText(/Vítima/);
+  };
+
+  /**
+   * The number admission hands back. Offered only where the backend's rules
+   * would accept it — a field that saves with an unexplainable error is worse
+   * than no field.
+   */
+  it('takes the hospital episode number for a victim who was transported', async () => {
+    const user = userEvent.setup();
+    renderEditor({
+      seed: {
+        ...COHERENT,
+        victims: [
+          {
+            gender: Gender.FEMALE,
+            age: 67,
+            destinationKind: VictimDestinationKind.HOSPITAL,
+            destinationHospitalId: CHUC.id,
+          },
+        ],
+      },
+    });
+    await toVictimStep(user);
+
+    const field = await screen.findByLabelText('Nº de Episódio');
+    await user.type(field, '4471902');
+    expect(field).toHaveValue('4471902');
+  });
+
+  it('does not ask for an episode number when nobody was transported', async () => {
+    const user = userEvent.setup();
+    renderEditor({
+      seed: {
+        ...COHERENT,
+        victims: [
+          {
+            gender: Gender.FEMALE,
+            age: 67,
+            destinationKind: VictimDestinationKind.REFUSED_TRANSPORT,
+          },
+        ],
+      },
+    });
+    await toVictimStep(user);
+
+    expect(screen.queryByLabelText('Nº de Episódio')).not.toBeInTheDocument();
+  });
+
+  /**
+   * The episode number is only meaningful against a CODU-referenced call, so
+   * without a reference there is nothing for it to belong to.
+   */
+  it('does not ask for an episode number on a report with no reference', async () => {
+    const user = userEvent.setup();
+    renderEditor({
+      type: EventReportType.SUPPORT,
+      seed: {
+        ...COHERENT,
+        externalReference: '',
+        victims: [
+          {
+            gender: Gender.FEMALE,
+            age: 67,
+            destinationKind: VictimDestinationKind.HOSPITAL,
+            destinationHospitalId: CHUC.id,
+          },
+        ],
+      },
+    });
+    await toVictimStep(user);
+
+    expect(screen.queryByLabelText('Nº de Episódio')).not.toBeInTheDocument();
+  });
+
   it('does not offer "treated on scene" as an emergency victim\'s destination', async () => {
     const user = userEvent.setup();
     renderEditor({

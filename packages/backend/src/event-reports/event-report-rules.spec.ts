@@ -2,6 +2,8 @@ import {
   ALLOWED_ATTACHMENT_MIME_TYPES,
   Action,
   AvailabilityWindowCategory,
+  AVDS_LEVELS,
+  AvdsLevel,
   EVENT_LOCATION_TYPES,
   EVENT_REPORT_TYPES,
   EVENT_REPORT_TYPE_RULES,
@@ -14,6 +16,7 @@ import {
   InventoryItemType,
   MAX_ATTACHMENT_BYTES,
   MAX_EXTERNAL_REFERENCE_LENGTH,
+  MAX_HOSPITAL_EPISODE_NUMBER_LENGTH,
   MAX_INEM_SUPPORT_UNITS_PER_TYPE,
   MAX_MATERIALS_PER_REPORT,
   MAX_OPERATIONAL_REPORT_LENGTH,
@@ -403,6 +406,20 @@ describe('the clinical record', () => {
     expect(codeOf(validateEventReport(withVitals({ bodyPosition: 'decúbito dorsal' })))).toBeNull();
   });
 
+  it('accepts every AVDS level', () => {
+    for (const level of AVDS_LEVELS) {
+      expect(codeOf(validateEventReport(withVitals({ avds: level })))).toBeNull();
+    }
+  });
+
+  it('counts AVDS alone as content, not an empty assessment', () => {
+    expect(codeOf(validateEventReport(withVitals({ avds: AvdsLevel.A })))).toBeNull();
+  });
+
+  it('refuses an AVDS value outside the four levels', () => {
+    expect(codeOf(validateEventReport(withVitals({ avds: 'Q' as never })))).toBe('AVDS_INVALID');
+  });
+
   it('refuses a diastolic above its own systolic', () => {
     expect(codeOf(validateEventReport(withVitals({ systolic: 90, diastolic: 120 })))).toBe(
       'DIASTOLIC_ABOVE_SYSTOLIC',
@@ -666,6 +683,104 @@ describe('validateEventReport', () => {
         ),
       ),
     ).toBe('DESTINATION_INVALID');
+  });
+
+  describe('hospital episode numbers', () => {
+    it('accepts one on a hospital-bound victim with an external reference', () => {
+      expect(
+        codeOf(
+          validateEventReport(
+            emergency({
+              victims: [
+                {
+                  gender: Gender.FEMALE,
+                  age: 67,
+                  destinationKind: VictimDestinationKind.HOSPITAL,
+                  destinationHospitalId: 'hosp-chuc',
+                  hospitalEpisodeNumber: '12345',
+                },
+              ],
+            }),
+          ),
+        ),
+      ).toBeNull();
+    });
+
+    it('refuses one on a victim who was not taken to a hospital', () => {
+      expect(
+        codeOf(
+          validateVictimDestination(
+            {
+              destinationKind: VictimDestinationKind.REFUSED_TRANSPORT,
+              destinationHospitalId: null,
+              hospitalEpisodeNumber: '12345',
+            },
+            EVENT_REPORT_TYPE_RULES[EMERGENCY],
+          ),
+        ),
+      ).toBe('HOSPITAL_EPISODE_NOT_ALLOWED');
+    });
+
+    it('refuses one when the report carries no external (CODU) reference, on any type', () => {
+      expect(
+        codeOf(
+          validateEventReport(
+            support({
+              victims: [
+                {
+                  gender: Gender.MALE,
+                  age: 40,
+                  destinationKind: VictimDestinationKind.HOSPITAL,
+                  destinationHospitalId: 'hosp-chuc',
+                  hospitalEpisodeNumber: '12345',
+                },
+              ],
+            }),
+          ),
+        ),
+      ).toBe('HOSPITAL_EPISODE_REQUIRES_REFERENCE');
+    });
+
+    it('accepts one on a support report that does carry a reference', () => {
+      expect(
+        codeOf(
+          validateEventReport(
+            support({
+              externalReference: 'SALOP-2026-04',
+              victims: [
+                {
+                  gender: Gender.MALE,
+                  age: 40,
+                  destinationKind: VictimDestinationKind.HOSPITAL,
+                  destinationHospitalId: 'hosp-chuc',
+                  hospitalEpisodeNumber: '12345',
+                },
+              ],
+            }),
+          ),
+        ),
+      ).toBeNull();
+    });
+
+    it('enforces a maximum length', () => {
+      expect(
+        codeOf(
+          validateEventReport(
+            emergency({
+              victims: [
+                {
+                  gender: Gender.FEMALE,
+                  age: 67,
+                  destinationKind: VictimDestinationKind.HOSPITAL,
+                  destinationHospitalId: 'hosp-chuc',
+                  hospitalEpisodeNumber: 'x'.repeat(MAX_HOSPITAL_EPISODE_NUMBER_LENGTH + 1),
+                },
+              ],
+            }),
+          ),
+        ),
+      ).toBe('HOSPITAL_EPISODE_TOO_LONG');
+    });
   });
 
   it('refuses a second vehicle on an emergency, and allows it on a support report', () => {

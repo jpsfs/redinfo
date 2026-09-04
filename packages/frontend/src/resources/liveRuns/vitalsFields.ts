@@ -12,10 +12,11 @@ import {
  * control it deserves.
  *
  * A table rather than markup because the control follows the value's shape, and
- * that is a fact about the measurement rather than a layout decision. Glasgow is
- * a bounded 3–15 scale nobody types; pain is eleven taps; the rest are numbers
- * with a unit. Getting that from a table means the assessment screen has no
- * `switch` in it, and adding a tenth vital is one row here.
+ * that is a fact about the measurement rather than a layout decision. Pain is
+ * eleven taps; the rest are numbers with a unit. Getting that from a table means
+ * the assessment screen has no `switch` in it, and adding another vital is one
+ * row here. AVDS (level of consciousness) is deliberately not a row — it is an
+ * enum, not a number, so `AvdsPicker` renders it beside this table instead.
  */
 
 export type VitalControl = 'number' | 'stepper' | 'chips';
@@ -49,7 +50,9 @@ export const VITAL_FIELDS: readonly VitalField[] = [
   field('systolic', AbcdeBand.C, 'T.A. sistólica', 'number'),
   field('diastolic', AbcdeBand.C, 'T.A. diastólica', 'number'),
   field('heartRate', AbcdeBand.C, 'Freq. cardíaca', 'number'),
-  field('glasgow', AbcdeBand.D, 'Escala de Glasgow', 'stepper'),
+  // AVDS (band D) is level-of-consciousness too, but it is an enum, not a
+  // number — it is not a row here. See `AvdsPicker` in `VitalField.tsx`,
+  // rendered alongside band D's vitals wherever this list is.
   field('bloodGlucose', AbcdeBand.D, 'Glicemia', 'number'),
   field('temperature', AbcdeBand.E, 'Temperatura', 'number'),
   field('painScore', AbcdeBand.E, 'Dor', 'chips'),

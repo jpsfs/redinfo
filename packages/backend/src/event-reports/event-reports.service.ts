@@ -681,6 +681,7 @@ export class EventReportsService {
         position,
         takenAt: new Date(assessment.takenAt),
         bodyPosition: assessment.bodyPosition?.trim() || null,
+        avds: assessment.avds ?? null,
         ...vitals,
       } as Prisma.EventReportAssessmentCreateWithoutReportInput;
     });
@@ -709,6 +710,7 @@ export class EventReportsService {
       age: victim.age,
       destinationKind: victim.destinationKind as never,
       destinationHospitalId: victim.destinationHospitalId ?? null,
+      hospitalEpisodeNumber: victim.hospitalEpisodeNumber?.trim() || null,
     }));
   }
 

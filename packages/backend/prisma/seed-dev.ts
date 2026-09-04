@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import {
   AbcdeBand,
   AvailabilityWindowCategory,
+  AvdsLevel,
   BloodType,
   CertificationType,
   DEFAULT_DELEGATION_SETTINGS,
@@ -779,7 +780,7 @@ async function main() {
           heartRate: 98,
           respiratoryRate: 18,
           spo2: 97,
-          glasgow: 15,
+          avds: AvdsLevel.A,
           painScore: 4,
           bodyPosition: 'Decúbito dorsal, imobilizado em plano duro',
         },

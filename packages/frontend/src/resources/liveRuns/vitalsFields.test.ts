@@ -39,10 +39,14 @@ describe('the presentation table', () => {
   });
 
   it('gives the bounded scales their own controls', () => {
-    // Nobody types a Glasgow score, and nobody types a pain score either — both
-    // are one tap on a scale that has a fixed number of stops.
-    expect(VITAL_FIELDS.find((field) => field.key === 'glasgow')?.control).toBe('stepper');
+    // Nobody types a pain score — it is one tap on a scale that has a fixed
+    // number of stops.
     expect(VITAL_FIELDS.find((field) => field.key === 'painScore')?.control).toBe('chips');
+  });
+
+  it('has no row for AVDS — it is an enum, not a vital', () => {
+    expect(VITAL_FIELDS.some((field) => (field.key as string) === 'glasgow')).toBe(false);
+    expect(VITAL_FIELDS.some((field) => (field.key as string) === 'avds')).toBe(false);
   });
 
   it('groups circulation’s three numbers together', () => {

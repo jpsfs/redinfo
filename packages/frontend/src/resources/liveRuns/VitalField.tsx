@@ -14,12 +14,14 @@ import AddIcon from '@mui/icons-material/Add';
 import RemoveIcon from '@mui/icons-material/Remove';
 import {
   ABCDE_STATUSES,
+  AVDS_LEVELS,
   AbcdeBand,
   AbcdeFindings,
   AbcdeStatus,
   AssessmentInput,
+  AvdsLevel,
 } from '@redinfo/shared';
-import { abcdeStatusLabel, vitalLabel } from '../../i18n/labels';
+import { abcdeStatusLabel, avdsLevelLabel, vitalLabel } from '../../i18n/labels';
 import { useT } from '../../i18n/useT';
 import { VitalField, formatVital, isImplausible, isOutOfRange, parseVital } from './vitalsFields';
 
@@ -260,5 +262,69 @@ export const AbcdeStatusPicker = ({
         />
       )}
     </Stack>
+  );
+};
+
+/**
+ * Level of consciousness on the AVDS scale — four chips, band D.
+ *
+ * An enum, not a number, so it is deliberately not a `VitalField` row and does
+ * not go through `VitalControl` above. Each chip's visible label is the single
+ * letter (readable at a glance on a 360px screen), and its accessible name is
+ * the full Portuguese expansion — a screen reader must never announce a bare
+ * "V".
+ *
+ * `ToggleButtonGroup`'s own `exclusive` behaviour already clears a re-tapped
+ * selection back to `null` — the same "tap again to undo" the gender and
+ * location-type controls elsewhere on the live screens rely on, so this needs
+ * no special-casing here.
+ *
+ * A level other than `A` (fully alert) renders in the warning colour. This is
+ * visual only: it does not add a blocker or a warning code of its own, it just
+ * makes an altered level of consciousness catch the eye the way it should.
+ */
+export const AvdsPicker = ({
+  value,
+  onChange,
+}: {
+  value: AvdsLevel | null;
+  onChange: (next: AvdsLevel | null) => void;
+}) => {
+  const t = useT();
+
+  return (
+    <Box>
+      <Typography sx={{ fontWeight: 600, fontSize: '0.8125rem', color: 'text.secondary', mb: 0.75 }}>
+        {t('vital.avds')}
+      </Typography>
+      <ToggleButtonGroup
+        exclusive
+        fullWidth
+        value={value ?? null}
+        onChange={(_event, next) => onChange((next as AvdsLevel | null) ?? null)}
+        sx={{ '& .MuiToggleButton-root': { minHeight: 48, minWidth: 44, fontWeight: 800 } }}
+      >
+        {AVDS_LEVELS.map((level) => (
+          <ToggleButton
+            key={level}
+            value={level}
+            aria-label={avdsLevelLabel(t, level)}
+            sx={
+              level !== AvdsLevel.A
+                ? {
+                    '&.Mui-selected': {
+                      backgroundColor: 'warning.light',
+                      color: 'warning.contrastText',
+                      '&:hover': { backgroundColor: 'warning.light' },
+                    },
+                  }
+                : undefined
+            }
+          >
+            {level}
+          </ToggleButton>
+        ))}
+      </ToggleButtonGroup>
+    </Box>
   );
 };

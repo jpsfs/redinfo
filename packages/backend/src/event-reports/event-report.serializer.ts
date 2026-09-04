@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import {
   AbcdeFindings,
+  AvdsLevel,
   EventLocationType,
   EventReport,
   EventReportAssessment,
@@ -135,6 +136,7 @@ function serializeAssessment(
     position: row.position,
     takenAt: row.takenAt.toISOString(),
     bodyPosition: row.bodyPosition,
+    avds: row.avds as AvdsLevel | null,
     ...vitals,
   } as EventReportAssessment;
 }
@@ -148,6 +150,7 @@ function serializeVictim(row: EventReportRow['victims'][number]): EventReportVic
     destinationKind: row.destinationKind as VictimDestinationKind,
     destinationHospitalId: row.destinationHospitalId,
     destinationHospital: row.destinationHospital,
+    hospitalEpisodeNumber: row.hospitalEpisodeNumber,
   };
 }
 

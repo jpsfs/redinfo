@@ -31,7 +31,7 @@ import { timeOfDay } from '../eventReports/reportDraft';
 import { LiveRunHandle } from './useLiveRun';
 import { DictationControl } from './useDictation';
 import { VITAL_FIELDS, bandHasContent, vitalsForBand } from './vitalsFields';
-import { AbcdeStatusPicker, VitalControl } from './VitalField';
+import { AbcdeStatusPicker, AvdsPicker, VitalControl } from './VitalField';
 
 /**
  * The microphone beside a text field.
@@ -71,6 +71,12 @@ const DictationButton = ({
 export interface AssessmentEditorProps {
   form: LiveRunHandle;
   dictation: DictationControl;
+  /**
+   * The form's own way out, once the crew reaches the end of it — mirrors
+   * `LiveBottomBar`'s `onDone`. Optional so this editor still renders standalone
+   * in tests that don't need the button.
+   */
+  onDone?: () => void;
 }
 
 /**
@@ -86,7 +92,7 @@ export interface AssessmentEditorProps {
  * one-handed), and not a `Stepper` (linear, which is what a real assessment
  * never is).
  */
-export const AssessmentEditor = ({ form, dictation }: AssessmentEditorProps) => {
+export const AssessmentEditor = ({ form, dictation, onDone }: AssessmentEditorProps) => {
   const t = useT();
   const [index, setIndex] = useState(0);
   const [active, setActive] = useState<string>(AbcdeBand.A);
@@ -286,6 +292,12 @@ export const AssessmentEditor = ({ form, dictation }: AssessmentEditorProps) => 
                     />
                   )}
                 />
+                {band === AbcdeBand.D && (
+                  <AvdsPicker
+                    value={current.avds ?? null}
+                    onChange={(next) => form.editAssessment(index, { avds: next })}
+                  />
+                )}
                 {vitalsForBand(band).map((field) => (
                   <VitalControl
                     key={field.key}
@@ -342,6 +354,24 @@ export const AssessmentEditor = ({ form, dictation }: AssessmentEditorProps) => 
             ))}
           </Stack>
         </Paper>
+
+        {/*
+          The form's own way out, for the crew that scrolled to the end of it
+          rather than reaching for the top bar's back arrow. Mirrors the bottom
+          bar's own `onDone` button — belt and braces, not a duplicate control,
+          because a crew mid-scroll on a 6" screen should not have to travel back
+          up to leave.
+        */}
+        {onDone && (
+          <Button
+            fullWidth
+            variant="contained"
+            onClick={onDone}
+            sx={{ minHeight: 64, borderRadius: 2, fontWeight: 800 }}
+          >
+            {t('live.assessmentDone')}
+          </Button>
+        )}
       </Stack>
     </Box>
   );

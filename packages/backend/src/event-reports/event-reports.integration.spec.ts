@@ -24,6 +24,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { HolidaysService } from '../availability/holidays.service';
 import { ShiftScheduleService } from '../availability/shift-schedule.service';
 import { GeographyService } from '../geography/geography.service';
+import { DelegationSettingsService } from '../live-runs/delegation-settings.service';
 import { HospitalsService } from '../hospitals/hospitals.service';
 import { EventReportsService, RequestUser } from './event-reports.service';
 import { EventReportNumbering } from './event-report-numbering';
@@ -123,7 +124,7 @@ describeIntegration('Event reports (integration)', () => {
   beforeAll(async () => {
     const holidays = new HolidaysService(prisma);
     const shiftSchedule = new ShiftScheduleService(holidays, prisma);
-    geography = new GeographyService(prisma);
+    geography = new GeographyService(prisma, new DelegationSettingsService(prisma));
     hospitals = new HospitalsService(prisma, geography);
     reports = new EventReportsService(
       prisma,
@@ -551,6 +552,24 @@ describeIntegration('Event reports (integration)', () => {
           },
         }),
       ).rejects.toThrow(/EventReportVictim_destination_pairing/);
+    });
+
+    it('refuses a hospital episode number on a victim who was never taken to a hospital', async () => {
+      const report = await file({ victims: [] });
+
+      await expect(
+        prisma.eventReportVictim.create({
+          data: {
+            reportId: report.id,
+            position: 0,
+            gender: Gender.MALE,
+            age: 40,
+            destinationKind: VictimDestinationKind.REFUSED_TRANSPORT,
+            destinationHospitalId: null,
+            hospitalEpisodeNumber: '12345',
+          },
+        }),
+      ).rejects.toThrow(/EventReportVictim_episode_requires_hospital/);
     });
 
     it('refuses negative kilometres', async () => {

@@ -21,8 +21,21 @@ export interface LiveBottomBarProps {
   onCorrect: () => void;
   /** Present only on the screens that hand off to a map, and only with an address. */
   navigateHref?: string | null;
+  /**
+   * The assessment screen's own exit. When set, the bar shows one full-width
+   * primary button and nothing else that could advance the run — no stamp
+   * button (there never is one on `assessment`, see `nextStampForScreen`) and
+   * no `NAVEGAR` button either, so the only tap available here is the safe one.
+   */
+  onDone?: () => void;
   /** The closing screen's second act, once the run is stamped available. */
   onFinish?: () => void;
+  /**
+   * The closing screen's other exit: same close, straight back to the home
+   * page instead of into the fresh draft report. Rendered beside `onFinish`
+   * only when both are set.
+   */
+  onFinishAndExit?: () => void;
   finishing?: boolean;
   /** Why the run cannot be closed yet, already translated. */
   blockedReason?: string | null;
@@ -59,7 +72,9 @@ export const LiveBottomBar = ({
   onStamp,
   onCorrect,
   navigateHref,
+  onDone,
   onFinish,
+  onFinishAndExit,
   finishing = false,
   blockedReason,
   materialsCount,
@@ -100,53 +115,80 @@ export const LiveBottomBar = ({
       )}
 
       <Stack direction="row" spacing={1.5} alignItems="stretch">
-        {step && (
+        {/*
+          `onDone` replaces the whole row's stamp/navigate half with one safe
+          exit: on `assessment`, `nextStampForScreen` is always `null` (see its
+          own doc comment), so `step` never renders here anyway — but
+          `navigateHref` is skipped explicitly too, so a caller passing both by
+          accident cannot resurrect a button that advances the run.
+        */}
+        {onDone ? (
           <Button
             fullWidth
-            variant={step.done ? 'outlined' : 'contained'}
-            onClick={step.done ? onCorrect : onStamp}
+            variant="contained"
+            onClick={onDone}
             sx={{
               minHeight: 64,
               borderRadius: 2,
               fontWeight: 800,
               fontSize: '1.0625rem',
               letterSpacing: '0.02em',
-              lineHeight: 1.15,
             }}
           >
-            {step.done ? (
-              <Box>
-                <Box sx={{ fontSize: '0.75rem', fontWeight: 700, opacity: 0.8 }}>
-                  {liveStampLabel(t, step.field)}
-                </Box>
-                <Box sx={{ fontVariantNumeric: 'tabular-nums' }}>
-                  {timeOfDay(run[step.field])} · {t('live.stamp.change')}
-                </Box>
-              </Box>
-            ) : (
-              liveStampLabel(t, step.field)
+            {t('live.assessmentDone')}
+          </Button>
+        ) : (
+          <>
+            {step && (
+              <Button
+                fullWidth
+                variant={step.done ? 'outlined' : 'contained'}
+                onClick={step.done ? onCorrect : onStamp}
+                sx={{
+                  minHeight: 64,
+                  borderRadius: 2,
+                  fontWeight: 800,
+                  fontSize: '1.0625rem',
+                  letterSpacing: '0.02em',
+                  lineHeight: 1.15,
+                }}
+              >
+                {step.done ? (
+                  <Box>
+                    <Box sx={{ fontSize: '0.75rem', fontWeight: 700, opacity: 0.8 }}>
+                      {liveStampLabel(t, step.field)}
+                    </Box>
+                    <Box sx={{ fontVariantNumeric: 'tabular-nums' }}>
+                      {timeOfDay(run[step.field])} · {t('live.stamp.change')}
+                    </Box>
+                  </Box>
+                ) : (
+                  liveStampLabel(t, step.field)
+                )}
+              </Button>
             )}
-          </Button>
-        )}
 
-        {/*
-          A real anchor, not `window.open` from an onClick. Chrome on Android
-          keeps the SPA alive behind `target="_blank"` (so the run, the timers
-          and the wake lock survive), long-press gives "open in app / copy" for
-          free, and it is keyboard- and screen-reader-correct with no ARIA patch.
-        */}
-        {navigateHref && (
-          <Button
-            component="a"
-            href={navigateHref}
-            target="_blank"
-            rel="noopener noreferrer"
-            variant="outlined"
-            startIcon={<NavigationIcon />}
-            sx={{ minHeight: 64, minWidth: 132, borderRadius: 2, fontWeight: 800 }}
-          >
-            {t('live.navigate')}
-          </Button>
+            {/*
+              A real anchor, not `window.open` from an onClick. Chrome on
+              Android keeps the SPA alive behind `target="_blank"` (so the run,
+              the timers and the wake lock survive), long-press gives "open in
+              app / copy" for free, and it is keyboard- and screen-reader-correct
+              with no ARIA patch.
+            */}
+            {navigateHref && (
+              <Button
+                component="a"
+                href={navigateHref}
+                target="_blank"
+                rel="noopener noreferrer"
+                variant="outlined"
+                startIcon={<NavigationIcon />}
+                sx={{ minHeight: 64, minWidth: 132, borderRadius: 2, fontWeight: 800 }}
+              >
+                {t('live.navigate')}
+              </Button>
+            )}
+          </>
         )}
 
         {canLogMaterials && (
@@ -168,18 +210,53 @@ export const LiveBottomBar = ({
         )}
       </Stack>
 
-      {onFinish && (
-        <Button
-          fullWidth
-          variant="contained"
-          color="primary"
-          disabled={finishing}
-          onClick={onFinish}
-          startIcon={finishing ? <CircularProgress size={16} color="inherit" /> : undefined}
-          sx={{ mt: 1.5, minHeight: 64, borderRadius: 2, fontWeight: 800 }}
-        >
-          {finishing ? t('live.finishing') : t('live.finish')}
-        </Button>
+      {/*
+        Two ways out of the run, once it can close: the everyday path into a
+        fresh draft report, and — new — straight back to the home page for a
+        crew that will finish the report later from a desk. Side by side rather
+        than stacked so neither reads as the "real" ending; both respect
+        `finishing` so a slow request cannot be double-submitted through the
+        other button.
+      */}
+      {(onFinish || onFinishAndExit) && (
+        <Stack direction="row" spacing={1.5} sx={{ mt: 1.5 }}>
+          {onFinish && (
+            <Button
+              fullWidth
+              variant="contained"
+              color="primary"
+              disabled={finishing}
+              onClick={onFinish}
+              startIcon={finishing ? <CircularProgress size={16} color="inherit" /> : undefined}
+              sx={{
+                minHeight: 64,
+                borderRadius: 2,
+                fontWeight: 800,
+                whiteSpace: 'normal',
+                lineHeight: 1.15,
+              }}
+            >
+              {finishing ? t('live.finishing') : t('live.finish')}
+            </Button>
+          )}
+          {onFinishAndExit && (
+            <Button
+              fullWidth
+              variant="outlined"
+              disabled={finishing}
+              onClick={onFinishAndExit}
+              sx={{
+                minHeight: 64,
+                borderRadius: 2,
+                fontWeight: 800,
+                whiteSpace: 'normal',
+                lineHeight: 1.15,
+              }}
+            >
+              {t('live.finishAndExit')}
+            </Button>
+          )}
+        </Stack>
       )}
     </Paper>
   );

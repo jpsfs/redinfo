@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import {
+  DEFAULT_DELEGATION_SETTINGS,
   LOCALITY_SEARCH_LIMIT,
   Locality,
   MAX_LOCALITY_QUERY_LENGTH,
@@ -8,6 +9,7 @@ import {
   foldForSearch,
 } from '@redinfo/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { DelegationSettingsService } from '../live-runs/delegation-settings.service';
 
 type MunicipalityRow = {
   id: string;
@@ -24,6 +26,11 @@ type LocalityRow = {
   municipalityId: string;
   municipality?: MunicipalityRow | null;
 };
+
+export interface GeographyOrigin {
+  latitude: number;
+  longitude: number;
+}
 
 export function serializeMunicipality(row: MunicipalityRow): Municipality {
   return {
@@ -65,53 +72,108 @@ const MUNICIPALITY_SELECT = {
  */
 @Injectable()
 export class GeographyService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly delegationSettings: DelegationSettingsService,
+  ) {}
 
   /**
-   * Localities matching a typed fragment, best match first.
-   *
-   * Every token of the query has to appear somewhere in the folded name, so
-   * "martinho bispo" finds "São Martinho do Bispo" and word order does not
-   * matter. Names that *start* with the query are offered before names that
-   * merely contain it: someone typing "coimbra" wants Coimbra, not
-   * "Vila Nova de Coimbra".
+   * All 308 municipalities, folded for search once and cached for the process's
+   * lifetime. The seed is their only writer, so there is nothing to invalidate
+   * this on — a `searchName` column on `Municipality` would need a backfill
+   * migration for the same result this lazily-populated field gets for free.
    */
-  async searchLocalities(query: string, limit = LOCALITY_SEARCH_LIMIT): Promise<Locality[]> {
+  private municipalitiesPromise: Promise<MunicipalityRow[]> | null = null;
+
+  private loadMunicipalities(): Promise<MunicipalityRow[]> {
+    if (!this.municipalitiesPromise) {
+      this.municipalitiesPromise = this.prisma.municipality.findMany(MUNICIPALITY_SELECT);
+    }
+    return this.municipalitiesPromise;
+  }
+
+  /**
+   * Where "nearest" means, when the caller did not say: the delegation's own
+   * base, falling back through `DelegationSettingsService` the same way every
+   * other distance calculation in the app does.
+   */
+  private async resolveOrigin(origin?: GeographyOrigin): Promise<GeographyOrigin> {
+    if (origin && Number.isFinite(origin.latitude) && Number.isFinite(origin.longitude)) {
+      return origin;
+    }
+    const settings = await this.delegationSettings.get();
+    return {
+      latitude: settings.baseLatitude ?? DEFAULT_DELEGATION_SETTINGS.baseLatitude,
+      longitude: settings.baseLongitude ?? DEFAULT_DELEGATION_SETTINGS.baseLongitude,
+    };
+  }
+
+  /**
+   * Localities matching a typed fragment, closest to `origin` first.
+   *
+   * Every token of the query has to match somewhere — the locality's own
+   * folded name, *or* its municipality's folded name or district — so
+   * "campo barcelos" finds "União de Freguesias de Tamel S. Fins e Campo" via
+   * its municipality (Barcelos) even though "barcelos" never appears in the
+   * locality's own name. Word order does not matter.
+   *
+   * Ranked purely by distance from `origin`, nearest first — not by whether
+   * the match was a prefix, a contains, or a municipality hit. A crew that
+   * typed enough to narrow the list wants the nearest of what matched.
+   */
+  async searchLocalities(
+    query: string,
+    limit = LOCALITY_SEARCH_LIMIT,
+    origin?: GeographyOrigin,
+  ): Promise<Locality[]> {
     const folded = foldForSearch((query ?? '').slice(0, MAX_LOCALITY_QUERY_LENGTH));
     const take = Math.max(1, Math.min(limit, LOCALITY_SEARCH_LIMIT));
+    const resolvedOrigin = await this.resolveOrigin(origin);
 
-    if (!folded) {
-      // No query: the alphabetical head of the list, so the picker is never
-      // an empty box waiting to be typed into.
-      const rows = await this.prisma.locality.findMany({
-        take,
-        orderBy: [{ name: 'asc' }],
-        include: { municipality: MUNICIPALITY_SELECT },
-      });
-      return rows.map(serializeLocality);
+    let where: Record<string, unknown> | undefined;
+    if (folded) {
+      const tokens = folded.split(' ');
+      const municipalities = await this.loadMunicipalities();
+      where = {
+        AND: tokens.map((token) => {
+          const municipalityIds = municipalities
+            .filter(
+              (municipality) =>
+                foldForSearch(municipality.name).includes(token) ||
+                foldForSearch(municipality.district).includes(token),
+            )
+            .map((municipality) => municipality.id);
+          // An empty `in: []` must not accidentally match every row — Prisma
+          // treats it as "matches nothing", which is exactly what is wanted
+          // when no municipality's name or district carries this token.
+          return {
+            OR: [{ searchName: { contains: token } }, { municipalityId: { in: municipalityIds } }],
+          };
+        }),
+      };
     }
 
-    const tokens = folded.split(' ');
-    // Over-fetch so the prefix-first ranking below has something to reorder:
-    // the database can filter, but "starts with" beats "contains" is a
-    // judgement about relevance, and it is cheaper to make it here than to
-    // express it in two queries.
     const rows = await this.prisma.locality.findMany({
-      where: { AND: tokens.map((token) => ({ searchName: { contains: token } })) },
-      take: take * 4,
-      orderBy: [{ name: 'asc' }],
+      where,
       include: { municipality: MUNICIPALITY_SELECT },
     });
 
-    const ranked = rows
+    return this.rankByDistance(rows, resolvedOrigin, take);
+  }
+
+  private rankByDistance<T extends LocalityRow>(
+    rows: T[],
+    origin: GeographyOrigin,
+    take: number,
+  ): Locality[] {
+    return rows
       .map((row) => ({
         row,
-        rank: row.searchName.startsWith(folded) ? 0 : 1,
+        distance: row.municipality ? distanceInKm(origin, row.municipality) : Number.POSITIVE_INFINITY,
       }))
-      .sort((a, b) => a.rank - b.rank || a.row.name.localeCompare(b.row.name, 'pt-PT'))
-      .slice(0, take);
-
-    return ranked.map((entry) => serializeLocality(entry.row));
+      .sort((a, b) => a.distance - b.distance || a.row.name.localeCompare(b.row.name, 'pt-PT'))
+      .slice(0, take)
+      .map((entry) => serializeLocality(entry.row));
   }
 
   /**
@@ -141,7 +203,7 @@ export class GeographyService {
     const NEAREST_MUNICIPALITIES = 3;
     const take = Math.max(1, Math.min(limit, LOCALITY_SEARCH_LIMIT));
 
-    const municipalities = await this.prisma.municipality.findMany(MUNICIPALITY_SELECT);
+    const municipalities = await this.loadMunicipalities();
     const nearest = municipalities
       .map((municipality) => ({
         municipality,

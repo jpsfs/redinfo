@@ -22,6 +22,7 @@ import {
   LiveRunState,
   MAX_CREW_PER_REPORT,
   MAX_EXTERNAL_REFERENCE_LENGTH,
+  MAX_HOSPITAL_EPISODE_NUMBER_LENGTH,
   MAX_LIVE_RUN_ADDRESS_LENGTH,
   MAX_LIVE_RUN_COMPLAINT_LENGTH,
   MAX_LIVE_RUN_NAME_LENGTH,
@@ -216,6 +217,15 @@ export class SyncLiveRunDto {
   @IsOptional()
   @IsString()
   destinationHospitalId?: string | null;
+
+  @ApiPropertyOptional({
+    nullable: true,
+    description: 'The "número de episódio de urgência" the ER issued on admission.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(MAX_HOSPITAL_EPISODE_NUMBER_LENGTH)
+  hospitalEpisodeNumber?: string | null;
 
   @ApiPropertyOptional({ type: LiveRunIdentityDto, nullable: true })
   @IsOptional()

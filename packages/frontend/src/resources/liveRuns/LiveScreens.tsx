@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useLocaleState } from 'react-admin';
 import {
   Alert,
@@ -43,6 +43,7 @@ import {
   MaterialItem,
   OCCURRENCE_TIME_FIELDS,
   SNS_NUMBER_REGEX,
+  VehicleType,
   VictimDestinationKind,
   materialItemDisplayName,
 } from '@redinfo/shared';
@@ -70,6 +71,7 @@ import { LiveRunHandle } from './useLiveRun';
 import { DictationControl } from './useDictation';
 import { useLiveMaterialsCatalogue } from './useLiveMaterialsCatalogue';
 import { AssessmentEditor } from './AssessmentEditor';
+import { HandoverSheet } from './HandoverSheet';
 import { PhotoTray } from './PhotoTray';
 
 /**
@@ -100,6 +102,12 @@ export interface LiveScreenProps {
   /** Opens the assessment screen, which is reached rather than walked into. */
   onOpenAssessment: () => void;
   onRefusedFiles?: (messages: string[]) => void;
+  /**
+   * The assessment screen's own way back to `scene`, once vitals are done.
+   * Only ever set when the screen actually on display is `assessment` — see
+   * `LiveRunPage`.
+   */
+  onDone?: () => void;
 }
 
 const Label = ({ children }: { children: React.ReactNode }) => (
@@ -262,7 +270,13 @@ export const IntakeScreen = ({ form, lookups, locality, onPickLocality }: LiveSc
       <Box>
         <Label>{t('field.vehicle')}</Label>
         <Autocomplete
-          options={lookups.vehicles}
+          // A transport vehicle must never be selectable on a live run — this is
+          // always an emergency, so the offered list is emergency vehicles only.
+          // `value` still reads off the unfiltered `lookups.vehicles`, though: a
+          // run that already points at a transport vehicle (set some other way,
+          // or before this rule existed) must still render its name here rather
+          // than silently going blank because it fell out of `options`.
+          options={lookups.vehicles.filter((vehicle) => vehicle.vehicleType === VehicleType.EMERGENCY)}
           value={lookups.vehicles.find((vehicle) => vehicle.id === run.vehicleId) ?? null}
           getOptionLabel={(vehicle) => vehicleLabel(lookups, vehicle.id)}
           onChange={(_event, vehicle) => form.patch({ vehicleId: vehicle?.id ?? null })}
@@ -384,6 +398,26 @@ export const SceneScreen = ({
   // reports what was said, not what is confirmed.
   const notHome = Boolean(run.locationType) && run.locationType !== EventLocationType.HOME;
 
+  // Age is captured earlier, on intake — DOB is only asked once the crew is at
+  // the scene. Pre-filling January 1st of the birth year the age implies opens
+  // the native date picker on roughly the right year instead of on today,
+  // saving a lot of scrolling. Guarded so it fires at most once per mount: a
+  // crew that deliberately clears the field afterwards must not be fought.
+  const dobAutoFilled = useRef(false);
+  useEffect(() => {
+    if (dobAutoFilled.current) return;
+    if (run.identity?.victimDateOfBirth) {
+      dobAutoFilled.current = true;
+      return;
+    }
+    if (!Number.isFinite(run.victimAge)) return;
+    dobAutoFilled.current = true;
+    const birthYear = new Date().getFullYear() - (run.victimAge as number);
+    form.patchIdentity({ victimDateOfBirth: `${birthYear}-01-01` });
+    // Runs once per mount only — see the guard above.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return (
     <Stack spacing={2.5}>
       <Button
@@ -441,6 +475,9 @@ export const SceneScreen = ({
           }
           inputProps={{ 'aria-label': t('field.victimDateOfBirth') }}
         />
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+          {t('field.victimDateOfBirthFromAgeHint')}
+        </Typography>
       </Box>
 
       <Box>
@@ -515,8 +552,8 @@ export const SceneScreen = ({
 
 // ── Assessment ────────────────────────────────────────────────────────────────
 
-export const AssessmentScreen = ({ form, dictation }: LiveScreenProps) => (
-  <AssessmentEditor form={form} dictation={dictation} />
+export const AssessmentScreen = ({ form, dictation, onDone }: LiveScreenProps) => (
+  <AssessmentEditor form={form} dictation={dictation} onDone={onDone} />
 );
 
 // ── Transport ─────────────────────────────────────────────────────────────────
@@ -591,12 +628,36 @@ export const TransportScreen = ({ form, lookups, locality }: LiveScreenProps) =>
  * is something the crew will finish on the report page. Mixing them would make
  * "no vital signs" look like it stops an ambulance going back into service.
  */
-export const ClosingScreen = ({ form, photos, locality, dictation }: LiveScreenProps) => {
+export const ClosingScreen = ({ form, lookups, photos, locality, dictation }: LiveScreenProps) => {
   const t = useT();
   const { run } = form;
+  const [handoverOpen, setHandoverOpen] = useState(false);
 
   return (
     <Stack spacing={2.5}>
+      {/*
+        At the top, above everything else on the closing screen: at the
+        hospital the crew has to read data out loud to the front desk and to
+        triage, and that happens before the narrative gets written, not after.
+      */}
+      <Button
+        fullWidth
+        variant="contained"
+        color="secondary"
+        startIcon={<LocalHospitalIcon />}
+        onClick={() => setHandoverOpen(true)}
+        sx={{ minHeight: 64, fontWeight: 800, borderRadius: 2 }}
+      >
+        {t('live.handover.open')}
+      </Button>
+
+      <HandoverSheet
+        open={handoverOpen}
+        onClose={() => setHandoverOpen(false)}
+        form={form}
+        lookups={lookups}
+      />
+
       {/*
         The account of the call, plain text, with a microphone.
         Deliberately not the rich editor: nobody applies a bullet list one-handed

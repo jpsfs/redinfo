@@ -29,11 +29,31 @@ export class LocalitiesController {
   @Get()
   @ApiQuery({ name: 'q', required: false, type: String })
   @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({
+    name: 'lat',
+    required: false,
+    type: Number,
+    description: 'Origin latitude to rank results by distance from. Defaults to the delegation base.',
+  })
+  @ApiQuery({
+    name: 'lon',
+    required: false,
+    type: Number,
+    description: 'Origin longitude to rank results by distance from. Defaults to the delegation base.',
+  })
   search(
     @Query('q') q = '',
     @Query('limit', new DefaultValuePipe(LOCALITY_SEARCH_LIMIT), ParseIntPipe) limit: number,
+    @Query('lat') lat?: string,
+    @Query('lon') lon?: string,
   ) {
-    return this.geography.searchLocalities(q, limit);
+    const latitude = Number(lat);
+    const longitude = Number(lon);
+    const origin =
+      lat !== undefined && lon !== undefined && Number.isFinite(latitude) && Number.isFinite(longitude)
+        ? { latitude, longitude }
+        : undefined;
+    return this.geography.searchLocalities(q, limit, origin);
   }
 
   /**

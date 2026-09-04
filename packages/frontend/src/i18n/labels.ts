@@ -89,6 +89,7 @@ const MESSAGES = {
   'field.age': { pt: 'Idade', en: 'Age' },
   'field.years': { pt: 'anos', en: 'years' },
   'field.destination': { pt: 'Transportado para', en: 'Taken to' },
+  'field.hospitalEpisodeNumber': { pt: 'Nº de Episódio', en: 'Episode number' },
   'field.narrative': { pt: 'Relato operacional', en: 'Operational report' },
   'field.attachments': { pt: 'Anexos', en: 'Attachments' },
   'field.verbete': { pt: 'Verbete CODU', en: 'CODU verbete' },
@@ -119,6 +120,7 @@ const MESSAGES = {
   'action.back': { pt: 'Voltar', en: 'Back' },
   'action.save': { pt: 'Gravar relatório', en: 'Save report' },
   'action.cancel': { pt: 'Cancelar', en: 'Cancel' },
+  'action.close': { pt: 'Fechar', en: 'Close' },
   'action.now': { pt: 'Agora', en: 'Now' },
   'action.change': { pt: 'Alterar', en: 'Change' },
   'action.changeShift': { pt: 'Mudar turno', en: 'Change shift' },
@@ -266,12 +268,24 @@ const MESSAGES = {
     en: 'No address yet — the time is still marked.',
   },
   'live.finish': { pt: 'TERMINAR E ABRIR RELATÓRIO', en: 'FINISH AND OPEN THE REPORT' },
+  'live.finishAndExit': { pt: 'GUARDAR E SAIR', en: 'SAVE AND EXIT' },
   'live.finishing': { pt: 'A fechar…', en: 'Closing…' },
   'live.confirmAvailable': {
     pt: 'Marcar a ambulância como disponível e fechar a ocorrência?',
     en: 'Mark the ambulance available and close the run?',
   },
   'live.assessmentOpen': { pt: 'Avaliação', en: 'Assessment' },
+  'live.assessmentDone': { pt: 'CONCLUIR AVALIAÇÃO', en: 'FINISH ASSESSMENT' },
+
+  // ── Hospital handover (#213) ──
+  'live.handover.open': { pt: 'PASSAGEM AO HOSPITAL', en: 'HOSPITAL HANDOVER' },
+  'live.handover.title': { pt: 'Passagem ao hospital', en: 'Hospital handover' },
+  'live.handover.admission': { pt: 'Admissão', en: 'Admission' },
+  'live.handover.triage': { pt: 'Triagem', en: 'Triage' },
+  'live.handover.episodeNumberTitle': {
+    pt: 'Nº de Episódio — dado pelo hospital',
+    en: 'Episode number — given by the hospital',
+  },
 
   // ── The top bar ──
   'live.clock': { pt: 'Decorrido', en: 'Elapsed' },
@@ -307,6 +321,10 @@ const MESSAGES = {
   'field.referencePoints': { pt: 'Pontos de referência', en: 'Reference points' },
   'field.victimName': { pt: 'Nome da vítima', en: 'Victim’s name' },
   'field.victimDateOfBirth': { pt: 'Data de nascimento', en: 'Date of birth' },
+  'field.victimDateOfBirthFromAgeHint': {
+    pt: 'Ano aproximado a partir da idade — corrija se souber a data.',
+    en: 'Approximate year from the age — correct it if you know the date.',
+  },
   'field.victimSnsNumber': { pt: 'Nº de utente (SNS)', en: 'SNS number' },
   'field.victimHomeAddress': { pt: 'Residência', en: 'Home address' },
   'field.victimHomeLocality': { pt: 'Localidade da residência', en: 'Home locality' },
@@ -2534,6 +2552,18 @@ const ENUM_MESSAGES = {
     pt: '"Tratado no local" só existe num relatório de apoio.',
     en: 'Treated on scene is only recorded on a support report.',
   },
+  'problem.HOSPITAL_EPISODE_NOT_ALLOWED': {
+    pt: 'O nº de episódio só existe para uma vítima transportada para o hospital.',
+    en: 'The episode number only applies to a victim taken to hospital.',
+  },
+  'problem.HOSPITAL_EPISODE_REQUIRES_REFERENCE': {
+    pt: 'O nº de episódio precisa da referência CODU do relatório.',
+    en: 'The episode number needs the report’s CODU reference.',
+  },
+  'problem.HOSPITAL_EPISODE_TOO_LONG': {
+    pt: 'O nº de episódio é demasiado longo.',
+    en: 'The episode number is too long.',
+  },
   'problem.INEM_UNITS_NOT_A_LIST': {
     pt: 'Os meios INEM de apoio não são uma lista.',
     en: 'The INEM support units are not a list.',
@@ -2639,6 +2669,10 @@ const ENUM_MESSAGES = {
     pt: 'A posição da vítima é demasiado longa.',
     en: 'The victim’s position is too long.',
   },
+  'problem.AVDS_INVALID': {
+    pt: 'Escolhe A, V, D ou S.',
+    en: 'Choose A, V, D or S.',
+  },
 
   // ── The live run's own problems ──
   'problem.LIVE_RUN_MISSING_ID': {
@@ -2739,8 +2773,14 @@ const ENUM_MESSAGES = {
   'vital.diastolic': { pt: 'T.A. diastólica', en: 'Diastolic' },
   'vital.bloodGlucose': { pt: 'Glicemia', en: 'Blood glucose' },
   'vital.temperature': { pt: 'Temperatura', en: 'Temperature' },
-  'vital.glasgow': { pt: 'Escala de Glasgow', en: 'Glasgow scale' },
   'vital.painScore': { pt: 'Dor (0–10)', en: 'Pain (0–10)' },
+  // AVDS replaces Glasgow — an enum, not a number, so it is not a `vital.*`
+  // row, but it lives in the same band D as the vitals it stands beside.
+  'vital.avds': { pt: 'AVDS', en: 'AVDS' },
+  'avds.A': { pt: 'Alerta', en: 'Alert' },
+  'avds.V': { pt: 'Resposta a estímulos Verbais', en: 'Responds to Verbal stimuli' },
+  'avds.D': { pt: 'Resposta a estímulos Dolorosos', en: 'Responds to painful (Dolorous) stimuli' },
+  'avds.S': { pt: 'Sem resposta', en: 'No response' },
 
   // Crew posts as the schedule names them, translated where we recognise them.
   'role.Driver': { pt: 'Condutor', en: 'Driver' },
@@ -2901,6 +2941,9 @@ export const abcdeStatusLabel = (t: Translate, status: string): string => t(`abc
 export const chamuLabel = (t: Translate, field: string): string => t(`chamu.${field}`);
 
 export const vitalLabel = (t: Translate, key: string): string => t(`vital.${key}`);
+
+/** The AVDS level's own Portuguese expansion — the accessible name on its chip. */
+export const avdsLevelLabel = (t: Translate, level: string): string => t(`avds.${level}`);
 
 export const syncStateLabel = (t: Translate, state: string): string => t(`sync.${state}`);
 
