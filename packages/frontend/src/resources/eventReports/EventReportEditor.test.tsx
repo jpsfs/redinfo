@@ -596,7 +596,7 @@ describe('the victim step', () => {
   it('does not ask for an episode number on a report with no reference', async () => {
     const user = userEvent.setup();
     renderEditor({
-      type: EventReportType.SUPPORT,
+      type: EventReportType.LOCAL_SUPPORT,
       seed: {
         ...COHERENT,
         externalReference: '',
@@ -610,7 +610,13 @@ describe('the victim step', () => {
         ],
       },
     });
-    await toVictimStep(user);
+    // A support report's wizard is one screen shorter than an emergency's, so
+    // it can't share toVictimStep's emergency-calibrated click count.
+    await screen.findByText('Guardado');
+    for (let step = 0; step < 4; step += 1) {
+      await user.click(screen.getByRole('button', { name: /seguinte/i }));
+    }
+    await screen.findByText('Vítimas e transporte');
 
     expect(screen.queryByLabelText('Nº de Episódio')).not.toBeInTheDocument();
   });
