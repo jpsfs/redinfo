@@ -16,6 +16,13 @@ export interface RunOptions {
   /** `YYYY-MM-DD`, or `null` for no restriction. */
   since: string | null;
   createHospitals: boolean;
+  /**
+   * Delete rows legacy has since dropped (`prune.ts`). On by default —
+   * "legacy always wins" is not true while a retraction there leaves a stale
+   * row here — with `--no-prune` as the escape hatch for a run that must not
+   * remove anything.
+   */
+  prune: boolean;
   failOnReject: boolean;
   outDir: string;
   runId: string;
@@ -42,6 +49,7 @@ export function parseCliArgs(argv: string[], deps: ParseCliArgsDeps = {}): RunOp
   let only: string[] | null = null;
   let since: string | null = null;
   let createHospitals = false;
+  let prune = true;
   let failOnReject = false;
   let outDir = DEFAULT_OUT_DIR;
   let runId: string | null = null;
@@ -83,6 +91,9 @@ export function parseCliArgs(argv: string[], deps: ParseCliArgsDeps = {}): RunOp
       case '--create-hospitals':
         createHospitals = true;
         break;
+      case '--no-prune':
+        prune = false;
+        break;
       case '--fail-on-reject':
         failOnReject = true;
         break;
@@ -110,6 +121,7 @@ export function parseCliArgs(argv: string[], deps: ParseCliArgsDeps = {}): RunOp
     only,
     since,
     createHospitals,
+    prune,
     failOnReject,
     outDir,
     runId: runId ?? `${now().toISOString()}-${gitShortSha}`,

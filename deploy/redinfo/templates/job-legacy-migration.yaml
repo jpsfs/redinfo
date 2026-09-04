@@ -36,6 +36,11 @@ spec:
   # patience for it — don't blindly retry a run that failed partway through.
   backoffLimit: 0
   activeDeadlineSeconds: {{ .Values.legacyMigration.activeDeadlineSeconds }}
+  # The hook-delete-policy above already reaps a *successful* run; this is what
+  # reaps a failed one, which otherwise stays in the namespace forever showing
+  # as a workload with 0 replicas. Deliberately not instant — an hour is time
+  # enough to `kubectl logs` the failure that caused it.
+  ttlSecondsAfterFinished: {{ .Values.legacyMigration.ttlSecondsAfterFinished }}
   template:
     metadata:
       labels:

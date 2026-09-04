@@ -1840,11 +1840,20 @@ export interface SelfAssignRequest {
  * Unlike a coordinator assigning someone else, a certification requirement
  * here always blocks — self-assignment has no override, by design: only a
  * coordinator may decide to make an exception, and only with a reason.
+ *
+ * A shift already in the past is closed for the same reason: signing up is a
+ * statement about turning out, and a rota entry added after the fact is a
+ * claim about attendance, which is what volunteer hours are for. A coordinator
+ * may still place someone on a past shift — correcting the record afterwards
+ * is exactly their job — so `canManageSchedules` opens that door and nothing
+ * else does.
  */
 export function selfAssignBlockedReason({
   role,
   certifications,
   today,
+  date,
+  canManageSchedules = false,
   filledInRole,
   alreadyOnShift,
   overlaps,
@@ -1852,12 +1861,18 @@ export function selfAssignBlockedReason({
   role: AvailabilityWindowRole | null;
   certifications: HeldCertification[];
   today: string;
+  /** The shift's own ISO date, `YYYY-MM-DD`. */
+  date: string;
+  /** `hasPermission(roles, Action.MANAGE_SCHEDULES)` — admins and emergency coordinators. */
+  canManageSchedules?: boolean;
   filledInRole: number;
   alreadyOnShift: boolean;
   overlaps: boolean;
 }): string | null {
   if (alreadyOnShift) return 'You are already on this shift.';
   if (overlaps) return 'You are already on another shift at the same time.';
+  // ISO dates compare correctly as strings, so no parsing and no timezone.
+  if (!canManageSchedules && date < today) return 'This shift has already passed.';
   if (
     role?.requiredCertification &&
     !holdsCertification(certifications, role.requiredCertification, today)
@@ -5729,6 +5744,7 @@ export type ApiErrorCode =
   | 'ASSIGNMENT_ROLE_NOT_IN_WINDOW'
   | 'SELF_ASSIGN_SCHEDULE_NOT_PUBLISHED'
   | 'SELF_ASSIGN_OVERLAPPING_SHIFT'
+  | 'SELF_ASSIGN_PAST_SHIFT'
   | 'SHIFT_ADJUSTMENT_END_BEFORE_START'
   | 'SHIFT_ADJUSTMENT_OVERLAPS'
   | 'MATERIAL_ITEM_BARCODE_CONFLICT'

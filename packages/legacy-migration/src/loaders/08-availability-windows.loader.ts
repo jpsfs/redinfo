@@ -133,7 +133,11 @@ async function loadOneWindow(ctx: RunContext, ano: number, mes: number): Promise
     startDate,
     endDate,
     category: SYNTHETIC_WINDOW_CATEGORY,
-    name: `Escala ${MONTH_NAMES_PT[mes - 1]} ${ano} (importada)`,
+    // No "(importada)" marker: every synthesised window is opened and closed by
+    // the import actor (`LEGACY_IMPORT_ACTOR_EMAIL`, loader 00), which is a
+    // fact the UI can show and a coordinator can filter on — a suffix on the
+    // name only repeated it, less legibly, in the one string people read most.
+    name: `Escala ${MONTH_NAMES_PT[mes - 1]} ${ano}`,
     status: AvailabilityWindowStatus.CLOSED,
     openedById: ctx.importActorId,
     closedById: ctx.importActorId,

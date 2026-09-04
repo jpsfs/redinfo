@@ -6,6 +6,7 @@
 import { mkdirSync, writeFileSync } from 'fs';
 import { join } from 'path';
 import { Counters } from './counters';
+import { PruneOutcome } from '../prune';
 
 export interface ReportData {
   runId: string;
@@ -22,6 +23,8 @@ export interface ReportData {
   vehiclesWithSentinelDates: string[];
   nonConformingPlates: Array<{ legacyKey: string; value: string }>;
   assumedSubmittedAt: Array<{ legacyKey: string; date: string; source: string }>;
+  /** One entry per entity the prune sweep considered — see `prune.ts`. */
+  pruned: PruneOutcome[];
   mergedFreguesiaMatches: Array<{ legacyText: string; resolvedTo: string; municipality: string; tiebreak: string; occurrences: number }>;
   unresolvedLocalityCount: number;
   truncatedNarratives: string[];
@@ -53,16 +56,44 @@ export function renderReport(data: ReportData): string {
 
   sections.push('## Overwrite summary\n');
   sections.push(`**${data.counters.totalUpdated()} existing row(s) would be overwritten by this run.**\n`);
+  sections.push(`**${data.counters.totalDeleted()} existing row(s) would be deleted** — see Retractions below.\n`);
   sections.push(
     table(
-      ['Entity', 'Created', 'Adopted', 'Updated', 'Unchanged', 'Rejected'],
+      ['Entity', 'Created', 'Adopted', 'Updated', 'Unchanged', 'Rejected', 'Deleted'],
       data.counters
         .entities()
         .sort()
         .map((entity) => {
           const c = data.counters.get(entity);
-          return [entity, String(c.created), String(c.adopted), String(c.updated), String(c.unchanged), String(c.rejected)];
+          return [
+            entity,
+            String(c.created),
+            String(c.adopted),
+            String(c.updated),
+            String(c.unchanged),
+            String(c.rejected),
+            String(c.deleted),
+          ];
         }),
+    ),
+  );
+
+  sections.push('## Retractions (rows legacy no longer has)\n');
+  sections.push(
+    'A mapping `LegacyIdMap` still holds but this run\'s source never produced again — somebody cleared ' +
+      'a crew slot or removed an availability row in legacy. `prune.ts` deletes those here, unless one of ' +
+      'its guards says the absence is more likely an incomplete extract.\n',
+  );
+  sections.push(
+    table(
+      ['Entity', 'Mapped', 'Missing from source', 'Deleted', 'Skipped because'],
+      data.pruned.map((p) => [
+        p.entity,
+        String(p.mapped),
+        String(p.stale),
+        String(p.deleted),
+        p.skippedReason ?? '—',
+      ]),
     ),
   );
 

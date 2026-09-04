@@ -150,7 +150,7 @@ export class SchedulesController {
   selfAssign(
     @Param('id') id: string,
     @Body() dto: SelfAssignDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: RequestUser,
   ) {
     return this.assignments.selfAssign(id, dto, user);
   }

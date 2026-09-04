@@ -2252,6 +2252,10 @@ const MESSAGES = {
     pt: 'Já estás em %{shift} nesse dia, o que se sobrepõe a este turno.',
     en: 'You are already on %{shift} that day, which overlaps this shift.',
   },
+  'apiError.SELF_ASSIGN_PAST_SHIFT': {
+    pt: 'Este turno já passou, por isso já não está aberto para inscrição. Fala com um coordenador se estiveste presente e falta na escala.',
+    en: 'This shift has already passed, so it is no longer open to sign up to. Ask a coordinator if you were there and it is missing from the rota.',
+  },
   'apiError.SHIFT_ADJUSTMENT_END_BEFORE_START': {
     pt: 'O turno tem de terminar depois de começar.',
     en: 'A shift must end after it starts.',

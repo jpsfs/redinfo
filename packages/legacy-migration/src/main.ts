@@ -42,6 +42,7 @@ import { loadEventReports, EventReportsLoaderReport } from './loaders/12-event-r
 import { loadVolunteerHours } from './loaders/13-volunteer-hours.loader';
 import { loadProfileAudits } from './loaders/14-profile-audits.loader';
 import { loadRenumbering } from './loaders/15-renumber.loader';
+import { pruneStaleImports, PruneOutcome } from './prune';
 import { writeReport } from './report/report-writer';
 import { writeUnresolvedLocalitiesCsv } from './report/unresolved-localities-writer';
 import { DryRunRollback } from './upsert-engine';
@@ -72,6 +73,7 @@ export interface TrackAReport {
   vehiclesWithSentinelDates: VehiclesLoaderReport['vehiclesWithSentinelDates'];
   nonConformingPlates: VehiclesLoaderReport['nonConformingPlates'];
   assumedSubmittedAt: EventReportsLoaderReport['assumedSubmittedAt'];
+  pruned: PruneOutcome[];
 }
 
 /** The Track A loader pipeline — every loader that needs no further sign-off. */
@@ -124,12 +126,18 @@ async function runTrackA(ctx: RunContext, localityResolver: LocalityResolver): P
 
   if (loaderIsSelected('15-renumber', ctx.options.only)) await loadRenumbering(ctx, eventReports.yearsTouched);
 
+  // Last, and only after every loader has stamped `LegacyIdMap.lastRunId` —
+  // the sweep reads "not stamped this run" as "legacy dropped it", which is
+  // only true once nothing is left to stamp. See `prune.ts` for the guards.
+  const pruned = await pruneStaleImports(ctx);
+
   return {
     placeholderEmails: usersReport.placeholderEmails,
     defaultedVolunteerRoles: usersReport.defaultedVolunteerRoles,
     vehiclesWithSentinelDates: vehiclesReport.vehiclesWithSentinelDates,
     nonConformingPlates: vehiclesReport.nonConformingPlates,
     assumedSubmittedAt: eventReports.report.assumedSubmittedAt,
+    pruned,
   };
 }
 
@@ -172,6 +180,7 @@ async function main(): Promise<void> {
       vehiclesWithSentinelDates: [],
       nonConformingPlates: [],
       assumedSubmittedAt: [],
+      pruned: [],
     };
 
     if (options.apply) {
@@ -220,6 +229,7 @@ async function main(): Promise<void> {
       vehiclesWithSentinelDates: trackAReport.vehiclesWithSentinelDates,
       nonConformingPlates: trackAReport.nonConformingPlates,
       assumedSubmittedAt: trackAReport.assumedSubmittedAt,
+      pruned: trackAReport.pruned,
       mergedFreguesiaMatches: [...localityResolver.mergedFreguesiaMatches.values()].sort((a, b) => b.occurrences - a.occurrences),
       unresolvedLocalityCount: unresolvedLocalities.length,
       truncatedNarratives: [],

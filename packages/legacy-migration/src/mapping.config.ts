@@ -424,13 +424,25 @@ export const SAIDAS_CREW_ROLE_NAMES = {
 
 /**
  * Per-role defaults for every synthesised window role (the three above, and
- * every `funcao` row materialised as a role). `maxPeople: 0` is the schema's
- * own "unlimited" sentinel — legacy enforced no cap, so claiming one would be
- * a statement the source data cannot support. Same reasoning for
- * `mandatoryCount: 0` and `requiredCertification: null`.
+ * every `funcao` row materialised as a role).
+ *
+ * `maxPeople: 1` because that is exactly what the source says: an `escala`
+ * row carries one `condutor`, one `socorrista_1` and one `socorrista_3`
+ * column, so a legacy shift never held two people in the same crew position.
+ * This previously used the schema's `0` "unlimited" sentinel on the grounds
+ * that legacy enforced no cap — but the *shape* of the table is itself the
+ * cap, and "unlimited" read as a genuine invitation on the schedule board:
+ * every imported role showed an open place forever and no gap chip meant
+ * anything.
+ *
+ * `mandatoryCount: 0` still stands, and is deliberately *not* raised to 1
+ * alongside `maxPeople`: it drives volunteer-hours auto-generation (#164),
+ * which is a statement about a shift being properly crewed that a 2016
+ * roster cannot support. `requiredCertification: null` for the same reason —
+ * legacy recorded no such requirement.
  */
 export const SYNTHETIC_ROLE_DEFAULTS = {
-  maxPeople: 0,
+  maxPeople: 1,
   mandatoryCount: 0,
   requiredCertification: null,
 } as const;

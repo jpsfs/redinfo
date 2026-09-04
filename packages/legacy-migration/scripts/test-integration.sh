@@ -21,4 +21,12 @@ fi
 export DATABASE_URL="$TARGET"
 
 npx prisma migrate reset --force --skip-seed --skip-generate --schema=../backend/prisma/schema.prisma
+
+# ...and then seed it, unlike the backend's otherwise-identical script. This
+# suite's `beforeAll` needs a real `Locality` to resolve a `saidas.freguesia`
+# against, and the loader's own preflight hard-requires seeded geography +
+# hospitals before it will touch anything (see ../src/preflight.ts) — so
+# `--skip-seed` alone leaves a database this package can never run against.
+(cd ../backend && npx ts-node prisma/seed.ts)
+
 npx jest --runInBand -t integration

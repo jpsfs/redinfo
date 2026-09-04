@@ -83,7 +83,13 @@ point at:
    see `packages/legacy-migration/job-entrypoint.sh`. This is "legacy always
    wins" (`upsert-engine.ts`) on a schedule: an app-side edit to an
    already-imported row does not survive the next run, by design, for as
-   long as this stays enabled. The deploy-time hook runs *after* `job-seed`
+   long as this stays enabled — and a *retraction* in legacy is honoured the
+   same way, which is what `prune.ts` is for (see "Retractions" below). Both
+   the hook and each CronJob run carry `ttlSecondsAfterFinished`
+   (`legacyMigration.ttlSecondsAfterFinished`), so a finished Job — including
+   a failed one, which Helm's own `hook-succeeded` policy never reaps — is
+   garbage-collected an hour later instead of sitting in the namespace
+   forever as a workload with 0 replicas. The deploy-time hook runs *after* `job-seed`
    (hook-weight `1` vs. `0`) because the loader's preflight hard-requires seeded
    geography + hospitals first — the CronJob has the same requirement, so it
    never runs anywhere with `seed.enabled: false`.
@@ -178,10 +184,36 @@ file's `mysql-legacy`/dev-Postgres defaults.
 
 | File | What it is |
 |---|---|
-| `report.md` | The deliverable a human reads. Overwrite summary first (created/adopted/**updated**/unchanged/rejected per entity — the `updated` total is the headline "how many existing rows would this touch" number), then per-decision detail sections, "not migrated" tables/columns, and truncated/non-conforming values. |
+| `report.md` | The deliverable a human reads. Overwrite summary first (created/adopted/**updated**/unchanged/rejected/**deleted** per entity — the `updated` total is the headline "how many existing rows would this touch" number, and `deleted` is the Retractions sweep below), then per-decision detail sections, "not migrated" tables/columns, and truncated/non-conforming values. |
 | `rejects-<entity>.csv` | One per entity with at least one rejected row. `legacy_key,reason_code,reason,field,value_redacted` — `value_redacted` is blank for sensitive/clinical fields. |
 | `unresolved-localities.csv` | Every `saidas.freguesia` value none of the resolver's tiers could place, with `nearest_candidates` to make filling in the override CSV fast. |
 | `run.jsonl` | One JSON line per decision, for diffing two runs. |
+
+## Retractions — what happens when legacy *deletes* something
+
+`adoptOrCreate` handles creates and updates. Deletes are handled by
+`packages/legacy-migration/src/prune.ts`, and they need their own pass because
+absence is not a row: clearing `escala.condutor` back to `0` (how somebody is
+taken off a shift in the legacy system) just stops producing that assignment's
+legacy key, and before this existed the `ScheduleAssignment` here simply stayed
+— showing a person on a shift they had been removed from, with no later run
+ever touching it again.
+
+The signal is `LegacyIdMap.lastRunId`: after a complete pass, a mapping not
+stamped with the current run id is a fact legacy no longer has. The sweep
+deletes those rows and their mappings. It runs last, after every loader, and
+covers **`ScheduleAssignment` and `AvailabilitySubmission` only** — the archive
+(users, vehicles, event reports) is never pruned, because losing history is a
+worse failure than carrying a stale row of it.
+
+It declines to run, and says so in `report.md`'s Retractions table, when:
+
+- `--since` was passed (the source query was partial);
+- `--only` skipped a loader the entity is derived from;
+- more than 20% of an entity's mapped rows went missing at once and there are
+  more than 25 of them — the shape of a truncated dump or a half-failed fetch,
+  not of somebody editing a rota;
+- `--no-prune` was passed, which turns the whole sweep off for that run.
 
 ## Filling in `migration/overrides/locality-map.csv`
 

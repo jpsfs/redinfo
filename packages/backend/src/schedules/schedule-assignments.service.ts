@@ -5,12 +5,14 @@ import {
   ApiForbiddenException,
 } from '../common/api-error.exception';
 import {
+  Action,
   AssignmentAvailability,
   AvailabilityWindowRole,
   availabilityEligibleRoles,
   availabilityWindowLabel,
   CERTIFICATION_LABEL,
   formatRoleCapacity,
+  hasPermission,
   holdsCertification,
   ScheduleAssignment,
   ScheduleCandidate,
@@ -31,6 +33,7 @@ import {
 } from '../users/certifications.util';
 import { CreateScheduleAssignmentDto, SelfAssignDto } from './dto/create-assignment.dto';
 import {
+  RequestUser,
   ScheduleContext,
   SchedulesService,
   serializeAssignment,
@@ -197,17 +200,34 @@ export class ScheduleAssignmentsService {
    * It is deliberately one-way: filling an open place is the member's to do,
    * vacating it is not. Coming off a rota other people are relying on goes
    * through a coordinator, who can find the replacement at the same time.
+   *
+   * And only forwards in time. Signing up says "I will be there"; a shift
+   * that has already happened cannot be volunteered for, only reported on,
+   * which is what volunteer hours are for. Correcting a past rota afterwards
+   * is real work, but it is a coordinator's — hence `MANAGE_SCHEDULES` as the
+   * one key that opens this door, held by administrators and emergency
+   * coordinators alike.
    */
   async selfAssign(
     scheduleId: string,
     dto: SelfAssignDto,
-    user: { id: string },
+    user: RequestUser,
   ): Promise<ScheduleAssignment> {
     const context = await this.schedules.loadContext(scheduleId);
     if (context.status !== ScheduleStatus.PUBLISHED) {
       throw new ApiForbiddenException(
         'SELF_ASSIGN_SCHEDULE_NOT_PUBLISHED',
         'This schedule has not been published yet, so it is not open to sign up to.',
+      );
+    }
+
+    // ISO dates compare correctly as strings, so this needs no parsing and
+    // carries no timezone of its own — `today()` is already the app's day.
+    if (dto.date < today() && !hasPermission(user.roles, Action.MANAGE_SCHEDULES)) {
+      throw new ApiForbiddenException(
+        'SELF_ASSIGN_PAST_SHIFT',
+        'This shift has already passed, so it is no longer open to sign up to. ' +
+          'Ask a coordinator if you were there and it is missing from the rota.',
       );
     }
 

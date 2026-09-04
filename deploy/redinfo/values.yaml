@@ -113,6 +113,14 @@ legacyMigration:
   enabled: false
   # Generous: a fresh mysqldump + reload + full loader run, in one Job.
   activeDeadlineSeconds: 1800
+  # How long a *finished* Job — succeeded or failed — survives before the
+  # cluster garbage-collects it and its pods. Applied to both the deploy-time
+  # hook and every CronJob run, and the only thing that cleans up the failed
+  # ones: Helm's own `hook-delete-policy: hook-succeeded` covers the happy
+  # path, so without this a run that hit `activeDeadlineSeconds` or died
+  # partway (`backoffLimit: 0`) sat in the namespace forever as a workload
+  # showing 0 replicas. An hour is long enough to still read its logs.
+  ttlSecondsAfterFinished: 3600
   timezone: "Europe/Lisbon"
   importActorEmail: "import@redinfo.invalid"
   # Separate CronJob (templates/cronjob-legacy-migration.yaml) that repeats the
@@ -125,6 +133,12 @@ legacyMigration:
     schedule: "0 * * * *"
     concurrencyPolicy: Forbid
     startingDeadlineSeconds: 300
+    # Keep one of each rather than Kubernetes' default 3 successful: with an
+    # hourly schedule the default leaves three completed Jobs permanently
+    # parked in the namespace. `ttlSecondsAfterFinished` above usually reaps
+    # them first; these are the backstop when it doesn't.
+    successfulJobsHistoryLimit: 1
+    failedJobsHistoryLimit: 1
 
 # packages/inem-worker (#215) — the stateless Playwright session-minter for
 # the INEM integration (#211). Off everywhere by default; only production

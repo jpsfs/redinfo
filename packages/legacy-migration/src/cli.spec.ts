@@ -46,6 +46,11 @@ describe('parseCliArgs', () => {
     expect(options.failOnReject).toBe(true);
     expect(options.verbose).toBe(true);
   });
+
+  it('prunes by default, and --no-prune turns it off', () => {
+    expect(parseCliArgs([]).prune).toBe(true);
+    expect(parseCliArgs(['--no-prune']).prune).toBe(false);
+  });
 });
 
 describe('loaderIsSelected', () => {

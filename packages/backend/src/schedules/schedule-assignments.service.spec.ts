@@ -5,6 +5,7 @@ import {
   CertificationType,
   UserRole,
 } from '@redinfo/shared';
+import * as certificationsUtil from '../users/certifications.util';
 import { ScheduleAssignmentsService } from './schedule-assignments.service';
 import { ScheduleContext } from './schedules.service';
 
@@ -425,7 +426,22 @@ describe('ScheduleAssignmentsService.assign', () => {
 // relying on goes through a coordinator, who can find the replacement.
 
 describe('ScheduleAssignmentsService.selfAssign', () => {
-  beforeEach(() => jest.clearAllMocks());
+  /**
+   * The day this suite is judged against. `today()` reads the real clock, and
+   * whether a shift is in the past is now a rule the service enforces — so
+   * without freezing it, every fixture date here would quietly become "past"
+   * the moment the wall clock caught up with it, and this suite would start
+   * failing on a date rather than on a change.
+   */
+  const FROZEN_TODAY = '2026-09-15';
+  const PAST_DATE = '2026-08-01';
+
+  beforeEach(() => {
+    jest.clearAllMocks();
+    jest.spyOn(certificationsUtil, 'today').mockReturnValue(FROZEN_TODAY);
+  });
+
+  afterAll(() => jest.restoreAllMocks());
 
   const published = (roles = [DRIVER_ROLE, MEMBER_ROLE]) => {
     const context = makeContext(roles);
@@ -439,12 +455,38 @@ describe('ScheduleAssignmentsService.selfAssign', () => {
     ...overrides,
   });
 
+  /** An ordinary field member — no `MANAGE_SCHEDULES`, so every rule below applies to them. */
+  const member = (id: string) => ({ id, roles: [UserRole.EMERGENCY_OPERATIONAL] });
+
+  /** Someone who may correct a past rota: `MANAGE_SCHEDULES` is the only key that opens it. */
+  const coordinator = (id: string) => ({ id, roles: [UserRole.EMERGENCY_COORDINATOR] });
+
+  /** The published context plus one day that has already been and gone. */
+  const publishedWithPastDay = () => {
+    const context = published();
+    const shift = context.shifts.get('2026-10-01#1')!;
+    return {
+      ...context,
+      pattern: [
+        ...context.pattern,
+        {
+          date: PAST_DATE,
+          isWeekend: false,
+          isHoliday: false,
+          holidayName: null,
+          shifts: context.pattern[0].shifts,
+        },
+      ],
+      shifts: new Map([...context.shifts, [`${PAST_DATE}#1`, { ...shift, date: PAST_DATE }]]),
+    } as ScheduleContext;
+  };
+
   it('puts the caller on the shift, stamped as their own doing', async () => {
     const prisma = buildPrismaStub();
     prisma.user.findUnique.mockResolvedValue(JOANA);
     const { service } = makeService(prisma, buildSchedulesStub(published()));
 
-    const result = await service.selfAssign('s1', selfDto(), { id: JOANA.id });
+    const result = await service.selfAssign('s1', selfDto(), member(JOANA.id));
 
     expect(prisma.scheduleAssignment.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -460,17 +502,66 @@ describe('ScheduleAssignmentsService.selfAssign', () => {
     const { service } = makeService(prisma, buildSchedulesStub(published()));
 
     // A userId in the body is not part of the DTO and is ignored outright.
-    await service.selfAssign('s1', selfDto({ userId: ANA.id }) as never, { id: JOANA.id });
+    await service.selfAssign('s1', selfDto({ userId: ANA.id }) as never, member(JOANA.id));
 
     expect(prisma.scheduleAssignment.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ userId: JOANA.id }) }),
     );
   });
 
+  it('refuses a shift that has already happened', async () => {
+    const prisma = buildPrismaStub();
+    prisma.user.findUnique.mockResolvedValue(JOANA);
+    const { service } = makeService(prisma, buildSchedulesStub(publishedWithPastDay()));
+
+    await expect(
+      service.selfAssign('s1', selfDto({ date: PAST_DATE }), member(JOANA.id)),
+    ).rejects.toThrow(/already passed/i);
+    expect(prisma.scheduleAssignment.create).not.toHaveBeenCalled();
+  });
+
+  it('lets an emergency coordinator correct a past rota — MANAGE_SCHEDULES is the door', async () => {
+    const prisma = buildPrismaStub();
+    prisma.user.findUnique.mockResolvedValue(JOANA);
+    const { service } = makeService(prisma, buildSchedulesStub(publishedWithPastDay()));
+
+    await service.selfAssign('s1', selfDto({ date: PAST_DATE }), coordinator(JOANA.id));
+
+    expect(prisma.scheduleAssignment.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ userId: JOANA.id }) }),
+    );
+  });
+
+  it('leaves today’s own shift open — "past" means before today, not earlier today', async () => {
+    const prisma = buildPrismaStub();
+    prisma.user.findUnique.mockResolvedValue(JOANA);
+    const context = published();
+    const shift = context.shifts.get('2026-10-01#1')!;
+    const withToday = {
+      ...context,
+      pattern: [
+        ...context.pattern,
+        {
+          date: FROZEN_TODAY,
+          isWeekend: false,
+          isHoliday: false,
+          holidayName: null,
+          shifts: context.pattern[0].shifts,
+        },
+      ],
+      shifts: new Map([...context.shifts, [`${FROZEN_TODAY}#1`, { ...shift, date: FROZEN_TODAY }]]),
+    } as ScheduleContext;
+    const { service } = makeService(prisma, buildSchedulesStub(withToday));
+
+    await service.selfAssign('s1', selfDto({ date: FROZEN_TODAY }), member(JOANA.id));
+
+    expect(prisma.scheduleAssignment.create).toHaveBeenCalled();
+  });
+
   it('refuses a schedule that is still a draft', async () => {
     const { service } = makeService(buildPrismaStub(), buildSchedulesStub(makeContext()));
 
-    await expect(service.selfAssign('s1', selfDto(), { id: JOANA.id })).rejects.toThrow(
+    await expect(service.selfAssign('s1', selfDto(), member(JOANA.id))).rejects.toThrow(
       /not been published/i,
     );
   });
@@ -485,7 +576,7 @@ describe('ScheduleAssignmentsService.selfAssign', () => {
     const { service } = makeService(prisma, buildSchedulesStub(published()));
 
     await expect(
-      service.selfAssign('s1', selfDto({ roleId: DRIVER_ROLE.id }), { id: JOANA.id }),
+      service.selfAssign('s1', selfDto({ roleId: DRIVER_ROLE.id }), member(JOANA.id)),
     ).rejects.toThrow(/needs a reason/i);
     expect(prisma.scheduleAssignment.create).not.toHaveBeenCalled();
   });
@@ -496,7 +587,7 @@ describe('ScheduleAssignmentsService.selfAssign', () => {
     const { service } = makeService(prisma, buildSchedulesStub(published()));
 
     await expect(
-      service.selfAssign('s1', selfDto({ roleId: DRIVER_ROLE.id }), { id: ANA.id }),
+      service.selfAssign('s1', selfDto({ roleId: DRIVER_ROLE.id }), member(ANA.id)),
     ).resolves.toBeDefined();
   });
 
@@ -516,7 +607,7 @@ describe('ScheduleAssignmentsService.selfAssign', () => {
     const { service } = makeService(prisma, buildSchedulesStub(published()));
 
     await expect(
-      service.selfAssign('s1', selfDto({ roleId: DRIVER_ROLE.id }), { id: ANA.id }),
+      service.selfAssign('s1', selfDto({ roleId: DRIVER_ROLE.id }), member(ANA.id)),
     ).rejects.toBeInstanceOf(ConflictException);
   });
 
@@ -535,7 +626,7 @@ describe('ScheduleAssignmentsService.selfAssign', () => {
     ]);
     const { service } = makeService(prisma, buildSchedulesStub(published()));
 
-    await expect(service.selfAssign('s1', selfDto(), { id: ANA.id })).rejects.toThrow(
+    await expect(service.selfAssign('s1', selfDto(), member(ANA.id))).rejects.toThrow(
       /already on this shift/i,
     );
   });
@@ -551,7 +642,7 @@ describe('ScheduleAssignmentsService.selfAssign', () => {
     ]);
     const { service } = makeService(prisma, buildSchedulesStub(published()));
 
-    await expect(service.selfAssign('s1', selfDto(), { id: ANA.id })).rejects.toThrow(
+    await expect(service.selfAssign('s1', selfDto(), member(ANA.id))).rejects.toThrow(
       /already on 15:00–24:00/i,
     );
   });
@@ -575,7 +666,7 @@ describe('ScheduleAssignmentsService.selfAssign', () => {
     });
     const { service } = makeService(prisma, buildSchedulesStub(context));
 
-    await expect(service.selfAssign('s1', selfDto(), { id: ANA.id })).rejects.toThrow(
+    await expect(service.selfAssign('s1', selfDto(), member(ANA.id))).rejects.toThrow(
       /already on 12:00–20:00/i,
     );
   });
@@ -588,7 +679,7 @@ describe('ScheduleAssignmentsService.selfAssign', () => {
     });
     const { service } = makeService(prisma, buildSchedulesStub(published()));
 
-    await expect(service.selfAssign('s1', selfDto(), { id: JOANA.id })).rejects.toThrow(
+    await expect(service.selfAssign('s1', selfDto(), member(JOANA.id))).rejects.toThrow(
       /not field personnel/i,
     );
   });
@@ -599,7 +690,7 @@ describe('ScheduleAssignmentsService.selfAssign', () => {
     const { service } = makeService(prisma, buildSchedulesStub(published()));
 
     await expect(
-      service.selfAssign('s1', selfDto({ slot: 6 }), { id: JOANA.id }),
+      service.selfAssign('s1', selfDto({ slot: 6 }), member(JOANA.id)),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
@@ -608,7 +699,7 @@ describe('ScheduleAssignmentsService.selfAssign', () => {
     prisma.user.findUnique.mockResolvedValue(JOANA);
     const { service } = makeService(prisma, buildSchedulesStub(published([] as never)));
 
-    await service.selfAssign('s1', selfDto({ roleId: undefined }), { id: JOANA.id });
+    await service.selfAssign('s1', selfDto({ roleId: undefined }), member(JOANA.id));
 
     expect(prisma.scheduleAssignment.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ roleId: null }) }),

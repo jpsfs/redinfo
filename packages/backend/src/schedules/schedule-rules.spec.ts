@@ -8,6 +8,7 @@ import {
   roleCanTakeMore,
   scheduleFillStats,
   ScheduleDayBoard,
+  selfAssignBlockedReason,
   shiftGaps,
   shiftsOverlap,
   UNLIMITED_ROLE_PEOPLE,
@@ -343,6 +344,51 @@ describe('scheduleFillStats certification counters', () => {
       certificationExceptionCount: 0,
       lapsedCertificationCount: 0,
     });
+  });
+});
+
+// ── Signing yourself up (the shared half of the rule the API enforces) ─────────
+
+describe('selfAssignBlockedReason', () => {
+  const base = {
+    role: MEMBER,
+    certifications: [],
+    today: TODAY,
+    date: TODAY,
+    filledInRole: 0,
+    alreadyOnShift: false,
+    overlaps: false,
+  };
+
+  it('lets an ordinary member take an open place on today’s shift', () => {
+    expect(selfAssignBlockedReason(base)).toBeNull();
+  });
+
+  it('lets them take one on a future shift', () => {
+    expect(selfAssignBlockedReason({ ...base, date: '2026-10-02' })).toBeNull();
+  });
+
+  it('closes a shift that has already passed', () => {
+    expect(selfAssignBlockedReason({ ...base, date: '2026-09-30' })).toBe(
+      'This shift has already passed.',
+    );
+  });
+
+  it('keeps that door open for an administrator or emergency coordinator', () => {
+    expect(
+      selfAssignBlockedReason({ ...base, date: '2026-09-30', canManageSchedules: true }),
+    ).toBeNull();
+  });
+
+  it('still reports being on the shift first — the more specific answer wins', () => {
+    expect(
+      selfAssignBlockedReason({ ...base, date: '2026-09-30', alreadyOnShift: true }),
+    ).toBe('You are already on this shift.');
+  });
+
+  it('reports a missing certification and a full role as before', () => {
+    expect(selfAssignBlockedReason({ ...base, role: DRIVER })).toMatch(/requires the/);
+    expect(selfAssignBlockedReason({ ...base, filledInRole: 1 })).toMatch(/already full/);
   });
 });
 

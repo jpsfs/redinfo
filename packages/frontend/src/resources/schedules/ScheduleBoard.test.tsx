@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AdminContext, testDataProvider } from 'react-admin';
@@ -29,6 +29,19 @@ vi.mock('../../api', async (importOriginal) => ({
   apiDownload: vi.fn(),
 }));
 vi.mock('../../hooks/useIsMobile', () => ({ useIsMobile: vi.fn(() => false) }));
+
+/**
+ * The board judges a shift against today — a member cannot sign up to one that
+ * has already happened (`selfAssignBlockedReason`). The fixtures below are
+ * dated October 2026, so without pinning "today" this suite would start
+ * failing on a calendar date rather than on a change. Only `Date` is faked;
+ * `userEvent` needs the real timers underneath it.
+ */
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date('2026-10-01T09:00:00.000Z'));
+});
+afterAll(() => vi.useRealTimers());
 
 const mockApiFetch = apiFetch as unknown as Mock;
 const mockApiDownload = apiDownload as unknown as Mock;
@@ -529,6 +542,24 @@ describe('ScheduleBoard as a member', () => {
     expect(
       await screen.findByText('Team Member is already full on this shift.'),
     ).toBeInTheDocument();
+  });
+
+  // Shown but refused, the same way an uncertified driver post is: the place
+  // is still the honest picture of a shift that went short, and the tooltip
+  // says why it cannot be taken now.
+  it('will not let anyone sign up to a shift that has already happened', async () => {
+    respondWith(
+      publishedBoard({
+        // Two days before the pinned "today" above.
+        days: [{ ...publishedBoard().days[0], date: '2026-09-29' }],
+      }),
+    );
+    renderBoard(MEMBER);
+
+    await screen.findByText('Tue, 29 Sep');
+    const place = screen.getByLabelText('Add me to Team Member on Tue, 29 Sep, 08:00–16:00');
+    expect(place).toBeDisabled();
+    expect(place.closest('span')).toHaveAttribute('aria-label', 'This shift has already passed.');
   });
 
   it('offers nothing to sign up to while the schedule is still a draft', async () => {

@@ -42,10 +42,13 @@ import { loadSystemActor } from './loaders/00-system-actor.loader';
 import { loadUsers } from './loaders/01-users.loader';
 import { loadVehicles } from './loaders/03-vehicles.loader';
 import { loadMaterialItems } from './loaders/04-material-items.loader';
+import { loadAvailabilityWindows } from './loaders/08-availability-windows.loader';
+import { loadSchedules } from './loaders/10-schedules.loader';
 import { loadEventReports } from './loaders/12-event-reports.loader';
 import { loadRenumbering } from './loaders/15-renumber.loader';
 import { UserResolver } from './resolvers/user.resolver';
 import { LocalityResolver } from './resolvers/locality.resolver';
+import { PruneSpec, pruneStaleImports } from './prune';
 import { DryRunRollback } from './upsert-engine';
 
 const describeIntegration = process.env.DATABASE_URL ? describe : describe.skip;
@@ -61,6 +64,7 @@ class FixtureLegacySource implements LegacySource {
   materialRows: MaterialRow[] = [];
   materialSaidaRows: MaterialSaidaRow[] = [];
   saidasRows: SaidasRow[] = [];
+  escalaRows: EscalaRow[] = [];
 
   async usuarios() { return this.usuariosRows; }
   async usuariosHist(): Promise<UsuariosHistRow[]> { return []; }
@@ -71,7 +75,7 @@ class FixtureLegacySource implements LegacySource {
   async material() { return this.materialRows; }
   async materialSaida() { return this.materialSaidaRows; }
   async saidas(): Promise<SaidasRow[]> { return this.saidasRows; }
-  async escala(): Promise<EscalaRow[]> { return []; }
+  async escala(): Promise<EscalaRow[]> { return this.escalaRows; }
   async alteracoesEscala(): Promise<AlteracoesEscalaRow[]> { return []; }
   async disponibilidade(): Promise<DisponibilidadeRow[]> { return []; }
   async aberturaDisponibilidade(): Promise<AberturaDisponibilidadeRow[]> { return []; }
@@ -91,6 +95,7 @@ function makeOptions(overrides: Partial<RunOptions> = {}): RunOptions {
     only: null,
     since: null,
     createHospitals: false,
+    prune: true,
     failOnReject: false,
     outDir: `/tmp/legacy-migration-test-${RUN}`,
     runId: RUN,
@@ -547,6 +552,137 @@ describeIntegration('Legacy migration harness (integration)', () => {
       const imported = await prisma.eventReport.findMany({ where: { type: PrismaEventReportType.EMERGENCY, year } });
       expect(imported).toHaveLength(4);
       expect(imported.some((r) => r.legacyNumber === ids[2])).toBe(false);
+    });
+  });
+
+  /**
+   * The retraction path (`prune.ts`), end to end against real Postgres: a crew
+   * slot cleared in legacy must take the `ScheduleAssignment` here with it.
+   *
+   * Runs entirely inside one transaction that is rolled back at the end — the
+   * same mechanism a dry run uses. That matters more here than elsewhere in
+   * this file: the sweep is the only code in the package that deletes, it
+   * works off *every* `ScheduleAssignment` mapping in the database rather than
+   * only this test's own, and this database is shared.
+   */
+  describe('retractions — a crew slot cleared in legacy', () => {
+    /** Windows are synthesised per (ano, mes); a random month keeps parallel runs off each other. */
+    function escalaRow(crewNumero: number, ano: number, dia: number): EscalaRow {
+      return {
+        mes: 'Marco',
+        condutor: crewNumero,
+        socorrista_1: 0,
+        socorrista_3: 0,
+        trocas: '',
+        turno: 1,
+        ano,
+        dia,
+        observacoes: '',
+        dia_semana: 'Segunda',
+        update_date: '2020-03-31 12:00:00',
+        updated_by: 'admin',
+      };
+    }
+
+    it('deletes the assignment and its mapping once legacy stops producing the key', async () => {
+      const source = new FixtureLegacySource();
+      const dia = 1 + Math.floor(Math.random() * 28);
+      const ano = 2001 + Math.floor(Math.random() * 15);
+
+      let assignmentAfterFirstRun: { id: string; userId: string } | null = null;
+      let windowName: string | null = null;
+      let roleCaps: number[] = [];
+      let assignmentsAfterPrune = -1;
+      let mappingsAfterPrune = -1;
+
+      await prisma
+        .$transaction(
+          async (tx) => {
+            // ── First run: legacy still has the driver on the shift ──────────
+            // Not `freshContext`: `sharedTx` has to be on the context *before*
+            // the first loader runs, and that helper resolves the import actor
+            // (a write) on the way out.
+            const first = createRunContext({
+              prisma,
+              source,
+              options: makeOptions({ apply: false, runId: `${RUN}-r1` }),
+            });
+            first.sharedTx = tx;
+            first.importActorId = await loadSystemActor(first);
+            const { crewNumero } = await setUpCrewAndVehicle(first, source, `prune-${RUN}`);
+            source.escalaRows = [escalaRow(crewNumero, ano, dia)];
+
+            const windows = await loadAvailabilityWindows(first);
+            await loadSchedules(first, windows, userResolverFor(source, first));
+
+            const window = await tx.availabilityWindow.findUniqueOrThrow({
+              where: { id: windows.get(`${ano}-3`)!.windowId },
+              include: { roles: true },
+            });
+            windowName = window.name;
+            roleCaps = window.roles.map((role) => role.maxPeople).sort();
+
+            const created = await tx.scheduleAssignment.findMany({
+              where: { schedule: { windowId: window.id } },
+              select: { id: true, userId: true },
+            });
+            expect(created).toHaveLength(1);
+            assignmentAfterFirstRun = created[0];
+
+            // ── Second run: somebody cleared the driver slot in legacy ───────
+            // `0` is the "nobody" sentinel (plan finding F5), so loader 10 no
+            // longer emits this assignment's key and nothing re-stamps it.
+            source.escalaRows = [{ ...escalaRow(crewNumero, ano, dia), condutor: 0 }];
+
+            const second = createRunContext({
+              prisma,
+              source,
+              options: makeOptions({ apply: false, runId: `${RUN}-r2` }),
+            });
+            second.sharedTx = tx;
+            second.importActorId = first.importActorId;
+            const windowsAgain = await loadAvailabilityWindows(second);
+            await loadSchedules(second, windowsAgain, userResolverFor(source, second));
+
+            // Assignment rows this database already had are stale to this run
+            // too, so the fraction guard would refuse — it has its own unit
+            // coverage in `prune.spec.ts`; what is under test here is the
+            // sweep itself.
+            const spec: PruneSpec = {
+              entity: 'ScheduleAssignment',
+              requiredLoaders: ['08-availability-windows', '10-schedules'],
+              maxFraction: 1,
+              deleteRows: async (client, ids) => {
+                await client.scheduleAssignment.deleteMany({ where: { id: { in: ids } } });
+              },
+            };
+            const [outcome] = await pruneStaleImports(second, [spec]);
+            expect(outcome.deleted).toBeGreaterThanOrEqual(1);
+
+            assignmentsAfterPrune = await tx.scheduleAssignment.count({
+              where: { id: assignmentAfterFirstRun!.id },
+            });
+            mappingsAfterPrune = await tx.legacyIdMap.count({
+              where: { entity: 'ScheduleAssignment', newId: assignmentAfterFirstRun!.id },
+            });
+
+            throw new DryRunRollback();
+          },
+          { timeout: 120_000, maxWait: 10_000 },
+        )
+        .catch((err) => {
+          if (!(err instanceof DryRunRollback)) throw err;
+        });
+
+      expect(assignmentAfterFirstRun).not.toBeNull();
+      expect(assignmentsAfterPrune).toBe(0);
+      expect(mappingsAfterPrune).toBe(0);
+
+      // The other two changes to the synthesised window, checked on the same
+      // fixture rather than in a run of their own: no "(importada)" suffix,
+      // and one seat per crew position instead of the "unlimited" sentinel.
+      expect(windowName).toBe(`Escala Março ${ano}`);
+      expect(roleCaps).toEqual([1, 1, 1]);
     });
   });
 });

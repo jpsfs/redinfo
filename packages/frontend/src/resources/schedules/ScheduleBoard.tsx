@@ -394,6 +394,12 @@ const RoleCell = ({
           role,
           certifications: viewer.certifications,
           today: today(),
+          date,
+          // `isCoordinator` *is* `MANAGE_SCHEDULES` (see the viewer built at
+          // the bottom of this file), which is the same key the API checks
+          // before letting anyone onto a shift that has already passed. Always
+          // false while `mode` is `signUp`, but stated rather than assumed.
+          canManageSchedules: viewer.isCoordinator,
           filledInRole: people.length,
           alreadyOnShift: shift.assignments.some(
             (assignment) => assignment.userId === viewer.id,

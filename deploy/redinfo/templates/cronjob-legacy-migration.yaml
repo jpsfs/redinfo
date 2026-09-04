@@ -28,11 +28,20 @@ spec:
   # cluster was down when a tick was due.
   concurrencyPolicy: {{ .Values.legacyMigration.cron.concurrencyPolicy | default "Forbid" }}
   startingDeadlineSeconds: {{ .Values.legacyMigration.cron.startingDeadlineSeconds | default 300 }}
+  # Kubernetes' own defaults (3 successful, 1 failed) leave an hourly schedule
+  # permanently trailing three finished Jobs in the namespace, each reading as a
+  # workload with 0 replicas. One of each is enough to see what last happened;
+  # `ttlSecondsAfterFinished` below usually gets there first anyway.
+  successfulJobsHistoryLimit: {{ .Values.legacyMigration.cron.successfulJobsHistoryLimit | default 1 }}
+  failedJobsHistoryLimit: {{ .Values.legacyMigration.cron.failedJobsHistoryLimit | default 1 }}
   jobTemplate:
     spec:
       # Same reasoning as the hook: don't blindly retry a run that failed partway through.
       backoffLimit: 0
       activeDeadlineSeconds: {{ .Values.legacyMigration.activeDeadlineSeconds }}
+      # No Helm hook-delete-policy applies to a CronJob's own runs, so this is
+      # the only thing cleaning them up between history-limit evictions.
+      ttlSecondsAfterFinished: {{ .Values.legacyMigration.ttlSecondsAfterFinished }}
       template:
         metadata:
           labels:

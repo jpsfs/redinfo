@@ -3,7 +3,14 @@ import { Counters } from './counters';
 describe('Counters', () => {
   it('starts every entity at zero without needing an explicit register step', () => {
     const counters = new Counters();
-    expect(counters.get('User')).toEqual({ created: 0, adopted: 0, updated: 0, unchanged: 0, rejected: 0 });
+    expect(counters.get('User')).toEqual({
+      created: 0,
+      adopted: 0,
+      updated: 0,
+      unchanged: 0,
+      rejected: 0,
+      deleted: 0,
+    });
   });
 
   it('records outcomes per entity independently', () => {
@@ -30,6 +37,15 @@ describe('Counters', () => {
     counters.reject('EventReport');
     counters.reject('User');
     expect(counters.totalRejected()).toBe(3);
+  });
+
+  it('deleted() adds a batch at a time, and totalDeleted sums across entities', () => {
+    const counters = new Counters();
+    counters.deleted('ScheduleAssignment', 4);
+    counters.deleted('ScheduleAssignment', 3);
+    counters.deleted('AvailabilitySubmission', 2);
+    expect(counters.get('ScheduleAssignment')).toMatchObject({ deleted: 7 });
+    expect(counters.totalDeleted()).toBe(9);
   });
 
   it('entities() lists every entity touched so far', () => {
