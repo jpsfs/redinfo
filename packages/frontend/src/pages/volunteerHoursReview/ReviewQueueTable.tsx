@@ -22,7 +22,7 @@ import { formatDayLabel } from '../../utils/dates';
 import { CategoryChip } from '../../components/CategoryChip';
 import { ReviewEntryFlags } from './ReviewEntryFlags';
 
-const ROTA_CATEGORIES = new Set(['EMERGENCY', 'LOCAL_SUPPORT', 'SALOP_SUPPORT']);
+const ROTA_CATEGORIES = new Set(['EMERGENCY', 'LOCAL_SUPPORT', 'CNE_SUPPORT']);
 
 function daysAgo(date: string): number {
   const today = new Date().toISOString().slice(0, 10);

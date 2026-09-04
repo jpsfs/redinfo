@@ -52,7 +52,7 @@ describe('StatisticsActivityService.getStatistics', () => {
       expect.arrayContaining([
         { type: 'EMERGENCY', count: 1 },
         { type: 'LOCAL_SUPPORT', count: 1 },
-        { type: 'SALOP_SUPPORT', count: 0 },
+        { type: 'CNE_SUPPORT', count: 0 },
       ]),
     );
   });

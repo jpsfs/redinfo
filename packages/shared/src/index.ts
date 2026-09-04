@@ -1136,7 +1136,7 @@ export enum AvailabilityWindowStatus {
 export enum AvailabilityWindowCategory {
   EMERGENCY = 'EMERGENCY',
   LOCAL_SUPPORT = 'LOCAL_SUPPORT',
-  SALOP_SUPPORT = 'SALOP_SUPPORT',
+  CNE_SUPPORT = 'CNE_SUPPORT',
 }
 
 export interface AvailabilityWindowCategoryMetadata {
@@ -1156,9 +1156,9 @@ export const AVAILABILITY_WINDOW_CATEGORY_METADATA: Record<
     label: 'Local Support',
     description: 'Cover for local events and standby requests.',
   },
-  [AvailabilityWindowCategory.SALOP_SUPPORT]: {
-    label: 'SALOP Support',
-    description: 'Cover for SALOP operations.',
+  [AvailabilityWindowCategory.CNE_SUPPORT]: {
+    label: 'CNE Support',
+    description: 'Cover for CNE operations.',
   },
 };
 
@@ -2244,7 +2244,7 @@ export enum VolunteerHoursSource {
 
 /**
  * What the hours were for. The rota categories (`EMERGENCY`,
- * `LOCAL_SUPPORT`, `SALOP_SUPPORT`) double as `SCHEDULED` activity types and
+ * `LOCAL_SUPPORT`, `CNE_SUPPORT`) double as `SCHEDULED` activity types and
  * can also be logged `MANUAL`ly (for shift work the schedule never captured);
  * the other three (`MEETING`, `TRAINING`, `OTHER`) only ever appear on
  * `MANUAL` entries.
@@ -2252,7 +2252,7 @@ export enum VolunteerHoursSource {
 export enum VolunteerActivityType {
   EMERGENCY = 'EMERGENCY',
   LOCAL_SUPPORT = 'LOCAL_SUPPORT',
-  SALOP_SUPPORT = 'SALOP_SUPPORT',
+  CNE_SUPPORT = 'CNE_SUPPORT',
   MEETING = 'MEETING',
   TRAINING = 'TRAINING',
   OTHER = 'OTHER',
@@ -2267,7 +2267,7 @@ export enum VolunteerActivityType {
 export const MANUAL_VOLUNTEER_ACTIVITY_TYPES: readonly VolunteerActivityType[] = [
   VolunteerActivityType.EMERGENCY,
   VolunteerActivityType.LOCAL_SUPPORT,
-  VolunteerActivityType.SALOP_SUPPORT,
+  VolunteerActivityType.CNE_SUPPORT,
   VolunteerActivityType.MEETING,
   VolunteerActivityType.TRAINING,
   VolunteerActivityType.OTHER,
@@ -2276,7 +2276,7 @@ export const MANUAL_VOLUNTEER_ACTIVITY_TYPES: readonly VolunteerActivityType[] =
 export const VOLUNTEER_ACTIVITY_TYPE_LABEL: Record<VolunteerActivityType, string> = {
   [VolunteerActivityType.EMERGENCY]: 'Emergency',
   [VolunteerActivityType.LOCAL_SUPPORT]: 'Local Support',
-  [VolunteerActivityType.SALOP_SUPPORT]: 'SALOP Support',
+  [VolunteerActivityType.CNE_SUPPORT]: 'CNE Support',
   [VolunteerActivityType.MEETING]: 'Meeting',
   [VolunteerActivityType.TRAINING]: 'Training',
   [VolunteerActivityType.OTHER]: 'Other',
@@ -2964,7 +2964,7 @@ export function sortHospitalsForPicker(
 export enum EventReportType {
   EMERGENCY = 'EMERGENCY',
   LOCAL_SUPPORT = 'LOCAL_SUPPORT',
-  SALOP_SUPPORT = 'SALOP_SUPPORT',
+  CNE_SUPPORT = 'CNE_SUPPORT',
 }
 
 /**
@@ -3065,9 +3065,9 @@ export const EVENT_REPORT_TYPE_RULES: Record<EventReportType, EventReportTypeRul
     hasInemSupportUnits: false,
     allowsTreatedOnScene: true,
   },
-  [EventReportType.SALOP_SUPPORT]: {
-    codePrefix: 'SAL',
-    category: AvailabilityWindowCategory.SALOP_SUPPORT,
+  [EventReportType.CNE_SUPPORT]: {
+    codePrefix: 'CNE',
+    category: AvailabilityWindowCategory.CNE_SUPPORT,
     hasOccurrenceTimes: false,
     maxVehicles: MAX_VEHICLES_PER_REPORT,
     maxVictims: MAX_VICTIMS_PER_REPORT,

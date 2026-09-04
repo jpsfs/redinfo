@@ -57,7 +57,7 @@ describe('the type chooser', () => {
 
     expect(screen.getByText('Emergência')).toBeInTheDocument();
     expect(screen.getByText('Apoio Local')).toBeInTheDocument();
-    expect(screen.getByText('Apoio SALOP')).toBeInTheDocument();
+    expect(screen.getByText('Apoio CNE')).toBeInTheDocument();
     expect(screen.getByText('Ocorrência com número CODU')).toBeInTheDocument();
   });
 

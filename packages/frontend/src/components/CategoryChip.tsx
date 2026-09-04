@@ -2,7 +2,7 @@ import { Chip, ChipProps } from '@mui/material';
 import {
   colorCategoryEmergency,
   colorCategoryLocalSupport,
-  colorCategorySalopSupport,
+  colorCategoryCneSupport,
   colorGrey700,
 } from '../layout/design-tokens';
 
@@ -16,7 +16,7 @@ import {
 const CATEGORY_COLOR: Record<string, string> = {
   EMERGENCY: colorCategoryEmergency,
   LOCAL_SUPPORT: colorCategoryLocalSupport,
-  SALOP_SUPPORT: colorCategorySalopSupport,
+  CNE_SUPPORT: colorCategoryCneSupport,
 };
 
 /** The category's color, or a neutral grey for anything unrecognised. */

@@ -115,7 +115,7 @@ describe('changing the type mid-report', () => {
     act(() => result.current.goTo('times'));
     expect(result.current.stepId).toBe('times');
 
-    act(() => result.current.setType(EventReportType.SALOP_SUPPORT));
+    act(() => result.current.setType(EventReportType.CNE_SUPPORT));
     // `times` is gone; falling back to the first step beats a blank screen.
     expect(result.current.stepId).toBe('whenWhere');
   });

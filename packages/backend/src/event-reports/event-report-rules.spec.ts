@@ -55,7 +55,7 @@ import {
  * same sentence. Same arrangement as `schedule-rules.spec.ts`.
  */
 
-const { EMERGENCY, LOCAL_SUPPORT, SALOP_SUPPORT } = EventReportType;
+const { EMERGENCY, LOCAL_SUPPORT, CNE_SUPPORT } = EventReportType;
 
 /**
  * The code of a problem, or null.
@@ -128,7 +128,7 @@ describe('event report types', () => {
   });
 
   it('lets support reports carry many vehicles and victims, and no chronology', () => {
-    for (const type of [LOCAL_SUPPORT, SALOP_SUPPORT]) {
+    for (const type of [LOCAL_SUPPORT, CNE_SUPPORT]) {
       const rules = eventReportRules(type);
       expect(rules.hasOccurrenceTimes).toBe(false);
       expect(rules.requiresExternalReference).toBe(false);
@@ -151,8 +151,8 @@ describe('formatEventReportCode', () => {
     expect(formatEventReportCode({ type: LOCAL_SUPPORT, number: 14, year: 2026 })).toBe(
       'APL 014/2026',
     );
-    expect(formatEventReportCode({ type: SALOP_SUPPORT, number: 7, year: 2026 })).toBe(
-      'SAL 007/2026',
+    expect(formatEventReportCode({ type: CNE_SUPPORT, number: 7, year: 2026 })).toBe(
+      'CNE 007/2026',
     );
   });
 
@@ -185,7 +185,7 @@ describe('the clinical type flags', () => {
     // Live mode is emergency-only, and so is the clinical record: a stall at a
     // village fair has no vitals to take, no Verbete to attach, and no CODU to
     // have dispatched a VMER, SIV or UMIP alongside it.
-    for (const type of [LOCAL_SUPPORT, SALOP_SUPPORT]) {
+    for (const type of [LOCAL_SUPPORT, CNE_SUPPORT]) {
       expect(eventReportRules(type)).toMatchObject({
         supportsLiveRun: false,
         hasClinicalRecord: false,
@@ -494,10 +494,10 @@ describe('parseEventReportCode', () => {
   });
 
   it('strips leading zeros, so the printed form round-trips', () => {
-    const code = formatEventReportCode({ type: SALOP_SUPPORT, number: 7, year: 2026 });
+    const code = formatEventReportCode({ type: CNE_SUPPORT, number: 7, year: 2026 });
     expect(code).not.toBeNull();
     expect(parseEventReportCode(code!)).toEqual({
-      type: SALOP_SUPPORT,
+      type: CNE_SUPPORT,
       number: 7,
       year: 2026,
     });
@@ -746,7 +746,7 @@ describe('validateEventReport', () => {
         codeOf(
           validateEventReport(
             support({
-              externalReference: 'SALOP-2026-04',
+              externalReference: 'CNE-2026-04',
               victims: [
                 {
                   gender: Gender.MALE,
@@ -981,7 +981,7 @@ describe('noTransportDestinationsFor', () => {
       VictimDestinationKind.CANCELLED,
     ]);
     expect(noTransportDestinationsFor(LOCAL_SUPPORT)).toEqual(NO_TRANSPORT_DESTINATIONS);
-    expect(noTransportDestinationsFor(SALOP_SUPPORT)).toEqual(NO_TRANSPORT_DESTINATIONS);
+    expect(noTransportDestinationsFor(CNE_SUPPORT)).toEqual(NO_TRANSPORT_DESTINATIONS);
   });
 
   it('is permissive for an unknown type, like eventReportRules', () => {
@@ -1049,7 +1049,7 @@ describe('validateOccurrenceTimes', () => {
     ).toBe('TIMES_NOT_FOR_TYPE');
     expect(
       codeOf(
-        validateOccurrenceTimes({ type: SALOP_SUPPORT, availableAt: times.availableAt }),
+        validateOccurrenceTimes({ type: CNE_SUPPORT, availableAt: times.availableAt }),
       ),
     ).toBe('TIMES_NOT_FOR_TYPE');
   });

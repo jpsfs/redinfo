@@ -53,7 +53,7 @@ export const ActivityTab = ({ filters }: { filters: StatisticsFilterState }) => 
     month: m.month,
     [EventReportType.EMERGENCY]: m.byType[EventReportType.EMERGENCY],
     [EventReportType.LOCAL_SUPPORT]: m.byType[EventReportType.LOCAL_SUPPORT],
-    [EventReportType.SALOP_SUPPORT]: m.byType[EventReportType.SALOP_SUPPORT],
+    [EventReportType.CNE_SUPPORT]: m.byType[EventReportType.CNE_SUPPORT],
   }));
   const typeSeries = Object.values(EventReportType).map((type) => ({
     key: type,
@@ -120,7 +120,7 @@ export const ActivityTab = ({ filters }: { filters: StatisticsFilterState }) => 
               formatMonthLabel(m.month, locale),
               m.byType[EventReportType.EMERGENCY],
               m.byType[EventReportType.LOCAL_SUPPORT],
-              m.byType[EventReportType.SALOP_SUPPORT],
+              m.byType[EventReportType.CNE_SUPPORT],
               m.total,
             ])}
           />

@@ -49,7 +49,7 @@ const PEOPLE: PeopleStatistics = {
   hoursByActivityType: [
     { activityType: VolunteerActivityType.EMERGENCY, hours: 300 },
     { activityType: VolunteerActivityType.LOCAL_SUPPORT, hours: 60 },
-    { activityType: VolunteerActivityType.SALOP_SUPPORT, hours: 20 },
+    { activityType: VolunteerActivityType.CNE_SUPPORT, hours: 20 },
     { activityType: VolunteerActivityType.MEETING, hours: 12 },
     { activityType: VolunteerActivityType.TRAINING, hours: 10 },
     { activityType: VolunteerActivityType.OTHER, hours: 0 },
@@ -87,10 +87,10 @@ const ACTIVITY: ActivityStatistics = {
   eventsByType: [
     { type: EventReportType.EMERGENCY, count: 497 },
     { type: EventReportType.LOCAL_SUPPORT, count: 113 },
-    { type: EventReportType.SALOP_SUPPORT, count: 53 },
+    { type: EventReportType.CNE_SUPPORT, count: 53 },
   ],
   eventsByMonth: [
-    { month: '2026-08', byType: { EMERGENCY: 40, LOCAL_SUPPORT: 10, SALOP_SUPPORT: 5 }, total: 55 },
+    { month: '2026-08', byType: { EMERGENCY: 40, LOCAL_SUPPORT: 10, CNE_SUPPORT: 5 }, total: 55 },
   ],
   activationHeatmap: [{ weekday: 3, band: 2, count: 5 }],
   eventsByLocality: [{ id: 'l-1', name: 'Barcelos', count: 100 }],

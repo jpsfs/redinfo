@@ -106,7 +106,7 @@ describe('MyDutiesPage', () => {
         {
           ...MY_DUTY,
           roleName: null,
-          windowCategory: AvailabilityWindowCategory.SALOP_SUPPORT,
+          windowCategory: AvailabilityWindowCategory.CNE_SUPPORT,
           windowLabel: 'Rally Serra da Estrela',
         },
       ],

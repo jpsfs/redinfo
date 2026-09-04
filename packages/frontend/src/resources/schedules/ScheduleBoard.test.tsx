@@ -312,7 +312,7 @@ describe('ScheduleBoard', () => {
             date: '2026-10-03',
             slot: 1,
             otherWindowId: 'win-2',
-            otherWindowLabel: 'SALOP Support',
+            otherWindowLabel: 'CNE Support',
             otherLabel: '08:00–20:00',
             crossWindow: true,
           },
@@ -322,7 +322,7 @@ describe('ScheduleBoard', () => {
     renderBoard();
 
     expect(
-      await screen.findByText(/Ana Silva, Sat, 3 Oct — also on SALOP Support, 08:00–20:00/),
+      await screen.findByText(/Ana Silva, Sat, 3 Oct — also on CNE Support, 08:00–20:00/),
     ).toBeInTheDocument();
     expect(screen.getByLabelText('Ana Silva, double-booked')).toBeInTheDocument();
   });

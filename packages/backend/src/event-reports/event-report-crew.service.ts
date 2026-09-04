@@ -43,7 +43,7 @@ export const RECENT_SHIFT_LIMIT = 12;
  * The crew comes from the *published* schedule of the availability window whose
  * category matches the report's type — that mapping lives in
  * `EVENT_REPORT_TYPE_RULES`, so an emergency report is offered the emergency
- * rota and never the SALOP one.
+ * rota and never the CNE one.
  *
  * Drafts are ignored: a rota nobody has published is not a statement about who
  * was out.

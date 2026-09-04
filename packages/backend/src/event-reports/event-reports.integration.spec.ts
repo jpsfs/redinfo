@@ -311,7 +311,7 @@ describeIntegration('Event reports (integration)', () => {
       // filings must come back with ten distinct numbers.
       const created = await Promise.all(
         Array.from({ length: 10 }, () =>
-          reports.create(input({ type: EventReportType.SALOP_SUPPORT }), tiago.id),
+          reports.create(input({ type: EventReportType.CNE_SUPPORT }), tiago.id),
         ),
       );
       createdReportIds.push(...created.map((report) => report.id));
@@ -342,7 +342,7 @@ describeIntegration('Event reports (integration)', () => {
      * resequence is partition-scoped, so two tests sharing (type, year) would
      * renumber each other's rows.
      */
-    const filedOn = (year: number, day: string, type = EventReportType.SALOP_SUPPORT) =>
+    const filedOn = (year: number, day: string, type = EventReportType.CNE_SUPPORT) =>
       file({
         type,
         externalReference: type === EventReportType.EMERGENCY ? '2608 4471' : null,
@@ -353,7 +353,7 @@ describeIntegration('Event reports (integration)', () => {
         victims: [],
       });
 
-    const numbersIn = async (year: number, type = EventReportType.SALOP_SUPPORT) => {
+    const numbersIn = async (year: number, type = EventReportType.CNE_SUPPORT) => {
       const rows = await prisma.eventReport.findMany({
         where: { year, type: type as never, submittedAt: { not: null } },
         orderBy: { number: 'asc' },
@@ -408,7 +408,7 @@ describeIntegration('Event reports (integration)', () => {
 
       const displaced = await reports.findOne(second.id, coordinatorUser);
       expect(displaced.number).toBe(2);
-      // Someone holding the paper printed "SAL 001/2033". That has to remain
+      // Someone holding the paper printed "CNE 001/2033". That has to remain
       // findable, so the *first* number is kept rather than the previous one.
       expect(displaced.legacyNumber).toBe(1);
     });
@@ -495,7 +495,7 @@ describeIntegration('Event reports (integration)', () => {
       await filedOn(2038, '19');
       const late = await reports.create(
         input({
-          type: EventReportType.SALOP_SUPPORT,
+          type: EventReportType.CNE_SUPPORT,
           externalReference: null,
           occurredOn: '2038-08-18',
           startedAt: '2038-08-18T20:00:00.000Z',
@@ -950,7 +950,7 @@ describeIntegration('Event reports (integration)', () => {
 
       expect(counts[EventReportType.EMERGENCY]).toBeGreaterThan(0);
       expect(counts.ALL).toBeGreaterThanOrEqual(counts[EventReportType.EMERGENCY]);
-      expect(counts).toHaveProperty(EventReportType.SALOP_SUPPORT);
+      expect(counts).toHaveProperty(EventReportType.CNE_SUPPORT);
     });
   });
 
@@ -1150,7 +1150,7 @@ describeIntegration('Event reports (integration)', () => {
 
     it('never offers another rota’s shifts', async () => {
       const { suggested, recent } = await crewService.suggestCrew(
-        EventReportType.SALOP_SUPPORT,
+        EventReportType.CNE_SUPPORT,
         new Date(`${SHIFT_DATE}T21:00:00.000Z`),
         new Date(`${SHIFT_DATE}T23:00:00.000Z`),
       );

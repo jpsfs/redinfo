@@ -8,7 +8,7 @@ import {
   colorCategoryLocalSupport,
   colorCategoryMeeting,
   colorCategoryOther,
-  colorCategorySalopSupport,
+  colorCategoryCneSupport,
   colorCategoryTraining,
 } from '../../layout/design-tokens';
 import { HeroCard } from './HeroCard';
@@ -27,7 +27,7 @@ import { StatisticsFilterState, useStatisticsTab } from './useStatisticsTab';
 const ACTIVITY_TYPE_COLOR: Record<VolunteerActivityType, string> = {
   [VolunteerActivityType.EMERGENCY]: colorCategoryEmergency,
   [VolunteerActivityType.LOCAL_SUPPORT]: colorCategoryLocalSupport,
-  [VolunteerActivityType.SALOP_SUPPORT]: colorCategorySalopSupport,
+  [VolunteerActivityType.CNE_SUPPORT]: colorCategoryCneSupport,
   [VolunteerActivityType.MEETING]: colorCategoryMeeting,
   [VolunteerActivityType.TRAINING]: colorCategoryTraining,
   [VolunteerActivityType.OTHER]: colorCategoryOther,

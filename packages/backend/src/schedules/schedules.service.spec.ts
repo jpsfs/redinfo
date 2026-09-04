@@ -485,7 +485,7 @@ describe('SchedulesService double-booking detection', () => {
     const { service, prisma, shiftSchedule } = makeService();
     const salopWindow = windowRow({
       id: 'w2',
-      category: 'SALOP_SUPPORT',
+      category: 'CNE_SUPPORT',
       name: 'Rally Serra da Estrela',
     });
 
@@ -535,7 +535,7 @@ describe('SchedulesService double-booking detection', () => {
     const { service, prisma, shiftSchedule } = makeService();
     const salopWindow = windowRow({
       id: 'w2',
-      category: 'SALOP_SUPPORT',
+      category: 'CNE_SUPPORT',
       name: 'Rally Serra da Estrela',
     });
     // At its own window's hours, 17:00–20:00 does not touch 08:00–16:00.

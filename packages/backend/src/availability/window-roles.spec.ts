@@ -59,7 +59,7 @@ describe('default roles', () => {
 
   it.each([
     AvailabilityWindowCategory.LOCAL_SUPPORT,
-    AvailabilityWindowCategory.SALOP_SUPPORT,
+    AvailabilityWindowCategory.CNE_SUPPORT,
   ])('leaves %s with no roles, for whoever opens it to decide', (category) => {
     expect(defaultRolesForCategory(category)).toEqual([]);
   });

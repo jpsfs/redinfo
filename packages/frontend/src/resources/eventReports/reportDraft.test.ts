@@ -44,7 +44,7 @@ describe('stepsForType', () => {
     // A standby at a village fair has no chronology, no CODU to have dispatched
     // a VMER/SIV/UMIP, and no victim to have vitals — all three are absent
     // rather than empty. Material is spent regardless of the kind of activity.
-    for (const type of [EventReportType.LOCAL_SUPPORT, EventReportType.SALOP_SUPPORT]) {
+    for (const type of [EventReportType.LOCAL_SUPPORT, EventReportType.CNE_SUPPORT]) {
       const steps = stepsForType(type);
       expect(steps).toHaveLength(7);
       expect(steps).toContain('materials');
@@ -259,7 +259,7 @@ describe('retypeDraft', () => {
   });
 
   it('leaves everything else alone', () => {
-    const next = retypeDraft(emergencyDraft, EventReportType.SALOP_SUPPORT);
+    const next = retypeDraft(emergencyDraft, EventReportType.CNE_SUPPORT);
     expect(next.occurredOn).toBe(emergencyDraft.occurredOn);
     expect(next.startedAt).toBe(emergencyDraft.startedAt);
   });

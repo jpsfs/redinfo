@@ -20,7 +20,7 @@ import {
 /** Minutes from midnight, so the expectations read in wall-clock hours. */
 const at = (hour: number, minute = 0) => toMinuteOfDay(hour, minute);
 
-const { EMERGENCY, LOCAL_SUPPORT, SALOP_SUPPORT } = AvailabilityWindowCategory;
+const { EMERGENCY, LOCAL_SUPPORT, CNE_SUPPORT } = AvailabilityWindowCategory;
 
 /**
  * Integration coverage for the availability module, run against a real
@@ -292,7 +292,7 @@ describeIntegration('Availability module (integration)', () => {
     async function openEachCategory() {
       await closeOpenWindows();
       const windows = [];
-      for (const category of [EMERGENCY, LOCAL_SUPPORT, SALOP_SUPPORT]) {
+      for (const category of [EMERGENCY, LOCAL_SUPPORT, CNE_SUPPORT]) {
         const window = await windowsService.open(
           { startDate: '2026-10-12', endDate: '2026-10-18', category },
           coordinator.id,
@@ -309,7 +309,7 @@ describeIntegration('Availability module (integration)', () => {
       expect(windows.map((window) => window.category)).toEqual([
         EMERGENCY,
         LOCAL_SUPPORT,
-        SALOP_SUPPORT,
+        CNE_SUPPORT,
       ]);
       const open = await windowsService.findOpen();
       expect(open).toHaveLength(3);
@@ -325,7 +325,7 @@ describeIntegration('Availability module (integration)', () => {
         category: LOCAL_SUPPORT,
       });
 
-      const nameless = await openWindow('2026-11-16', '2026-11-20', { category: SALOP_SUPPORT });
+      const nameless = await openWindow('2026-11-16', '2026-11-20', { category: CNE_SUPPORT });
       expect(await windowsService.findOne(nameless.id)).toMatchObject({ name: null });
     });
 
@@ -436,7 +436,7 @@ describeIntegration('Availability module (integration)', () => {
         coordinator.id,
       );
       const september = await windowsService.open(
-        { startDate: '2026-09-01', endDate: '2026-09-07', category: SALOP_SUPPORT },
+        { startDate: '2026-09-01', endDate: '2026-09-07', category: CNE_SUPPORT },
         coordinator.id,
       );
       createdWindowIds.push(november.id, october.id, september.id);
@@ -784,7 +784,7 @@ describeIntegration('Availability module (integration)', () => {
     });
 
     it('stores roles a coordinator defined, unlimited ones included', async () => {
-      const window = await openWithRoles(SALOP_SUPPORT, [
+      const window = await openWithRoles(CNE_SUPPORT, [
         { name: 'Driver', maxPeople: 2 },
         { name: 'Stretcher bearer', maxPeople: 0 },
       ]);

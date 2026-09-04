@@ -123,7 +123,7 @@ export const colorCategoryEmergency = colorRedCrossRed;
  * (docs/plans/estatisticas-dashboards.md §6) that introduced the check.
  */
 export const colorCategoryLocalSupport = '#00897B'; // teal
-export const colorCategorySalopSupport = '#6B4FA0'; // violet
+export const colorCategoryCneSupport = '#6B4FA0'; // violet
 /**
  * The remaining two `VolunteerActivityType` values that never appear as an
  * `EventReportType`/`AvailabilityWindowCategory` — only the statistics

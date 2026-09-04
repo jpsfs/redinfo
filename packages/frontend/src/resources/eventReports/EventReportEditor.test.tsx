@@ -279,7 +279,7 @@ describe('when and where', () => {
     renderEditor();
     expect(await screen.findByText('Nº CODU')).toBeInTheDocument();
 
-    renderEditor({ type: EventReportType.SALOP_SUPPORT });
+    renderEditor({ type: EventReportType.CNE_SUPPORT });
     expect(await screen.findAllByText('Nº de referência')).not.toHaveLength(0);
   });
 
@@ -781,7 +781,7 @@ describe('the desktop layout', () => {
   });
 
   it('hides INEM support units on a report type with no CODU involvement', async () => {
-    renderEditor({ type: EventReportType.SALOP_SUPPORT });
+    renderEditor({ type: EventReportType.CNE_SUPPORT });
     await screen.findByText('Quando e onde');
     expect(screen.queryByText('Meios INEM de apoio')).not.toBeInTheDocument();
   });
@@ -802,7 +802,7 @@ describe('the desktop layout', () => {
   });
 
   it('leaves the chronology out of a support report', async () => {
-    renderEditor({ type: EventReportType.SALOP_SUPPORT });
+    renderEditor({ type: EventReportType.CNE_SUPPORT });
 
     await screen.findByText('Quando e onde');
     expect(screen.queryByText(/^Tempos/)).not.toBeInTheDocument();

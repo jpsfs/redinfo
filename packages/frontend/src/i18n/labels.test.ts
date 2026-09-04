@@ -39,7 +39,7 @@ import raPortugueseMessages from './ra-pt';
 // ── Every label the report screens need ────────────────────────────────────────
 //
 // The point of these: a value added to an enum without a label would otherwise
-// reach a phone as a raw `SALOP_SUPPORT` on a button. Each enum is walked, so
+// reach a phone as a raw `CNE_SUPPORT` on a button. Each enum is walked, so
 // the gap shows up here instead. #180 moved the lookup out of a bare `t()` and
 // into `messagesFor()` + react-admin's own `useTranslate()` (see `useT.ts`),
 // but the point of these cases — no enum value silently falls through — is

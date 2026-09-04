@@ -393,7 +393,7 @@ describe('window categories', () => {
     expect(AVAILABILITY_WINDOW_CATEGORIES).toEqual([
       AvailabilityWindowCategory.EMERGENCY,
       AvailabilityWindowCategory.LOCAL_SUPPORT,
-      AvailabilityWindowCategory.SALOP_SUPPORT,
+      AvailabilityWindowCategory.CNE_SUPPORT,
     ]);
   });
 
@@ -404,8 +404,8 @@ describe('window categories', () => {
     expect(availabilityWindowCategoryLabel(AvailabilityWindowCategory.LOCAL_SUPPORT)).toBe(
       'Local Support',
     );
-    expect(availabilityWindowCategoryLabel(AvailabilityWindowCategory.SALOP_SUPPORT)).toBe(
-      'SALOP Support',
+    expect(availabilityWindowCategoryLabel(AvailabilityWindowCategory.CNE_SUPPORT)).toBe(
+      'CNE Support',
     );
   });
 

@@ -266,7 +266,7 @@ describe('AvailabilityWindowCreate', () => {
       within(select as HTMLElement).getByRole('option', { name: 'Local Support' }),
     ).toBeInTheDocument();
     expect(
-      within(select as HTMLElement).getByRole('option', { name: 'SALOP Support' }),
+      within(select as HTMLElement).getByRole('option', { name: 'CNE Support' }),
     ).toBeInTheDocument();
   });
 
@@ -276,14 +276,14 @@ describe('AvailabilityWindowCreate', () => {
 
     await userEvent.selectOptions(
       screen.getByLabelText('Category'),
-      AvailabilityWindowCategory.SALOP_SUPPORT,
+      AvailabilityWindowCategory.CNE_SUPPORT,
     );
     await userEvent.type(screen.getByLabelText('Name (optional)'), 'Marathon cover');
     await userEvent.click(screen.getByRole('button', { name: 'Open window' }));
 
     await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
     expect(savedWindow(create)).toMatchObject({
-      category: AvailabilityWindowCategory.SALOP_SUPPORT,
+      category: AvailabilityWindowCategory.CNE_SUPPORT,
       name: 'Marathon cover',
     });
   });

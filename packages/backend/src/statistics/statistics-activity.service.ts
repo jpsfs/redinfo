@@ -68,7 +68,7 @@ export class StatisticsActivityService {
     const eventsByTypeMap = new Map<EventReportType, number>();
     const months = monthRange(from, to);
     const monthlyByType = new Map<string, Record<EventReportType, number>>(
-      months.map((month) => [month, { EMERGENCY: 0, LOCAL_SUPPORT: 0, SALOP_SUPPORT: 0 }]),
+      months.map((month) => [month, { EMERGENCY: 0, LOCAL_SUPPORT: 0, CNE_SUPPORT: 0 }]),
     );
     const localityCounts = new Map<string, StatisticsLocalityCount>();
     const municipalityCounts = new Map<string, StatisticsLocalityCount>();
@@ -157,7 +157,7 @@ export class StatisticsActivityService {
       })),
       eventsByMonth: months.map((month) => {
         const byType = monthlyByType.get(month)!;
-        return { month, byType, total: byType.EMERGENCY + byType.LOCAL_SUPPORT + byType.SALOP_SUPPORT };
+        return { month, byType, total: byType.EMERGENCY + byType.LOCAL_SUPPORT + byType.CNE_SUPPORT };
       }),
       activationHeatmap,
       eventsByLocality,

@@ -435,7 +435,7 @@ export class SchedulesService {
    * order the platform does not control, and refusing the first half of a swap
    * would be worse than reporting it. The search spans every schedule over the
    * window's dates, because the case that matters most — an Emergency and a
-   * SALOP window running the same weekend — cannot be seen from one window.
+   * CNE window running the same weekend — cannot be seen from one window.
    */
   private async detectConflicts(
     context: ScheduleContext,

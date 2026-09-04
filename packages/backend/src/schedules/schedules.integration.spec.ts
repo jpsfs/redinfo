@@ -18,7 +18,7 @@ import { ScheduleAutofillService } from './schedule-autofill.service';
 /** Minutes from midnight, so expectations read in wall-clock hours. */
 const at = (hour: number, minute = 0) => toMinuteOfDay(hour, minute);
 
-const { EMERGENCY, SALOP_SUPPORT } = AvailabilityWindowCategory;
+const { EMERGENCY, CNE_SUPPORT } = AvailabilityWindowCategory;
 
 /**
  * Integration coverage for building a schedule from availability (ADO #161),
@@ -437,17 +437,17 @@ describeIntegration('Schedules module (integration)', () => {
   // overlap" — the case a single window cannot see.
   it('integration: detects the same person double-booked across two overlapping windows', async () => {
     const emergency = await openWindow(EMERGENCY, 'November 2026');
-    const salop = await openWindow(SALOP_SUPPORT, 'Rally Serra da Estrela');
+    const cne = await openWindow(CNE_SUPPORT, 'Rally Serra da Estrela');
 
     const first = await schedules.create({ windowId: emergency.id }, coordinator.id);
-    const second = await schedules.create({ windowId: salop.id }, coordinator.id);
+    const second = await schedules.create({ windowId: cne.id }, coordinator.id);
 
     await assignments.assign(
       first.id,
       { date: START, slot: 1, userId: ana.id, roleId: roleId(emergency, 'Driver') },
       coordinator.id,
     );
-    // A SALOP window starts with no roles, so people go on it without one.
+    // A CNE window starts with no roles, so people go on it without one.
     await assignments.assign(
       second.id,
       { date: START, slot: 1, userId: ana.id },
@@ -461,7 +461,7 @@ describeIntegration('Schedules module (integration)', () => {
       userId: ana.id,
       date: START,
       crossWindow: true,
-      otherWindowId: salop.id,
+      otherWindowId: cne.id,
       otherWindowLabel: 'Rally Serra da Estrela',
     });
   });
@@ -568,34 +568,34 @@ describeIntegration('Schedules module (integration)', () => {
 
   it('integration: reports a cross-window conflict created only by an adjustment', async () => {
     const emergency = await openWindow(EMERGENCY, 'November 2026'); // 08:00–16:00 on START
-    const salop = await windows.open(
+    const cne = await windows.open(
       {
         startDate: START,
         endDate: START,
-        category: SALOP_SUPPORT,
+        category: CNE_SUPPORT,
         name: 'Rally Serra da Estrela',
         acknowledgeOverlap: true,
         days: [{ date: START, shifts: [{ startMinute: at(20), endMinute: at(24) }] }],
       },
       coordinator.id,
     );
-    createdWindowIds.push(salop.id);
+    createdWindowIds.push(cne.id);
 
     const first = await schedules.create({ windowId: emergency.id }, coordinator.id);
-    const second = await schedules.create({ windowId: salop.id }, coordinator.id);
+    const second = await schedules.create({ windowId: cne.id }, coordinator.id);
 
     await assignments.assign(
       first.id,
       { date: START, slot: 1, userId: ana.id, roleId: roleId(emergency, 'Driver') },
       coordinator.id,
     );
-    // A SALOP window starts with no roles, so people go on it without one.
+    // A CNE window starts with no roles, so people go on it without one.
     await assignments.assign(second.id, { date: START, slot: 1, userId: ana.id }, coordinator.id);
 
     // At their own hours, 08:00–16:00 and 20:00–24:00 do not clash.
     expect((await schedules.getBoard(first.id, coordinatorUser)).conflicts).toEqual([]);
 
-    // Moving the SALOP shift into the emergency one creates the clash.
+    // Moving the CNE shift into the emergency one creates the clash.
     await schedules.adjustShift(
       second.id,
       START,
@@ -609,15 +609,15 @@ describeIntegration('Schedules module (integration)', () => {
     expect(board.conflicts[0]).toMatchObject({
       userId: ana.id,
       crossWindow: true,
-      otherWindowId: salop.id,
+      otherWindowId: cne.id,
       otherLabel: '14:00–18:00',
     });
   });
 
   it('integration: schedules onto a window with no roles at all', async () => {
-    const salop = await openWindow(SALOP_SUPPORT, 'Rally Serra da Estrela');
-    expect(salop.roles).toEqual([]);
-    const schedule = await schedules.create({ windowId: salop.id }, coordinator.id);
+    const cne = await openWindow(CNE_SUPPORT, 'Rally Serra da Estrela');
+    expect(cne.roles).toEqual([]);
+    const schedule = await schedules.create({ windowId: cne.id }, coordinator.id);
 
     // Ana drives: the shift still needs a driver for its vehicle even though
     // the window names no roles — the two rules are independent.
@@ -633,8 +633,8 @@ describeIntegration('Schedules module (integration)', () => {
   });
 
   it('integration: still wants a driver on a role-less window that needs a vehicle', async () => {
-    const salop = await openWindow(SALOP_SUPPORT, 'Rally Serra da Estrela');
-    const schedule = await schedules.create({ windowId: salop.id }, coordinator.id);
+    const cne = await openWindow(CNE_SUPPORT, 'Rally Serra da Estrela');
+    const schedule = await schedules.create({ windowId: cne.id }, coordinator.id);
     await assignments.assign(
       schedule.id,
       { date: START, slot: 1, userId: carla.id },
@@ -656,7 +656,7 @@ describeIntegration('Schedules module (integration)', () => {
       coordinator.id,
     );
     const october = await windows.open(
-      { startDate: '2026-10-01', endDate: '2026-10-02', category: SALOP_SUPPORT },
+      { startDate: '2026-10-01', endDate: '2026-10-02', category: CNE_SUPPORT },
       coordinator.id,
     );
     createdWindowIds.push(november.id, october.id);
@@ -976,9 +976,9 @@ describeIntegration('Schedules module (integration)', () => {
 
   it("integration: today's roster groups two categories separately", async () => {
     const emergency = await openWindowWithMandatoryDriver();
-    const salop = await openWindowWithMandatoryDriver(SALOP_SUPPORT, 'Rally Serra da Estrela');
+    const cne = await openWindowWithMandatoryDriver(CNE_SUPPORT, 'Rally Serra da Estrela');
 
-    for (const window of [emergency, salop]) {
+    for (const window of [emergency, cne]) {
       const schedule = await schedules.create({ windowId: window.id }, coordinator.id);
       await assignments.assign(
         schedule.id,
@@ -995,7 +995,7 @@ describeIntegration('Schedules module (integration)', () => {
 
     const roster = await schedules.getTodayRoster(START);
 
-    expect(roster.groups.map((group) => group.category)).toEqual([EMERGENCY, SALOP_SUPPORT]);
+    expect(roster.groups.map((group) => group.category)).toEqual([EMERGENCY, CNE_SUPPORT]);
     expect(roster.groups.every((group) => group.slots.length === 1)).toBe(true);
   });
 });

@@ -1873,7 +1873,7 @@ const MESSAGES = {
 
   'activityType.EMERGENCY': { pt: 'Emergência', en: 'Emergency' },
   'activityType.LOCAL_SUPPORT': { pt: 'Apoio Local', en: 'Local Support' },
-  'activityType.SALOP_SUPPORT': { pt: 'Apoio SALOP', en: 'SALOP Support' },
+  'activityType.CNE_SUPPORT': { pt: 'Apoio CNE', en: 'CNE Support' },
   'activityType.MEETING': { pt: 'Reunião', en: 'Meeting' },
   'activityType.TRAINING': { pt: 'Formação', en: 'Training' },
   'activityType.OTHER': { pt: 'Outro', en: 'Other' },
@@ -2371,9 +2371,9 @@ const ENUM_MESSAGES = {
     pt: 'Apoio Local',
     en: 'Local Support',
   },
-  [`reportType.${EventReportType.SALOP_SUPPORT}`]: {
-    pt: 'Apoio SALOP',
-    en: 'SALOP Support',
+  [`reportType.${EventReportType.CNE_SUPPORT}`]: {
+    pt: 'Apoio CNE',
+    en: 'CNE Support',
   },
 
   [`reportTypeHint.${EventReportType.EMERGENCY}`]: {
@@ -2384,7 +2384,7 @@ const ENUM_MESSAGES = {
     pt: 'Eventos e prevenções da delegação',
     en: 'Delegation events and standbys',
   },
-  [`reportTypeHint.${EventReportType.SALOP_SUPPORT}`]: {
+  [`reportTypeHint.${EventReportType.CNE_SUPPORT}`]: {
     pt: 'Apoio logístico às operações',
     en: 'Logistical support to operations',
   },
@@ -2853,9 +2853,9 @@ const ENUM_MESSAGES = {
     pt: 'Apoio Local',
     en: 'Local Support',
   },
-  [`windowCategory.${AvailabilityWindowCategory.SALOP_SUPPORT}`]: {
-    pt: 'Apoio SALOP',
-    en: 'SALOP Support',
+  [`windowCategory.${AvailabilityWindowCategory.CNE_SUPPORT}`]: {
+    pt: 'Apoio CNE',
+    en: 'CNE Support',
   },
   [`windowCategoryDescription.${AvailabilityWindowCategory.EMERGENCY}`]: {
     pt: 'Cobertura de resposta a emergências — a escala permanente de prevenção.',
@@ -2865,9 +2865,9 @@ const ENUM_MESSAGES = {
     pt: 'Cobertura para eventos locais e pedidos de prevenção.',
     en: 'Cover for local events and standby requests.',
   },
-  [`windowCategoryDescription.${AvailabilityWindowCategory.SALOP_SUPPORT}`]: {
-    pt: 'Cobertura para operações SALOP.',
-    en: 'Cover for SALOP operations.',
+  [`windowCategoryDescription.${AvailabilityWindowCategory.CNE_SUPPORT}`]: {
+    pt: 'Cobertura para operações CNE.',
+    en: 'Cover for CNE operations.',
   },
 } as const;
 

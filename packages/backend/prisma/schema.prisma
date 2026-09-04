@@ -434,7 +434,7 @@ enum AvailabilityWindowStatus {
 enum AvailabilityWindowCategory {
   EMERGENCY
   LOCAL_SUPPORT
-  SALOP_SUPPORT
+  CNE_SUPPORT
 }
 
 /// Only DECLINED is ever stored: absence of a row means "not yet responded".
@@ -707,7 +707,7 @@ enum VolunteerHoursSource {
 enum VolunteerActivityType {
   EMERGENCY
   LOCAL_SUPPORT
-  SALOP_SUPPORT
+  CNE_SUPPORT
   MEETING
   TRAINING
   OTHER
@@ -923,7 +923,7 @@ model Hospital {
 enum EventReportType {
   EMERGENCY
   LOCAL_SUPPORT
-  SALOP_SUPPORT
+  CNE_SUPPORT
 }
 
 /// Where an event happened, as the operational sees it — not an address.
@@ -973,7 +973,7 @@ enum AvdsLevel {
 }
 
 /// A completed account of one activity: an emergency, a local-support event, or
-/// a SALOP support job.
+/// a CNE support job.
 ///
 /// Identity is `(type, year, number)` — the number is a per-type, per-year
 /// sequence, so the three kinds count independently and 2027 starts at 1

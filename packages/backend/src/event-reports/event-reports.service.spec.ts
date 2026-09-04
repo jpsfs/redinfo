@@ -979,7 +979,7 @@ describe('counts for the filter tabs', () => {
       ALL: 13,
       [EventReportType.EMERGENCY]: 9,
       [EventReportType.LOCAL_SUPPORT]: 4,
-      [EventReportType.SALOP_SUPPORT]: 0,
+      [EventReportType.CNE_SUPPORT]: 0,
     });
   });
 
