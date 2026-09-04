@@ -89,6 +89,17 @@ export class UsersController {
     return this.usersService.certificationAlerts();
   }
 
+  /**
+   * Whose birthday it is today. Ungated on purpose: the response carries
+   * names only — never the date or the year — so nothing sensitive leaves
+   * here (see `BirthdayPerson` in `@redinfo/shared`). Declared before `:id`
+   * for the same reason as above.
+   */
+  @Get('birthdays')
+  birthdaysToday() {
+    return this.usersService.birthdaysToday();
+  }
+
   // Ungated on purpose (RolesGuard lets an un-annotated handler through to any
   // authenticated user): everyone may read and edit their own profile
   // subset. Declared before `:id` for the same reason as above.

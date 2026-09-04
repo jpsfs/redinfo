@@ -56,6 +56,21 @@ export class SchedulesController {
   }
 
   /**
+   * Who is on the rota today, delegation-wide.
+   *
+   * Ungated for the same reason `findAll` lets everyone read published
+   * schedules: the rota is posted, not confidential. The service returns
+   * published schedules only, and only shifts whose mandatory posts are
+   * filled.
+   *
+   * Declared before `:id` so "today" is never read as a schedule id.
+   */
+  @Get('today')
+  getTodayRoster() {
+    return this.schedules.getTodayRoster();
+  }
+
+  /**
    * Published schedules are readable by everyone on the platform: the rota is
    * posted, not confidential, and a member can only take an open place on one
    * they can see. Drafts are filtered out for anyone without

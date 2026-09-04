@@ -9,6 +9,8 @@ import { AuthProvider, Prisma, User, UserRole } from '@prisma/client';
 import {
   Action,
   AuthProvider as SharedAuthProvider,
+  BirthdayPerson,
+  BirthdaysTodayResponse,
   BloodType as SharedBloodType,
   CertificationStatus,
   CertificationType,
@@ -18,6 +20,7 @@ import {
   effectiveCertifications,
   hasPermission,
   holdsCertification,
+  isBirthdayOn,
   normalizeRoles,
   sameRoleSet,
 } from '@redinfo/shared';
@@ -302,6 +305,35 @@ export class UsersService {
       else if (effective.some((cert) => cert.status === 'EXPIRING')) expiring += 1;
     }
     return { expiring, expired };
+  }
+
+  /**
+   * Active people whose birthday falls today — names only.
+   *
+   * Filtered in memory rather than in SQL: matching day-and-month needs
+   * `EXTRACT` on a `@db.Date` column, which Prisma's query API cannot
+   * express, and a raw query for one delegation's worth of rows would buy
+   * nothing. `certificationAlerts` above reads the roster the same way.
+   *
+   * Never returns `birthDate` itself — see `BirthdayPerson` in
+   * `@redinfo/shared` for why that is what keeps this endpoint ungated.
+   */
+  async birthdaysToday(onDate: string = today()): Promise<BirthdaysTodayResponse> {
+    const rows = await this.prisma.user.findMany({
+      where: { isActive: true, birthDate: { not: null } },
+      select: { id: true, firstName: true, lastName: true, birthDate: true },
+      orderBy: [{ firstName: 'asc' }, { lastName: 'asc' }],
+    });
+
+    const people = rows
+      .filter((row) => row.birthDate && isBirthdayOn(toIsoDate(row.birthDate), onDate))
+      .map<BirthdayPerson>((row) => ({
+        id: row.id,
+        firstName: row.firstName,
+        lastName: row.lastName,
+      }));
+
+    return { date: onDate, people };
   }
 
   async findOne(id: string) {

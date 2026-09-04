@@ -326,6 +326,54 @@ export interface User {
   locale?: Locale | null;
 }
 
+/**
+ * Someone whose birthday falls today — deliberately *only* a name.
+ *
+ * `birthDate` itself is a sensitive personnel field (it is audited as one:
+ * see `UserProfileAudit` in the Prisma schema), so the birthday endpoint
+ * never returns the date or the year. Day-and-month is the whole point of
+ * the card; the age is nobody else's business, and not sending it is what
+ * lets `GET /users/birthdays` stay readable by the whole delegation instead
+ * of being gated behind `MANAGE_PERSONNEL`.
+ */
+export interface BirthdayPerson {
+  id: string;
+  firstName: string;
+  lastName: string;
+}
+
+/** `GET /users/birthdays` — active people only, empty on an ordinary day. */
+export interface BirthdaysTodayResponse {
+  /** The date this was computed for, ISO `YYYY-MM-DD`. */
+  date: string;
+  people: BirthdayPerson[];
+}
+
+/**
+ * Whether `birthDate` (ISO `YYYY-MM-DD`) falls on `onDate` — day and month
+ * only, so the year on file is never consulted beyond being parsed off.
+ *
+ * Compared as plain strings rather than through `Date`, because both sides
+ * are calendar dates: building a `Date` would drag the reader's timezone in
+ * and move a birthday across midnight for anyone east or west of the server.
+ *
+ * 29 February is celebrated on 28 February in a non-leap year. The
+ * alternative — skipping the person three years in four — is the one
+ * behaviour a birthday card must not have.
+ */
+export function isBirthdayOn(birthDate: string, onDate: string): boolean {
+  const born = birthDate.slice(5, 10);
+  const on = onDate.slice(5, 10);
+  if (born === on) return true;
+  if (born !== '02-29') return false;
+  return on === '02-28' && !isLeapYear(Number(onDate.slice(0, 4)));
+}
+
+/** Proleptic Gregorian, the same rule `Date.UTC` applies. */
+export function isLeapYear(year: number): boolean {
+  return (year % 4 === 0 && year % 100 !== 0) || year % 400 === 0;
+}
+
 // ─── Certifications ──────────────────────────────────────────────────────────
 
 /**
@@ -1938,6 +1986,59 @@ export interface MyDuty {
 export interface MyDutiesResponse {
   upcoming: MyDuty[];
   past: MyDuty[];
+}
+
+/** One person on today's rota, as the whole delegation sees them. */
+export interface TodayRosterMember {
+  userId: string;
+  firstName: string;
+  lastName: string;
+  roleName: string | null;
+}
+
+/**
+ * One shift of one schedule running today.
+ *
+ * Only shifts whose mandatory posts are filled are ever built into this shape
+ * — see `TodayRosterResponse` — so there is no `quorumMet` flag to read: if
+ * it is here, it is on.
+ */
+export interface TodayRosterSlot {
+  scheduleId: string;
+  windowId: string;
+  /** The rota's own name, for a reader who is on more than one of the same category. */
+  windowLabel: string;
+  slot: number;
+  startMinute: number;
+  endMinute: number;
+  label: string;
+  vehiclesNeeded: number;
+  crew: TodayRosterMember[];
+}
+
+/**
+ * Today's slots for one *category* of rota, not for one schedule: two
+ * Emergency schedules both running today read as one "Emergency" heading,
+ * which is the question someone opening the dashboard is actually asking.
+ */
+export interface TodayRosterGroup {
+  category: AvailabilityWindowCategory;
+  slots: TodayRosterSlot[];
+}
+
+/**
+ * `GET /schedules/today` — who is on, right across the delegation.
+ *
+ * Published schedules only, and only shifts that clear
+ * `shiftMandatoryRolesFilled`: a shift short of its mandatory posts most
+ * likely will not run, and listing it would tell the delegation there is
+ * cover when there is none. `groups` is empty when nothing runs today, which
+ * the dashboard states in words rather than hiding.
+ */
+export interface TodayRosterResponse {
+  /** The date this was computed for, ISO `YYYY-MM-DD`. */
+  date: string;
+  groups: TodayRosterGroup[];
 }
 
 /** Whether a role may take one more person on a shift. */

@@ -850,4 +850,152 @@ describeIntegration('Schedules module (integration)', () => {
     // And it cannot be deleted out from under the people on it.
     await expect(schedules.remove(schedule.id)).rejects.toBeInstanceOf(ConflictException);
   });
+
+  // ── Who is on today (the Dashboard's first card) ─────────────────────────────
+  //
+  // Delegation-wide, so the rules that keep it honest have to hold against a
+  // real database: published only, today only, and quorate only.
+
+  /**
+   * Like `openWindow`, but with the Driver post actually *mandatory* — the
+   * shared `openWindow` leaves `mandatoryCount` at its default of 0, which
+   * makes every shift trivially quorate and hides the rule under test.
+   */
+  async function openWindowWithMandatoryDriver(
+    category: AvailabilityWindowCategory = EMERGENCY,
+    name = 'November 2026',
+  ) {
+    const window = await windows.open(
+      {
+        startDate: START,
+        endDate: END,
+        category,
+        name,
+        acknowledgeOverlap: true,
+        roles: [
+          { name: 'Driver', maxPeople: 1, mandatoryCount: 1 },
+          { name: 'Team Member', maxPeople: 2, mandatoryCount: 0 },
+        ],
+        days: [
+          { date: START, shifts: [{ startMinute: at(8), endMinute: at(16), vehiclesNeeded: 1 }] },
+          { date: END, shifts: [{ startMinute: at(8), endMinute: at(16), vehiclesNeeded: 2 }] },
+        ],
+      },
+      coordinator.id,
+    );
+    createdWindowIds.push(window.id);
+    return window;
+  }
+
+  it("integration: today's roster lists a quorate published shift with its crew", async () => {
+    const window = await openWindowWithMandatoryDriver();
+    const schedule = await schedules.create({ windowId: window.id }, coordinator.id);
+    await assignments.assign(
+      schedule.id,
+      { date: START, slot: 1, userId: ana.id, roleId: roleId(window, 'Driver') },
+      coordinator.id,
+    );
+    await assignments.assign(
+      schedule.id,
+      { date: START, slot: 1, userId: carla.id, roleId: roleId(window, 'Team Member') },
+      coordinator.id,
+    );
+    await schedules.publish(schedule.id, coordinator.id);
+
+    const roster = await schedules.getTodayRoster(START);
+
+    expect(roster.date).toBe(START);
+    expect(roster.groups).toHaveLength(1);
+    expect(roster.groups[0].category).toBe(EMERGENCY);
+    expect(roster.groups[0].slots).toHaveLength(1);
+    expect(roster.groups[0].slots[0]).toMatchObject({
+      scheduleId: schedule.id,
+      windowId: window.id,
+      label: '08:00–16:00',
+      vehiclesNeeded: 1,
+    });
+    expect(
+      roster.groups[0].slots[0].crew.map((member) => `${member.firstName} ${member.roleName}`).sort(),
+    ).toEqual(['Ana Driver', 'Carla Team Member']);
+  });
+
+  it("integration: today's roster keeps a draft schedule out", async () => {
+    const window = await openWindowWithMandatoryDriver();
+    const schedule = await schedules.create({ windowId: window.id }, coordinator.id);
+    await assignments.assign(
+      schedule.id,
+      { date: START, slot: 1, userId: ana.id, roleId: roleId(window, 'Driver') },
+      coordinator.id,
+    );
+
+    await expect(schedules.getTodayRoster(START)).resolves.toEqual({ date: START, groups: [] });
+
+    await schedules.publish(schedule.id, coordinator.id);
+
+    expect((await schedules.getTodayRoster(START)).groups).toHaveLength(1);
+  });
+
+  // The rule the card exists for: a shift short of its mandatory posts most
+  // likely will not run, and listing it would tell the delegation there is
+  // cover when there is none.
+  it("integration: today's roster drops a shift short of its mandatory posts", async () => {
+    const window = await openWindowWithMandatoryDriver();
+    const schedule = await schedules.create({ windowId: window.id }, coordinator.id);
+    await assignments.assign(
+      schedule.id,
+      { date: START, slot: 1, userId: carla.id, roleId: roleId(window, 'Team Member') },
+      coordinator.id,
+    );
+    await schedules.publish(schedule.id, coordinator.id);
+
+    await expect(schedules.getTodayRoster(START)).resolves.toEqual({ date: START, groups: [] });
+
+    // Filling the Driver post is what brings it back.
+    await assignments.assign(
+      schedule.id,
+      { date: START, slot: 1, userId: ana.id, roleId: roleId(window, 'Driver') },
+      coordinator.id,
+    );
+
+    expect((await schedules.getTodayRoster(START)).groups[0].slots[0].crew).toHaveLength(2);
+  });
+
+  it("integration: today's roster shows only today, not the rest of the window", async () => {
+    const window = await openWindowWithMandatoryDriver();
+    const schedule = await schedules.create({ windowId: window.id }, coordinator.id);
+    await assignments.assign(
+      schedule.id,
+      { date: END, slot: 1, userId: ana.id, roleId: roleId(window, 'Driver') },
+      coordinator.id,
+    );
+    await schedules.publish(schedule.id, coordinator.id);
+
+    await expect(schedules.getTodayRoster(START)).resolves.toEqual({ date: START, groups: [] });
+    expect((await schedules.getTodayRoster(END)).groups).toHaveLength(1);
+  });
+
+  it("integration: today's roster groups two categories separately", async () => {
+    const emergency = await openWindowWithMandatoryDriver();
+    const salop = await openWindowWithMandatoryDriver(SALOP_SUPPORT, 'Rally Serra da Estrela');
+
+    for (const window of [emergency, salop]) {
+      const schedule = await schedules.create({ windowId: window.id }, coordinator.id);
+      await assignments.assign(
+        schedule.id,
+        {
+          date: START,
+          slot: 1,
+          userId: window === emergency ? ana.id : bruno.id,
+          roleId: roleId(window, 'Driver'),
+        },
+        coordinator.id,
+      );
+      await schedules.publish(schedule.id, coordinator.id);
+    }
+
+    const roster = await schedules.getTodayRoster(START);
+
+    expect(roster.groups.map((group) => group.category)).toEqual([EMERGENCY, SALOP_SUPPORT]);
+    expect(roster.groups.every((group) => group.slots.length === 1)).toBe(true);
+  });
 });

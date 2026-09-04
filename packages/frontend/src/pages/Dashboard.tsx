@@ -10,7 +10,7 @@ import {
   CircularProgress,
 } from '@mui/material';
 import { DelegacaoCampoLogo } from '../components/DelegacaoCampoLogo';
-import { useGetList, Link, usePermissions } from 'react-admin';
+import { useGetList, Link, useGetIdentity, usePermissions } from 'react-admin';
 import { useEffect, useState } from 'react';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
@@ -18,7 +18,17 @@ import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import InventoryIcon from '@mui/icons-material/Inventory';
 import AssignmentLateIcon from '@mui/icons-material/AssignmentLate';
 import EventNoteIcon from '@mui/icons-material/EventNote';
-import { Action, MyDutiesResponse, MyDuty, hasPermission, UserRole } from '@redinfo/shared';
+import TodayIcon from '@mui/icons-material/Today';
+import CakeIcon from '@mui/icons-material/Cake';
+import {
+  Action,
+  BirthdaysTodayResponse,
+  MyDutiesResponse,
+  MyDuty,
+  TodayRosterResponse,
+  hasPermission,
+  UserRole,
+} from '@redinfo/shared';
 import { apiFetch } from '../api';
 import { useIntlLocale } from '../i18n/useIntlLocale';
 import { useT } from '../i18n/useT';
@@ -87,11 +97,11 @@ const LowStockPanel = () => {
       .finally(() => setLoading(false));
   }, []);
 
-  if (loading) return <CircularProgress size={20} sx={{ mt: 2 }} />;
+  if (loading) return <CircularProgress size={20} />;
   if (!data || data.total === 0) return null;
 
   return (
-    <Card sx={{ mt: 2 }}>
+    <Card>
       <CardContent>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
           <InventoryIcon color="error" />
@@ -138,6 +148,153 @@ const LowStockPanel = () => {
             )),
           )}
         </Stack>
+      </CardContent>
+    </Card>
+  );
+};
+
+/**
+ * Who is on the rota today, right across the delegation.
+ *
+ * The first thing on the Dashboard, and the one card that is always rendered:
+ * "nobody is on today" is itself the answer someone came for, so unlike every
+ * other panel here this one says so in words instead of disappearing.
+ *
+ * Grouped by *category*, not by schedule — two Emergency rotas running today
+ * read as one "Emergency" heading, because "is there emergency cover tonight?"
+ * is the question, not "which of the two rotas is it on". The rota's own name
+ * still sits beside each slot for anyone who needs to tell them apart.
+ *
+ * `GET /schedules/today` has already dropped every shift short of its
+ * mandatory posts, so everything here is cover that will actually run.
+ */
+export const TodayScheduleCard = () => {
+  const t = useT();
+  const { identity } = useGetIdentity();
+  const [roster, setRoster] = useState<TodayRosterResponse | null>(null);
+
+  useEffect(() => {
+    apiFetch<TodayRosterResponse>('/schedules/today')
+      .then(setRoster)
+      .catch(() => setRoster({ date: toIsoDate(new Date()), groups: [] }));
+  }, []);
+
+  if (!roster) return null;
+
+  return (
+    <Card data-testid="today-schedule-card">
+      <CardContent>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2, flexWrap: 'wrap' }}>
+          <TodayIcon color="primary" />
+          <Typography variant="h6" fontWeight={700}>
+            {t('dashboard.todayScheduleTitle')}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            {formatDayLabel(t, roster.date)}
+          </Typography>
+        </Box>
+
+        {roster.groups.length === 0 ? (
+          <Typography variant="body2" color="text.secondary">
+            {t('dashboard.todayNoShift')}
+          </Typography>
+        ) : (
+          <Stack spacing={2} divider={<Divider flexItem />}>
+            {roster.groups.map((group) => (
+              <Box key={group.category}>
+                <WindowCategoryChip category={group.category} />
+                <Stack spacing={1.5} sx={{ mt: 1 }}>
+                  {group.slots.map((slot) => (
+                    <Box key={`${slot.scheduleId}#${slot.slot}`}>
+                      <Stack direction="row" spacing={1} alignItems="baseline" flexWrap="wrap">
+                        <Typography variant="body2" fontWeight={700}>
+                          {slot.label}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {slot.windowLabel}
+                        </Typography>
+                      </Stack>
+                      <Stack
+                        direction="row"
+                        spacing={0.75}
+                        flexWrap="wrap"
+                        useFlexGap
+                        sx={{ mt: 0.5 }}
+                      >
+                        {slot.crew.map((member) => {
+                          // Spotting yourself in a delegation-wide list is the
+                          // one thing this card can't leave to reading names.
+                          const isMe = identity?.id === member.userId;
+                          const name = `${member.firstName} ${member.lastName}`;
+                          return (
+                            <Chip
+                              key={member.userId}
+                              size="small"
+                              variant={isMe ? 'filled' : 'outlined'}
+                              color={isMe ? 'primary' : 'default'}
+                              label={
+                                member.roleName
+                                  ? `${name} · ${member.roleName}`
+                                  : name
+                              }
+                            />
+                          );
+                        })}
+                      </Stack>
+                    </Box>
+                  ))}
+                </Stack>
+              </Box>
+            ))}
+          </Stack>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
+/**
+ * Whose birthday it is — nothing at all on an ordinary day.
+ *
+ * `GET /users/birthdays` returns names only, never the date or the year, which
+ * is what lets this be ungated: `birthDate` is a sensitive personnel field,
+ * but "it's Ana's birthday" is not.
+ */
+export const BirthdaysCard = () => {
+  const t = useT();
+  const [birthdays, setBirthdays] = useState<BirthdaysTodayResponse | null>(null);
+
+  useEffect(() => {
+    apiFetch<BirthdaysTodayResponse>('/users/birthdays')
+      .then(setBirthdays)
+      .catch(() => setBirthdays(null));
+  }, []);
+
+  if (!birthdays || birthdays.people.length === 0) return null;
+
+  return (
+    <Card data-testid="birthdays-card">
+      <CardContent>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1.5 }}>
+          <CakeIcon color="secondary" />
+          <Typography variant="h6" fontWeight={700}>
+            {t('dashboard.birthdaysTitle', { smart_count: birthdays.people.length })}
+          </Typography>
+        </Box>
+        <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap>
+          {birthdays.people.map((person) => (
+            <Chip
+              key={person.id}
+              size="small"
+              color="secondary"
+              variant="outlined"
+              label={`${person.firstName} ${person.lastName}`}
+            />
+          ))}
+        </Stack>
+        <Typography variant="body2" color="text.secondary" sx={{ mt: 1.5 }}>
+          {t('dashboard.birthdayWish')}
+        </Typography>
       </CardContent>
     </Card>
   );
@@ -197,7 +354,7 @@ export const UpcomingShiftsPanel = () => {
   }
 
   return (
-    <Card sx={{ mt: 2 }} data-testid="upcoming-shifts-panel">
+    <Card data-testid="upcoming-shifts-panel">
       <CardContent>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
           <EventNoteIcon color="primary" />
@@ -270,7 +427,7 @@ export const CertificationAlertsTile = () => {
   if (isLoading || !canView || !alerts || (alerts.expired === 0 && alerts.expiring === 0)) return null;
 
   return (
-    <Card sx={{ mt: 2 }} data-testid="certification-alerts-tile">
+    <Card data-testid="certification-alerts-tile">
       <CardContent>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
           <AssignmentLateIcon color="warning" />
@@ -324,7 +481,7 @@ const UpcomingAlertsPanel = () => {
   if (flagged.length === 0) return null;
 
   return (
-    <Card sx={{ mt: 2 }}>
+    <Card>
       <CardContent>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
           <WarningAmberIcon color="warning" />
@@ -376,48 +533,85 @@ const UpcomingAlertsPanel = () => {
   );
 };
 
+/**
+ * The Dashboard's own shape.
+ *
+ * Three bands, in the order someone actually scans them:
+ *
+ *  1. A slim identity strip. This used to be a full-height hero that pushed
+ *     everything operational below the fold on a phone — it is decoration, so
+ *     it now costs one row rather than a screen.
+ *  2. The two full-width cards: who is on today, then a live emergency if one
+ *     is running. Both are about *right now* and both can be wide.
+ *  3. Everything else, two columns from `md` up and one below. These are
+ *     independent alerts of varying height, and most render nothing at all on
+ *     a quiet day — a CSS grid handles that by itself (a panel returning
+ *     `null` simply takes no cell), which is why this is a grid rather than
+ *     hand-placed columns.
+ */
 export const Dashboard = () => {
   const t = useT();
   return (
-  <Box sx={{ mt: 2 }}>
-    <Card>
-      <CardContent sx={{ textAlign: 'center', py: 6 }}>
-        <DelegacaoCampoLogo
+    <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+      <Card>
+        <CardContent
           sx={{
-            maxWidth: { xs: 160, sm: 220 },
-            height: 'auto',
-            mb: 3,
-            borderRadius: 1,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 2,
+            flexWrap: 'wrap',
+            // The last child of a MUI CardContent gets 24px of bottom padding
+            // it does not need here; without this the strip is visibly
+            // lopsided against the cards below it.
+            '&:last-child': { pb: 2 },
           }}
-        />
-        <Typography variant="h4" gutterBottom fontWeight={700}>
-          {t('dashboard.welcomeTitle')}
-        </Typography>
-        <Typography variant="body1" color="text.secondary">
-          {t('dashboard.welcomeSubtitle')}
-        </Typography>
-      </CardContent>
-    </Card>
-    {/* First, and above the maintenance panels: an emergency being run right now
-        outranks an insurance renewal in three weeks. Renders nothing at all when
-        there are no open runs, or when the reader has no oversight permission. */}
-    <Box sx={{ mt: 2 }}>
+        >
+          <DelegacaoCampoLogo sx={{ width: { xs: 48, sm: 56 }, height: 'auto', borderRadius: 1 }} />
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="h6" fontWeight={700} noWrap>
+              {t('dashboard.welcomeTitle')}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {t('dashboard.welcomeSubtitle')}
+            </Typography>
+          </Box>
+        </CardContent>
+      </Card>
+
+      {/* Always rendered, even with nobody on: "there is no shift today" is
+          the answer someone opened this to get. */}
+      <TodayScheduleCard />
+
+      {/* An emergency being run right now outranks an insurance renewal in
+          three weeks. Renders nothing at all when there are no open runs, or
+          when the reader has no oversight permission. */}
       <LiveRunBoard />
+
+      <Box
+        sx={{
+          display: 'grid',
+          gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' },
+          gap: 2,
+          // Cards keep their own height instead of stretching to match the
+          // tallest in the row — a two-chip birthday card next to a ten-row
+          // low-stock list should not become ten rows of whitespace.
+          alignItems: 'start',
+        }}
+      >
+        <BirthdaysCard />
+        <UpcomingShiftsPanel />
+        <CertificationAlertsTile />
+        <UpcomingAlertsPanel />
+        <LowStockPanel />
+      </Box>
+
+      <Alert severity="info">
+        {t('dashboard.warningPrefix')}{' '}
+        <strong>
+          {DAYS_WARN} {t('dashboard.daysUnit')}
+        </strong>{' '}
+        {t('dashboard.warningSuffix')}
+      </Alert>
     </Box>
-    {/* What's next for the signed-in person, not just for oversight — placed
-        right after the live board for the same reason: it's the other thing
-        someone opens the Dashboard to check. */}
-    <UpcomingShiftsPanel />
-    <CertificationAlertsTile />
-    <UpcomingAlertsPanel />
-    <LowStockPanel />
-    <Alert severity="info" sx={{ mt: 2 }}>
-      {t('dashboard.warningPrefix')}{' '}
-      <strong>
-        {DAYS_WARN} {t('dashboard.daysUnit')}
-      </strong>{' '}
-      {t('dashboard.warningSuffix')}
-    </Alert>
-  </Box>
   );
 };

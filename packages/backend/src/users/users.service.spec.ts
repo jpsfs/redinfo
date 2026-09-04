@@ -4,6 +4,8 @@ import {
   AuthProvider as SharedAuthProvider,
   CertificationType,
   UserRole as SharedUserRole,
+  isBirthdayOn,
+  isLeapYear,
 } from '@redinfo/shared';
 import { UsersService } from './users.service';
 
@@ -643,5 +645,108 @@ describe('UsersService.findAll — certificationStatus filter', () => {
     const result = await service.findAll(1, 25, { certificationStatus: 'EXPIRING' });
 
     expect(result.data.map((p) => p.id)).toEqual(['u-expiring']);
+  });
+});
+
+// ── Whose birthday it is (the Dashboard's birthday card) ──────────────────────
+//
+// The card is readable by the whole delegation, so what leaves here matters as
+// much as who matches: names only, never `birthDate` and never the year.
+
+describe('isBirthdayOn', () => {
+  it('matches on day and month, whatever the year on file', () => {
+    expect(isBirthdayOn('1974-03-08', '2026-03-08')).toBe(true);
+    expect(isBirthdayOn('2004-03-08', '2026-03-08')).toBe(true);
+  });
+
+  it('does not match a different day or month', () => {
+    expect(isBirthdayOn('1974-03-08', '2026-03-09')).toBe(false);
+    expect(isBirthdayOn('1974-08-03', '2026-03-08')).toBe(false);
+  });
+
+  // Skipping someone three years in four is the one thing a birthday card
+  // must not do, so 29 Feb is celebrated on 28 Feb in a non-leap year.
+  it('celebrates a 29 February birthday on the 28th in a non-leap year', () => {
+    expect(isBirthdayOn('2000-02-29', '2026-02-28')).toBe(true);
+    expect(isBirthdayOn('2000-02-29', '2026-03-01')).toBe(false);
+  });
+
+  it('leaves 29 February alone in a leap year', () => {
+    expect(isBirthdayOn('2000-02-29', '2028-02-29')).toBe(true);
+    expect(isBirthdayOn('2000-02-29', '2028-02-28')).toBe(false);
+  });
+
+  // 2000 is a leap year (divisible by 400), 1900 and 2100 are not.
+  it('applies the full Gregorian leap rule, centuries included', () => {
+    expect(isLeapYear(2000)).toBe(true);
+    expect(isLeapYear(1900)).toBe(false);
+    expect(isLeapYear(2100)).toBe(false);
+    expect(isLeapYear(2028)).toBe(true);
+  });
+});
+
+describe('UsersService.birthdaysToday', () => {
+  const withBirthDate = (id: string, firstName: string, birthDate: string | null) => ({
+    id,
+    firstName,
+    lastName: 'Silva',
+    birthDate: birthDate ? new Date(`${birthDate}T00:00:00.000Z`) : null,
+  });
+
+  it('returns only the people born on this day and month', async () => {
+    const { service } = makeService({
+      user: {
+        findMany: jest.fn().mockResolvedValue([
+          withBirthDate('u-ana', 'Ana', '1988-03-08'),
+          withBirthDate('u-rui', 'Rui', '1990-03-09'),
+          withBirthDate('u-joana', 'Joana', '2001-03-08'),
+        ]),
+      },
+    });
+
+    const result = await service.birthdaysToday('2026-03-08');
+
+    expect(result.date).toBe('2026-03-08');
+    expect(result.people).toEqual([
+      { id: 'u-ana', firstName: 'Ana', lastName: 'Silva' },
+      { id: 'u-joana', firstName: 'Joana', lastName: 'Silva' },
+    ]);
+  });
+
+  // The whole reason this endpoint needs no `MANAGE_PERSONNEL` gate.
+  it('never returns the birth date or anything derived from it', async () => {
+    const { service } = makeService({
+      user: {
+        findMany: jest.fn().mockResolvedValue([withBirthDate('u-ana', 'Ana', '1988-03-08')]),
+      },
+    });
+
+    const result = await service.birthdaysToday('2026-03-08');
+
+    expect(Object.keys(result.people[0]).sort()).toEqual(['firstName', 'id', 'lastName']);
+  });
+
+  it('reads only active people who have a birth date on file', async () => {
+    const findMany = jest.fn().mockResolvedValue([]);
+    const { service } = makeService({ user: { findMany } });
+
+    await service.birthdaysToday('2026-03-08');
+
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { isActive: true, birthDate: { not: null } } }),
+    );
+  });
+
+  it('is empty on an ordinary day', async () => {
+    const { service } = makeService({
+      user: {
+        findMany: jest.fn().mockResolvedValue([withBirthDate('u-rui', 'Rui', '1990-03-09')]),
+      },
+    });
+
+    await expect(service.birthdaysToday('2026-03-08')).resolves.toEqual({
+      date: '2026-03-08',
+      people: [],
+    });
   });
 });

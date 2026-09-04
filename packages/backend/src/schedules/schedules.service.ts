@@ -33,6 +33,10 @@ import {
   ScheduleStatus,
   ShiftDefinition,
   ShiftTimes,
+  TodayRosterGroup,
+  TodayRosterMember,
+  TodayRosterResponse,
+  TodayRosterSlot,
   UserRole,
   assignedDriverCount,
   hasPermission,
@@ -844,6 +848,156 @@ export class SchedulesService {
     // Most recent first: the duty someone is looking back at is the last one.
     past.reverse();
     return { upcoming, past };
+  }
+
+  /**
+   * Who is on today, right across the delegation.
+   *
+   * Deliberately delegation-wide and ungated, unlike `getMyDuties`: the
+   * published rota is posted, not confidential (same reasoning as `findAll`),
+   * and "is anyone on tonight?" is a question every member has. Draft
+   * schedules stay out — a rota nobody has published is not cover.
+   *
+   * A shift whose mandatory posts are not filled is dropped entirely rather
+   * than shown flagged. On the dashboard this list *is* the answer to "is
+   * there cover today", so a half-crewed shift that will not run must not
+   * appear to be cover; `MyDutiesPage` is where someone sees their own
+   * under-crewed shift, flagged.
+   */
+  async getTodayRoster(today = toIsoDate(new Date())): Promise<TodayRosterResponse> {
+    const rows = await this.prisma.scheduleAssignment.findMany({
+      where: { date: parseDate(today), schedule: { status: ScheduleStatus.PUBLISHED } },
+      include: {
+        role: true,
+        user: { select: { id: true, firstName: true, lastName: true } },
+        schedule: { include: { window: { include: { roles: true } } } },
+      },
+      orderBy: [{ slot: 'asc' }],
+    });
+    if (rows.length === 0) return { date: today, groups: [] };
+
+    // Every assignment on this date is in `rows`, so a shift's whole crew is
+    // already here — no second query the way `getMyDuties` needs one, which
+    // starts from one person's assignments rather than from a day.
+    const schedules = new Map<
+      string,
+      {
+        id: string;
+        windowId: string;
+        startDate: string;
+        endDate: string;
+        category: AvailabilityWindowCategory;
+        label: string;
+        roles: AvailabilityWindowRole[];
+      }
+    >();
+    for (const row of rows) {
+      if (schedules.has(row.scheduleId)) continue;
+      const window = row.schedule.window;
+      schedules.set(row.scheduleId, {
+        id: row.scheduleId,
+        windowId: window.id,
+        startDate: toIsoDate(window.startDate),
+        endDate: toIsoDate(window.endDate),
+        category: window.category as AvailabilityWindowCategory,
+        label: availabilityWindowLabel({
+          category: window.category as AvailabilityWindowCategory,
+          name: window.name,
+        }),
+        roles: window.roles as AvailabilityWindowRole[],
+      });
+    }
+
+    const overridesBySchedule = await this.loadOverrideTimesByScheduleId([...schedules.keys()]);
+
+    // The window's own grid with this schedule's adjustments applied — the
+    // shift's real hours, never re-derived from the day type.
+    const shifts = new Map<string, ShiftDefinition>();
+    for (const schedule of schedules.values()) {
+      const pattern = await this.shiftSchedule.getPatternForWindow({
+        id: schedule.windowId,
+        startDate: schedule.startDate,
+        endDate: schedule.endDate,
+      });
+      const overlaid = applyShiftOverrides(
+        pattern,
+        overridesBySchedule.get(schedule.id) ?? new Map(),
+      );
+      for (const day of overlaid) {
+        if (day.date !== today) continue;
+        for (const shift of day.shifts) {
+          shifts.set(`${schedule.id}#${shiftKey(day.date, shift.slot)}`, shift);
+        }
+      }
+    }
+
+    const crews = new Map<string, typeof rows>();
+    for (const row of rows) {
+      const key = `${row.scheduleId}#${shiftKey(today, row.slot)}`;
+      const crew = crews.get(key) ?? [];
+      crew.push(row);
+      crews.set(key, crew);
+    }
+
+    const byCategory = new Map<AvailabilityWindowCategory, TodayRosterSlot[]>();
+    for (const [key, crew] of crews) {
+      const schedule = schedules.get(crew[0].scheduleId)!;
+      const shift = shifts.get(key);
+      // A shift the window no longer defines cannot be described, and
+      // inventing hours for it would be worse than leaving it out.
+      if (!shift) continue;
+      if (!shiftMandatoryRolesFilled({ roles: schedule.roles, assignments: crew })) continue;
+
+      const slots = byCategory.get(schedule.category) ?? [];
+      slots.push({
+        scheduleId: schedule.id,
+        windowId: schedule.windowId,
+        windowLabel: schedule.label,
+        slot: crew[0].slot,
+        startMinute: shift.startMinute,
+        endMinute: shift.endMinute,
+        label: shift.label,
+        vehiclesNeeded: shift.vehiclesNeeded,
+        // Ordered rather than left to whatever the query returned: the card
+        // renders these as a row of name chips, and an unordered crew
+        // reshuffles between page loads for no reason. The window's own role
+        // order first (Driver, Team Leader, …), then by name — anyone in no
+        // role sorts last, after every named post.
+        crew: [...crew]
+          .sort(
+            (a, b) =>
+              (a.role?.order ?? Number.MAX_SAFE_INTEGER) -
+                (b.role?.order ?? Number.MAX_SAFE_INTEGER) ||
+              a.user.firstName.localeCompare(b.user.firstName) ||
+              a.user.lastName.localeCompare(b.user.lastName),
+          )
+          .map<TodayRosterMember>((row) => ({
+            userId: row.user.id,
+            firstName: row.user.firstName,
+            lastName: row.user.lastName,
+            roleName: row.role?.name ?? null,
+          })),
+      });
+      byCategory.set(schedule.category, slots);
+    }
+
+    // Categories in their declared order, and each category's slots in the
+    // order the day runs — earliest shift first, then by rota name so two
+    // schedules sharing a start time read the same way on every load.
+    const groups: TodayRosterGroup[] = [];
+    for (const category of Object.values(AvailabilityWindowCategory)) {
+      const slots = byCategory.get(category);
+      if (!slots || slots.length === 0) continue;
+      slots.sort(
+        (a, b) =>
+          a.startMinute - b.startMinute ||
+          a.windowLabel.localeCompare(b.windowLabel) ||
+          a.slot - b.slot,
+      );
+      groups.push({ category, slots });
+    }
+
+    return { date: today, groups };
   }
 
   /**

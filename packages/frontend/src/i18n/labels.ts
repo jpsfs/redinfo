@@ -2137,6 +2137,20 @@ const MESSAGES = {
   },
   'dashboard.insuranceLabel': { pt: 'Seguro', en: 'Insurance' },
   'dashboard.upcomingShiftsTitle': { pt: 'Os teus próximos turnos', en: 'Your upcoming shifts' },
+  'dashboard.todayScheduleTitle': { pt: 'Escala de hoje', en: "Today's schedule" },
+  'dashboard.todayNoShift': {
+    pt: 'Não há nenhum turno hoje.',
+    en: 'There is no shift today.',
+  },
+  'dashboard.todayYou': { pt: 'Tu', en: 'You' },
+  'dashboard.birthdaysTitle': {
+    pt: '%{smart_count} aniversário hoje |||| %{smart_count} aniversários hoje',
+    en: '%{smart_count} birthday today |||| %{smart_count} birthdays today',
+  },
+  'dashboard.birthdayWish': {
+    pt: 'Muitos parabéns!',
+    en: 'Many happy returns!',
+  },
 
   // ── Live Runs page (#180 phase 3) — the drawer's own key, reused here ──
   'liveRunsPage.noRunsRightNow': {

@@ -866,3 +866,192 @@ describe('SchedulesService.resetShift', () => {
     await expect(service.resetShift('s1', '2026-10-03', 1)).resolves.toBeDefined();
   });
 });
+
+// ── Today's roster (the Dashboard's first card) ───────────────────────────────
+//
+// Delegation-wide, not self-scoped: "who is on tonight?" is a question every
+// member has. Only published schedules, and only shifts whose mandatory posts
+// are filled — on the Dashboard this list *is* the answer to "is there cover
+// today", so a shift that will not run must not read as cover.
+
+describe('SchedulesService.getTodayRoster', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  const rosterRow = (overrides: Record<string, unknown> = {}) => ({
+    id: 'a1',
+    scheduleId: 's1',
+    date: new Date('2026-10-03T00:00:00.000Z'),
+    slot: 1,
+    userId: ANA.id,
+    user: { id: ANA.id, firstName: ANA.firstName, lastName: ANA.lastName },
+    roleId: DRIVER_ROLE.id,
+    role: DRIVER_ROLE,
+    schedule: { window: windowRow() },
+    ...overrides,
+  });
+
+  it('lists a quorate shift with its crew, hours and rota', async () => {
+    const { service, prisma } = makeService();
+    prisma.scheduleAssignment.findMany.mockResolvedValue([
+      rosterRow(),
+      rosterRow({
+        id: 'a2',
+        userId: JOANA.id,
+        user: { id: JOANA.id, firstName: JOANA.firstName, lastName: JOANA.lastName },
+        roleId: MEMBER_ROLE.id,
+        role: MEMBER_ROLE,
+      }),
+    ]);
+
+    const roster = await service.getTodayRoster('2026-10-03');
+
+    expect(roster.date).toBe('2026-10-03');
+    expect(roster.groups).toHaveLength(1);
+    expect(roster.groups[0].category).toBe('EMERGENCY');
+    expect(roster.groups[0].slots).toHaveLength(1);
+    expect(roster.groups[0].slots[0]).toMatchObject({
+      windowLabel: 'October 2026',
+      label: '08:00–16:00',
+      slot: 1,
+      vehiclesNeeded: 1,
+    });
+    expect(roster.groups[0].slots[0].crew).toEqual([
+      { userId: ANA.id, firstName: 'Ana', lastName: 'Silva', roleName: 'Driver' },
+      { userId: JOANA.id, firstName: 'Joana', lastName: 'Pinto', roleName: 'Team Member' },
+    ]);
+  });
+
+  // The card renders the crew as a row of chips, so an unordered crew would
+  // reshuffle between page loads. Driver (order 0) before Team Member
+  // (order 1), whatever order the rows arrived in.
+  it('orders a crew by the window\'s role order, then by name', async () => {
+    const { service, prisma } = makeService();
+    prisma.scheduleAssignment.findMany.mockResolvedValue([
+      rosterRow({
+        id: 'a2',
+        userId: JOANA.id,
+        user: { id: JOANA.id, firstName: 'Joana', lastName: 'Pinto' },
+        roleId: MEMBER_ROLE.id,
+        role: MEMBER_ROLE,
+      }),
+      rosterRow({
+        id: 'a3',
+        userId: 'u-zeca',
+        user: { id: 'u-zeca', firstName: 'Zeca', lastName: 'Rocha' },
+        roleId: null,
+        role: null,
+      }),
+      rosterRow(),
+    ]);
+
+    const roster = await service.getTodayRoster('2026-10-03');
+
+    expect(roster.groups[0].slots[0].crew.map((member) => member.firstName)).toEqual([
+      'Ana',
+      'Joana',
+      'Zeca',
+    ]);
+  });
+
+  it('drops a shift whose mandatory posts are not filled', async () => {
+    const { service, prisma } = makeService();
+    // Only the optional Team Member post is taken — the mandatory Driver is not.
+    prisma.scheduleAssignment.findMany.mockResolvedValue([
+      rosterRow({
+        userId: JOANA.id,
+        user: { id: JOANA.id, firstName: JOANA.firstName, lastName: JOANA.lastName },
+        roleId: MEMBER_ROLE.id,
+        role: MEMBER_ROLE,
+      }),
+    ]);
+
+    await expect(service.getTodayRoster('2026-10-03')).resolves.toEqual({
+      date: '2026-10-03',
+      groups: [],
+    });
+  });
+
+  // Two Emergency rotas both running today read as one "Emergency" heading —
+  // grouping is by category, not by schedule. Their slots start at the same
+  // time here, so the tie-break is the rota's own name: "Aveiro" before
+  // "October 2026", whichever order the rows came back in.
+  it('groups two schedules of the same category under one heading', async () => {
+    const { service, prisma } = makeService();
+    prisma.scheduleAssignment.findMany.mockResolvedValue([
+      rosterRow(),
+      rosterRow({
+        id: 'a2',
+        scheduleId: 's2',
+        schedule: { window: windowRow({ id: 'w2', name: 'Aveiro' }) },
+      }),
+    ]);
+
+    const roster = await service.getTodayRoster('2026-10-03');
+
+    expect(roster.groups).toHaveLength(1);
+    expect(roster.groups[0].slots.map((slot) => slot.windowLabel)).toEqual([
+      'Aveiro',
+      'October 2026',
+    ]);
+    expect(roster.groups[0].slots.map((slot) => slot.scheduleId)).toEqual(['s2', 's1']);
+  });
+
+  it('keeps categories apart and in their declared order', async () => {
+    const { service, prisma } = makeService();
+    prisma.scheduleAssignment.findMany.mockResolvedValue([
+      rosterRow({
+        id: 'a2',
+        scheduleId: 's2',
+        schedule: {
+          window: windowRow({ id: 'w2', category: 'LOCAL_SUPPORT', name: 'Feira' }),
+        },
+      }),
+      rosterRow(),
+    ]);
+
+    const roster = await service.getTodayRoster('2026-10-03');
+
+    expect(roster.groups.map((group) => group.category)).toEqual([
+      'EMERGENCY',
+      'LOCAL_SUPPORT',
+    ]);
+  });
+
+  it("shows a shift at its adjusted hours, not the window's own", async () => {
+    const { service, prisma } = makeService();
+    prisma.scheduleAssignment.findMany.mockResolvedValue([rosterRow()]);
+    prisma.scheduleShiftOverride.findMany.mockResolvedValue([overrideRow()]);
+
+    const roster = await service.getTodayRoster('2026-10-03');
+
+    expect(roster.groups[0].slots[0]).toMatchObject({
+      startMinute: 420,
+      endMinute: 960,
+      label: '07:00–16:00',
+    });
+  });
+
+  it('only ever reads published schedules, and only today', async () => {
+    const { service, prisma } = makeService();
+
+    await service.getTodayRoster('2026-10-03');
+
+    expect(prisma.scheduleAssignment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          date: new Date('2026-10-03T00:00:00.000Z'),
+          schedule: { status: ScheduleStatus.PUBLISHED },
+        }),
+      }),
+    );
+  });
+
+  it('says nothing runs today rather than failing, when nobody is on', async () => {
+    const { service } = makeService();
+
+    await expect(service.getTodayRoster('2026-10-05')).resolves.toEqual({
+      date: '2026-10-05',
+      groups: [],
+    });
+  });
+});
