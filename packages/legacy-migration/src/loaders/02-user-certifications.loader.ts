@@ -9,6 +9,15 @@
  * licence *number* and its own expiry, not a certification date — the model
  * comment on `UserCertification.validUntil` says null "counts as valid",
  * which is the correct reading for data the source system never expired.
+ *
+ * `n_tripulante` — despite the name, not the person's volunteer number (that
+ * is `socorrista.numero`, see `01-users.loader.ts`) — is their TAT/TAS
+ * certification number (confirmed against the real dump: Diana Esmeralda
+ * Duarte Costa, `numero` 83, `n_tripulante` 33848). It has no dedicated
+ * column on `UserCertification`, so it is carried into `notes` on the row
+ * `curso_tripulante` produces (never on the separate `DRIVER` row, which has
+ * no such number in legacy). `0` is the same "none on file" sentinel used
+ * elsewhere on this table, not a real number.
  */
 import { CertificationType } from '@prisma/client';
 import { mapCertification } from '../transform/enums';
@@ -25,13 +34,12 @@ export async function loadUserCertifications(ctx: RunContext, userResolver: User
     const userId = await userResolver.resolve(socorrista.numero);
     if (!userId) continue; // No matching usuarios/User row — nothing to attach a certification to.
 
-    const wanted: CertificationType[] = [];
-    const fromCurso = mapCertification(socorrista.curso_tripulante);
-    if (fromCurso) wanted.push(fromCurso);
-    if (socorrista.tem_carta === 1) wanted.push(CertificationType.DRIVER);
+    const tatTasNote = socorrista.n_tripulante ? `Nº tripulante (legado): ${socorrista.n_tripulante}` : null;
 
-    for (const type of wanted) {
-      await loadOneCertification(ctx, userId, socorrista.numero, type);
+    const fromCurso = mapCertification(socorrista.curso_tripulante);
+    if (fromCurso) await loadOneCertification(ctx, userId, socorrista.numero, fromCurso, tatTasNote);
+    if (socorrista.tem_carta === 1) {
+      await loadOneCertification(ctx, userId, socorrista.numero, CertificationType.DRIVER, null);
     }
   }
 }
@@ -41,9 +49,10 @@ async function loadOneCertification(
   userId: string,
   numero: number,
   type: CertificationType,
+  notes: string | null,
 ): Promise<void> {
   const key = legacyKey('socorrista-cert', numero, type);
-  const data = { userId, type, validUntil: null, issuedOn: null, createdById: ctx.importActorId };
+  const data = { userId, type, validUntil: null, issuedOn: null, notes, createdById: ctx.importActorId };
   const hash = sourceHash(data);
 
   const result = await runInLoaderTransaction(ctx, (tx) =>
@@ -57,7 +66,7 @@ async function loadOneCertification(
         (await tx.userCertification.findUnique({ where: { userId_type: { userId, type } } }))?.id ?? null,
       create: async () => (await tx.userCertification.create({ data })).id,
       update: async (id) => {
-        await tx.userCertification.update({ where: { id }, data: { validUntil: null, issuedOn: null } });
+        await tx.userCertification.update({ where: { id }, data: { validUntil: null, issuedOn: null, notes } });
       },
     }),
   );

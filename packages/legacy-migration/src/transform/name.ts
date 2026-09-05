@@ -4,9 +4,11 @@
  * compound Portuguese surname from a compound given name from a string alone
  * ("Maria da Conceição Alves Pereira" could be split several defensible
  * ways), so the rule is deliberately the simplest one that is total: the
- * first token is the given name, everything else is the surname. Good
- * enough for a name that is never used to address anyone by — the app shows
- * "firstName lastName" back together everywhere that matters.
+ * first token is the given name, the last token is the surname, and
+ * anything in between (middle names) is dropped from both — it is never
+ * lost, though: `fullName` (see `01-users.loader.ts`) keeps the whole
+ * legacy string verbatim, `firstName`/`lastName` are only the short form the
+ * app addresses someone by everywhere that matters.
  */
 
 /** Collapses runs of whitespace and trims — legacy `nome` values are free text. */
@@ -35,5 +37,8 @@ export function splitPortugueseName(fullNameRaw: string | null | undefined): Spl
     return { firstName: tokens[0], lastName: tokens[0] };
   }
 
-  return { firstName: tokens[0], lastName: tokens.slice(1).join(' ') };
+  // Only the first and last tokens survive; any middle names are dropped
+  // here (they remain in `fullName`, which is copied from the same legacy
+  // string independently — see `01-users.loader.ts`).
+  return { firstName: tokens[0], lastName: tokens[tokens.length - 1] };
 }

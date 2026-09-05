@@ -5,10 +5,17 @@ describe('splitPortugueseName', () => {
     expect(splitPortugueseName('João Silva')).toEqual({ firstName: 'João', lastName: 'Silva' });
   });
 
-  it('takes the first token as the given name and the rest as the surname', () => {
+  it('takes the first token as the given name and only the last token as the surname, dropping middle names', () => {
     expect(splitPortugueseName('Maria da Conceição Alves Pereira')).toEqual({
       firstName: 'Maria',
-      lastName: 'da Conceição Alves Pereira',
+      lastName: 'Pereira',
+    });
+  });
+
+  it('matches the Diana Esmeralda Duarte Costa case: First Last only, middle names dropped', () => {
+    expect(splitPortugueseName('Diana Esmeralda Duarte Costa')).toEqual({
+      firstName: 'Diana',
+      lastName: 'Costa',
     });
   });
 
@@ -23,7 +30,7 @@ describe('splitPortugueseName', () => {
   it('collapses extra whitespace', () => {
     expect(splitPortugueseName('  João   Pedro   Silva  ')).toEqual({
       firstName: 'João',
-      lastName: 'Pedro Silva',
+      lastName: 'Silva',
     });
   });
 

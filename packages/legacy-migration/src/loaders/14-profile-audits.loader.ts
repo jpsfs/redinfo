@@ -54,7 +54,12 @@ function socorristaFields(row: {
     addressLine: row.rua,
     postalCode: row.cod_postal,
     redCrossNumber: row.n_cvp != null ? String(row.n_cvp) : null,
-    volunteerNumber: row.n_tripulante != null ? String(row.n_tripulante) : null,
+    // Not `volunteerNumber` — that's `numero` (the row's own primary key,
+    // constant across every hist snapshot, so tracking it here would never
+    // produce a diff). `n_tripulante` is the person's TAT/TAS certification
+    // number (see `02-user-certifications.loader.ts`); its history is still
+    // worth an audit trail entry, just under its own name.
+    tatTasNumber: row.n_tripulante != null ? String(row.n_tripulante) : null,
   };
 }
 

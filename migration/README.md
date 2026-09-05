@@ -285,6 +285,12 @@ app's own prod image); synthesising one `AvailabilityWindow` per `(ano, mes)`,
 category `EMERGENCY`, status `CLOSED` (Q10).
 
 **Minor, non-blocking, already decided by proposal:** `socorrista.n_cvp` →
-`User.redCrossNumber`, `.n_tripulante` → `.volunteerNumber` (Q11); the 1-row
+`User.redCrossNumber` (Q11). The rest of Q11's original proposal —
+`.n_tripulante` → `.volunteerNumber` — was corrected against the real dump:
+`n_tripulante` is the person's TAT/TAS certification number, not their
+volunteer number (see `01-users.loader.ts`'s doc comment for the row that
+caught it). `.volunteerNumber` is actually `socorrista.numero`, and
+`n_tripulante` instead lands as a note on the TAT/TAS `UserCertification`
+row (`02-user-certifications.loader.ts`). The 1-row
 `material_outro` table is out of scope, and `material_saida.material` is
 catalogued regardless of its `Outro` flag (Q12).

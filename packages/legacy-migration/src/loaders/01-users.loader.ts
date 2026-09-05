@@ -15,21 +15,28 @@
  * one by name and email so a coordinator can re-role the real admins and
  * team leaders by hand afterward.
  *
- * `n_cvp` → `redCrossNumber`, `n_tripulante` → `volunteerNumber`, `nif` →
- * `nif`: the plan's own proposed reading of these legacy number fields (§10
- * Q11, "minor" — confirm the assignment, not whether to migrate at all).
+ * `n_cvp` → `redCrossNumber`, `numero` (the row's own primary key — the same
+ * "crew number" `resolvers/user.resolver.ts` joins on) → `volunteerNumber`,
+ * `nif` → `nif`. `n_tripulante` is **not** `volunteerNumber` despite the
+ * name — confirmed against the real dump (Diana Esmeralda Duarte Costa,
+ * `numero` 83, `n_tripulante` 33848: the volunteer number the app should
+ * show is 83, and 33848 is her TAT certification number) it is the row's
+ * TAT/TAS certification number, migrated by `02-user-certifications.loader.ts`
+ * as a note on that certification instead.
  * Every other `socorrista` column Q11 asks about (`grupo_ii`, `estado_civil`,
  * `profissao`, `curso`, `num_curso`, `estado`) has no target field and is not
  * migrated.
  *
- * All three are nullable `int` columns in legacy, each with a real `@unique`
- * target column here — and each has rows using the literal integer `0`
- * (never a real number for any of these) alongside true `NULL`, both meaning
- * "none on file". Confirmed against the real dump: `0` is not sentinelled
- * separately from `NULL`, so treated identically to it below — otherwise
- * every row after the first `0` in each column collides on the unique
- * constraint and aborts the whole run before `report.md` can even be
+ * `redCrossNumber` and `nif` are nullable `int` columns in legacy, each with
+ * a real `@unique` target column here — and each has rows using the literal
+ * integer `0` (never a real number for either) alongside true `NULL`, both
+ * meaning "none on file". Confirmed against the real dump: `0` is not
+ * sentinelled separately from `NULL`, so treated identically to it below —
+ * otherwise every row after the first `0` in each column collides on the
+ * unique constraint and aborts the whole run before `report.md` can even be
  * written, rather than the soft "flag it and continue" this was meant to be.
+ * `volunteerNumber`'s source, `numero`, needs none of this: it is the
+ * table's own primary key, never `NULL` and never `0` in the real dump.
  *
  * `nascimento` (→ `birthDate`, nullable) has the same class of issue in its
  * own type: MySQL's zero-date sentinel `'0000-00-00'` alongside true `NULL`,
@@ -118,7 +125,7 @@ async function loadOneUser(
     postalCode: socorrista?.cod_postal ?? null,
     localityId,
     redCrossNumber: socorrista?.n_cvp ? String(socorrista.n_cvp) : null,
-    volunteerNumber: socorrista?.n_tripulante ? String(socorrista.n_tripulante) : null,
+    volunteerNumber: socorrista ? String(socorrista.numero) : null,
     nif: socorrista?.nif ? String(socorrista.nif) : null,
     citizenCardNumber: socorrista?.bi != null ? String(socorrista.bi) : null,
     bloodType: mapBloodType(socorrista?.sangue),
