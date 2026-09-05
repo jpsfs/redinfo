@@ -3,8 +3,10 @@ import { NotificationDeliveryService } from './notification-delivery.service';
 
 function buildPrisma() {
   return {
+    notice: { findUnique: jest.fn().mockResolvedValue({ title: 'Storm warning', body: 'Roads closed.' }) },
     notificationTypeSetting: { findMany: jest.fn().mockResolvedValue([]) },
     userNotificationPreference: { findMany: jest.fn().mockResolvedValue([]) },
+    userNotificationTypeSetting: { findUnique: jest.fn().mockResolvedValue(null) },
     pushSubscription: { findMany: jest.fn().mockResolvedValue([]), delete: jest.fn().mockResolvedValue(undefined) },
     notificationDelivery: {
       create: jest.fn(),
@@ -36,9 +38,28 @@ describe('NotificationDeliveryService.scheduleForNotice', () => {
 
     expect(prisma.notificationDelivery.create).toHaveBeenCalledTimes(1);
     expect(prisma.notificationDelivery.create).toHaveBeenCalledWith({
-      data: { noticeId: 'n1', userId: 'u1', channel: NotificationChannel.EMAIL },
+      data: {
+        type: NotificationType.NOTICE,
+        noticeId: 'n1',
+        userId: 'u1',
+        channel: NotificationChannel.EMAIL,
+        emailSubject: 'Storm warning',
+        emailBody: 'Roads closed.',
+        pushTitle: 'Storm warning',
+        pushBody: 'Roads closed.',
+      },
     });
     expect(queue.enqueue).toHaveBeenCalledWith({ deliveryId: 'd1' });
+  });
+
+  it('does nothing when the notice is gone', async () => {
+    const prisma = buildPrisma();
+    prisma.notice.findUnique.mockResolvedValue(null);
+    const { service } = makeService(prisma);
+
+    await service.scheduleForNotice('n1', [NotificationChannel.EMAIL], ['u1']);
+
+    expect(prisma.notificationDelivery.create).not.toHaveBeenCalled();
   });
 
   it('does nothing when no recipients or no channels are given', async () => {
@@ -55,7 +76,10 @@ describe('NotificationDeliveryService worker', () => {
     id: 'd1',
     channel: NotificationChannel.EMAIL,
     userId: 'u1',
-    notice: { title: 'Storm warning', body: 'Roads closed.' },
+    emailSubject: 'Storm warning',
+    emailBody: 'Roads closed.',
+    pushTitle: 'Storm warning',
+    pushBody: 'Roads closed.',
     user: { email: 'ana@example.com' },
   };
 
@@ -124,5 +148,72 @@ describe('NotificationDeliveryService worker', () => {
 
     expect(setup.email.send).not.toHaveBeenCalled();
     expect(prisma.notificationDelivery.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('NotificationDeliveryService.scheduleSystemNotification', () => {
+  const CONTENT = { emailSubject: 'Subj', emailBody: 'Body', pushTitle: 'Title', pushBody: 'Push body' };
+
+  it('enqueues both channels when the type was never toggled and nothing is opted out', async () => {
+    const prisma = buildPrisma();
+    prisma.pushSubscription.findMany.mockResolvedValue([{ userId: 'u1' }]);
+    prisma.notificationDelivery.create
+      .mockResolvedValueOnce({ id: 'd-email' })
+      .mockResolvedValueOnce({ id: 'd-push' });
+    const { service, queue } = makeService(prisma);
+
+    await service.scheduleSystemNotification(NotificationType.SHIFT_REMINDER, 'u1', CONTENT);
+
+    expect(prisma.notificationDelivery.create).toHaveBeenNthCalledWith(1, {
+      data: { type: NotificationType.SHIFT_REMINDER, userId: 'u1', channel: NotificationChannel.EMAIL, ...CONTENT },
+    });
+    expect(queue.enqueue).toHaveBeenCalledWith({ deliveryId: 'd-email' });
+    expect(queue.enqueue).toHaveBeenCalledWith({ deliveryId: 'd-push' });
+  });
+
+  it('skips a type the member has explicitly turned off', async () => {
+    const prisma = buildPrisma();
+    prisma.userNotificationTypeSetting.findUnique.mockResolvedValue({ enabled: false });
+    const { service, queue } = makeService(prisma);
+
+    await service.scheduleSystemNotification(NotificationType.SHIFT_REMINDER, 'u1', CONTENT);
+
+    expect(prisma.notificationDelivery.create).not.toHaveBeenCalled();
+    expect(queue.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the system default when disabled by default and never toggled (BIRTHDAY_ANNOUNCEMENT)', async () => {
+    const prisma = buildPrisma();
+    const { service, queue } = makeService(prisma);
+
+    await service.scheduleSystemNotification(NotificationType.BIRTHDAY_ANNOUNCEMENT, 'u1', CONTENT);
+
+    expect(prisma.notificationDelivery.create).not.toHaveBeenCalled();
+    expect(queue.enqueue).not.toHaveBeenCalled();
+  });
+
+  it('honours an explicit opt-in override for a type disabled by default', async () => {
+    const prisma = buildPrisma();
+    prisma.userNotificationTypeSetting.findUnique.mockResolvedValue({ enabled: true });
+    prisma.notificationDelivery.create.mockResolvedValue({ id: 'd1' });
+    const { service, queue } = makeService(prisma);
+
+    await service.scheduleSystemNotification(NotificationType.BIRTHDAY_ANNOUNCEMENT, 'u1', CONTENT);
+
+    expect(queue.enqueue).toHaveBeenCalled();
+  });
+
+  it('drops WEB_PUSH for a user with no registered device, still sending EMAIL', async () => {
+    const prisma = buildPrisma();
+    prisma.notificationDelivery.create.mockResolvedValue({ id: 'd1' });
+    const { service, queue } = makeService(prisma);
+
+    await service.scheduleSystemNotification(NotificationType.SHIFT_REMINDER, 'u1', CONTENT);
+
+    expect(prisma.notificationDelivery.create).toHaveBeenCalledTimes(1);
+    expect(prisma.notificationDelivery.create).toHaveBeenCalledWith({
+      data: { type: NotificationType.SHIFT_REMINDER, userId: 'u1', channel: NotificationChannel.EMAIL, ...CONTENT },
+    });
+    expect(queue.enqueue).toHaveBeenCalledTimes(1);
   });
 });

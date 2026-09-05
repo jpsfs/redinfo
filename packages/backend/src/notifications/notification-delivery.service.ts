@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import {
+  NOTIFICATION_TYPE_DEFAULT_ENABLED,
   NotificationChannel,
   NotificationDeliveryStatus,
   NotificationType,
@@ -10,6 +11,17 @@ import { NotificationQueueService } from './notification-queue.service';
 import { EmailChannelService } from './channels/email-channel.service';
 import { WebPushChannelService } from './channels/web-push-channel.service';
 import { ChannelSendResult } from './channels/channel.types';
+
+/** Both channels a system-triggered producer (shift reminder, birthday) may use — there is no org config page for these, unlike `NOTICE`. */
+const SYSTEM_NOTIFICATION_CHANNELS = [NotificationChannel.EMAIL, NotificationChannel.WEB_PUSH];
+
+/** The four fields every delivery carries so `deliver()` never needs to join back to a source row. */
+export interface SystemNotificationContent {
+  emailSubject: string;
+  emailBody: string;
+  pushTitle: string;
+  pushBody: string;
+}
 
 /**
  * Resolves who actually gets a notice on which channels, then enqueues and
@@ -43,6 +55,15 @@ export class NotificationDeliveryService implements OnModuleInit {
   ): Promise<void> {
     if (requestedChannels.length === 0 || recipientIds.length === 0) return;
 
+    // Snapshotted onto every delivery row below — `deliver()` never joins
+    // back to `Notice`, so a producer with no source row (shift reminders,
+    // birthdays) needs nothing special there.
+    const notice = await this.prisma.notice.findUnique({
+      where: { id: noticeId },
+      select: { title: true, body: true },
+    });
+    if (!notice) return;
+
     const typeSettings = await this.prisma.notificationTypeSetting.findMany({
       where: { type: NotificationType.NOTICE },
     });
@@ -73,24 +94,73 @@ export class NotificationDeliveryService implements OnModuleInit {
 
       for (const channel of effective) {
         const delivery = await this.prisma.notificationDelivery.create({
-          data: { noticeId, userId, channel },
+          data: {
+            type: NotificationType.NOTICE,
+            noticeId,
+            userId,
+            channel,
+            emailSubject: notice.title,
+            emailBody: notice.body,
+            pushTitle: notice.title,
+            pushBody: notice.body,
+          },
         });
         await this.queue.enqueue({ deliveryId: delivery.id });
       }
     }
   }
 
+  /**
+   * The shift-reminder/birthday entry point: one recipient, one type, content
+   * already rendered by the caller's template. Unlike `scheduleForNotice`
+   * there is no org config page to consult — every channel is available by
+   * policy — so the only gates are this member's own type toggle (new:
+   * `UserNotificationTypeSetting`, defaulting per `NOTIFICATION_TYPE_DEFAULT_ENABLED`
+   * when never touched) and their existing per-channel preference.
+   */
+  async scheduleSystemNotification(
+    type: NotificationType,
+    userId: string,
+    content: SystemNotificationContent,
+  ): Promise<void> {
+    const [typeSetting, prefs, subs] = await Promise.all([
+      this.prisma.userNotificationTypeSetting.findUnique({ where: { userId_type: { userId, type } } }),
+      this.prisma.userNotificationPreference.findMany({ where: { userId } }),
+      this.prisma.pushSubscription.findMany({ where: { userId }, select: { userId: true } }),
+    ]);
+    const typeEnabled = typeSetting?.enabled ?? NOTIFICATION_TYPE_DEFAULT_ENABLED[type];
+    if (!typeEnabled) return;
+
+    const userDisabledChannels = prefs
+      .filter((pref) => !pref.enabled)
+      .map((pref) => pref.channel as NotificationChannel);
+
+    const effective = resolveEffectiveNotificationChannels({
+      requestedChannels: SYSTEM_NOTIFICATION_CHANNELS,
+      typeDefaultChannels: SYSTEM_NOTIFICATION_CHANNELS,
+      userDisabledChannels,
+      userHasPushSubscription: subs.length > 0,
+    });
+
+    for (const channel of effective) {
+      const delivery = await this.prisma.notificationDelivery.create({
+        data: { type, userId, channel, ...content },
+      });
+      await this.queue.enqueue({ deliveryId: delivery.id });
+    }
+  }
+
   private async deliver(deliveryId: string): Promise<void> {
     const delivery = await this.prisma.notificationDelivery.findUnique({
       where: { id: deliveryId },
-      include: { notice: true, user: true },
+      include: { user: true },
     });
     if (!delivery) return;
 
     const result =
       delivery.channel === NotificationChannel.EMAIL
-        ? await this.email.send(delivery.user.email, delivery.notice.title, delivery.notice.body)
-        : await this.sendPush(delivery.userId, delivery.notice.title, delivery.notice.body);
+        ? await this.email.send(delivery.user.email, delivery.emailSubject, delivery.emailBody)
+        : await this.sendPush(delivery.userId, delivery.pushTitle, delivery.pushBody);
 
     if (!result.ok) {
       this.logger.warn(

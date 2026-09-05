@@ -11,6 +11,7 @@ import { RegisterPushSubscriptionDto } from './dto/register-push-subscription.dt
 import { UnregisterPushSubscriptionDto } from './dto/unregister-push-subscription.dto';
 import { UpdateNotificationPreferencesDto } from './dto/update-notification-preferences.dto';
 import { UpdateNotificationTypeSettingsDto } from './dto/update-notification-type-settings.dto';
+import { UpdateNotificationTypePreferencesDto } from './dto/update-notification-type-preferences.dto';
 
 @ApiTags('Notifications')
 @ApiBearerAuth()
@@ -46,6 +47,17 @@ export class NotificationsController {
   @Put('preferences')
   updateMyPreferences(@CurrentUser() user: { id: string }, @Body() dto: UpdateNotificationPreferencesDto) {
     return this.notifications.updateMyPreferences(user.id, dto.preferences);
+  }
+
+  /** The member's own toggle per system-triggered type (shift reminders, birthdays), shown alongside `preferences`. */
+  @Get('type-preferences')
+  getMyTypePreferences(@CurrentUser() user: { id: string }) {
+    return this.notifications.getMyTypePreferences(user.id);
+  }
+
+  @Put('type-preferences')
+  updateMyTypePreferences(@CurrentUser() user: { id: string }, @Body() dto: UpdateNotificationTypePreferencesDto) {
+    return this.notifications.updateMyTypePreferences(user.id, dto.preferences);
   }
 
   /** Org-wide default channels per notification type — the notification config page. */

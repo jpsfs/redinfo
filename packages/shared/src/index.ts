@@ -5538,10 +5538,36 @@ export enum NotificationChannel {
   WEB_PUSH = 'WEB_PUSH',
 }
 
-/** Extend as more system-triggered notifications are built (e.g. shift reminders). */
+/** Extend as more system-triggered notifications are built. */
 export enum NotificationType {
   NOTICE = 'NOTICE',
+  /** 24h-ahead reminder to everyone assigned to a shift. */
+  SHIFT_REMINDER = 'SHIFT_REMINDER',
+  /** Sent to the person themselves, on their birthday. */
+  BIRTHDAY_GREETING = 'BIRTHDAY_GREETING',
+  /** Sent to everyone else, telling them it's a teammate's birthday today. */
+  BIRTHDAY_ANNOUNCEMENT = 'BIRTHDAY_ANNOUNCEMENT',
 }
+
+/**
+ * The three system-triggered types a member can individually opt into/out of
+ * (`UserNotificationTypeSetting`), each independent of the others and of the
+ * per-channel preference. `NOTICE` isn't here — it stays governed by org
+ * policy (`NotificationTypeSetting`) and the per-channel preference alone.
+ */
+export const USER_TOGGLEABLE_NOTIFICATION_TYPES: NotificationType[] = [
+  NotificationType.SHIFT_REMINDER,
+  NotificationType.BIRTHDAY_GREETING,
+  NotificationType.BIRTHDAY_ANNOUNCEMENT,
+];
+
+/** What a type defaults to when a member has never touched its toggle. */
+export const NOTIFICATION_TYPE_DEFAULT_ENABLED: Record<NotificationType, boolean> = {
+  [NotificationType.NOTICE]: true,
+  [NotificationType.SHIFT_REMINDER]: true,
+  [NotificationType.BIRTHDAY_GREETING]: true,
+  [NotificationType.BIRTHDAY_ANNOUNCEMENT]: false,
+};
 
 export enum NotificationDeliveryStatus {
   PENDING = 'PENDING',
@@ -5617,6 +5643,12 @@ export interface NotificationTypeSetting {
 /** A member's own per-channel opt-out — the notification settings in their profile. */
 export interface UserNotificationPreference {
   channel: NotificationChannel;
+  enabled: boolean;
+}
+
+/** A member's own on/off switch for one system-triggered type, from `USER_TOGGLEABLE_NOTIFICATION_TYPES`. */
+export interface UserNotificationTypePreference {
+  type: NotificationType;
   enabled: boolean;
 }
 

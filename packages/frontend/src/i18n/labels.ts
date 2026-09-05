@@ -1585,6 +1585,17 @@ const MESSAGES = {
     pt: 'Não foi possível ativar as notificações push.',
     en: 'Could not enable push notifications.',
   },
+  'notificationSettings.typesHeading': { pt: 'Que notificações queres receber', en: 'What you want to be notified about' },
+  'notificationSettings.typesLoadFailed': {
+    pt: 'Não foi possível carregar estas preferências.',
+    en: 'Could not load these preferences.',
+  },
+  'notificationType.SHIFT_REMINDER': { pt: 'Lembrete de turno (24h antes)', en: 'Shift reminder (24h ahead)' },
+  'notificationType.BIRTHDAY_GREETING': { pt: 'Parabéns no meu aniversário', en: 'Birthday wishes for me' },
+  'notificationType.BIRTHDAY_ANNOUNCEMENT': {
+    pt: 'Aviso do aniversário de colegas',
+    en: 'Heads-up on a teammate’s birthday',
+  },
 
   // ── Notification configuration (#165) — org-wide defaults ──
   'notificationConfig.pageTitle': { pt: 'Notificações', en: 'Notifications' },

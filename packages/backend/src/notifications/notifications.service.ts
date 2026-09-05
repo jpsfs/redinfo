@@ -1,5 +1,12 @@
 import { Injectable } from '@nestjs/common';
-import { NotificationChannel, NotificationType, UserNotificationPreference } from '@redinfo/shared';
+import {
+  NOTIFICATION_TYPE_DEFAULT_ENABLED,
+  NotificationChannel,
+  NotificationType,
+  USER_TOGGLEABLE_NOTIFICATION_TYPES,
+  UserNotificationPreference,
+  UserNotificationTypePreference,
+} from '@redinfo/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { RegisterPushSubscriptionDto } from './dto/register-push-subscription.dto';
 import { WebPushChannelService } from './channels/web-push-channel.service';
@@ -48,6 +55,28 @@ export class NotificationsService {
         this.prisma.userNotificationPreference.upsert({
           where: { userId_channel: { userId, channel: pref.channel } },
           create: { userId, channel: pref.channel, enabled: pref.enabled },
+          update: { enabled: pref.enabled },
+        }),
+      ),
+    );
+  }
+
+  /** A member's own on/off switch for each system-triggered type — shift reminders, birthdays. */
+  async getMyTypePreferences(userId: string): Promise<UserNotificationTypePreference[]> {
+    const rows = await this.prisma.userNotificationTypeSetting.findMany({ where: { userId } });
+    const byType = new Map(rows.map((row) => [row.type, row.enabled]));
+    return USER_TOGGLEABLE_NOTIFICATION_TYPES.map((type) => ({
+      type,
+      enabled: byType.get(type) ?? NOTIFICATION_TYPE_DEFAULT_ENABLED[type],
+    }));
+  }
+
+  async updateMyTypePreferences(userId: string, preferences: UserNotificationTypePreference[]): Promise<void> {
+    await this.prisma.$transaction(
+      preferences.map((pref) =>
+        this.prisma.userNotificationTypeSetting.upsert({
+          where: { userId_type: { userId, type: pref.type } },
+          create: { userId, type: pref.type, enabled: pref.enabled },
           update: { enabled: pref.enabled },
         }),
       ),

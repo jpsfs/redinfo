@@ -93,11 +93,12 @@ model User {
   photoMimeType         String?
   photoByteSize         Int?
   photoStorageKey       String?    @unique
-  /// The language the person chose for the UI. NULL means never chosen — the
-  /// browser decides, falling back to Portuguese. Do not default this to 'pt':
-  /// a default is indistinguishable from a choice, and would break the
-  /// browser-language acceptance criterion for every existing row.
-  locale                String?    @db.VarChar(2)
+  /// The language the person uses for the UI and their emails. Was NULL by
+  /// design (never chosen → browser decides) until this went in: Portuguese
+  /// is now the delegation-wide default, explicit rather than detected, and a
+  /// migration backfilled every pre-existing NULL row to 'pt'. Still
+  /// overridable per person from their profile (`AVAILABLE_LOCALES`).
+  locale                String?    @default("pt") @db.VarChar(2)
 
   refreshTokens RefreshToken[]
 
@@ -136,6 +137,7 @@ model User {
   notificationDeliveries  NotificationDelivery[]         @relation("NotificationDeliveryRecipient")
   pushSubscriptions       PushSubscription[]              @relation("PushSubscriptionOwner")
   notificationPreferences UserNotificationPreference[]   @relation("NotificationPreferenceOwner")
+  notificationTypeSettings UserNotificationTypeSetting[]  @relation("NotificationTypeSettingOwner")
   inemStatusAudits        INEMStatusAudit[]               @relation("INEMStatusAuditActor")
 
   @@index([email])
@@ -634,6 +636,10 @@ model ScheduleAssignment {
   assignedById                String
   assignedBy                  User                    @relation("ScheduleAssignedBy", fields: [assignedById], references: [id])
   assignedAt                  DateTime                @default(now())
+  /// Set once the 24h-ahead shift-reminder scan has enqueued a notification
+  /// for this assignment, so a later scan tick never double-sends it. Not
+  /// cleared or reused — one reminder per assignment, ever.
+  reminderSentAt              DateTime?
 
   /// The volunteer-hours entry generated from this assignment, if any. Not
   /// every assignment has one yet — generation is lazy, on read (#164).
@@ -645,6 +651,7 @@ model ScheduleAssignment {
   @@index([scheduleId])
   @@index([userId, date])
   @@index([date])
+  @@index([reminderSentAt])
 }
 
 /// A coordinator's correction to one shift's hours, for one schedule alone.
@@ -1580,6 +1587,12 @@ enum NotificationChannel {
 
 enum NotificationType {
   NOTICE
+  /// 24h-ahead reminder to everyone assigned to a shift (#schedules).
+  SHIFT_REMINDER
+  /// Sent to the person themselves, on their birthday.
+  BIRTHDAY_GREETING
+  /// Sent to everyone else, telling them it's a teammate's birthday today.
+  BIRTHDAY_ANNOUNCEMENT
 }
 
 enum NotificationDeliveryStatus {
@@ -1648,16 +1661,28 @@ model NoticeReceipt {
   @@index([userId])
 }
 
-/// One send attempt per (notice, user, channel) on a non-`IN_APP` channel —
-/// the audit trail behind the coordinator's recipient view, updated by the
-/// email provider's delivery webhook when that lands after the initial send.
+/// One send attempt per (recipient, channel) on a non-`IN_APP` channel — the
+/// audit trail behind the coordinator's recipient view (for `NOTICE`) and
+/// behind the system-triggered producers (shift reminders, birthdays), updated
+/// by the email provider's delivery webhook when that lands after the initial
+/// send. `noticeId` is only ever set for `type: NOTICE`; every other type
+/// carries no source row, so `title`/`body`/push copy are captured here
+/// instead of joined from one, keeping this delivery record generic across
+/// producers rather than coupled to `Notice` specifically.
 model NotificationDelivery {
-  id                String                      @id @default(cuid())
-  noticeId          String
-  notice            Notice                      @relation(fields: [noticeId], references: [id], onDelete: Cascade)
-  userId            String
-  user              User                        @relation("NotificationDeliveryRecipient", fields: [userId], references: [id], onDelete: Cascade)
-  channel           NotificationChannel
+  id       String            @id @default(cuid())
+  type     NotificationType  @default(NOTICE)
+  noticeId String?
+  notice   Notice?           @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User              @relation("NotificationDeliveryRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  channel  NotificationChannel
+  /// Subject line for `EMAIL`, unused for `WEB_PUSH`.
+  emailSubject String
+  emailBody    String
+  /// Notification title/body for `WEB_PUSH`, unused for `EMAIL`.
+  pushTitle    String
+  pushBody     String
   status            NotificationDeliveryStatus  @default(PENDING)
   error             String?
   /// The provider's own id for this send (e.g. Resend's email id), so a
@@ -1668,6 +1693,7 @@ model NotificationDelivery {
 
   @@index([noticeId])
   @@index([userId])
+  @@index([userId, type])
   @@index([providerMessageId])
 }
 
@@ -1708,6 +1734,24 @@ model UserNotificationPreference {
   enabled Boolean             @default(true)
 
   @@unique([userId, channel])
+}
+
+/// A member's own on/off switch for one system-triggered notification type
+/// (shift reminders, birthdays) — coarser than `UserNotificationPreference`,
+/// which is per-channel: this turns the whole type off regardless of channel.
+/// Absence of a row means "never touched" — callers fall back to
+/// `NOTIFICATION_TYPE_DEFAULT_ENABLED` in `@redinfo/shared`, which is why there
+/// is no `enabled @default` here (the default lives with the type, not here).
+/// Not used for `NOTICE`, which stays governed by `NotificationTypeSetting`
+/// (org policy) and `UserNotificationPreference` (channel) alone.
+model UserNotificationTypeSetting {
+  id      String           @id @default(cuid())
+  userId  String
+  user    User             @relation("NotificationTypeSettingOwner", fields: [userId], references: [id], onDelete: Cascade)
+  type    NotificationType
+  enabled Boolean
+
+  @@unique([userId, type])
 }
 
 // ─── INEM integration (#211) ───────────────────────────────────────────────────

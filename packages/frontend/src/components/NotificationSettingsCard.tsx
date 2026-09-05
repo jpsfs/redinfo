@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNotify } from 'react-admin';
-import { CircularProgress, FormControlLabel, Paper, Stack, Switch, Typography, Button } from '@mui/material';
-import { NotificationChannel, UserNotificationPreference } from '@redinfo/shared';
+import { CircularProgress, Divider, FormControlLabel, Paper, Stack, Switch, Typography, Button } from '@mui/material';
+import {
+  NOTIFICATION_TYPE_DEFAULT_ENABLED,
+  NotificationChannel,
+  UserNotificationPreference,
+  UserNotificationTypePreference,
+  USER_TOGGLEABLE_NOTIFICATION_TYPES,
+} from '@redinfo/shared';
 import { apiFetch } from '../api';
 import { useT } from '../i18n/useT';
 
@@ -23,6 +29,7 @@ export const NotificationSettingsCard = () => {
   const t = useT();
   const notify = useNotify();
   const [preferences, setPreferences] = useState<UserNotificationPreference[] | null>(null);
+  const [typePreferences, setTypePreferences] = useState<UserNotificationTypePreference[] | null>(null);
   const [pushSubscribed, setPushSubscribed] = useState(false);
   const [pushSupported, setPushSupported] = useState(false);
   const [pushBusy, setPushBusy] = useState(false);
@@ -35,6 +42,21 @@ export const NotificationSettingsCard = () => {
         if (!cancelled) setPreferences(prefs);
       } catch {
         if (!cancelled) notify(t('notificationSettings.loadFailed'), { type: 'warning' });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [notify, t]);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const prefs = await apiFetch<UserNotificationTypePreference[]>('/notifications/type-preferences');
+        if (!cancelled) setTypePreferences(prefs);
+      } catch {
+        if (!cancelled) notify(t('notificationSettings.typesLoadFailed'), { type: 'warning' });
       }
     })();
     return () => {
@@ -79,6 +101,25 @@ export const NotificationSettingsCard = () => {
       }
     },
     [notify, preferences, t],
+  );
+
+  const toggleType = useCallback(
+    async (type: (typeof USER_TOGGLEABLE_NOTIFICATION_TYPES)[number], enabledValue: boolean) => {
+      const next = USER_TOGGLEABLE_NOTIFICATION_TYPES.map((current) => ({
+        type: current,
+        enabled:
+          current === type
+            ? enabledValue
+            : (typePreferences?.find((p) => p.type === current)?.enabled ?? NOTIFICATION_TYPE_DEFAULT_ENABLED[current]),
+      }));
+      setTypePreferences(next);
+      try {
+        await apiFetch('/notifications/type-preferences', { method: 'PUT', body: { preferences: next } });
+      } catch {
+        notify(t('notificationSettings.saveFailed'), { type: 'warning' });
+      }
+    },
+    [notify, t, typePreferences],
   );
 
   const subscribeToPush = useCallback(async () => {
@@ -184,6 +225,25 @@ export const NotificationSettingsCard = () => {
             <Typography variant="caption" color="text.secondary">
               {t('notificationSettings.pushUnsupported')}
             </Typography>
+          )}
+
+          <Divider sx={{ my: 1 }} />
+          <Typography variant="subtitle2">{t('notificationSettings.typesHeading')}</Typography>
+          {typePreferences ? (
+            USER_TOGGLEABLE_NOTIFICATION_TYPES.map((type) => (
+              <FormControlLabel
+                key={type}
+                control={
+                  <Switch
+                    checked={typePreferences.find((p) => p.type === type)?.enabled ?? NOTIFICATION_TYPE_DEFAULT_ENABLED[type]}
+                    onChange={(event) => void toggleType(type, event.target.checked)}
+                  />
+                }
+                label={t(`notificationType.${type}`)}
+              />
+            ))
+          ) : (
+            <CircularProgress size={20} />
           )}
         </Stack>
       )}

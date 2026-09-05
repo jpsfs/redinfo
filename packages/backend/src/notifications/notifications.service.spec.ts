@@ -5,6 +5,7 @@ function buildPrisma() {
   return {
     pushSubscription: { upsert: jest.fn(), deleteMany: jest.fn() },
     userNotificationPreference: { findMany: jest.fn().mockResolvedValue([]), upsert: jest.fn() },
+    userNotificationTypeSetting: { findMany: jest.fn().mockResolvedValue([]), upsert: jest.fn() },
     notificationTypeSetting: { findMany: jest.fn().mockResolvedValue([]), upsert: jest.fn() },
     $transaction: jest.fn(async (arg: unknown[]) => Promise.all(arg)),
   };
@@ -63,6 +64,41 @@ describe('NotificationsService preferences', () => {
 
     expect(prefs).toContainEqual({ channel: NotificationChannel.WEB_PUSH, enabled: false });
     expect(prefs).toContainEqual({ channel: NotificationChannel.EMAIL, enabled: true });
+  });
+});
+
+describe('NotificationsService per-member type preferences', () => {
+  it('falls back to each type’s own system default when never toggled', async () => {
+    const { service } = makeService();
+    const prefs = await service.getMyTypePreferences('u1');
+    expect(prefs).toEqual([
+      { type: NotificationType.SHIFT_REMINDER, enabled: true },
+      { type: NotificationType.BIRTHDAY_GREETING, enabled: true },
+      { type: NotificationType.BIRTHDAY_ANNOUNCEMENT, enabled: false },
+    ]);
+  });
+
+  it('reflects a stored override', async () => {
+    const prisma = buildPrisma();
+    prisma.userNotificationTypeSetting.findMany.mockResolvedValue([
+      { userId: 'u1', type: NotificationType.BIRTHDAY_ANNOUNCEMENT, enabled: true },
+    ]);
+    const { service } = makeService(prisma);
+
+    const prefs = await service.getMyTypePreferences('u1');
+
+    expect(prefs).toContainEqual({ type: NotificationType.BIRTHDAY_ANNOUNCEMENT, enabled: true });
+  });
+
+  it('upserts one row per preference given', async () => {
+    const { service, prisma } = makeService();
+    await service.updateMyTypePreferences('u1', [{ type: NotificationType.SHIFT_REMINDER, enabled: false }]);
+
+    expect(prisma.userNotificationTypeSetting.upsert).toHaveBeenCalledWith({
+      where: { userId_type: { userId: 'u1', type: NotificationType.SHIFT_REMINDER } },
+      create: { userId: 'u1', type: NotificationType.SHIFT_REMINDER, enabled: false },
+      update: { enabled: false },
+    });
   });
 });
 
