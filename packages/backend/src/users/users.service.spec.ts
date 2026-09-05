@@ -34,6 +34,7 @@ const BASE_ROW = {
   locality: null,
   redCrossNumber: null,
   volunteerNumber: null,
+  fullName: null,
   nif: null,
   citizenCardNumber: null,
   bloodType: null,
@@ -225,6 +226,16 @@ describe('UsersService.update — account vs personnel fields', () => {
     expect(prisma.user.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ isActive: false, phone: '+351 900 000 000' }),
+      }),
+    );
+  });
+
+  it('a coordinator may set the administrative full name — personnel-level, like redCrossNumber', async () => {
+    const { service, prisma } = makeService();
+    await service.update(USER.id, { fullName: 'Ana Maria Silva Ferreira' }, COORDINATOR);
+    expect(prisma.user.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ fullName: 'Ana Maria Silva Ferreira' }),
       }),
     );
   });

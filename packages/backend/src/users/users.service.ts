@@ -88,6 +88,7 @@ const ACCOUNT_AUDITED_FIELDS = [
   'localityId',
   'redCrossNumber',
   'volunteerNumber',
+  'fullName',
   'nif',
   'citizenCardNumber',
   'bloodType',
@@ -133,6 +134,7 @@ export const PERSON_SELECT = {
   },
   redCrossNumber: true,
   volunteerNumber: true,
+  fullName: true,
   nif: true,
   citizenCardNumber: true,
   bloodType: true,
@@ -170,6 +172,7 @@ interface PersonRow {
   locality: Parameters<typeof serializeLocality>[0] | null;
   redCrossNumber: string | null;
   volunteerNumber: string | null;
+  fullName: string | null;
   nif: string | null;
   citizenCardNumber: string | null;
   bloodType: string | null;
@@ -210,6 +213,7 @@ export function serializePerson(row: PersonRow, asOf: string = today()): SharedU
     locality: row.locality ? serializeLocality(row.locality) : null,
     redCrossNumber: row.redCrossNumber,
     volunteerNumber: row.volunteerNumber,
+    fullName: row.fullName,
     nif: row.nif,
     citizenCardNumber: row.citizenCardNumber,
     bloodType: row.bloodType as SharedBloodType | null,
@@ -416,6 +420,7 @@ export class UsersService {
           localityId: dto.localityId,
           redCrossNumber: dto.redCrossNumber,
           volunteerNumber: dto.volunteerNumber,
+          fullName: dto.fullName,
           nif: dto.nif,
           citizenCardNumber: dto.citizenCardNumber,
           bloodType: dto.bloodType,
@@ -510,6 +515,7 @@ export class UsersService {
           ...(dto.localityId !== undefined && { localityId: dto.localityId }),
           ...(dto.redCrossNumber !== undefined && { redCrossNumber: dto.redCrossNumber }),
           ...(dto.volunteerNumber !== undefined && { volunteerNumber: dto.volunteerNumber }),
+          ...(dto.fullName !== undefined && { fullName: dto.fullName }),
           ...(dto.nif !== undefined && { nif: dto.nif }),
           ...(dto.citizenCardNumber !== undefined && { citizenCardNumber: dto.citizenCardNumber }),
           ...(dto.bloodType !== undefined && { bloodType: dto.bloodType }),
@@ -586,6 +592,7 @@ export class UsersService {
             OR: [
               { firstName: { contains: filters.q, mode: 'insensitive' as const } },
               { lastName: { contains: filters.q, mode: 'insensitive' as const } },
+              { fullName: { contains: filters.q, mode: 'insensitive' as const } },
               { email: { contains: filters.q, mode: 'insensitive' as const } },
               { redCrossNumber: { contains: filters.q, mode: 'insensitive' as const } },
               { volunteerNumber: { contains: filters.q, mode: 'insensitive' as const } },

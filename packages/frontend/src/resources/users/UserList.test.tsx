@@ -1,10 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { AdminContext, ResourceContextProvider, testDataProvider } from 'react-admin';
 import polyglotI18nProvider from 'ra-i18n-polyglot';
 import { MemoryRouter } from 'react-router-dom';
 import { CertificationType, User, UserRole } from '@redinfo/shared';
 import { messages } from '../../i18n/i18nProvider';
+import { stubMobileMatchMedia } from '../../test/renderMobile';
 import { UserList } from './UserList';
 
 // This screen has not gone through #180 phase 3's Portuguese rollout yet —
@@ -43,9 +45,8 @@ const person = (overrides: Partial<User> = {}): User =>
   }) as User;
 
 function renderList(data: User[], roles: UserRole[] = [UserRole.SYSTEM_ADMIN]) {
-  const dataProvider = testDataProvider({
-    getList: vi.fn(() => Promise.resolve({ data, total: data.length })) as never,
-  });
+  const getList = vi.fn(() => Promise.resolve({ data, total: data.length })) as never;
+  const dataProvider = testDataProvider({ getList });
   const authProvider = {
     login: () => Promise.resolve(),
     logout: () => Promise.resolve(),
@@ -63,6 +64,8 @@ function renderList(data: User[], roles: UserRole[] = [UserRole.SYSTEM_ADMIN]) {
       </AdminContext>
     </MemoryRouter>,
   );
+
+  return { getList: getList as unknown as ReturnType<typeof vi.fn> };
 }
 
 // ── The personnel registry (ADO #163) ─────────────────────────────────────────
@@ -115,5 +118,47 @@ describe('the personnel registry', () => {
     await screen.findByText('Ana Silva');
     expect(screen.getByText('Emergency Coordinator')).toBeInTheDocument();
     expect(screen.getByText('System Administrator')).toBeInTheDocument();
+  });
+});
+
+// ── Active by default, everyone on request ────────────────────────────────
+//
+// A departed volunteer's record isn't deleted, just hidden — the roster
+// defaults to active-only and a chip, not a buried "Add filter" entry, is
+// the way back to seeing everyone.
+
+describe('the personnel registry — active/all filter', () => {
+  it('asks the API for active members only by default', async () => {
+    const { getList } = renderList([person()]);
+    await screen.findByText('Ana Silva');
+    expect(getList).toHaveBeenCalledWith(
+      'users',
+      expect.objectContaining({ filter: expect.objectContaining({ isActive: 'true' }) }),
+    );
+  });
+
+  it('drops the isActive filter once "Show all" is tapped', async () => {
+    const { getList } = renderList([person()]);
+    await screen.findByText('Ana Silva');
+
+    await userEvent.click(screen.getByText('Show all'));
+
+    expect(getList).toHaveBeenLastCalledWith(
+      'users',
+      expect.objectContaining({ filter: expect.not.objectContaining({ isActive: expect.anything() }) }),
+    );
+  });
+});
+
+// ── Mobile layout (#phone-friendly personnel list) ────────────────────────
+
+describe('the personnel registry on a phone', () => {
+  it('shows stacked cards instead of a table', async () => {
+    stubMobileMatchMedia();
+    renderList([person()]);
+
+    await screen.findByText('Ana Silva');
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.getByText('Operational')).toBeInTheDocument();
   });
 });

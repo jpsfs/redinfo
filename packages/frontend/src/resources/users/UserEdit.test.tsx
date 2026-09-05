@@ -88,6 +88,22 @@ describe('UserEdit — provider field', () => {
   });
 });
 
+describe('UserEdit — full name field (administrative use only)', () => {
+  it('a coordinator can fill in the full legal name, alongside the personnel fields', async () => {
+    const update = vi.fn((_resource: string, params: { data: Record<string, unknown> }) =>
+      Promise.resolve({ data: { ...ANA, ...params.data } }),
+    );
+    renderEdit(update, [UserRole.EMERGENCY_COORDINATOR]);
+
+    const fullNameInput = await screen.findByLabelText(/Full name/);
+    await userEvent.type(fullNameInput, 'Ana Maria Silva Ferreira');
+    await userEvent.click(screen.getByRole('button', { name: /save/i }));
+
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1), { timeout: 6000 });
+    expect(update.mock.calls[0][1].data.fullName).toBe('Ana Maria Silva Ferreira');
+  });
+});
+
 describe('UserEdit — roles field (#multi-role)', () => {
   it('an admin can give someone more than one role at once', async () => {
     const update = vi.fn((_resource: string, params: { data: Record<string, unknown> }) =>

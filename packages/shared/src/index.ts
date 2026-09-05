@@ -306,6 +306,14 @@ export interface User {
   redCrossNumber?: string | null;
   /** Optional, manually assigned by a coordinator; not self-editable. */
   volunteerNumber?: string | null;
+  /**
+   * The person's full legal name, for administrative use only — insurance
+   * forms, certificates, official correspondence. Not self-editable, and
+   * never a display substitute for `firstName`/`lastName`: every screen in
+   * the app keeps showing those two, everywhere, regardless of whether this
+   * is filled in.
+   */
+  fullName?: string | null;
   nif?: string | null;
   citizenCardNumber?: string | null;
   bloodType?: BloodType | null;

@@ -77,6 +77,11 @@ model User {
   redCrossNumber        String?    @unique
   /// Optional, manually assigned by a coordinator; not self-editable.
   volunteerNumber       String?    @unique
+  /// Full legal name, for administrative use only (insurance forms,
+  /// certificates, official correspondence). Not self-editable, and never
+  /// what the app displays — `firstName`/`lastName` stay the display name
+  /// everywhere, filled in or not.
+  fullName              String?
   nif                   String?    @unique
   citizenCardNumber     String?
   bloodType             BloodType?

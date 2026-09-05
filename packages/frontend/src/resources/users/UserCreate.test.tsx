@@ -64,3 +64,28 @@ describe('UserCreate — provider vs password', () => {
     expect(saved.password).toBeUndefined();
   });
 });
+
+describe('UserCreate — full name field (administrative use only)', () => {
+  it('is optional, and travels alongside the required first/last name', async () => {
+    const create = vi.fn((_resource: string, params: { data: Record<string, unknown> }) =>
+      Promise.resolve({ data: { id: 'u-new', ...params.data } }),
+    );
+    renderCreate(create);
+
+    await userEvent.type(screen.getByLabelText(/First Name/), 'Ana');
+    await userEvent.type(screen.getByLabelText(/Last Name/), 'Silva');
+    await userEvent.type(screen.getByLabelText(/Email/), 'ana@example.test');
+    await userEvent.type(
+      screen.getByLabelText(/^Password/, { selector: 'input[type="password"]' }),
+      'SecurePass1!',
+    );
+    await userEvent.type(screen.getByLabelText(/Full name/), 'Ana Maria Silva Ferreira');
+    await userEvent.click(screen.getByRole('button', { name: /save/i }));
+
+    await waitFor(() => expect(create).toHaveBeenCalledTimes(1));
+    const saved = create.mock.calls[0][1].data;
+    expect(saved.firstName).toBe('Ana');
+    expect(saved.lastName).toBe('Silva');
+    expect(saved.fullName).toBe('Ana Maria Silva Ferreira');
+  });
+});

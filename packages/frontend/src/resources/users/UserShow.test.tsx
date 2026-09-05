@@ -94,6 +94,13 @@ describe('UserShow', () => {
     expect(screen.getByText(/^SBV/)).toBeInTheDocument();
   });
 
+  it('shows the administrative full name without replacing the first/last name header', async () => {
+    renderShow(person({ fullName: 'Ana Maria Silva Ferreira' }));
+
+    expect(await screen.findByText('Ana Silva')).toBeInTheDocument();
+    expect(screen.getByText('Ana Maria Silva Ferreira')).toBeInTheDocument();
+  });
+
   it('says so when nobody has recorded anything', async () => {
     renderShow(person({ certifications: [] }));
     expect(await screen.findByText('No certifications on file.')).toBeInTheDocument();

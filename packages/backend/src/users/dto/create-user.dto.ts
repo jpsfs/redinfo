@@ -20,6 +20,7 @@ export const MAX_ADDRESS_LINE_LENGTH = 200;
 export const MAX_POSTAL_CODE_LENGTH = 20;
 export const MAX_IDENTITY_NUMBER_LENGTH = 40;
 export const MAX_EMERGENCY_CONTACT_NAME_LENGTH = 120;
+export const MAX_FULL_NAME_LENGTH = 200;
 
 /**
  * Account plus the personnel-profile fields a coordinator may fill in at
@@ -134,6 +135,18 @@ export class CreateUserDto {
   @IsString()
   @MaxLength(MAX_IDENTITY_NUMBER_LENGTH)
   volunteerNumber?: string;
+
+  @ApiPropertyOptional({
+    example: 'João Manuel da Silva Costa',
+    description:
+      'Full legal name, for administrative use only (insurance forms, certificates, ' +
+      'official correspondence). Not self-editable, and never displayed in place of ' +
+      'firstName/lastName.',
+  })
+  @IsOptional()
+  @IsString()
+  @MaxLength(MAX_FULL_NAME_LENGTH)
+  fullName?: string;
 
   @ApiPropertyOptional({ example: '218442907' })
   @IsOptional()

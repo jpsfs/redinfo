@@ -78,6 +78,7 @@ export const UserCreate = () => {
         <TextInput source="postalCode" />
         <TextInput source="redCrossNumber" />
         <TextInput source="volunteerNumber" helperText={t('userForm.volunteerNumberHint')} />
+        <TextInput source="fullName" helperText={t('userForm.fullNameHint')} />
         <TextInput source="nif" />
         <TextInput source="citizenCardNumber" />
         <SelectInput source="bloodType" choices={bloodTypeChoices} />

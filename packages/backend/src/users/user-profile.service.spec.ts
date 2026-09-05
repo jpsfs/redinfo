@@ -26,6 +26,7 @@ const personRow = (overrides: Record<string, unknown> = {}) => ({
   locality: null,
   redCrossNumber: null,
   volunteerNumber: null,
+  fullName: null,
   nif: null,
   citizenCardNumber: null,
   bloodType: null,

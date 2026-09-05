@@ -563,6 +563,7 @@ const MESSAGES = {
     en: 'Red Cross national no.',
   },
   'resources.users.fields.volunteerNumber': { pt: 'Nº de Voluntário', en: 'Volunteer no.' },
+  'resources.users.fields.fullName': { pt: 'Nome completo', en: 'Full name' },
   'resources.users.fields.nif': { pt: 'NIF', en: 'NIF' },
   'resources.users.fields.citizenCardNumber': { pt: 'Cartão de cidadão', en: 'Citizen card' },
   'resources.users.fields.bloodType': { pt: 'Grupo sanguíneo', en: 'Blood type' },
@@ -597,6 +598,10 @@ const MESSAGES = {
     pt: 'Opcional, atribuído manualmente.',
     en: 'Optional, manually assigned.',
   },
+  'userForm.fullNameHint': {
+    pt: 'Só para uso administrativo (seguros, certificados). O nome próprio e o apelido continuam a ser usados em todo o lado.',
+    en: 'For administrative use only (insurance, certificates). First and last name keep being used everywhere else.',
+  },
 
   'personnelList.nameColumn': { pt: 'Nome', en: 'Name' },
   'personnelList.roleColumn': { pt: 'Funções', en: 'Roles' },
@@ -606,6 +611,7 @@ const MESSAGES = {
   },
   'personnelList.active': { pt: 'Ativo', en: 'Active' },
   'personnelList.inactive': { pt: 'Inativo', en: 'Inactive' },
+  'personnelList.showAll': { pt: 'Mostrar todos', en: 'Show all' },
   'personnelList.certStatusExpiring': {
     pt: 'A expirar nos próximos 6 meses',
     en: 'Expiring within 6 months',

@@ -393,6 +393,7 @@ export const UserShow = () => {
               </Typography>
               <FieldRow source="redCrossNumber" />
               <FieldRow source="volunteerNumber" />
+              <FieldRow source="fullName" />
               <FieldRow source="nif" />
               <FieldRow source="citizenCardNumber" />
               <BloodTypeRow />

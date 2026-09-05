@@ -9,13 +9,17 @@ import {
   TopToolbar,
   CreateButton,
   ExportButton,
+  useListContext,
   usePermissions,
 } from 'react-admin';
-import { Chip, Stack, Typography } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
+import { Box, Chip, CircularProgress, Stack, Typography } from '@mui/material';
 import { Action, CERTIFICATION_TYPES, User, UserRole, hasPermission } from '@redinfo/shared';
 import { CertificationBadge } from '../../components/CertificationBadge';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { accountRoleLabel, certificationLabel } from '../../i18n/labels';
 import { useT } from '../../i18n/useT';
+import { PersonCard } from './PersonCard';
 
 const ListActions = () => {
   const { permissions } = usePermissions<UserRole[]>();
@@ -72,9 +76,71 @@ const CertificationsField = ({ record }: { record?: User }) => {
 };
 
 /**
+ * Active/all toggle, chip-style like `WindowFilterBar` in the availability
+ * screens — replaces the `isActive` dropdown filter so "show everyone" is
+ * one tap away instead of buried in "Add filter". `<List>` defaults to
+ * active-only via `filterDefaultValues`; someone who left keeps their
+ * record, just out of sight until asked for.
+ */
+const ActiveFilterBar = () => {
+  const t = useT();
+  const { filterValues, setFilters, displayedFilters } = useListContext();
+  const showingAll = filterValues.isActive === undefined;
+
+  const showActiveOnly = () => setFilters({ ...filterValues, isActive: 'true' }, displayedFilters);
+  const showAll = () => {
+    const { isActive: _dropped, ...rest } = filterValues;
+    setFilters(rest, displayedFilters);
+  };
+
+  return (
+    <Stack direction="row" spacing={1} sx={{ mb: 2 }} flexWrap="wrap" useFlexGap>
+      <Chip
+        label={t('personnelList.active')}
+        color={showingAll ? 'default' : 'primary'}
+        variant={showingAll ? 'outlined' : 'filled'}
+        onClick={showActiveOnly}
+        sx={{ fontWeight: 600, cursor: 'pointer' }}
+      />
+      <Chip
+        label={t('personnelList.showAll')}
+        color={showingAll ? 'primary' : 'default'}
+        variant={showingAll ? 'filled' : 'outlined'}
+        onClick={showAll}
+        sx={{ fontWeight: 600, cursor: 'pointer' }}
+      />
+    </Stack>
+  );
+};
+
+/** Stacked cards instead of a table — the mobile replacement for `Datagrid`. */
+const MobileUserList = () => {
+  const { data, isLoading } = useListContext<User>();
+  const navigate = useNavigate();
+
+  if (isLoading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+        <CircularProgress size={24} />
+      </Box>
+    );
+  }
+
+  return (
+    <Stack spacing={1.5}>
+      {(data ?? []).map((person) => (
+        <PersonCard key={person.id} person={person} onOpen={() => navigate(`/users/${person.id}/show`)} />
+      ))}
+    </Stack>
+  );
+};
+
+/**
  * The personnel registry: everyone at the delegation, searchable and
  * filterable by role, active status, and operational readiness — a derived
- * flag (valid TAT or TAS), not a column a coordinator sets directly.
+ * flag (valid TAT or TAS), not a column a coordinator sets directly. Active
+ * members only by default (`ActiveFilterBar`); a stacked-card layout replaces
+ * the table below the `sm` breakpoint so the roster is usable from a phone.
  */
 export const UserList = () => {
   const t = useT();
@@ -94,10 +160,6 @@ export const UserList = () => {
     { id: 'EXPIRING', name: t('personnelList.certStatusExpiring') },
     { id: 'EXPIRED', name: t('personnelList.certStatusExpired') },
   ];
-  const activeChoices = [
-    { id: 'true', name: t('personnelList.active') },
-    { id: 'false', name: t('personnelList.inactive') },
-  ];
   const userFilters = [
     <SearchInput
       source="q"
@@ -106,7 +168,6 @@ export const UserList = () => {
       placeholder={t('personnelList.searchPlaceholder')}
     />,
     <SelectInput source="role" key="role" choices={roleChoices} />,
-    <SelectInput source="isActive" key="isActive" choices={activeChoices} />,
     <SelectInput source="readiness" key="readiness" choices={readinessChoices} />,
     <SelectInput source="certification" key="certification" choices={certificationChoices} />,
     <SelectInput
@@ -115,28 +176,39 @@ export const UserList = () => {
       choices={certificationStatusChoices}
     />,
   ];
+  const isMobile = useIsMobile();
 
   return (
-    <List filters={userFilters} actions={<ListActions />} perPage={25}>
-      <Datagrid rowClick="show" bulkActionButtons={false}>
-        <FunctionField
-          label={t('personnelList.nameColumn')}
-          render={(record: User) => (
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>
-              {record.firstName} {record.lastName}
-            </Typography>
-          )}
-        />
-        <FunctionField label={t('personnelList.roleColumn')} render={(record: User) => <RolesField record={record} />} />
-        <FunctionField source="readiness" render={(record: User) => <ReadinessField record={record} />} />
-        <FunctionField
-          source="certifications"
-          render={(record: User) => <CertificationsField record={record} />}
-        />
-        <BooleanField source="isActive" />
-        <TextField source="redCrossNumber" emptyText="—" />
-        <TextField source="volunteerNumber" emptyText="—" />
-      </Datagrid>
+    <List
+      filters={userFilters}
+      actions={<ListActions />}
+      perPage={25}
+      filterDefaultValues={{ isActive: 'true' }}
+    >
+      <ActiveFilterBar />
+      {isMobile ? (
+        <MobileUserList />
+      ) : (
+        <Datagrid rowClick="show" bulkActionButtons={false}>
+          <FunctionField
+            label={t('personnelList.nameColumn')}
+            render={(record: User) => (
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                {record.firstName} {record.lastName}
+              </Typography>
+            )}
+          />
+          <FunctionField label={t('personnelList.roleColumn')} render={(record: User) => <RolesField record={record} />} />
+          <FunctionField source="readiness" render={(record: User) => <ReadinessField record={record} />} />
+          <FunctionField
+            source="certifications"
+            render={(record: User) => <CertificationsField record={record} />}
+          />
+          <BooleanField source="isActive" />
+          <TextField source="redCrossNumber" emptyText="—" />
+          <TextField source="volunteerNumber" emptyText="—" />
+        </Datagrid>
+      )}
     </List>
   );
 };
