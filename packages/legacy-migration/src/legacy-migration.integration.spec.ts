@@ -302,6 +302,12 @@ describeIntegration('Legacy migration harness (integration)', () => {
       await loadUsers(first, new LocalityResolver(prisma, new Map()));
       const before = await prisma.user.findUnique({ where: { email: `bruno.${RUN}@example.test` } });
 
+      // `socorrista.nome` is both split into firstName/lastName and copied
+      // verbatim into `fullName` — two independent uses of the same string.
+      expect(before!.firstName).toBe('Bruno');
+      expect(before!.lastName).toBe('Fixture');
+      expect(before!.fullName).toBe('Bruno Fixture');
+
       const second = await freshContext(source, { runId: `${RUN}-second` });
       await loadUsers(second, new LocalityResolver(prisma, new Map()));
       const after = await prisma.user.findUnique({ where: { email: `bruno.${RUN}@example.test` } });
@@ -621,6 +627,13 @@ describeIntegration('Legacy migration harness (integration)', () => {
             });
             windowName = window.name;
             roleCaps = window.roles.map((role) => role.maxPeople).sort();
+
+            // Condutor and Chefe de Equipa are the two posts a shift cannot run
+            // without; Socorrista is a pool seat that may go unfilled.
+            const mandatoryByName = Object.fromEntries(window.roles.map((role) => [role.name, role.mandatoryCount]));
+            expect(mandatoryByName['Condutor']).toBe(1);
+            expect(mandatoryByName['Chefe de Equipa']).toBe(1);
+            expect(mandatoryByName['Socorrista']).toBe(0);
 
             const created = await tx.scheduleAssignment.findMany({
               where: { schedule: { windowId: window.id } },

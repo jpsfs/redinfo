@@ -435,17 +435,31 @@ export const SAIDAS_CREW_ROLE_NAMES = {
  * every imported role showed an open place forever and no gap chip meant
  * anything.
  *
- * `mandatoryCount: 0` still stands, and is deliberately *not* raised to 1
- * alongside `maxPeople`: it drives volunteer-hours auto-generation (#164),
- * which is a statement about a shift being properly crewed that a 2016
- * roster cannot support. `requiredCertification: null` for the same reason —
- * legacy recorded no such requirement.
+ * `requiredCertification: null` because legacy recorded no such requirement —
+ * `mandatoryCount` is *not* included here, unlike before: confirmed by the
+ * delegation that Condutor and Chefe de Equipa are the two posts a legacy
+ * shift could not run without, while Socorrista was a third seat that could
+ * go unfilled — see `ESCALA_ROLE_MANDATORY_COUNTS`, which is per-slot rather
+ * than a single default shared by all three.
  */
 export const SYNTHETIC_ROLE_DEFAULTS = {
   maxPeople: 1,
-  mandatoryCount: 0,
   requiredCertification: null,
 } as const;
+
+/**
+ * `mandatoryCount` per `ESCALA_ROLE_NAMES` slot — drives volunteer-hours
+ * auto-generation (#164) and the schedule board's gap chips. Condutor and
+ * Chefe de Equipa (`socorrista1`) are mandatory posts: a legacy shift with
+ * either seat empty was not properly crewed. Socorrista (`socorrista3`) is
+ * not — a shift regularly ran with that third seat unfilled, so it stays a
+ * "pool" seat (`0`) rather than a required one.
+ */
+export const ESCALA_ROLE_MANDATORY_COUNTS: Record<keyof typeof ESCALA_ROLE_NAMES, number> = {
+  condutor: 1,
+  socorrista1: 1,
+  socorrista3: 0,
+};
 
 // ─── 4.12 escala.mes → month number ────────────────────────────────────────────
 

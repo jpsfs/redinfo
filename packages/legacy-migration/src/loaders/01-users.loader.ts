@@ -36,11 +36,18 @@
  * both meaning "no birth date on file" rather than a real one — `new
  * Date('0000-00-00T...')` is simply an invalid `Date`, so this is treated as
  * absent the same way.
+ *
+ * `socorrista.nome` (falling back to `usuarios.nome`, same preference order
+ * `splitPortugueseName` uses) is copied verbatim into `fullName` — the
+ * administrative-use field the schema keeps precisely for a legal name that
+ * `firstName`/`lastName` cannot losslessly hold — in addition to being split
+ * into `firstName`/`lastName` for display. The two are independent uses of
+ * the same legacy string, not one derived from the other.
  */
 import { AuthProvider } from '@prisma/client';
 import { mapBloodType } from '../transform/enums';
 import { resolveEmail } from '../transform/email';
-import { splitPortugueseName } from '../transform/name';
+import { normaliseWhitespace, splitPortugueseName } from '../transform/name';
 import { phoneFromLegacyInt } from '../transform/phone';
 import { DEFAULT_VOLUNTEER_ROLE } from '../mapping.config';
 import { LocalityResolver } from '../resolvers/locality.resolver';
@@ -87,7 +94,8 @@ async function loadOneUser(
     });
   }
 
-  const { firstName, lastName } = splitPortugueseName(socorrista?.nome ?? usuario.nome);
+  const legacyFullName = socorrista?.nome ?? usuario.nome ?? null;
+  const { firstName, lastName } = splitPortugueseName(legacyFullName);
   const localityId = socorrista?.freguesia
     ? await localityResolver.resolve(socorrista.freguesia, key)
     : null;
@@ -96,6 +104,7 @@ async function loadOneUser(
     email: emailResolution.email,
     firstName,
     lastName,
+    fullName: legacyFullName ? normaliseWhitespace(legacyFullName) || null : null,
     roles: [DEFAULT_VOLUNTEER_ROLE],
     provider: AuthProvider.LOCAL,
     passwordHash: null,

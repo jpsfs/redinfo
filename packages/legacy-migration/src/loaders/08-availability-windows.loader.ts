@@ -17,7 +17,12 @@
  */
 import { AvailabilityWindowStatus } from '@prisma/client';
 import { lookupMonth } from '../transform/enums';
-import { ESCALA_ROLE_NAMES, SYNTHETIC_ROLE_DEFAULTS, SYNTHETIC_WINDOW_CATEGORY } from '../mapping.config';
+import {
+  ESCALA_ROLE_MANDATORY_COUNTS,
+  ESCALA_ROLE_NAMES,
+  SYNTHETIC_ROLE_DEFAULTS,
+  SYNTHETIC_WINDOW_CATEGORY,
+} from '../mapping.config';
 import { RunContext, runInLoaderTransaction } from '../run-context';
 import { adoptOrCreate, legacyKey, sourceHash } from '../upsert-engine';
 
@@ -163,15 +168,28 @@ async function loadOneWindow(ctx: RunContext, ano: number, mes: number): Promise
 
   const roleIdByName: Record<string, string> = {};
   for (const [slot, name] of Object.entries(ESCALA_ROLE_NAMES)) {
-    roleIdByName[slot] = await loadOneRole(ctx, result.newId, name, Object.keys(ESCALA_ROLE_NAMES).indexOf(slot));
+    const mandatoryCount = ESCALA_ROLE_MANDATORY_COUNTS[slot as keyof typeof ESCALA_ROLE_NAMES];
+    roleIdByName[slot] = await loadOneRole(
+      ctx,
+      result.newId,
+      name,
+      Object.keys(ESCALA_ROLE_NAMES).indexOf(slot),
+      mandatoryCount,
+    );
   }
 
   return { windowId: result.newId, roleIdByName };
 }
 
-async function loadOneRole(ctx: RunContext, windowId: string, name: string, order: number): Promise<string> {
+async function loadOneRole(
+  ctx: RunContext,
+  windowId: string,
+  name: string,
+  order: number,
+  mandatoryCount: number,
+): Promise<string> {
   const key = legacyKey('escala-window-role', windowId, name);
-  const data = { windowId, name, order, ...SYNTHETIC_ROLE_DEFAULTS };
+  const data = { windowId, name, order, mandatoryCount, ...SYNTHETIC_ROLE_DEFAULTS };
   const hash = sourceHash(data);
 
   const result = await runInLoaderTransaction(ctx, (tx) =>
