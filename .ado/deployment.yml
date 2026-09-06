@@ -262,7 +262,17 @@ stages:
   # ── MarkStagingVerified — the only proof a commit passed staging ────────────
   - stage: MarkStagingVerified
     displayName: Mark commit verified on staging
-    dependsOn: DeployStaging
+    # Prepare must be listed explicitly, not just DeployStaging: this stage's
+    # `variables:` block below reads Prepare's outputs via stageDependencies,
+    # and that only resolves reliably when Prepare is a DIRECT dependency —
+    # relying on it being reachable transitively through DeployStaging (which
+    # does depend on Prepare) resolved to an empty string in practice (hit
+    # for real on build 350: shortSha came back blank, producing the image
+    # tag "sha-" and a hard failure at `docker buildx imagetools create`).
+    # Every other stage below that reads Prepare's outputs lists Prepare
+    # explicitly in dependsOn for the same reason — this one was the one
+    # exception.
+    dependsOn: [Prepare, DeployStaging]
     condition: succeeded()
     variables:
       shortSha: $[ stageDependencies.Prepare.Resolve.outputs['EmitVars.shortSha'] ]
@@ -363,12 +373,12 @@ stages:
         displayName: Deploy Helm chart to production
         pool:
           name: vm-redcross
-        # A manual approval check is attached to this ADO Environment itself
-        # (Environments > redinfo-production > Approvals and checks) — not
-        # expressible in this YAML. It does not exist yet as of this pipeline
-        # redesign; it gets created separately once the first green
-        # self-hosted deploy proves the rest of this pipeline out. Until then,
-        # PromotionGate above is the only gate production has.
+        # Deliberately no ADO approval check on this Environment (Environments
+        # > redinfo-production > Approvals and checks stays empty) — the human
+        # control here is push access to env/production itself (GitHub branch
+        # protection), not a click in ADO. PromotionGate above is the only
+        # in-pipeline gate: production refuses any commit without a
+        # staging-ok-<sha> marker, short of forceProduction.
         environment: redinfo-production
         strategy:
           runOnce:

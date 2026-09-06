@@ -41,7 +41,12 @@ Prepare ──┬─▶ Build ──┬─▶ DeployStaging ──▶ MarkStagin
   fast-forwarding `env/staging` onto `env/production`) doesn't rebuild anything. The
   `forceRebuild` parameter overrides this.
 - **DeployStaging** / **DeployProduction** run on the self-hosted `vm-redcross` agent (see
-  `templates/deploy-env.yml`) — the same machine as the k8s cluster, no SSH hop.
+  `templates/deploy-env.yml`) — the same machine as the k8s cluster, no SSH hop. The first run
+  that ever references a given pool from this pipeline definition gets ADO's own one-time
+  "this pipeline needs permission to use resource pool vm-redcross" prompt — separate from, and
+  not to be confused with, an Environment approval check (see "Who can deploy to production"
+  below). Someone with permission clicks through it once per pool per pipeline; it does not
+  recur after that.
 - **MarkStagingVerified** stamps the `staging-ok-<shortSha>` marker described below — the only
   thing standing between "staging deploy succeeded" and "this commit is allowed to production".
 - **PromotionGate** enforces that marker on the way to production, `forceProduction` bypasses it.
@@ -111,11 +116,11 @@ that one run and nothing else.
 A commit that only touches docs but shouldn't trigger a manual regeneration (typos, wording,
 internal notes) should use a different Conventional Commits type, e.g. `chore(docs): ...`.
 
-## Approving a production deploy
+## Who can deploy to production
 
-Once the `redinfo-production` Environment has a manual approval check attached (see
-`DeployProduction`'s comment in `deployment.yml` — not yet created as of this redesign),
-approving from the CLI is `scripts/ado-approve-production.sh`. See that script's header for what
-is and isn't verified about it — there's no real pending approval to test against until the check
-exists. The ADO web UI (Pipelines → the running production build → "Review") always works as a
-fallback.
+Deliberately no ADO approval check on the `redinfo-production` Environment — the human control
+is push access to `env/production` itself (GitHub branch protection restricting who can push
+there), not a click in ADO. The only in-pipeline gate is `PromotionGate`: production refuses any
+commit without a `staging-ok-<sha>` marker, short of `forceProduction`. Once a push to
+`env/production` lands, the pipeline runs straight through to a deploy with no pause for
+approval — that's the intended behavior, not a bug.
