@@ -168,6 +168,6 @@ migration/dump/
 migration/out/
 
 # Operator manual: generated binaries (screenshots + PDF). Regenerate locally with
-# docs/manual-operador/capturar-ecras.mjs and gerar-pdf.mjs — never commit the output.
-docs/manual-operador/imagens/
+# docs/manual-operador/capture-screenshots.mjs and generate-pdf.mjs — never commit the output.
+docs/manual-operador/images/
 docs/manual-operador/manual.pdf

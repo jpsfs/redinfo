@@ -1,6 +1,6 @@
 <div style="text-align:center">
 
-<img src="imagens/logo-delegacao.jpg" width="140"><br><br>
+<img src="images/logo-delegacao.jpg" width="140"><br><br>
 
 <h1>Manual do Operador</h1>
 <h3>CVP Portal — Cruz Vermelha Portuguesa · Delegação de Campo</h3>
@@ -38,8 +38,8 @@ prontos. Só uses os campos **Utilizador** e **Palavra-passe** se o teu coordena
 tiver dado uma conta local em vez do teu email pessoal.
 
 <p style="text-align:center">
-  <img src="imagens/00-login.png" width="200">
-  <img src="imagens/01-inicio.png" width="200">
+  <img src="images/00-login.png" width="200">
+  <img src="images/01-home.png" width="200">
 </p>
 
 O ícone **☰**, no canto superior esquerdo, abre o menu com todas as páginas descritas
@@ -58,9 +58,9 @@ neste manual. O ecrã inicial já mostra a tua escala de hoje e os teus próximo
 5. No fim, toca em **Entregar relatório**. Só depois de entregue é que recebe um número.
 
 <p style="text-align:center">
-  <img src="imagens/02-relatorios-lista.png" width="200">
-  <img src="imagens/03-relatorios-tipo.png" width="200">
-  <img src="imagens/04-relatorios-formulario.png" width="200">
+  <img src="images/02-reports-list.png" width="200">
+  <img src="images/03-reports-type.png" width="200">
+  <img src="images/04-reports-form.png" width="200">
 </p>
 
 **Dica:** se a emergência ainda está a decorrer, não esperes até ao fim para escrever o
@@ -80,8 +80,8 @@ formações ou outras atividades que não têm turno associado.
 5. Toca em **Guardar**.
 
 <p style="text-align:center">
-  <img src="imagens/05-horas-lista.png" width="200">
-  <img src="imagens/06-horas-formulario.png" width="200">
+  <img src="images/05-hours-list.png" width="200">
+  <img src="images/06-hours-form.png" width="200">
 </p>
 
 As horas ficam **por aprovar** até um coordenador as validar; depois passam a **aprovadas**.
@@ -101,7 +101,7 @@ fazer serviço.
 4. Toca em **Gravar disponibilidade**.
 
 <p style="text-align:center">
-  <img src="imagens/07-disponibilidade.png" width="220">
+  <img src="images/07-availability.png" width="220">
 </p>
 
 Podes alterar a tua resposta as vezes que quiseres, enquanto a janela estiver aberta.
@@ -115,7 +115,7 @@ coordenador publicar a escala — diferente da disponibilidade, que é só o que
 podias fazer.
 
 <p style="text-align:center">
-  <img src="imagens/08-escala.png" width="220">
+  <img src="images/08-schedule.png" width="220">
 </p>
 
 Cada turno mostra o horário, a função (por exemplo, Motorista) e com quem vais trabalhar.
@@ -130,7 +130,7 @@ frota — nos separadores **Pessoas & Horas**, **Atividade** e **Frota**. Podes 
 período (este mês, 12 meses, este ano) no topo.
 
 <p style="text-align:center">
-  <img src="imagens/09-estatisticas.png" width="220">
+  <img src="images/09-statistics.png" width="220">
 </p>
 
 Todos os operadores veem os mesmos números — não é preciso nenhuma autorização especial.
@@ -152,8 +152,8 @@ vez de as escreveres tudo de memória no fim.
    preenchidas; só falta completar o resto e entregá-lo (secção 1).
 
 <p style="text-align:center">
-  <img src="imagens/10-live-entrada.png" width="200">
-  <img src="imagens/11-live-ativacao.png" width="200">
+  <img src="images/10-live-start.png" width="200">
+  <img src="images/11-live-activation.png" width="200">
 </p>
 
 **Importante:** se abrires uma ocorrência por engano, usa **Abandonar ocorrência** no menu

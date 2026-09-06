@@ -1,17 +1,17 @@
 #!/usr/bin/env node
 /**
- * Gera as capturas de ecrã usadas em docs/manual-operador/manual.md.
+ * Generates the screenshots used in docs/manual-operador/manual.md.
  *
- * Corre num Chromium headless (mesma técnica de .claude/skills/run-frontend/driver.mjs),
- * autenticado com uma conta puramente EMERGENCY_OPERATIONAL (Inês Marques, dados de
- * desenvolvimento em packages/backend/prisma/seed-dev.ts) — para que as imagens mostrem
- * exatamente o que um operador de emergência vê, sem nada de coordenação.
+ * Runs a headless Chromium (same technique as .claude/skills/run-frontend/driver.mjs),
+ * logged in as a plain EMERGENCY_OPERATIONAL account (Inês Marques, dev seed data in
+ * packages/backend/prisma/seed-dev.ts) — so the images show exactly what an emergency
+ * operator sees, with no coordination features.
  *
- * Uso:
+ * Usage:
  *   sudo -n docker compose up -d --build
- *   node docs/manual-operador/capturar-ecras.mjs
+ *   node docs/manual-operador/capture-screenshots.mjs
  *
- * As imagens saem para docs/manual-operador/imagens/.
+ * Images are written to docs/manual-operador/images/.
  */
 import { createRequire } from 'node:module';
 import path from 'node:path';
@@ -26,14 +26,15 @@ const { chromium } = require(require.resolve('playwright', { paths: [path.join(r
 const BASE_URL = process.env.BASE_URL || 'http://localhost:5173';
 const USERNAME = process.env.REDINFO_USERNAME || 'ines.marques@redcross.local';
 const PASSWORD = process.env.REDINFO_PASSWORD || 'Volunteer123!';
-const OUT_DIR = path.join(scriptDir, 'imagens');
+const OUT_DIR = path.join(scriptDir, 'images');
 const WIDTH = 390;
 const HEIGHT = 844;
 
 mkdirSync(OUT_DIR, { recursive: true });
 
-// imagens/ is git-ignored (see .gitignore) — capítulos e logo saem sempre daqui, nunca
-// do repositório. A capa do manual usa o mesmo logo já servido pelo frontend.
+// images/ is git-ignored (see .gitignore) — chapters and logo always come from here,
+// never from the repository. The manual's cover page reuses the same logo the
+// frontend already serves.
 copyFileSync(
   path.join(repoRoot, 'packages/frontend/public/logo-delegacao.jpg'),
   path.join(OUT_DIR, 'logo-delegacao.jpg'),
@@ -53,9 +54,9 @@ async function shot(page, name) {
 
 async function main() {
   const browser = await chromium.launch({ args: ['--no-sandbox'] });
-  // O locale por omissão do Chromium headless é en-US, e o CVP Portal deteta o
-  // idioma pelo browser (i18nProvider.ts, detectLocale) — sem isto as capturas
-  // saíam em inglês.
+  // Headless Chromium's default locale is en-US, and the CVP Portal detects its
+  // language from the browser (i18nProvider.ts, detectLocale) — without this the
+  // screenshots would come out in English.
   const context = await browser.newContext({ viewport: { width: WIDTH, height: HEIGHT }, locale: 'pt-PT' });
   const page = await context.newPage();
   page.on('pageerror', (err) => console.error('  pageerror:', err.message));
@@ -69,53 +70,53 @@ async function main() {
     await page.locator('button[type="submit"]').first().click();
     await page.waitForTimeout(2000);
 
-    // ── Início ───────────────────────────────────────────────────────────
+    // ── Home ─────────────────────────────────────────────────────────────
     await page.goto(`${BASE_URL}/#/`, { waitUntil: 'networkidle' });
-    await shot(page, '01-inicio');
+    await shot(page, '01-home');
 
-    // ── Relatórios de evento ─────────────────────────────────────────────
+    // ── Event reports ────────────────────────────────────────────────────
     await page.goto(`${BASE_URL}/#/my-reports`, { waitUntil: 'networkidle' });
-    await shot(page, '02-relatorios-lista');
+    await shot(page, '02-reports-list');
 
     await page.getByText('Novo relatório', { exact: true }).click();
     await page.waitForTimeout(1000);
-    await shot(page, '03-relatorios-tipo');
+    await shot(page, '03-reports-type');
 
     await page.locator('[data-testid="choose-EMERGENCY"]').click();
     await page.waitForTimeout(1000);
-    await shot(page, '04-relatorios-formulario');
+    await shot(page, '04-reports-form');
 
-    // ── Horas de voluntariado ────────────────────────────────────────────
+    // ── Volunteer hours ──────────────────────────────────────────────────
     await page.goto(`${BASE_URL}/#/my-hours`, { waitUntil: 'networkidle' });
-    await shot(page, '05-horas-lista');
+    await shot(page, '05-hours-list');
 
     await page.getByRole('button', { name: 'Registar horas' }).click();
     await page.waitForTimeout(600);
-    await shot(page, '06-horas-formulario');
-    // Fecha o diálogo sem gravar — é só para a captura de ecrã.
+    await shot(page, '06-hours-form');
+    // Closes the dialog without saving — this is only for the screenshot.
     await page.keyboard.press('Escape');
 
-    // ── Disponibilidade ──────────────────────────────────────────────────
+    // ── Availability ─────────────────────────────────────────────────────
     await page.goto(`${BASE_URL}/#/my-availability`, { waitUntil: 'networkidle' });
-    await shot(page, '07-disponibilidade');
+    await shot(page, '07-availability');
 
-    // ── Escala (os meus turnos) ──────────────────────────────────────────
+    // ── Schedule (my shifts) ─────────────────────────────────────────────
     await page.goto(`${BASE_URL}/#/my-duties`, { waitUntil: 'networkidle' });
-    await shot(page, '08-escala');
+    await shot(page, '08-schedule');
 
-    // ── Estatísticas ─────────────────────────────────────────────────────
+    // ── Statistics ───────────────────────────────────────────────────────
     await page.goto(`${BASE_URL}/#/statistics`, { waitUntil: 'networkidle' });
-    await shot(page, '09-estatisticas');
+    await shot(page, '09-statistics');
 
-    // ── Modo live ────────────────────────────────────────────────────────
+    // ── Live mode ────────────────────────────────────────────────────────
     await page.goto(`${BASE_URL}/#/live`, { waitUntil: 'networkidle' });
-    await shot(page, '10-live-entrada');
+    await shot(page, '10-live-start');
 
     await page.getByRole('button', { name: 'Nova ocorrência' }).click();
     await page.waitForTimeout(1200);
-    await shot(page, '11-live-ativacao');
+    await shot(page, '11-live-activation');
 
-    console.log('\nCapturas concluídas.');
+    console.log('\nScreenshots done.');
   } finally {
     await browser.close();
   }

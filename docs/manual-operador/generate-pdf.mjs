@@ -1,15 +1,15 @@
 #!/usr/bin/env node
 /**
- * Gera manual.pdf (A4) a partir de manual.md — para imprimir ou distribuir.
+ * Generates manual.pdf (A4) from manual.md — for printing or distribution.
  *
- * Dois passos, cada um com a ferramenta mais leve possível (nada de LaTeX/texlive):
- *   1. pandoc converte o Markdown para um HTML autónomo (imagens embutidas).
- *   2. O Chromium do Playwright já usado por este repo (ver
- *      .claude/skills/run-frontend/driver.mjs) imprime esse HTML para PDF em A4.
+ * Two steps, each with the lightest tool that does the job (no LaTeX/texlive):
+ *   1. pandoc converts the Markdown into a standalone HTML file (images embedded).
+ *   2. The Playwright Chromium already used elsewhere in this repo (see
+ *      .claude/skills/run-frontend/driver.mjs) prints that HTML to an A4 PDF.
  *
- * Uso:
- *   sudo apt-get install -y pandoc   # uma vez só, se `pandoc` não existir
- *   node docs/manual-operador/gerar-pdf.mjs
+ * Usage:
+ *   sudo apt-get install -y pandoc   # once only, if `pandoc` isn't installed
+ *   node docs/manual-operador/generate-pdf.mjs
  */
 import { createRequire } from 'node:module';
 import { execFileSync } from 'node:child_process';
@@ -35,7 +35,7 @@ try {
     // second, redundant "Manual do Operador" heading at the top of the body
     // whenever a title is set — the cover page below already has its own.
     [mdFile, '-o', htmlFile, '--standalone', '--embed-resources'],
-    // cwd matters: pandoc resolves manual.md's relative image paths (imagens/*)
+    // cwd matters: pandoc resolves manual.md's relative image paths (images/*)
     // against its own working directory, not against the .md file's location.
     { stdio: 'inherit', cwd: scriptDir },
   );
