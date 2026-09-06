@@ -51,7 +51,7 @@ try {
                 font-family:Helvetica,Arial,sans-serif;
                 border-bottom:1px solid #ED1B24; padding-bottom:4px;">
       <span style="color:#ED1B24; font-weight:bold;">Manual do Operador</span>
-      <span>— RedInfo · Cruz Vermelha Portuguesa</span>
+      <span>— CVP Portal · Cruz Vermelha Portuguesa</span>
     </div>`;
   const footerTemplate = `
     <div style="font-size:8px; width:100%; padding:0 1.5cm; margin-bottom:0.5cm;

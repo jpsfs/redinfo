@@ -46,7 +46,7 @@ async function shot(page, name) {
 
 async function main() {
   const browser = await chromium.launch({ args: ['--no-sandbox'] });
-  // O locale por omissão do Chromium headless é en-US, e o RedInfo deteta o
+  // O locale por omissão do Chromium headless é en-US, e o CVP Portal deteta o
   // idioma pelo browser (i18nProvider.ts, detectLocale) — sem isto as capturas
   // saíam em inglês.
   const context = await browser.newContext({ viewport: { width: WIDTH, height: HEIGHT }, locale: 'pt-PT' });

@@ -3,7 +3,7 @@
 <img src="imagens/logo-delegacao.jpg" width="140"><br><br>
 
 <h1>Manual do Operador</h1>
-<h3>RedInfo — Cruz Vermelha Portuguesa · Delegação de Campo</h3>
+<h3>CVP Portal — Cruz Vermelha Portuguesa · Delegação de Campo</h3>
 
 <br>
 
@@ -16,7 +16,7 @@ disponibilidade, escala, estatísticas e modo live.</p>
 
 ## Antes de começar
 
-Este manual explica, passo a passo, como usar o RedInfo no dia a dia de operacional:
+Este manual explica, passo a passo, como usar o CVP Portal no dia a dia de operacional:
 entregar disponibilidade, ver a escala, criar relatórios, registar horas, consultar
 estatísticas e usar o modo live numa emergência.
 
@@ -29,9 +29,9 @@ números diferentes (turnos, colegas, datas), mas os botões e os passos são os
 
 ### Como entrar
 
-Abre o RedInfo no browser do telemóvel ou computador. Na maioria dos casos **não
-precisas de criar nenhuma palavra-passe**: usa o botão que corresponde ao email da tua
-conta profissional.
+Abre **app.cvpcampo.org** no browser do telemóvel ou computador. Na maioria dos casos
+**não precisas de criar nenhuma palavra-passe**: usa o botão que corresponde ao email da
+tua conta profissional.
 
 - Email **@gmail.com** ou de uma conta Google da delegação → toca em **Google**.
 - Email **@outlook.com**, **@hotmail.com** ou de uma conta Microsoft 365 da delegação →
@@ -152,7 +152,7 @@ vez de as escreveres tudo de memória no fim.
    grande, no fundo do ecrã, à medida que cada fase acontece: **A caminho** → **Cheguei ao
    local** → **Saída do local** → **Chegada ao hospital** → **Ambulância disponível**.
 4. Cada toque grava a hora exata — não precisas de olhar para o relógio.
-5. No fim, o RedInfo cria automaticamente um relatório de evento com essas horas já
+5. No fim, o CVP Portal cria automaticamente um relatório de evento com essas horas já
    preenchidas; só falta completar o resto e entregá-lo (secção 1).
 
 <p style="text-align:center">

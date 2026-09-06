@@ -2180,7 +2180,7 @@ const MESSAGES = {
   },
 
   // ── Dashboard (#180 phase 3) ──
-  'dashboard.welcomeTitle': { pt: 'Bem-vindo ao RedInfo', en: 'Welcome to RedInfo' },
+  'dashboard.welcomeTitle': { pt: 'Bem-vindo ao CVP Portal', en: 'Welcome to CVP Portal' },
   'dashboard.welcomeSubtitle': {
     pt: 'Sistema de informação da Cruz Vermelha Portuguesa – Delegação de Campo.',
     en: 'Information system for the Portuguese Red Cross – Field Delegation.',

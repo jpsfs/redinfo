@@ -401,7 +401,7 @@ describe('Dashboard', () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText('Welcome to RedInfo')).toBeInTheDocument();
+    expect(await screen.findByText('Welcome to CVP Portal')).toBeInTheDocument();
     await waitFor(() => expect(mockApiFetch).toHaveBeenCalledWith('/live-runs'));
     expect(screen.queryByTestId('BoltIcon')).not.toBeInTheDocument();
   });
@@ -442,10 +442,10 @@ describe('Dashboard', () => {
       </MemoryRouter>,
     );
 
-    expect(await screen.findByText('Welcome to RedInfo')).toBeInTheDocument();
+    expect(await screen.findByText('Welcome to CVP Portal')).toBeInTheDocument();
     await waitFor(() => expect(mockApiFetch).toHaveBeenCalledWith('/vehicles/low-stock'));
     expect(screen.queryByText(/Low Stock Vehicles/)).not.toBeInTheDocument();
     // Still there afterwards — proves the panel's own error didn't unmount the tree.
-    expect(screen.getByText('Welcome to RedInfo')).toBeInTheDocument();
+    expect(screen.getByText('Welcome to CVP Portal')).toBeInTheDocument();
   });
 });
