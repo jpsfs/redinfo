@@ -16,6 +16,7 @@ import { useNavigate } from 'react-router-dom';
 import { Box, Chip, CircularProgress, Stack, Typography } from '@mui/material';
 import { Action, CERTIFICATION_TYPES, User, UserRole, hasPermission } from '@redinfo/shared';
 import { CertificationBadge } from '../../components/CertificationBadge';
+import { ChipFilterRow } from '../../components/ChipFilterRow';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { accountRoleLabel, certificationLabel } from '../../i18n/labels';
 import { useT } from '../../i18n/useT';
@@ -94,7 +95,7 @@ const ActiveFilterBar = () => {
   };
 
   return (
-    <Stack direction="row" spacing={1} sx={{ mb: 2 }} flexWrap="wrap" useFlexGap>
+    <ChipFilterRow sx={{ mb: 2 }}>
       <Chip
         label={t('personnelList.active')}
         color={showingAll ? 'default' : 'primary'}
@@ -109,7 +110,7 @@ const ActiveFilterBar = () => {
         onClick={showAll}
         sx={{ fontWeight: 600, cursor: 'pointer' }}
       />
-    </Stack>
+    </ChipFilterRow>
   );
 };
 

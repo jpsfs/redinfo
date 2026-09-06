@@ -3,6 +3,8 @@ import {
   Alert,
   Box,
   Button,
+  Card,
+  CardContent,
   Chip,
   CircularProgress,
   Stack,
@@ -81,81 +83,85 @@ export const ApprovedTab = () => {
           {actionError}
         </Alert>
       )}
-      {queue.loading && !queue.data && <CircularProgress size={24} />}
-      {queue.error && (
-        <Alert severity="warning" sx={{ mb: 2 }}>
-          {queue.error}
-        </Alert>
-      )}
-      {queue.data && queue.data.data.length === 0 && (
-        <Typography variant="body2" color="text.secondary">
-          {t('volunteerHoursReview.noneAfterFilter')}
-        </Typography>
-      )}
-      {queue.data && queue.data.data.length > 0 && isMobile && (
-        <ApprovedHistoryCards
-          entries={queue.data.data}
-          actingId={actingId}
-          onReopen={reopen}
-          onDismiss={setDismissing}
-        />
-      )}
-      {queue.data && queue.data.data.length > 0 && !isMobile && (
-        <Table size="small">
-          <TableHead>
-            <TableRow>
-              <TableCell>{t('volunteerHoursReview.colVolunteer')}</TableCell>
-              <TableCell>{t('volunteerHoursReview.colActivity')}</TableCell>
-              <TableCell>{t('volunteerHoursReview.colDate')}</TableCell>
-              <TableCell>{t('volunteerHoursReview.colCredited')}</TableCell>
-              <TableCell>{t('volunteerHoursReview.colApprovedBy')}</TableCell>
-              <TableCell>{t('volunteerHoursReview.colWhen')}</TableCell>
-              <TableCell />
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {queue.data.data.map((entry) => (
-              <TableRow key={entry.id} sx={{ opacity: actingId === entry.id ? 0.6 : 1 }}>
-                <TableCell>{entry.user ? `${entry.user.firstName} ${entry.user.lastName}` : entry.userId}</TableCell>
-                <TableCell>{activityTypeLabel(t, entry.activityType)}</TableCell>
-                <TableCell>{formatDate(t, entry.date)}</TableCell>
-                <TableCell>
-                  <Typography variant="body2">{formatMinutes(entry.minutes)}</Typography>
-                  {entry.correctionReason && (
-                    <Typography variant="caption" color="text.secondary">
-                      {entry.correctionReason}
-                    </Typography>
-                  )}
-                  {entry.autoApproved && (
-                    <Chip size="small" variant="outlined" label={t('volunteerHoursReview.autoApprovedChip')} sx={{ ml: 1 }} />
-                  )}
-                </TableCell>
-                <TableCell>
-                  {entry.approvedBy ? `${entry.approvedBy.firstName} ${entry.approvedBy.lastName}` : '—'}
-                </TableCell>
-                <TableCell>
-                  {entry.approvedAt ? formatDate(t, entry.approvedAt.slice(0, 10)) : '—'}
-                  {entry.reopenedAt && (
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                      {t('volunteerHoursReview.reopenedNotice', { date: formatDate(t, entry.reopenedAt.slice(0, 10)) })}
-                    </Typography>
-                  )}
-                </TableCell>
-                <TableCell align="right">
-                  <Stack direction="row" spacing={0.5} justifyContent="flex-end">
-                    <Button size="small" disabled={actingId === entry.id} onClick={() => reopen(entry)}>
-                      {t('volunteerHoursReview.reopenButton')}
-                    </Button>
-                    <Button size="small" color="error" disabled={actingId === entry.id} onClick={() => setDismissing(entry)}>
-                      {t('volunteerHoursReview.dismissButton')}
-                    </Button>
-                  </Stack>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      )}
+
+      {/* The history itself is the actual content, so — unlike the filters
+          above — it keeps a white card, same as the pending queue's own. */}
+      <Card sx={{ mt: 2 }}>
+        <CardContent>
+          {queue.loading && !queue.data && <CircularProgress size={24} />}
+          {queue.error && <Alert severity="warning">{queue.error}</Alert>}
+          {queue.data && queue.data.data.length === 0 && (
+            <Typography variant="body2" color="text.secondary">
+              {t('volunteerHoursReview.noneAfterFilter')}
+            </Typography>
+          )}
+          {queue.data && queue.data.data.length > 0 && isMobile && (
+            <ApprovedHistoryCards
+              entries={queue.data.data}
+              actingId={actingId}
+              onReopen={reopen}
+              onDismiss={setDismissing}
+            />
+          )}
+          {queue.data && queue.data.data.length > 0 && !isMobile && (
+            <Table size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>{t('volunteerHoursReview.colVolunteer')}</TableCell>
+                  <TableCell>{t('volunteerHoursReview.colActivity')}</TableCell>
+                  <TableCell>{t('volunteerHoursReview.colDate')}</TableCell>
+                  <TableCell>{t('volunteerHoursReview.colCredited')}</TableCell>
+                  <TableCell>{t('volunteerHoursReview.colApprovedBy')}</TableCell>
+                  <TableCell>{t('volunteerHoursReview.colWhen')}</TableCell>
+                  <TableCell />
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {queue.data.data.map((entry) => (
+                  <TableRow key={entry.id} sx={{ opacity: actingId === entry.id ? 0.6 : 1 }}>
+                    <TableCell>{entry.user ? `${entry.user.firstName} ${entry.user.lastName}` : entry.userId}</TableCell>
+                    <TableCell>{activityTypeLabel(t, entry.activityType)}</TableCell>
+                    <TableCell>{formatDate(t, entry.date)}</TableCell>
+                    <TableCell>
+                      <Typography variant="body2">{formatMinutes(entry.minutes)}</Typography>
+                      {entry.correctionReason && (
+                        <Typography variant="caption" color="text.secondary">
+                          {entry.correctionReason}
+                        </Typography>
+                      )}
+                      {entry.autoApproved && (
+                        <Chip size="small" variant="outlined" label={t('volunteerHoursReview.autoApprovedChip')} sx={{ ml: 1 }} />
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {entry.approvedBy ? `${entry.approvedBy.firstName} ${entry.approvedBy.lastName}` : '—'}
+                    </TableCell>
+                    <TableCell>
+                      {entry.approvedAt ? formatDate(t, entry.approvedAt.slice(0, 10)) : '—'}
+                      {entry.reopenedAt && (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
+                          {t('volunteerHoursReview.reopenedNotice', { date: formatDate(t, entry.reopenedAt.slice(0, 10)) })}
+                        </Typography>
+                      )}
+                    </TableCell>
+                    <TableCell align="right">
+                      <Stack direction="row" spacing={0.5} justifyContent="flex-end">
+                        <Button size="small" disabled={actingId === entry.id} onClick={() => reopen(entry)}>
+                          {t('volunteerHoursReview.reopenButton')}
+                        </Button>
+                        <Button size="small" color="error" disabled={actingId === entry.id} onClick={() => setDismissing(entry)}>
+                          {t('volunteerHoursReview.dismissButton')}
+                        </Button>
+                      </Stack>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
+
       <DismissEntryDialog
         entry={dismissing}
         saving={dismissSaving}

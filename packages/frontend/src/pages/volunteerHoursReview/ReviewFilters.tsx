@@ -3,6 +3,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import { VolunteerHoursReviewCounts, VolunteerHoursSource } from '@redinfo/shared';
 import { useT } from '../../i18n/useT';
 import { CategoryChip } from '../../components/CategoryChip';
+import { ChipFilterRow } from '../../components/ChipFilterRow';
 import { ReviewQueueFilters } from './useReviewQueue';
 
 /** One combined key so the five chips stay mutually exclusive. */
@@ -33,11 +34,7 @@ export const ReviewFilters = ({ filters, counts, onChange }: ReviewFiltersProps)
 
   return (
     <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }} sx={{ py: 1 }}>
-      {/* Wraps rather than scrolling horizontally: nested inside Card > CardContent
-          with no definite width along the way, an `overflowX: auto` row here never
-          actually clips — the unwrapped chip row instead stretches the whole page,
-          producing page-level horizontal scroll on a phone (see #164 follow-up). */}
-      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+      <ChipFilterRow>
         <CategoryChip
           label={t('volunteerHoursReview.filterAll', { count: counts.all })}
           selected={active === 'all'}
@@ -64,7 +61,7 @@ export const ReviewFilters = ({ filters, counts, onChange }: ReviewFiltersProps)
           selected={active === 'MANUAL'}
           onClick={() => select('MANUAL')}
         />
-      </Stack>
+      </ChipFilterRow>
       <TextField
         size="small"
         placeholder={t('volunteerHoursReview.searchPlaceholder')}

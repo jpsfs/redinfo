@@ -18,7 +18,6 @@ import {
   CardContent,
   Chip,
   CircularProgress,
-  Paper,
   Stack,
   Typography,
 } from '@mui/material';
@@ -28,6 +27,7 @@ import EventBusyIcon from '@mui/icons-material/EventBusy';
 import { AVAILABILITY_WINDOW_CATEGORIES, AvailabilityWindow, AvailabilityWindowStatus, Holiday } from '@redinfo/shared';
 import { apiFetch } from '../../api';
 import { CategoryChip } from '../../components/CategoryChip';
+import { ChipFilterRow } from '../../components/ChipFilterRow';
 import { MonthFilter } from '../../components/MonthFilter';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { windowCategoryLabel } from '../../i18n/labels';
@@ -220,15 +220,20 @@ export const WindowFilterBar = () => {
   };
 
   return (
-    <Paper
-      variant="outlined"
-      sx={{ p: 2, mb: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }}
-    >
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
-        <Typography variant="caption" color="text.secondary" sx={{ minWidth: 64 }}>
+    // No card here, deliberately: this is filtering/navigation, not content,
+    // so it sits straight on the page's grey background — same as
+    // `EventReportList`'s `TypeTabs` — leaving the white card look for the
+    // windows themselves below.
+    <Box sx={{ mb: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ minWidth: 64, flexShrink: 0 }}
+        >
           {t('windowList.filterCategoryLabel')}
         </Typography>
-        <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }} useFlexGap>
+        <ChipFilterRow>
           <Chip
             label={t('windowList.allCategories')}
             color={activeCategory ? 'default' : 'primary'}
@@ -246,14 +251,18 @@ export const WindowFilterBar = () => {
               sx={{ height: 32, fontWeight: 600, cursor: 'pointer' }}
             />
           ))}
-        </Stack>
+        </ChipFilterRow>
       </Box>
 
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
-        <Typography variant="caption" color="text.secondary" sx={{ minWidth: 64 }}>
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ minWidth: 64, flexShrink: 0 }}
+        >
           {t('windowList.filterStatusLabel')}
         </Typography>
-        <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }} useFlexGap>
+        <ChipFilterRow>
           <Chip
             size="small"
             label={t('windowList.statusOpen')}
@@ -275,10 +284,10 @@ export const WindowFilterBar = () => {
             variant={activeStatus === '' ? 'filled' : 'outlined'}
             onClick={() => selectStatus('')}
           />
-        </Stack>
+        </ChipFilterRow>
         <MonthFilter />
       </Box>
-    </Paper>
+    </Box>
   );
 };
 

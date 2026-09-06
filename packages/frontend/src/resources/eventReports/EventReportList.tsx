@@ -159,10 +159,12 @@ export const EventReportList = () => {
       component="div"
     >
       <Box sx={{ pt: 2 }}>
-        <Paper
-          variant="outlined"
+        {/* No card here, deliberately: this row is filtering/navigation, not
+            content, so it sits straight on the page's grey background —
+            same as `ScheduleFilterBar` — leaving the white card look for the
+            reports themselves below. */}
+        <Box
           sx={{
-            p: 2,
             mb: 2,
             display: 'flex',
             alignItems: 'center',
@@ -173,7 +175,7 @@ export const EventReportList = () => {
         >
           <TypeTabs />
           <MonthFilter />
-        </Paper>
+        </Box>
 
         {isMobile ? (
           <MobileReportList />

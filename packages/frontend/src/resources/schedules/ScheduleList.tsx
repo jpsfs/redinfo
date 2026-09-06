@@ -15,7 +15,6 @@ import {
   Button,
   Chip,
   CircularProgress,
-  Paper,
   Stack,
   Typography,
 } from '@mui/material';
@@ -29,6 +28,7 @@ import {
   UserRole,
 } from '@redinfo/shared';
 import { CategoryChip } from '../../components/CategoryChip';
+import { ChipFilterRow } from '../../components/ChipFilterRow';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { windowCategoryLabel } from '../../i18n/labels';
 import { useT } from '../../i18n/useT';
@@ -114,15 +114,20 @@ export const ScheduleFilterBar = () => {
   };
 
   return (
-    <Paper
-      variant="outlined"
-      sx={{ p: 2, mb: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }}
-    >
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
-        <Typography variant="caption" color="text.secondary" sx={{ minWidth: 64 }}>
+    // No card here, deliberately: this is filtering/navigation, not content,
+    // so it sits straight on the page's grey background — same as
+    // `EventReportList`'s `TypeTabs` — leaving the white card look for the
+    // schedules themselves below.
+    <Box sx={{ mb: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ minWidth: 64, flexShrink: 0 }}
+        >
           {t('scheduleList.filterCategoryLabel')}
         </Typography>
-        <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }} useFlexGap>
+        <ChipFilterRow>
           <Chip
             label={t('scheduleList.allCategories')}
             color={activeCategory ? 'default' : 'primary'}
@@ -140,14 +145,18 @@ export const ScheduleFilterBar = () => {
               sx={{ height: 32, fontWeight: 600, cursor: 'pointer' }}
             />
           ))}
-        </Stack>
+        </ChipFilterRow>
       </Box>
 
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
-        <Typography variant="caption" color="text.secondary" sx={{ minWidth: 64 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ minWidth: 64, flexShrink: 0 }}
+        >
           {t('scheduleList.filterStatusLabel')}
         </Typography>
-        <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }} useFlexGap>
+        <ChipFilterRow>
           <Chip
             size="small"
             label={t('scheduleList.statusAll')}
@@ -169,9 +178,9 @@ export const ScheduleFilterBar = () => {
             variant={activeStatus === ScheduleStatus.PUBLISHED ? 'filled' : 'outlined'}
             onClick={() => selectStatus(ScheduleStatus.PUBLISHED)}
           />
-        </Stack>
+        </ChipFilterRow>
       </Box>
-    </Paper>
+    </Box>
   );
 };
 

@@ -251,168 +251,176 @@ export const VolunteerHoursReviewPage = () => {
   const hasNextPage = pageEnd < total;
 
   return (
-    <Card sx={{ mt: 2 }}>
+    // No card at this level, deliberately: the heading, tabs and filters
+    // below are controls/navigation, not content, so they sit straight on
+    // the page's grey background — same as `EventReportList`'s `TypeTabs` —
+    // with a card reserved for the actual queue/history further down.
+    <Box sx={{ mt: 2 }}>
       <Title title={t('volunteerHoursReview.pageTitle')} />
-      <CardContent>
-        <Stack direction="row" alignItems="flex-start" justifyContent="space-between" flexWrap="wrap" useFlexGap>
-          <Box>
-            <Typography variant="h6">{t('volunteerHoursReview.heading')}</Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mb: 1, maxWidth: 640 }}>
-              {t('volunteerHoursReview.subheading')}
-            </Typography>
-          </Box>
-          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-            {can([Action.MANAGE_VOLUNTEER_HOURS]) && (
-              <Button variant="outlined" onClick={() => setBulkHoursOpen(true)}>
-                {t('bulkHours.openButton')}
-              </Button>
-            )}
-            <ExportMenu />
-          </Stack>
+      <Stack direction="row" alignItems="flex-start" justifyContent="space-between" flexWrap="wrap" useFlexGap>
+        <Box>
+          <Typography variant="h6">{t('volunteerHoursReview.heading')}</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1, maxWidth: 640 }}>
+            {t('volunteerHoursReview.subheading')}
+          </Typography>
+        </Box>
+        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+          {can([Action.MANAGE_VOLUNTEER_HOURS]) && (
+            <Button variant="outlined" onClick={() => setBulkHoursOpen(true)}>
+              {t('bulkHours.openButton')}
+            </Button>
+          )}
+          <ExportMenu />
         </Stack>
+      </Stack>
 
-        <Tabs value={tab} onChange={(_, value: Tab) => setTab(value)} sx={{ mb: 1 }}>
-          <Tab
-            value="pending"
-            label={t('volunteerHoursReview.tabPending', { count: queue.data?.counts.all ?? 0 })}
-          />
-          <Tab value="approved" label={t('volunteerHoursReview.tabApproved')} />
-        </Tabs>
+      <Tabs value={tab} onChange={(_, value: Tab) => setTab(value)} sx={{ mb: 1 }}>
+        <Tab
+          value="pending"
+          label={t('volunteerHoursReview.tabPending', { count: queue.data?.counts.all ?? 0 })}
+        />
+        <Tab value="approved" label={t('volunteerHoursReview.tabApproved')} />
+      </Tabs>
 
-        {tab === 'approved' ? (
-          <ApprovedTab />
-        ) : (
-          <>
-            {queue.data && <ReviewStatsHeader counts={queue.data.counts} />}
+      {tab === 'approved' ? (
+        <ApprovedTab />
+      ) : (
+        <>
+          {queue.data && <ReviewStatsHeader counts={queue.data.counts} />}
 
-            {queue.data && (
-              <Stack
-                direction={{ xs: 'column', sm: 'row' }}
-                justifyContent="space-between"
-                alignItems={{ sm: 'center' }}
-                spacing={1.5}
+          {queue.data && (
+            <Stack
+              direction={{ xs: 'column', sm: 'row' }}
+              justifyContent="space-between"
+              alignItems={{ sm: 'center' }}
+              spacing={1.5}
+            >
+              <ReviewFilters filters={queue.query} counts={queue.data.counts} onChange={queue.setFilters} />
+              <Button
+                variant="outlined"
+                disabled={queue.data.counts.sweepable === 0}
+                onClick={() => setSweepOpen(true)}
               >
-                <ReviewFilters filters={queue.query} counts={queue.data.counts} onChange={queue.setFilters} />
-                <Button
-                  variant="outlined"
-                  disabled={queue.data.counts.sweepable === 0}
-                  onClick={() => setSweepOpen(true)}
-                >
-                  {t('volunteerHoursReview.sweepButton', { count: queue.data.counts.sweepable })}
-                </Button>
-              </Stack>
-            )}
-
-            {queue.loading && !queue.data && <CircularProgress size={24} sx={{ mt: 2 }} />}
-            {queue.error && (
-              <Alert
-                severity="warning"
-                sx={{ mt: 2 }}
-                action={
-                  <Button color="inherit" size="small" onClick={() => void queue.refetch()}>
-                    {t('volunteerHoursReview.retryButton')}
-                  </Button>
-                }
-              >
-                {queue.error}
-              </Alert>
-            )}
-            {batchFailures && (
-              <Alert severity="warning" sx={{ mt: 2 }} onClose={() => setBatchFailures(null)}>
-                {batchFailures}
-              </Alert>
-            )}
-
-            {queue.data && queue.data.data.length === 0 && total === 0 && (
-              <Typography variant="body2" color="text.secondary" sx={{ mt: 2 }}>
-                {queue.query.flag || queue.query.source || queue.query.search
-                  ? t('volunteerHoursReview.noneAfterFilter')
-                  : t('volunteerHoursReview.noneToReview')}
-              </Typography>
-            )}
-            {queue.data && total === 0 && (queue.query.flag || queue.query.source || queue.query.search) && (
-              <Button size="small" onClick={queue.clearFilters} sx={{ mt: 1 }}>
-                {t('volunteerHoursReview.clearFiltersButton')}
+                {t('volunteerHoursReview.sweepButton', { count: queue.data.counts.sweepable })}
               </Button>
-            )}
+            </Stack>
+          )}
 
-            {queue.data && queue.data.data.length > 0 && (
-              <Box sx={{ mt: 1 }}>
-                {isMobile ? (
-                  <ReviewQueueCards
-                    entries={queue.data.data}
-                    selected={queue.selected}
-                    savingIds={savingIds}
-                    onToggle={toggleSelect}
-                    onApprove={handleApprove}
-                    onAdjust={(entry) => setAdjusting(entry)}
-                    onDismiss={(entry) => setDismissing(entry)}
-                  />
-                ) : (
-                  <ReviewQueueTable
-                    entries={queue.data.data}
-                    selected={queue.selected}
-                    savingIds={savingIds}
-                    onToggle={toggleSelect}
-                    onToggleAll={toggleSelectAll}
-                    onApprove={handleApprove}
-                    onAdjust={(entry) => setAdjusting(entry)}
-                    onDismiss={(entry) => setDismissing(entry)}
-                  />
-                )}
-
-                <Stack
-                  direction="row"
-                  justifyContent="space-between"
-                  alignItems="center"
-                  sx={{ mt: 2 }}
-                  flexWrap="wrap"
-                  useFlexGap
+          {/* The queue itself is the actual content, so — unlike the
+              controls above — it keeps a white card, same as the report/
+              schedule/window lists' own list area. */}
+          <Card sx={{ mt: 2 }}>
+            <CardContent>
+              {queue.loading && !queue.data && <CircularProgress size={24} />}
+              {queue.error && (
+                <Alert
+                  severity="warning"
+                  action={
+                    <Button color="inherit" size="small" onClick={() => void queue.refetch()}>
+                      {t('volunteerHoursReview.retryButton')}
+                    </Button>
+                  }
                 >
-                  <Typography variant="caption" color="text.secondary">
-                    {t('volunteerHoursReview.paginationRange', { from: pageStart, to: pageEnd, total })}
-                  </Typography>
-                  <Stack direction="row" spacing={1} alignItems="center">
-                    {!isMobile && (
-                      <TextField
-                        select
-                        size="small"
-                        label={t('volunteerHoursReview.perPageLabel')}
-                        value={queue.query.perPage}
-                        onChange={(e) => queue.setPerPage(Number(e.target.value))}
-                        sx={{ width: 100 }}
-                      >
-                        {[25, 50, 100].map((n) => (
-                          <MenuItem key={n} value={n}>
-                            {n}
-                          </MenuItem>
-                        ))}
-                      </TextField>
-                    )}
-                    <Button
-                      size="small"
-                      disabled={queue.query.page <= 1}
-                      onClick={() => queue.setPage(queue.query.page - 1)}
-                    >
-                      {t('volunteerHoursReview.prevPage')}
-                    </Button>
-                    <Button size="small" disabled={!hasNextPage} onClick={() => queue.setPage(queue.query.page + 1)}>
-                      {t('volunteerHoursReview.nextPage')}
-                    </Button>
-                  </Stack>
-                </Stack>
-              </Box>
-            )}
+                  {queue.error}
+                </Alert>
+              )}
+              {batchFailures && (
+                <Alert severity="warning" onClose={() => setBatchFailures(null)}>
+                  {batchFailures}
+                </Alert>
+              )}
 
-            <BulkActionBar
-              count={queue.selected.size}
-              totalMinutes={selectedMinutes}
-              onApprove={() => setBulkOpen(true)}
-              onClear={() => queue.setSelected(new Set())}
-            />
-          </>
-        )}
-      </CardContent>
+              {queue.data && queue.data.data.length === 0 && total === 0 && (
+                <Typography variant="body2" color="text.secondary">
+                  {queue.query.flag || queue.query.source || queue.query.search
+                    ? t('volunteerHoursReview.noneAfterFilter')
+                    : t('volunteerHoursReview.noneToReview')}
+                </Typography>
+              )}
+              {queue.data && total === 0 && (queue.query.flag || queue.query.source || queue.query.search) && (
+                <Button size="small" onClick={queue.clearFilters} sx={{ mt: 1 }}>
+                  {t('volunteerHoursReview.clearFiltersButton')}
+                </Button>
+              )}
+
+              {queue.data && queue.data.data.length > 0 && (
+                <>
+                  {isMobile ? (
+                    <ReviewQueueCards
+                      entries={queue.data.data}
+                      selected={queue.selected}
+                      savingIds={savingIds}
+                      onToggle={toggleSelect}
+                      onApprove={handleApprove}
+                      onAdjust={(entry) => setAdjusting(entry)}
+                      onDismiss={(entry) => setDismissing(entry)}
+                    />
+                  ) : (
+                    <ReviewQueueTable
+                      entries={queue.data.data}
+                      selected={queue.selected}
+                      savingIds={savingIds}
+                      onToggle={toggleSelect}
+                      onToggleAll={toggleSelectAll}
+                      onApprove={handleApprove}
+                      onAdjust={(entry) => setAdjusting(entry)}
+                      onDismiss={(entry) => setDismissing(entry)}
+                    />
+                  )}
+
+                  <Stack
+                    direction="row"
+                    justifyContent="space-between"
+                    alignItems="center"
+                    sx={{ mt: 2 }}
+                    flexWrap="wrap"
+                    useFlexGap
+                  >
+                    <Typography variant="caption" color="text.secondary">
+                      {t('volunteerHoursReview.paginationRange', { from: pageStart, to: pageEnd, total })}
+                    </Typography>
+                    <Stack direction="row" spacing={1} alignItems="center">
+                      {!isMobile && (
+                        <TextField
+                          select
+                          size="small"
+                          label={t('volunteerHoursReview.perPageLabel')}
+                          value={queue.query.perPage}
+                          onChange={(e) => queue.setPerPage(Number(e.target.value))}
+                          sx={{ width: 100 }}
+                        >
+                          {[25, 50, 100].map((n) => (
+                            <MenuItem key={n} value={n}>
+                              {n}
+                            </MenuItem>
+                          ))}
+                        </TextField>
+                      )}
+                      <Button
+                        size="small"
+                        disabled={queue.query.page <= 1}
+                        onClick={() => queue.setPage(queue.query.page - 1)}
+                      >
+                        {t('volunteerHoursReview.prevPage')}
+                      </Button>
+                      <Button size="small" disabled={!hasNextPage} onClick={() => queue.setPage(queue.query.page + 1)}>
+                        {t('volunteerHoursReview.nextPage')}
+                      </Button>
+                    </Stack>
+                  </Stack>
+                </>
+              )}
+            </CardContent>
+          </Card>
+
+          <BulkActionBar
+            count={queue.selected.size}
+            totalMinutes={selectedMinutes}
+            onApprove={() => setBulkOpen(true)}
+            onClear={() => queue.setSelected(new Set())}
+          />
+        </>
+      )}
 
       <BulkHoursDialog
         open={bulkHoursOpen}
@@ -481,6 +489,6 @@ export const VolunteerHoursReviewPage = () => {
           )
         }
       />
-    </Card>
+    </Box>
   );
 };

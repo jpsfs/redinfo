@@ -147,6 +147,36 @@ export const theme = createTheme({
       },
     },
 
+    // ── List actions toolbar: no card of its own ────────────────────────────
+    // Two different react-admin components paint themselves white
+    // (`background.paper`) below `sm`, on the assumption a mobile list
+    // toolbar needs to stand out: `<ListToolbar>` (`<List>`'s own wrapper
+    // around its `filters`/`actions` props) and `<TopToolbar>` (what a
+    // list's `actions` prop usually renders into — the "New report"-style
+    // button row). Here that row sits directly above a page's own filter
+    // row, which deliberately has no card background either (see
+    // `EventReportList`/`ScheduleFilterBar`) — the two need to read as one
+    // continuous "controls" strip on the page's own grey background, not a
+    // white card sitting on top of a borderless one.
+    RaListToolbar: {
+      styleOverrides: {
+        root: {
+          '@media (max-width: 599.95px)': {
+            backgroundColor: 'transparent',
+          },
+        },
+      },
+    },
+    RaTopToolbar: {
+      styleOverrides: {
+        root: {
+          '@media (max-width: 599.95px)': {
+            backgroundColor: 'transparent',
+          },
+        },
+      },
+    },
+
     // ── App bar: Red Cross red ──────────────────────────────────────────────
     MuiAppBar: {
       defaultProps: { elevation: 2 },
