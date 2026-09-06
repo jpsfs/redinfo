@@ -18,6 +18,7 @@ import {
   CardContent,
   Chip,
   CircularProgress,
+  Paper,
   Stack,
   Typography,
 } from '@mui/material';
@@ -301,51 +302,60 @@ export const AvailabilityWindowList = () => {
       filterDefaultValues={{ status: AvailabilityWindowStatus.OPEN }}
       sort={{ field: 'startDate', order: 'DESC' }}
       empty={false}
+      component="div"
     >
-    <>
-      <WindowFilterBar />
-      <UpcomingHolidays />
-      <Alert severity="info" sx={{ mb: 2 }}>
-        {t('windowList.overlapRuleInfo')}
-      </Alert>
-      {isMobile ? (
-        <MobileWindowList />
-      ) : (
-        <Datagrid rowClick="show" bulkActionButtons={false}>
-          <FunctionField
-            label={t('windowList.colWindow')}
-            render={(record: AvailabilityWindow) =>
-              formatDateRange(t, record.startDate, record.endDate)
-            }
-          />
-          <FunctionField
-            source="category"
-            sortable={false}
-            render={(record: AvailabilityWindow) => (
-              <WindowCategoryChip category={record.category} />
-            )}
-          />
-          <TextField source="name" emptyText="—" sortable={false} />
-          <FunctionField
-            source="status"
-            sortable={false}
-            render={(record: AvailabilityWindow) => <WindowStatusChip status={record.status} />}
-          />
-          <FunctionField
-            source="openedBy"
-            sortable={false}
-            render={(record: AvailabilityWindow) => actorName(record.openedBy)}
-          />
-          <DateField source="openedAt" showTime sortable={false} />
-          <FunctionField
-            source="closedBy"
-            sortable={false}
-            render={(record: AvailabilityWindow) => actorName(record.closedBy)}
-          />
-          <DateField source="closedAt" showTime emptyText="—" sortable={false} />
-        </Datagrid>
-      )}
-    </>
-  </List>
+      {/* `component="div"` above drops `<List>`'s own default `Card` wrapper —
+          otherwise it pulls `WindowFilterBar` in behind it too, painting a
+          white background *behind* what's meant to sit on the page's own
+          grey. Only the table itself keeps a card, via the `Paper` below. */}
+      <Box sx={{ pt: 2 }}>
+        <WindowFilterBar />
+        <UpcomingHolidays />
+        <Alert severity="info" sx={{ mb: 2 }}>
+          {t('windowList.overlapRuleInfo')}
+        </Alert>
+        {isMobile ? (
+          <MobileWindowList />
+        ) : (
+          <Paper variant="outlined">
+            <Datagrid rowClick="show" bulkActionButtons={false}>
+              <FunctionField
+                label={t('windowList.colWindow')}
+                render={(record: AvailabilityWindow) =>
+                  formatDateRange(t, record.startDate, record.endDate)
+                }
+              />
+              <FunctionField
+                source="category"
+                sortable={false}
+                render={(record: AvailabilityWindow) => (
+                  <WindowCategoryChip category={record.category} />
+                )}
+              />
+              <TextField source="name" emptyText="—" sortable={false} />
+              <FunctionField
+                source="status"
+                sortable={false}
+                render={(record: AvailabilityWindow) => (
+                  <WindowStatusChip status={record.status} />
+                )}
+              />
+              <FunctionField
+                source="openedBy"
+                sortable={false}
+                render={(record: AvailabilityWindow) => actorName(record.openedBy)}
+              />
+              <DateField source="openedAt" showTime sortable={false} />
+              <FunctionField
+                source="closedBy"
+                sortable={false}
+                render={(record: AvailabilityWindow) => actorName(record.closedBy)}
+              />
+              <DateField source="closedAt" showTime emptyText="—" sortable={false} />
+            </Datagrid>
+          </Paper>
+        )}
+      </Box>
+    </List>
   );
 };

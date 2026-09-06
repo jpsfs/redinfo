@@ -15,6 +15,7 @@ import {
   Button,
   Chip,
   CircularProgress,
+  Paper,
   Stack,
   Typography,
 } from '@mui/material';
@@ -203,63 +204,70 @@ export const ScheduleList = () => {
       actions={<ScheduleListActions />}
       sort={{ field: 'startDate', order: 'DESC' }}
       empty={false}
+      component="div"
     >
-    <>
-      <ScheduleFilterBar />
-      <Alert severity="info" sx={{ mb: 2 }}>
-        {t('scheduleList.overlapRuleInfo')}
-      </Alert>
-      {isMobile ? (
-        <MobileScheduleList />
-      ) : (
-        <Datagrid rowClick="show" bulkActionButtons={false}>
-          <FunctionField
-            label={t('scheduleList.colWindow')}
-            sortable={false}
-            render={(record: Schedule) => (
-              <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
-                <WindowCategoryChip category={record.window?.category} />
-                <Typography variant="body2" color="text.secondary">
-                  {record.window?.name || '—'}
-                </Typography>
-              </Stack>
-            )}
-          />
-          <FunctionField
-            label={t('scheduleList.colDates')}
-            sortable={false}
-            render={(record: Schedule) =>
-              record.window
-                ? formatDateRange(t, record.window.startDate, record.window.endDate)
-                : '—'
-            }
-          />
-          <FunctionField
-            label={t('scheduleList.colSlotsFilled')}
-            sortable={false}
-            render={(record: Schedule) => <FillBar schedule={record} />}
-          />
-          <FunctionField
-            label={t('scheduleList.colFlags')}
-            sortable={false}
-            render={(record: Schedule) => <ScheduleFlags schedule={record} />}
-          />
-          <FunctionField
-            source="status"
-            sortable={false}
-            render={(record: Schedule) => <ScheduleStatusChip status={record.status} />}
-          />
-          <FunctionField
-            source="publishedBy"
-            sortable={false}
-            render={(record: Schedule) =>
-              record.publishedAt ? actorName(record.publishedBy) : '—'
-            }
-          />
-          <DateField source="publishedAt" showTime emptyText="—" sortable={false} />
-        </Datagrid>
-      )}
-    </>
-  </List>
+      {/* `component="div"` above drops `<List>`'s own default `Card` wrapper —
+          otherwise it pulls `ScheduleFilterBar` in behind it too, painting a
+          white background *behind* what's meant to sit on the page's own
+          grey. Only the table itself keeps a card, via the `Paper` below. */}
+      <Box sx={{ pt: 2 }}>
+        <ScheduleFilterBar />
+        <Alert severity="info" sx={{ mb: 2 }}>
+          {t('scheduleList.overlapRuleInfo')}
+        </Alert>
+        {isMobile ? (
+          <MobileScheduleList />
+        ) : (
+          <Paper variant="outlined">
+            <Datagrid rowClick="show" bulkActionButtons={false}>
+              <FunctionField
+                label={t('scheduleList.colWindow')}
+                sortable={false}
+                render={(record: Schedule) => (
+                  <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
+                    <WindowCategoryChip category={record.window?.category} />
+                    <Typography variant="body2" color="text.secondary">
+                      {record.window?.name || '—'}
+                    </Typography>
+                  </Stack>
+                )}
+              />
+              <FunctionField
+                label={t('scheduleList.colDates')}
+                sortable={false}
+                render={(record: Schedule) =>
+                  record.window
+                    ? formatDateRange(t, record.window.startDate, record.window.endDate)
+                    : '—'
+                }
+              />
+              <FunctionField
+                label={t('scheduleList.colSlotsFilled')}
+                sortable={false}
+                render={(record: Schedule) => <FillBar schedule={record} />}
+              />
+              <FunctionField
+                label={t('scheduleList.colFlags')}
+                sortable={false}
+                render={(record: Schedule) => <ScheduleFlags schedule={record} />}
+              />
+              <FunctionField
+                source="status"
+                sortable={false}
+                render={(record: Schedule) => <ScheduleStatusChip status={record.status} />}
+              />
+              <FunctionField
+                source="publishedBy"
+                sortable={false}
+                render={(record: Schedule) =>
+                  record.publishedAt ? actorName(record.publishedBy) : '—'
+                }
+              />
+              <DateField source="publishedAt" showTime emptyText="—" sortable={false} />
+            </Datagrid>
+          </Paper>
+        )}
+      </Box>
+    </List>
   );
 };

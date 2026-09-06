@@ -13,7 +13,7 @@ import {
   usePermissions,
 } from 'react-admin';
 import { useNavigate } from 'react-router-dom';
-import { Box, Chip, CircularProgress, Stack, Typography } from '@mui/material';
+import { Box, Chip, CircularProgress, Paper, Stack, Typography } from '@mui/material';
 import { Action, CERTIFICATION_TYPES, User, UserRole, hasPermission } from '@redinfo/shared';
 import { CertificationBadge } from '../../components/CertificationBadge';
 import { ChipFilterRow } from '../../components/ChipFilterRow';
@@ -185,31 +185,40 @@ export const UserList = () => {
       actions={<ListActions />}
       perPage={25}
       filterDefaultValues={{ isActive: 'true' }}
+      component="div"
     >
-      <ActiveFilterBar />
-      {isMobile ? (
-        <MobileUserList />
-      ) : (
-        <Datagrid rowClick="show" bulkActionButtons={false}>
-          <FunctionField
-            label={t('personnelList.nameColumn')}
-            render={(record: User) => (
-              <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                {record.firstName} {record.lastName}
-              </Typography>
-            )}
-          />
-          <FunctionField label={t('personnelList.roleColumn')} render={(record: User) => <RolesField record={record} />} />
-          <FunctionField source="readiness" render={(record: User) => <ReadinessField record={record} />} />
-          <FunctionField
-            source="certifications"
-            render={(record: User) => <CertificationsField record={record} />}
-          />
-          <BooleanField source="isActive" />
-          <TextField source="redCrossNumber" emptyText="—" />
-          <TextField source="volunteerNumber" emptyText="—" />
-        </Datagrid>
-      )}
+      {/* `component="div"` above drops `<List>`'s own default `Card` wrapper —
+          otherwise it pulls `ActiveFilterBar` in behind it too, painting a
+          white background *behind* what's meant to sit on the page's own
+          grey. Only the table itself keeps a card, via the `Paper` below. */}
+      <Box sx={{ pt: 2 }}>
+        <ActiveFilterBar />
+        {isMobile ? (
+          <MobileUserList />
+        ) : (
+          <Paper variant="outlined">
+            <Datagrid rowClick="show" bulkActionButtons={false}>
+              <FunctionField
+                label={t('personnelList.nameColumn')}
+                render={(record: User) => (
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {record.firstName} {record.lastName}
+                  </Typography>
+                )}
+              />
+              <FunctionField label={t('personnelList.roleColumn')} render={(record: User) => <RolesField record={record} />} />
+              <FunctionField source="readiness" render={(record: User) => <ReadinessField record={record} />} />
+              <FunctionField
+                source="certifications"
+                render={(record: User) => <CertificationsField record={record} />}
+              />
+              <BooleanField source="isActive" />
+              <TextField source="redCrossNumber" emptyText="—" />
+              <TextField source="volunteerNumber" emptyText="—" />
+            </Datagrid>
+          </Paper>
+        )}
+      </Box>
     </List>
   );
 };
