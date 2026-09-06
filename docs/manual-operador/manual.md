@@ -1,4 +1,20 @@
-# Manual do Operador — RedInfo
+<div style="text-align:center">
+
+<img src="imagens/logo-delegacao.jpg" width="140"><br><br>
+
+<h1>Manual do Operador</h1>
+<h3>RedInfo — Cruz Vermelha Portuguesa · Delegação de Campo</h3>
+
+<br>
+
+<p>Guia rápido de utilização: relatórios de evento, registo de horas,<br>
+disponibilidade, escala, estatísticas e modo live.</p>
+
+</div>
+
+<div style="page-break-after: always;"></div>
+
+## Antes de começar
 
 Este manual explica, passo a passo, como usar o RedInfo no dia a dia de operacional:
 entregar disponibilidade, ver a escala, criar relatórios, registar horas, consultar
@@ -11,14 +27,21 @@ números diferentes (turnos, colegas, datas), mas os botões e os passos são os
 > pelo script `capturar-ecras.mjs` nesta mesma pasta — corre-o de novo sempre que a
 > aplicação mudar de aspeto, em vez de tirar capturas à mão.
 
----
+### Como entrar
 
-## Antes de começar
+Abre o RedInfo no browser do telemóvel ou computador. Na maioria dos casos **não
+precisas de criar nenhuma palavra-passe**: usa o botão que corresponde ao email da tua
+conta profissional.
 
-Abre o RedInfo no browser do telemóvel ou computador e entra com o teu utilizador e
-palavra-passe.
+- Email **@gmail.com** ou de uma conta Google da delegação → toca em **Google**.
+- Email **@outlook.com**, **@hotmail.com** ou de uma conta Microsoft 365 da delegação →
+  toca em **Microsoft**.
 
-<p align="center">
+Vais ser levado à página de login desse serviço, confirmas a tua conta habitual, e
+prontos. Só uses os campos **Utilizador** e **Palavra-passe** se o teu coordenador te
+tiver dado uma conta local em vez de um email profissional.
+
+<p style="text-align:center">
   <img src="imagens/00-login.png" width="200">
   <img src="imagens/01-inicio.png" width="200">
 </p>
@@ -38,7 +61,7 @@ neste manual. O ecrã inicial já mostra a tua escala de hoje e os teus próximo
    no topo), por isso podes sair e voltar sem perder nada.
 5. No fim, toca em **Entregar relatório**. Só depois de entregue é que recebe um número.
 
-<p align="center">
+<p style="text-align:center">
   <img src="imagens/02-relatorios-lista.png" width="200">
   <img src="imagens/03-relatorios-tipo.png" width="200">
   <img src="imagens/04-relatorios-formulario.png" width="200">
@@ -60,7 +83,7 @@ formações ou outras atividades que não têm turno associado.
 4. Se o tipo for "Outra", escreve uma breve descrição.
 5. Toca em **Guardar**.
 
-<p align="center">
+<p style="text-align:center">
   <img src="imagens/05-horas-lista.png" width="200">
   <img src="imagens/06-horas-formulario.png" width="200">
 </p>
@@ -81,7 +104,7 @@ fazer serviço.
    disponibilidade nesta janela** em vez de deixar tudo por responder.
 4. Toca em **Gravar disponibilidade**.
 
-<p align="center">
+<p style="text-align:center">
   <img src="imagens/07-disponibilidade.png" width="220">
 </p>
 
@@ -95,7 +118,7 @@ Podes alterar a tua resposta as vezes que quiseres, enquanto a janela estiver ab
 coordenador publicar a escala — diferente da disponibilidade, que é só o que disseste que
 podias fazer.
 
-<p align="center">
+<p style="text-align:center">
   <img src="imagens/08-escala.png" width="220">
 </p>
 
@@ -110,7 +133,7 @@ A página **Estatísticas** mostra números da delegação — horas de voluntar
 frota — nos separadores **Pessoas & Horas**, **Atividade** e **Frota**. Podes mudar o
 período (este mês, 12 meses, este ano) no topo.
 
-<p align="center">
+<p style="text-align:center">
   <img src="imagens/09-estatisticas.png" width="220">
 </p>
 
@@ -132,7 +155,7 @@ vez de as escreveres tudo de memória no fim.
 5. No fim, o RedInfo cria automaticamente um relatório de evento com essas horas já
    preenchidas; só falta completar o resto e entregá-lo (secção 1).
 
-<p align="center">
+<p style="text-align:center">
   <img src="imagens/10-live-entrada.png" width="200">
   <img src="imagens/11-live-ativacao.png" width="200">
 </p>
