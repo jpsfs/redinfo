@@ -4,6 +4,7 @@ import {
   MANUAL_VOLUNTEER_ACTIVITY_TYPES,
   MAX_MANUAL_HOURS_DESCRIPTION_LENGTH,
   MAX_MANUAL_HOURS_MINUTES,
+  MINUTES_PER_DAY,
   VolunteerActivityType,
 } from '@redinfo/shared';
 
@@ -29,6 +30,23 @@ export class CreateManualVolunteerHoursDto {
   @Min(1)
   @Max(MAX_MANUAL_HOURS_MINUTES)
   minutes: number;
+
+  @ApiPropertyOptional({
+    example: 1140,
+    description: 'Minutes from midnight the activity started, when the form captured a time span.',
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(MINUTES_PER_DAY - 1)
+  startMinute?: number;
+
+  @ApiPropertyOptional({ example: 1230, description: 'Minutes from midnight it ended.' })
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(MINUTES_PER_DAY)
+  endMinute?: number;
 
   @ApiPropertyOptional({
     example: 'Monthly coordination meeting at the delegation.',

@@ -827,6 +827,18 @@ export function parseTimeOfDay(value: string): number | null {
   return toMinuteOfDay(hour, minute);
 }
 
+/**
+ * The duration of a `[startMinute, endMinute)` span, wrapping past midnight —
+ * `22:00`→`00:30` is 150 minutes, not −1290. Used wherever a person enters a
+ * time-of-day span rather than typing a duration directly (manual
+ * volunteer-hours entries): the times are what they remember, the minutes are
+ * what gets summed.
+ */
+export function minutesBetweenTimes(startMinute: number, endMinute: number): number {
+  const delta = endMinute - startMinute;
+  return delta > 0 ? delta : delta + MINUTES_PER_DAY;
+}
+
 /** Vehicles a shift needs when nobody has said otherwise. */
 export const DEFAULT_VEHICLES_NEEDED = 1;
 
@@ -2345,6 +2357,14 @@ export interface VolunteerHoursEntry {
   proposedMinutes: number;
   /** What actually counts towards totals. */
   minutes: number;
+  /**
+   * The wall-clock span a MANUAL entry was reported for, minutes from
+   * midnight (see `minutesBetweenTimes`). Null for SCHEDULED, and null for a
+   * MANUAL entry logged before this field existed — `minutes` remains the
+   * authoritative duration either way.
+   */
+  startMinute?: number | null;
+  endMinute?: number | null;
   flags: VolunteerHoursFlag[];
   flagDetails?: VolunteerHoursFlagDetail[] | null;
   status: VolunteerHoursStatus;
@@ -2380,6 +2400,13 @@ export interface CreateManualVolunteerHoursRequest {
   /** ISO date, `YYYY-MM-DD`. */
   date: string;
   minutes: number;
+  /**
+   * The time-of-day span `minutes` was derived from, when the form captured
+   * one. Optional and supplementary — `minutes` is what the server trusts,
+   * checked against these by `validateVolunteerHoursTimes` when both are given.
+   */
+  startMinute?: number;
+  endMinute?: number;
   /** Required exactly when `activityType` is `OTHER`. */
   description?: string;
 }
@@ -2396,6 +2423,9 @@ export interface UpdateVolunteerHoursRequest {
   /** ISO date, `YYYY-MM-DD`. */
   date?: string;
   minutes: number;
+  /** Same supplementary role as on `CreateManualVolunteerHoursRequest`. */
+  startMinute?: number;
+  endMinute?: number;
   description?: string | null;
 }
 
@@ -2437,6 +2467,38 @@ export const MAX_MANUAL_HOURS_DESCRIPTION_LENGTH = 500;
 export const MAX_MANUAL_HOURS_MINUTES = 18 * 60;
 
 /**
+ * The shared gate for a form that captured a time-of-day span rather than a
+ * bare duration: both fields present or both absent, each a valid minute of
+ * day (`parseTimeOfDay`'s own range, 0–1440), and — when given — `minutes`
+ * must actually equal the span `minutesBetweenTimes` derives, so a
+ * hand-crafted request can't claim more (or less) than the times say.
+ */
+export function validateVolunteerHoursTimes(
+  startMinute: number | undefined,
+  endMinute: number | undefined,
+  minutes: number,
+): string | null {
+  if (startMinute === undefined && endMinute === undefined) return null;
+  if (startMinute === undefined || endMinute === undefined) {
+    return 'Enter both a start and an end time.';
+  }
+  if (
+    !Number.isInteger(startMinute) ||
+    startMinute < 0 ||
+    startMinute > MINUTES_PER_DAY - 1 ||
+    !Number.isInteger(endMinute) ||
+    endMinute < 1 ||
+    endMinute > MINUTES_PER_DAY
+  ) {
+    return 'Enter a valid start and end time.';
+  }
+  if (minutesBetweenTimes(startMinute, endMinute) !== minutes) {
+    return 'The duration does not match the start and end times.';
+  }
+  return null;
+}
+
+/**
  * The one rule for whether a manual-entry request is coherent, mirroring
  * `validateWindowRoles`'s role as the shared gate between the form and the API.
  */
@@ -2453,6 +2515,12 @@ export function validateManualVolunteerHours(
   if (request.minutes > MAX_MANUAL_HOURS_MINUTES) {
     return `A single entry cannot claim more than ${MAX_MANUAL_HOURS_MINUTES / 60} hours.`;
   }
+  const timesError = validateVolunteerHoursTimes(
+    request.startMinute,
+    request.endMinute,
+    request.minutes,
+  );
+  if (timesError) return timesError;
   const description = request.description?.trim() ?? '';
   if (!description && request.activityType === VolunteerActivityType.OTHER) {
     return 'Describe what the activity was.';
@@ -2481,6 +2549,12 @@ export function validateVolunteerHoursEdit(
   if (request.minutes > MAX_MANUAL_HOURS_MINUTES) {
     return `A single entry cannot claim more than ${MAX_MANUAL_HOURS_MINUTES / 60} hours.`;
   }
+  const timesError = validateVolunteerHoursTimes(
+    request.startMinute,
+    request.endMinute,
+    request.minutes,
+  );
+  if (timesError) return timesError;
   const description = request.description?.trim() ?? '';
   if (source === VolunteerHoursSource.MANUAL) {
     if (request.activityType && !MANUAL_VOLUNTEER_ACTIVITY_TYPES.includes(request.activityType)) {
@@ -2494,6 +2568,79 @@ export function validateVolunteerHoursEdit(
   }
   if (description.length > MAX_MANUAL_HOURS_DESCRIPTION_LENGTH) {
     return `The description may be at most ${MAX_MANUAL_HOURS_DESCRIPTION_LENGTH} characters.`;
+  }
+  return null;
+}
+
+/**
+ * A bulk report's cap on how many volunteers one submission can cover.
+ * Separate from `MAX_APPROVE_BATCH_SIZE`: creating N rows and approving N
+ * pre-existing ones are different costs, and there's no reason the two
+ * limits need to move together.
+ */
+export const MAX_BULK_HOURS_ENTRIES = 200;
+
+/** One volunteer on a bulk report. Omitted fields fall back to the shared span. */
+export interface BulkVolunteerHoursEntryInput {
+  userId: string;
+  startMinute?: number;
+  endMinute?: number;
+  minutes?: number;
+}
+
+/**
+ * `POST /volunteer-hours/bulk` — a coordinator reporting the same activity
+ * for several volunteers at once (a meeting, a training session run outside
+ * the rota). Every resulting entry lands APPROVED, the coordinator recorded
+ * as both `loggedBy` and `approvedBy`: unlike a self-logged MANUAL entry,
+ * there is no need for a second pass of review — the coordinator reporting
+ * the hours is already vouching for them, the same trust `MANAGE_VOLUNTEER_HOURS`
+ * already grants over anyone else's entry.
+ */
+export interface CreateBulkVolunteerHoursRequest {
+  activityType: VolunteerActivityType;
+  /** ISO date, `YYYY-MM-DD`. */
+  date: string;
+  /** The shared span/duration, used by any entry that doesn't override it. */
+  startMinute?: number;
+  endMinute?: number;
+  minutes: number;
+  /** Required exactly when `activityType` is `OTHER`. */
+  description?: string;
+  entries: BulkVolunteerHoursEntryInput[];
+}
+
+export interface CreateBulkVolunteerHoursResponse {
+  created: VolunteerHoursEntry[];
+  totalMinutes: number;
+}
+
+/**
+ * The shared gate for a bulk report: delegates the activity/date/duration/
+ * description half to `validateManualVolunteerHours` (a bulk report is that
+ * same shape, just fanned out to many volunteers) rather than restating those
+ * rules, then adds the two things unique to a list — non-empty, no duplicate
+ * volunteer, a sane cap — and re-checks each per-row override.
+ */
+export function validateBulkVolunteerHours(
+  request: CreateBulkVolunteerHoursRequest,
+): string | null {
+  const sharedError = validateManualVolunteerHours(request);
+  if (sharedError) return sharedError;
+  if (request.entries.length === 0) return 'Select at least one volunteer.';
+  if (request.entries.length > MAX_BULK_HOURS_ENTRIES) {
+    return `A bulk report cannot cover more than ${MAX_BULK_HOURS_ENTRIES} volunteers.`;
+  }
+  const seen = new Set<string>();
+  for (const entry of request.entries) {
+    if (seen.has(entry.userId)) return 'The same volunteer is selected more than once.';
+    seen.add(entry.userId);
+    const minutes = entry.minutes ?? request.minutes;
+    const timesError = validateVolunteerHoursTimes(entry.startMinute, entry.endMinute, minutes);
+    if (timesError) return timesError;
+    if (!Number.isInteger(minutes) || minutes <= 0 || minutes > MAX_MANUAL_HOURS_MINUTES) {
+      return `A single entry cannot claim more than ${MAX_MANUAL_HOURS_MINUTES / 60} hours.`;
+    }
   }
   return null;
 }

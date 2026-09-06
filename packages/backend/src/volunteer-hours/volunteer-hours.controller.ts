@@ -23,6 +23,7 @@ import { AuditInterceptor } from '../auth/interceptors/audit.interceptor';
 import { VolunteerHoursService } from './volunteer-hours.service';
 import { VolunteerHoursSummaryService } from './volunteer-hours-summary.service';
 import { CreateManualVolunteerHoursDto } from './dto/create-manual-hours.dto';
+import { CreateBulkVolunteerHoursDto } from './dto/create-bulk-hours.dto';
 import { UpdateVolunteerHoursDto } from './dto/update-hours.dto';
 import { ApproveVolunteerHoursDto } from './dto/approve-hours.dto';
 import { ReviewVolunteerHoursQueryDto } from './dto/review-query.dto';
@@ -96,6 +97,21 @@ export class VolunteerHoursController {
   @Actions(Action.VIEW_VOLUNTEER_HOURS)
   getReviewQueue(@Query() query: ReviewVolunteerHoursQueryDto) {
     return this.volunteerHours.getReviewQueue(query);
+  }
+
+  /**
+   * A coordinator reporting the same activity for several volunteers at once
+   * (a meeting, a training session) — unlike `POST /`, the subject is not the
+   * caller. See `VolunteerHoursService.createBulkEntries` for why every
+   * resulting entry lands APPROVED rather than PENDING.
+   */
+  @Post('bulk')
+  @Actions(Action.MANAGE_VOLUNTEER_HOURS)
+  createBulkEntries(
+    @CurrentUser() user: { id: string },
+    @Body() dto: CreateBulkVolunteerHoursDto,
+  ) {
+    return this.volunteerHours.createBulkEntries(dto, user.id);
   }
 
   @Post('approve-batch')

@@ -1,4 +1,5 @@
 import {
+  CreateBulkVolunteerHoursRequest,
   VolunteerActivityType,
   VolunteerHoursFlag,
   VolunteerHoursSource,
@@ -10,9 +11,12 @@ import {
   isEligibleForAutoApproval,
   isEligibleForScheduledGeneration,
   isSweepApprovable,
+  minutesBetweenTimes,
   proposeScheduledHours,
   shiftMandatoryRolesFilled,
+  validateBulkVolunteerHours,
   validateManualVolunteerHours,
+  validateVolunteerHoursTimes,
 } from '@redinfo/shared';
 
 // ── The rules volunteer-hours generation is judged by (#164) ───────────────────
@@ -362,6 +366,93 @@ describe('validateManualVolunteerHours', () => {
     expect(
       validateManualVolunteerHours({ ...valid(), activityType: VolunteerActivityType.OTHER }),
     ).toBeNull();
+  });
+
+  it('accepts a time span that matches the duration', () => {
+    expect(
+      validateManualVolunteerHours({ ...valid(), minutes: 120, startMinute: 19 * 60, endMinute: 21 * 60 }),
+    ).toBeNull();
+  });
+
+  it('rejects a time span that does not match the duration', () => {
+    expect(
+      validateManualVolunteerHours({ ...valid(), minutes: 90, startMinute: 19 * 60, endMinute: 21 * 60 }),
+    ).toMatch(/does not match/);
+  });
+
+  it('rejects a start time with no end time', () => {
+    expect(validateManualVolunteerHours({ ...valid(), startMinute: 19 * 60 })).toMatch(
+      /both a start and an end/,
+    );
+  });
+});
+
+describe('minutesBetweenTimes', () => {
+  it('is the plain difference within the same day', () => {
+    expect(minutesBetweenTimes(19 * 60, 21 * 60)).toBe(120);
+  });
+
+  it('wraps past midnight', () => {
+    expect(minutesBetweenTimes(22 * 60, 30)).toBe(150);
+  });
+
+  it('treats a full day as MINUTES_PER_DAY, not zero', () => {
+    expect(minutesBetweenTimes(0, 1440)).toBe(1440);
+  });
+});
+
+describe('validateVolunteerHoursTimes', () => {
+  it('is a no-op when neither time is given', () => {
+    expect(validateVolunteerHoursTimes(undefined, undefined, 90)).toBeNull();
+  });
+
+  it('rejects an out-of-range time', () => {
+    expect(validateVolunteerHoursTimes(-1, 60, 61)).toMatch(/valid start and end/);
+    expect(validateVolunteerHoursTimes(0, 1441, 1441)).toMatch(/valid start and end/);
+  });
+});
+
+describe('validateBulkVolunteerHours', () => {
+  const valid = (): CreateBulkVolunteerHoursRequest => ({
+    activityType: VolunteerActivityType.MEETING,
+    date: '2026-10-03',
+    minutes: 120,
+    startMinute: 19 * 60,
+    endMinute: 21 * 60,
+    description: 'Monthly coordination meeting.',
+    entries: [{ userId: 'u-ana' }, { userId: 'u-bruno', minutes: 60, startMinute: 19 * 60, endMinute: 20 * 60 }],
+  });
+
+  it('accepts a well-formed bulk report, per-row override included', () => {
+    expect(validateBulkVolunteerHours(valid())).toBeNull();
+  });
+
+  it('rejects an empty volunteer list', () => {
+    expect(validateBulkVolunteerHours({ ...valid(), entries: [] })).toMatch(/at least one volunteer/);
+  });
+
+  it('rejects a duplicate volunteer', () => {
+    expect(
+      validateBulkVolunteerHours({ ...valid(), entries: [{ userId: 'u-ana' }, { userId: 'u-ana' }] }),
+    ).toMatch(/more than once/);
+  });
+
+  it('rejects a bulk report over the volunteer cap', () => {
+    const entries = Array.from({ length: 201 }, (_, i) => ({ userId: `u-${i}` }));
+    expect(validateBulkVolunteerHours({ ...valid(), entries })).toMatch(/cannot cover more than/);
+  });
+
+  it('rejects a per-row time override that does not match its own minutes', () => {
+    expect(
+      validateBulkVolunteerHours({
+        ...valid(),
+        entries: [{ userId: 'u-ana', minutes: 30, startMinute: 19 * 60, endMinute: 20 * 60 }],
+      }),
+    ).toMatch(/does not match/);
+  });
+
+  it('rejects an invalid shared activity/date/description, same as the manual gate', () => {
+    expect(validateBulkVolunteerHours({ ...valid(), date: 'not-a-date' })).toMatch(/valid date/);
   });
 });
 

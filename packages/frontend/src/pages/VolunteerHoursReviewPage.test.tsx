@@ -4,6 +4,7 @@ import { AdminContext, testDataProvider } from 'react-admin';
 import polyglotI18nProvider from 'ra-i18n-polyglot';
 import userEvent from '@testing-library/user-event';
 import {
+  UserRole,
   VolunteerActivityType,
   VolunteerHoursEntry,
   VolunteerHoursReviewResponse,
@@ -29,6 +30,26 @@ const i18nProvider = polyglotI18nProvider(messages, 'en');
 const renderPage = () =>
   render(
     <AdminContext dataProvider={testDataProvider()} i18nProvider={i18nProvider}>
+      <VolunteerHoursReviewPage />
+    </AdminContext>,
+  );
+
+/** The bulk-hours button is gated on `MANAGE_VOLUNTEER_HOURS` — most tests
+ *  don't hold it and never see the button, so only the tests that need it
+ *  supply this authProvider. */
+const renderPageAsCoordinator = () =>
+  render(
+    <AdminContext
+      dataProvider={testDataProvider()}
+      i18nProvider={i18nProvider}
+      authProvider={{
+        login: () => Promise.resolve(),
+        logout: () => Promise.resolve(),
+        checkAuth: () => Promise.resolve(),
+        checkError: () => Promise.resolve(),
+        getPermissions: () => Promise.resolve([UserRole.EMERGENCY_COORDINATOR]),
+      }}
+    >
       <VolunteerHoursReviewPage />
     </AdminContext>,
   );
@@ -222,6 +243,92 @@ describe('VolunteerHoursReviewPage', () => {
         expect.objectContaining({ method: 'POST' }),
       ),
     );
+  });
+
+  it('hides the bulk hours report button from a viewer without MANAGE_VOLUNTEER_HOURS', async () => {
+    renderPage();
+    await screen.findByText('Ana Silva');
+    expect(screen.queryByRole('button', { name: 'Bulk report' })).not.toBeInTheDocument();
+  });
+
+  describe('bulk hours report', () => {
+    const VOLUNTEERS = [
+      { id: 'u-ana', firstName: 'Ana', lastName: 'Silva' },
+      { id: 'u-bruno', firstName: 'Bruno', lastName: 'Alves' },
+    ];
+
+    beforeEach(() => {
+      mockApiFetch.mockImplementation((path: string) => {
+        if (path.startsWith('/volunteer-hours/review')) {
+          return Promise.resolve(reviewResponse([FLAGGED_ENTRY, CLEAN_ENTRY]));
+        }
+        if (path.startsWith('/users')) return Promise.resolve({ data: VOLUNTEERS, total: 2 });
+        return Promise.resolve({});
+      });
+    });
+
+    it('shows the button for a coordinator and opens the dialog', async () => {
+      const user = userEvent.setup();
+      renderPageAsCoordinator();
+      await screen.findByText('Ana Silva');
+
+      await user.click(screen.getByRole('button', { name: 'Bulk report' }));
+      expect(await screen.findByText('Bulk hours report')).toBeInTheDocument();
+      expect(await screen.findByLabelText('Ana Silva')).toBeInTheDocument();
+    });
+
+    it('logs the shared time span for the selected volunteers', async () => {
+      const user = userEvent.setup();
+      mockApiFetch.mockImplementation((path: string, options?: { method?: string }) => {
+        if (path.startsWith('/volunteer-hours/review')) {
+          return Promise.resolve(reviewResponse([FLAGGED_ENTRY, CLEAN_ENTRY]));
+        }
+        if (path.startsWith('/users')) return Promise.resolve({ data: VOLUNTEERS, total: 2 });
+        if (path === '/volunteer-hours/bulk' && options?.method === 'POST') {
+          return Promise.resolve({ created: [CLEAN_ENTRY, CLEAN_ENTRY], totalMinutes: 480 });
+        }
+        return Promise.resolve({});
+      });
+      renderPageAsCoordinator();
+      await screen.findByText('Ana Silva');
+
+      await user.click(screen.getByRole('button', { name: 'Bulk report' }));
+      await screen.findByLabelText('Ana Silva');
+      await user.type(screen.getByPlaceholderText('What was the activity?'), 'Monthly meeting.');
+      await user.click(screen.getByLabelText('Ana Silva'));
+      await user.click(screen.getByLabelText('Bruno Alves'));
+      await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Log hours' }));
+
+      await waitFor(() =>
+        expect(mockApiFetch).toHaveBeenCalledWith(
+          '/volunteer-hours/bulk',
+          expect.objectContaining({
+            method: 'POST',
+            body: expect.objectContaining({
+              activityType: VolunteerActivityType.MEETING,
+              minutes: 60,
+              startMinute: 19 * 60,
+              endMinute: 20 * 60,
+              entries: [{ userId: 'u-ana' }, { userId: 'u-bruno' }],
+            }),
+          }),
+        ),
+      );
+      expect(await screen.findByText(/2 entries logged/)).toBeInTheDocument();
+    });
+
+    it('blocks submitting with no volunteer selected', async () => {
+      const user = userEvent.setup();
+      renderPageAsCoordinator();
+      await screen.findByText('Ana Silva');
+
+      await user.click(screen.getByRole('button', { name: 'Bulk report' }));
+      await screen.findByLabelText('Ana Silva');
+      await user.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Log hours' }));
+
+      expect(await screen.findByText('Select at least one volunteer.')).toBeInTheDocument();
+      expect(mockApiFetch).not.toHaveBeenCalledWith('/volunteer-hours/bulk', expect.anything());
+    });
   });
 
   it('bulk-approve confirm names the flagged entries in the selection', async () => {

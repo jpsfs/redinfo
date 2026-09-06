@@ -26,7 +26,6 @@ import {
   formatMinutes,
   MANUAL_VOLUNTEER_ACTIVITY_TYPES,
   MAX_MANUAL_HOURS_DESCRIPTION_LENGTH,
-  MAX_MANUAL_HOURS_MINUTES,
   MyVolunteerHoursResponse,
   UpdateVolunteerHoursRequest,
   validateManualVolunteerHours,
@@ -40,18 +39,33 @@ import { apiFetch } from '../api';
 import { useT } from '../i18n/useT';
 import { activityTypeLabel } from '../i18n/labels';
 import { formatDayLabel } from '../utils/dates';
+import { TimeRangeField } from '../components/TimeRangeField';
+
+/** Defaults a fresh entry to 19:00–20:00 — evening is when most activities logged by hand happen. */
+const DEFAULT_START_MINUTE = 19 * 60;
+const DEFAULT_END_MINUTE = 20 * 60;
 
 const emptyForm = (): CreateManualVolunteerHoursRequest => ({
   activityType: VolunteerActivityType.MEETING,
   date: new Date().toISOString().slice(0, 10),
-  minutes: 60,
+  minutes: DEFAULT_END_MINUTE - DEFAULT_START_MINUTE,
+  startMinute: DEFAULT_START_MINUTE,
+  endMinute: DEFAULT_END_MINUTE,
   description: '',
 });
 
+/**
+ * An entry logged before `startMinute`/`endMinute` existed has no times to
+ * show back — defaulting to `00:00` plus the stored duration keeps the field
+ * controlled and the duration correct, without pretending to know when the
+ * activity actually happened.
+ */
 const editFormFor = (entry: VolunteerHoursEntry): UpdateVolunteerHoursRequest => ({
   activityType: entry.activityType,
   date: entry.date,
   minutes: entry.minutes,
+  startMinute: entry.startMinute ?? 0,
+  endMinute: entry.endMinute ?? entry.minutes,
   description: entry.description ?? '',
 });
 
@@ -318,13 +332,16 @@ export const MyHoursPage = () => {
               onChange={(e) => setForm((prev) => ({ ...prev, date: e.target.value }))}
               InputLabelProps={{ shrink: true }}
             />
-            <TextField
-              type="number"
-              label={t('myHours.minutesLabel')}
-              value={form.minutes}
-              inputProps={{ min: 1, max: MAX_MANUAL_HOURS_MINUTES }}
-              onChange={(e) => setForm((prev) => ({ ...prev, minutes: Number(e.target.value) }))}
-            />
+            <Stack spacing={0.5}>
+              <Typography variant="caption" color="text.secondary">
+                {t('myHours.timeRangeLabel')}
+              </Typography>
+              <TimeRangeField
+                startMinute={form.startMinute!}
+                endMinute={form.endMinute!}
+                onChange={(span) => setForm((prev) => ({ ...prev, ...span }))}
+              />
+            </Stack>
             <TextField
               label={t(
                 form.activityType === VolunteerActivityType.OTHER
@@ -384,13 +401,16 @@ export const MyHoursPage = () => {
                 InputLabelProps={{ shrink: true }}
               />
             )}
-            <TextField
-              type="number"
-              label={t('myHours.minutesLabel')}
-              value={editForm.minutes}
-              inputProps={{ min: 1, max: MAX_MANUAL_HOURS_MINUTES }}
-              onChange={(e) => setEditForm((prev) => ({ ...prev, minutes: Number(e.target.value) }))}
-            />
+            <Stack spacing={0.5}>
+              <Typography variant="caption" color="text.secondary">
+                {t('myHours.timeRangeLabel')}
+              </Typography>
+              <TimeRangeField
+                startMinute={editForm.startMinute!}
+                endMinute={editForm.endMinute!}
+                onChange={(span) => setEditForm((prev) => ({ ...prev, ...span }))}
+              />
+            </Stack>
             <TextField
               label={t(
                 (isManualEdit ? editForm.activityType : undefined) === VolunteerActivityType.OTHER

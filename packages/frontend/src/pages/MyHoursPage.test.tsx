@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { AdminContext, testDataProvider } from 'react-admin';
 import polyglotI18nProvider from 'ra-i18n-polyglot';
 import userEvent from '@testing-library/user-event';
@@ -166,6 +166,32 @@ describe('MyHoursPage', () => {
     );
   });
 
+  it('logs a manual entry with the default 19:00–20:00 time span', async () => {
+    const user = userEvent.setup();
+    mockApiFetch.mockImplementation((path: string) => {
+      if (path === '/volunteer-hours') return Promise.resolve(ENTRY);
+      return Promise.resolve({ entries: [ENTRY], totalApprovedMinutes: 0, totalPendingMinutes: 240 });
+    });
+    renderPage();
+    await screen.findByText('Emergency');
+
+    await user.click(screen.getByRole('button', { name: 'Log hours' }));
+    expect(screen.getByLabelText('Start')).toHaveValue('19:00');
+    expect(screen.getByLabelText('End')).toHaveValue('20:00');
+    await user.type(screen.getByLabelText(/Description/), 'Monthly meeting.');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() =>
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        '/volunteer-hours',
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.objectContaining({ minutes: 60, startMinute: 19 * 60, endMinute: 20 * 60 }),
+        }),
+      ),
+    );
+  });
+
   it('logs a manual entry for a rota activity type, not just Meeting/Training/Other', async () => {
     const user = userEvent.setup();
     mockApiFetch.mockImplementation((path: string) => {
@@ -250,9 +276,9 @@ describe('MyHoursPage', () => {
     expect(screen.queryByLabelText('Activity')).not.toBeInTheDocument();
     expect(screen.queryByLabelText('Date')).not.toBeInTheDocument();
 
-    const minutesField = screen.getByLabelText('Duration (minutes)');
-    await user.clear(minutesField);
-    await user.type(minutesField, '180');
+    // ENTRY.minutes is 240 with no stored times, so the edit dialog defaults
+    // to 00:00–04:00; narrowing the end to 03:00 makes it a 180-minute entry.
+    fireEvent.change(screen.getByLabelText('End'), { target: { value: '03:00' } });
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() =>
@@ -301,6 +327,58 @@ describe('MyHoursPage', () => {
         }),
       ),
     );
+  });
+
+  it('shows the stored time span when editing a MANUAL entry that has one', async () => {
+    const user = userEvent.setup();
+    const manualEntry = {
+      ...ENTRY,
+      id: 'e-manual',
+      source: VolunteerHoursSource.MANUAL,
+      activityType: VolunteerActivityType.MEETING,
+      assignmentId: null,
+      scheduleId: null,
+      description: 'Monthly meeting.',
+      minutes: 120,
+      startMinute: 19 * 60,
+      endMinute: 21 * 60,
+    };
+    mockApiFetch.mockResolvedValue({
+      entries: [manualEntry],
+      totalApprovedMinutes: 0,
+      totalPendingMinutes: 240,
+    });
+    renderPage();
+    await screen.findByText('Manual');
+
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(screen.getByLabelText('Start')).toHaveValue('19:00');
+    expect(screen.getByLabelText('End')).toHaveValue('21:00');
+  });
+
+  it('defaults to 00:00 plus the stored duration for an older entry with no saved time span', async () => {
+    const user = userEvent.setup();
+    const manualEntry = {
+      ...ENTRY,
+      id: 'e-manual',
+      source: VolunteerHoursSource.MANUAL,
+      activityType: VolunteerActivityType.MEETING,
+      assignmentId: null,
+      scheduleId: null,
+      description: 'Monthly meeting.',
+      minutes: 90,
+    };
+    mockApiFetch.mockResolvedValue({
+      entries: [manualEntry],
+      totalApprovedMinutes: 0,
+      totalPendingMinutes: 240,
+    });
+    renderPage();
+    await screen.findByText('Manual');
+
+    await user.click(screen.getByRole('button', { name: 'Edit' }));
+    expect(screen.getByLabelText('Start')).toHaveValue('00:00');
+    expect(screen.getByLabelText('End')).toHaveValue('01:30');
   });
 
   it('blocks a MANUAL edit that empties the description of an Other entry', async () => {

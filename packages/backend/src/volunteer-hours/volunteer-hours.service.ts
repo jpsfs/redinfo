@@ -3,6 +3,8 @@ import { Prisma } from '@prisma/client';
 import {
   ApproveVolunteerHoursBatchResponse,
   AvailabilityWindowCategory,
+  CreateBulkVolunteerHoursRequest,
+  CreateBulkVolunteerHoursResponse,
   CreateManualVolunteerHoursRequest,
   MyVolunteerHoursResponse,
   ShiftDefinition,
@@ -28,6 +30,7 @@ import {
   isSweepApprovable,
   proposeScheduledHours,
   shiftMandatoryRolesFilled,
+  validateBulkVolunteerHours,
   validateManualVolunteerHours,
   validateVolunteerHoursEdit,
 } from '@redinfo/shared';
@@ -37,6 +40,7 @@ import { shiftKey } from '../schedules/schedules.service';
 import { parseIsoDate, toIsoDate } from '../utils/date.util';
 import { shiftBoundaryToInstant } from '../utils/timezone.util';
 import { CreateManualVolunteerHoursDto } from './dto/create-manual-hours.dto';
+import { CreateBulkVolunteerHoursDto } from './dto/create-bulk-hours.dto';
 import { UpdateVolunteerHoursDto } from './dto/update-hours.dto';
 import { ApproveVolunteerHoursDto } from './dto/approve-hours.dto';
 import { ReviewVolunteerHoursQueryDto } from './dto/review-query.dto';
@@ -112,6 +116,8 @@ export class VolunteerHoursService {
         activityType: dto.activityType,
         date: parseIsoDate(dto.date),
         description: dto.description?.trim() || null,
+        startMinute: dto.startMinute ?? null,
+        endMinute: dto.endMinute ?? null,
         proposedMinutes: dto.minutes,
         minutes: dto.minutes,
         loggedById: userId,
@@ -119,6 +125,77 @@ export class VolunteerHoursService {
       include: ENTRY_INCLUDE,
     });
     return serializeEntry(row);
+  }
+
+  /**
+   * `POST /bulk` — a coordinator reporting the same activity for several
+   * volunteers at once. Every resulting entry lands APPROVED straight away,
+   * the coordinator recorded as both `loggedBy` and `approvedBy`: unlike a
+   * self-logged MANUAL entry (always PENDING, per `createManualEntry`), the
+   * coordinator reporting these hours is already vouching for them — the same
+   * trust `MANAGE_VOLUNTEER_HOURS` already grants over anyone else's entry, so
+   * requiring a second approval pass on their own submission would be
+   * ceremony.
+   *
+   * Unlike `approveBatch`, this is not tolerant of per-item failure: an
+   * unknown or deactivated userId is a client bug (a stale picker, someone
+   * deactivated mid-form), not a benign race between two coordinators, so the
+   * whole request is rejected rather than silently dropping a volunteer.
+   */
+  async createBulkEntries(
+    dto: CreateBulkVolunteerHoursDto,
+    actorId: string,
+  ): Promise<CreateBulkVolunteerHoursResponse> {
+    const request: CreateBulkVolunteerHoursRequest = dto;
+    const error = validateBulkVolunteerHours(request);
+    if (error) throw new BadRequestException(error);
+
+    const userIds = dto.entries.map((entry) => entry.userId);
+    const activeUsers = await this.prisma.user.findMany({
+      where: { id: { in: userIds }, isActive: true },
+      select: { id: true },
+    });
+    const activeIds = new Set(activeUsers.map((user) => user.id));
+    const missing = userIds.filter((id) => !activeIds.has(id));
+    if (missing.length > 0) {
+      throw new BadRequestException('One or more selected volunteers could not be found.');
+    }
+
+    const date = parseIsoDate(dto.date);
+    const description = dto.description?.trim() || null;
+    const now = new Date();
+
+    const rows = await this.prisma.$transaction((tx) =>
+      Promise.all(
+        dto.entries.map((entry) => {
+          const minutes = entry.minutes ?? dto.minutes;
+          return tx.volunteerHoursEntry.create({
+            data: {
+              userId: entry.userId,
+              source: VolunteerHoursSource.MANUAL,
+              activityType: dto.activityType,
+              date,
+              description,
+              startMinute: entry.startMinute ?? dto.startMinute ?? null,
+              endMinute: entry.endMinute ?? dto.endMinute ?? null,
+              proposedMinutes: minutes,
+              minutes,
+              loggedById: actorId,
+              status: VolunteerHoursStatus.APPROVED,
+              approvedById: actorId,
+              approvedAt: now,
+              autoApproved: false,
+            },
+            include: ENTRY_INCLUDE,
+          });
+        }),
+      ),
+    );
+
+    return {
+      created: rows.map(serializeEntry),
+      totalMinutes: rows.reduce((total, row) => total + row.minutes, 0),
+    };
   }
 
   /**
@@ -157,6 +234,8 @@ export class VolunteerHoursService {
       where: { id },
       data: {
         minutes: dto.minutes,
+        startMinute: dto.startMinute ?? null,
+        endMinute: dto.endMinute ?? null,
         ...(isManual
           ? {
               activityType: dto.activityType ?? existing.activityType,
@@ -881,6 +960,8 @@ export function serializeEntry(row: EntryRow): VolunteerHoursEntryShape {
     baselineMinutes: row.baselineMinutes,
     proposedMinutes: row.proposedMinutes,
     minutes: row.minutes,
+    startMinute: row.startMinute,
+    endMinute: row.endMinute,
     flags: row.flags as VolunteerHoursFlag[],
     flagDetails: row.flagDetails as unknown as VolunteerHoursFlagDetail[] | null,
     status: row.status as VolunteerHoursStatus,

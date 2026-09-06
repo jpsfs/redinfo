@@ -783,6 +783,14 @@ model VolunteerHoursEntry {
   /// coordinator corrects it.
   minutes Int
 
+  /// The wall-clock span a MANUAL entry was reported for, minutes from
+  /// midnight (mirrors `ShiftTimes`). Null for SCHEDULED — a shift's own
+  /// times come from the window pattern, not this — and null for a MANUAL
+  /// entry logged before this field existed. `minutes` remains the
+  /// authoritative duration either way; these are descriptive.
+  startMinute Int?
+  endMinute   Int?
+
   /// Exception codes raised by detection — e.g. `RAN_OVER`,
   /// `POSSIBLY_LEFT_EARLY`. Always empty for MANUAL, and for a SCHEDULED
   /// entry with nothing to flag. Never generated at all for a shift whose

@@ -16,7 +16,9 @@ import {
   Typography,
 } from '@mui/material';
 import {
+  Action,
   ApproveVolunteerHoursBatchResponse,
+  CreateBulkVolunteerHoursResponse,
   formatMinutes,
   SweepApproveVolunteerHoursResponse,
   VolunteerHoursEntry,
@@ -25,6 +27,7 @@ import {
 import { apiFetch } from '../api';
 import { useT } from '../i18n/useT';
 import { useIsMobile } from '../hooks/useIsMobile';
+import { useCapabilities } from '../hooks/useCapabilities';
 import { useReviewQueue } from './volunteerHoursReview/useReviewQueue';
 import { ReviewStatsHeader } from './volunteerHoursReview/ReviewStatsHeader';
 import { ReviewFilters } from './volunteerHoursReview/ReviewFilters';
@@ -32,6 +35,7 @@ import { ReviewQueueTable } from './volunteerHoursReview/ReviewQueueTable';
 import { ReviewQueueCards } from './volunteerHoursReview/ReviewQueueCards';
 import { BulkActionBar } from './volunteerHoursReview/BulkActionBar';
 import { BulkApproveDialog } from './volunteerHoursReview/BulkApproveDialog';
+import { BulkHoursDialog } from './volunteerHoursReview/BulkHoursDialog';
 import { SweepApproveDialog } from './volunteerHoursReview/SweepApproveDialog';
 import { AdjustHoursDialog } from './volunteerHoursReview/AdjustHoursDialog';
 import { DismissEntryDialog } from './volunteerHoursReview/DismissEntryDialog';
@@ -50,6 +54,7 @@ type Tab = 'pending' | 'approved';
 export const VolunteerHoursReviewPage = () => {
   const t = useT();
   const isMobile = useIsMobile();
+  const { can } = useCapabilities();
   const [tab, setTab] = useState<Tab>('pending');
   const queue = useReviewQueue(VolunteerHoursStatus.PENDING);
 
@@ -58,6 +63,7 @@ export const VolunteerHoursReviewPage = () => {
   const [adjustError, setAdjustError] = useState<string | null>(null);
   const [dismissing, setDismissing] = useState<VolunteerHoursEntry | null>(null);
   const [dismissError, setDismissError] = useState<string | null>(null);
+  const [bulkHoursOpen, setBulkHoursOpen] = useState(false);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [bulkSaving, setBulkSaving] = useState(false);
   const [bulkError, setBulkError] = useState<string | null>(null);
@@ -205,6 +211,17 @@ export const VolunteerHoursReviewPage = () => {
     }
   };
 
+  const handleBulkHoursSuccess = (result: CreateBulkVolunteerHoursResponse) => {
+    setBulkHoursOpen(false);
+    void queue.refetch();
+    setSnackbar({
+      message: t('bulkHours.submitSuccess', {
+        count: result.created.length,
+        minutes: formatMinutes(result.totalMinutes),
+      }),
+    });
+  };
+
   const confirmSweep = async () => {
     setSweepSaving(true);
     setSweepError(null);
@@ -244,7 +261,14 @@ export const VolunteerHoursReviewPage = () => {
               {t('volunteerHoursReview.subheading')}
             </Typography>
           </Box>
-          <ExportMenu />
+          <Stack direction="row" spacing={1}>
+            {can([Action.MANAGE_VOLUNTEER_HOURS]) && (
+              <Button variant="outlined" onClick={() => setBulkHoursOpen(true)}>
+                {t('bulkHours.openButton')}
+              </Button>
+            )}
+            <ExportMenu />
+          </Stack>
         </Stack>
 
         <Tabs value={tab} onChange={(_, value: Tab) => setTab(value)} sx={{ mb: 1 }}>
@@ -388,6 +412,12 @@ export const VolunteerHoursReviewPage = () => {
           </>
         )}
       </CardContent>
+
+      <BulkHoursDialog
+        open={bulkHoursOpen}
+        onClose={() => setBulkHoursOpen(false)}
+        onSuccess={handleBulkHoursSuccess}
+      />
 
       <AdjustHoursDialog
         entry={adjusting}

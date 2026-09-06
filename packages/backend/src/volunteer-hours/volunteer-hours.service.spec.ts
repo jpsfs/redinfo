@@ -240,6 +240,7 @@ function buildPrisma({
   schedule = SCHEDULE(),
   overrides = [] as Array<Record<string, unknown>>,
   eventReports = [] as Array<Record<string, unknown>>,
+  activeUserIds = ['u-ana', 'u-bruno', 'u-carla'] as string[],
 } = {}) {
   const entryTable = buildEntryTable();
 
@@ -271,6 +272,13 @@ function buildPrisma({
     scheduleShiftOverride: { findMany: jest.fn(async () => overrides) },
     eventReport: {
       findMany: jest.fn(async () => eventReports),
+    },
+    user: {
+      // Simulates `isActive: true` filtering — a test can shrink
+      // `activeUserIds` to model an unknown or deactivated volunteer.
+      findMany: jest.fn(async ({ where }: { where: { id: { in: string[] } } }) =>
+        where.id.in.filter((id) => activeUserIds.includes(id)).map((id) => ({ id })),
+      ),
     },
     volunteerHoursEntry: entryTable,
     entryTable,
@@ -458,6 +466,88 @@ describe('manual entries', () => {
     });
 
     expect(entry.description).toBeNull();
+  });
+
+  it('stores the reported time span alongside the duration', async () => {
+    const { service } = makeService();
+    const entry = await service.createManualEntry('u-ana', {
+      activityType: VolunteerActivityType.MEETING,
+      date: '2026-10-05',
+      minutes: 120,
+      startMinute: 19 * 60,
+      endMinute: 21 * 60,
+    });
+
+    expect(entry).toMatchObject({ startMinute: 19 * 60, endMinute: 21 * 60 });
+  });
+});
+
+describe('createBulkEntries', () => {
+  const dto = (overrides: Record<string, unknown> = {}) => ({
+    activityType: VolunteerActivityType.MEETING,
+    date: '2026-10-05',
+    minutes: 120,
+    startMinute: 19 * 60,
+    endMinute: 21 * 60,
+    description: 'Monthly coordination meeting.',
+    entries: [{ userId: 'u-ana' }, { userId: 'u-bruno' }],
+    ...overrides,
+  });
+
+  it('creates one APPROVED entry per volunteer, attributed to the coordinator', async () => {
+    const { service } = makeService();
+    const result = await service.createBulkEntries(dto() as never, 'u-coordinator');
+
+    expect(result.created).toHaveLength(2);
+    expect(result.totalMinutes).toBe(240);
+    for (const entry of result.created) {
+      expect(entry).toMatchObject({
+        source: VolunteerHoursSource.MANUAL,
+        status: VolunteerHoursStatus.APPROVED,
+        minutes: 120,
+        startMinute: 19 * 60,
+        endMinute: 21 * 60,
+        loggedById: 'u-coordinator',
+        approvedById: 'u-coordinator',
+        autoApproved: false,
+      });
+      expect(entry.approvedAt).not.toBeNull();
+    }
+    expect(result.created.map((e) => e.userId).sort()).toEqual(['u-ana', 'u-bruno']);
+  });
+
+  it('honours a per-row time/duration override', async () => {
+    const { service } = makeService();
+    const result = await service.createBulkEntries(
+      dto({
+        entries: [
+          { userId: 'u-ana' },
+          { userId: 'u-bruno', minutes: 60, startMinute: 19 * 60, endMinute: 20 * 60 },
+        ],
+      }) as never,
+      'u-coordinator',
+    );
+
+    const ana = result.created.find((e) => e.userId === 'u-ana')!;
+    const bruno = result.created.find((e) => e.userId === 'u-bruno')!;
+    expect(ana.minutes).toBe(120);
+    expect(bruno).toMatchObject({ minutes: 60, startMinute: 19 * 60, endMinute: 20 * 60 });
+  });
+
+  it('rejects the whole request when a selected volunteer cannot be found', async () => {
+    const { service, prisma } = makeService(buildPrisma({ activeUserIds: ['u-ana'] }));
+    await expect(service.createBulkEntries(dto() as never, 'u-coordinator')).rejects.toThrow(
+      BadRequestException,
+    );
+    expect(prisma.entryTable.rows).toHaveLength(0);
+  });
+
+  it('rejects an incoherent bulk report before touching the database', async () => {
+    const { service, prisma } = makeService();
+    await expect(
+      service.createBulkEntries(dto({ entries: [] }) as never, 'u-coordinator'),
+    ).rejects.toThrow(BadRequestException);
+    expect(prisma.entryTable.rows).toHaveLength(0);
   });
 });
 

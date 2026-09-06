@@ -1469,6 +1469,10 @@ const MESSAGES = {
   'adjustShift.errorOverlaps': { pt: 'Sobrepõe-se a %{label}.', en: 'Overlaps %{label}.' },
   'adjustShift.failed': { pt: 'Não foi possível ajustar este turno.', en: 'Could not adjust this shift.' },
 
+  // ── TimeRangeField (shared start/end input for manual volunteer-hours forms) ──
+  'timeRangeField.startAria': { pt: 'Início', en: 'Start' },
+  'timeRangeField.endAria': { pt: 'Fim', en: 'End' },
+
   'signUpDialog.title': { pt: 'Inscrever-te neste turno?', en: 'Add yourself to this shift?' },
   'signUpDialog.failed': { pt: 'Não foi possível adicionar-te a este turno.', en: 'Could not add you to this shift.' },
   'signUpDialog.vehicleCountOne': { pt: '%{count} viatura', en: '%{count} vehicle' },
@@ -1676,7 +1680,7 @@ const MESSAGES = {
   'myHours.logDialogTitle': { pt: 'Registar horas', en: 'Log hours' },
   'myHours.activityTypeLabel': { pt: 'Atividade', en: 'Activity' },
   'myHours.dateLabel': { pt: 'Data', en: 'Date' },
-  'myHours.minutesLabel': { pt: 'Duração (minutos)', en: 'Duration (minutes)' },
+  'myHours.timeRangeLabel': { pt: 'Horário', en: 'Time' },
   'myHours.descriptionLabel': { pt: 'Descrição', en: 'Description' },
   'myHours.descriptionLabelOptional': { pt: 'Descrição (opcional)', en: 'Description (optional)' },
   'myHours.descriptionPlaceholder': {
@@ -1883,6 +1887,41 @@ const MESSAGES = {
   'volunteerHoursReview.deleteMineFailed': {
     pt: 'Não foi possível eliminar o registo.',
     en: 'Could not delete the entry.',
+  },
+
+  // ── Bulk hours report — a coordinator logging one activity for several volunteers at once ──
+  'bulkHours.openButton': { pt: 'Registar em lote', en: 'Bulk report' },
+  'bulkHours.dialogTitle': { pt: 'Registar horas em lote', en: 'Bulk hours report' },
+  'bulkHours.dialogSubtitle': {
+    pt: 'Regista a mesma atividade para vários voluntários de uma vez — por exemplo, uma reunião ou uma formação. As entradas ficam aprovadas de imediato.',
+    en: 'Log the same activity for several volunteers at once — a meeting or a training session, for example. The entries land approved immediately.',
+  },
+  'bulkHours.activityTypeLabel': { pt: 'Atividade', en: 'Activity' },
+  'bulkHours.dateLabel': { pt: 'Data', en: 'Date' },
+  'bulkHours.timeRangeLabel': { pt: 'Horário', en: 'Time' },
+  'bulkHours.descriptionLabel': { pt: 'Descrição', en: 'Description' },
+  'bulkHours.descriptionLabelOptional': { pt: 'Descrição (opcional)', en: 'Description (optional)' },
+  'bulkHours.descriptionPlaceholder': {
+    pt: 'Do que se tratou a atividade?',
+    en: 'What was the activity?',
+  },
+  'bulkHours.volunteersHeading': { pt: 'Voluntários', en: 'Volunteers' },
+  'bulkHours.searchLabel': { pt: 'Pesquisar voluntários', en: 'Search volunteers' },
+  'bulkHours.selectAll': { pt: 'Selecionar todos', en: 'Select all' },
+  'bulkHours.clearSelection': { pt: 'Limpar seleção', en: 'Clear selection' },
+  'bulkHours.selectedCount': { pt: '%{count} selecionados', en: '%{count} selected' },
+  'bulkHours.resetRowTime': { pt: 'Repor horário partilhado', en: 'Reset to shared time' },
+  'bulkHours.loadVolunteersFailed': {
+    pt: 'Não foi possível carregar a lista de voluntários.',
+    en: 'Could not load the volunteer list.',
+  },
+  'bulkHours.noneSelected': { pt: 'Seleciona pelo menos um voluntário.', en: 'Select at least one volunteer.' },
+  'bulkHours.cancel': { pt: 'Cancelar', en: 'Cancel' },
+  'bulkHours.submit': { pt: 'Registar', en: 'Log hours' },
+  'bulkHours.submitFailed': { pt: 'Não foi possível registar as horas.', en: 'Could not log the hours.' },
+  'bulkHours.submitSuccess': {
+    pt: '%{count} entradas registadas (%{minutes}).',
+    en: '%{count} entries logged (%{minutes}).',
   },
 
   'volunteerHoursStatus.PENDING': { pt: 'Por aprovar', en: 'Pending' },

@@ -297,6 +297,61 @@ describeIntegration('Volunteer hours module (integration)', () => {
     });
   });
 
+  it('integration: a coordinator bulk-reports a meeting for several volunteers, landing APPROVED', async () => {
+    const result = await volunteerHours.createBulkEntries(
+      {
+        activityType: 'MEETING' as never,
+        date: DAY_ONE,
+        minutes: 120,
+        startMinute: 19 * 60,
+        endMinute: 21 * 60,
+        description: 'Monthly coordination meeting.',
+        entries: [
+          { userId: ana.id },
+          { userId: bruno.id, minutes: 60, startMinute: 19 * 60, endMinute: 20 * 60 },
+        ],
+      } as never,
+      coordinator.id,
+    );
+
+    expect(result.totalMinutes).toBe(180);
+    expect(result.created).toHaveLength(2);
+
+    const [anaHours, brunoHours] = await Promise.all([
+      volunteerHours.getMyHours(ana.id),
+      volunteerHours.getMyHours(bruno.id),
+    ]);
+    expect(anaHours.entries.find((e) => e.description === 'Monthly coordination meeting.')).toMatchObject({
+      status: VolunteerHoursStatus.APPROVED,
+      minutes: 120,
+      startMinute: 19 * 60,
+      endMinute: 21 * 60,
+      loggedById: coordinator.id,
+      approvedById: coordinator.id,
+    });
+    expect(brunoHours.entries.find((e) => e.description === 'Monthly coordination meeting.')).toMatchObject({
+      status: VolunteerHoursStatus.APPROVED,
+      minutes: 60,
+    });
+  });
+
+  it('integration: rejects a bulk report naming a volunteer who does not exist', async () => {
+    await expect(
+      volunteerHours.createBulkEntries(
+        {
+          activityType: 'MEETING' as never,
+          date: DAY_ONE,
+          minutes: 60,
+          entries: [{ userId: ana.id }, { userId: 'not-a-real-user-id' }],
+        } as never,
+        coordinator.id,
+      ),
+    ).rejects.toThrow();
+
+    const { entries } = await volunteerHours.getMyHours(ana.id);
+    expect(entries).toHaveLength(0);
+  });
+
   it('integration: the summary aggregates approved and pending minutes per volunteer', async () => {
     const window = await openWindow();
     const schedule = await schedules.create({ windowId: window.id }, coordinator.id);
