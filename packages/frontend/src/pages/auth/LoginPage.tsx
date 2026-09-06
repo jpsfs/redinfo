@@ -19,17 +19,22 @@ declare global {
 }
 
 const API_URL = import.meta.env.VITE_API_URL ?? '';
+
 // Same source as the browser tab title (see vite.config.ts's injectAppTitle
 // plugin and index.html's window.APP_TITLE) — resolution order is the
 // runtime global (once substituted), then the build-time env var (dev/local
-// builds), then the dev default, so this always matches the tab title.
-const APP_TITLE =
-  window.APP_TITLE && window.APP_TITLE !== '__APP_TITLE__'
+// builds), then the dev default, so this always matches the tab title. A
+// function rather than a module-level const so LoginPage.test.tsx can flip
+// window.APP_TITLE between cases without needing a fresh module instance.
+function resolveAppTitle(): string {
+  return window.APP_TITLE && window.APP_TITLE !== '__APP_TITLE__'
     ? window.APP_TITLE
     : (import.meta.env.VITE_APP_TITLE ?? 'RedInfo - Dev');
+}
 
 const LoginHeader = () => {
   const t = useT();
+  const appTitle = resolveAppTitle();
   return (
     <Box
       sx={{
@@ -59,7 +64,7 @@ const LoginHeader = () => {
         color="text.primary"
         gutterBottom
       >
-        {APP_TITLE}
+        {appTitle}
       </Typography>
       <Typography
         variant="body2"

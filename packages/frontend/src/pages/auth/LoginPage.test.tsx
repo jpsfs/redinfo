@@ -32,6 +32,38 @@ function renderLoginPage(authProviderOverrides: Partial<AuthProvider> = {}) {
   return { authProvider };
 }
 
+// ── App title resolution — window.APP_TITLE vs. VITE_APP_TITLE vs. default ──
+describe('LoginPage — app title resolution', () => {
+  afterEach(() => {
+    Reflect.deleteProperty(window, 'APP_TITLE');
+  });
+
+  it('uses window.APP_TITLE once the entrypoint (or vite) has substituted a real value', async () => {
+    window.APP_TITLE = 'CVP Portal';
+
+    renderLoginPage();
+
+    expect(await screen.findByText('CVP Portal')).toBeInTheDocument();
+  });
+
+  it('falls back to the dev default when window.APP_TITLE still holds the unsubstituted placeholder', async () => {
+    window.APP_TITLE = '__APP_TITLE__';
+
+    renderLoginPage();
+
+    expect(await screen.findByText('RedInfo - Dev')).toBeInTheDocument();
+    expect(screen.queryByText('__APP_TITLE__')).not.toBeInTheDocument();
+  });
+
+  it('falls back to the dev default when window.APP_TITLE was never published', async () => {
+    Reflect.deleteProperty(window, 'APP_TITLE');
+
+    renderLoginPage();
+
+    expect(await screen.findByText('RedInfo - Dev')).toBeInTheDocument();
+  });
+});
+
 describe('LoginPage — keep me signed in', () => {
   it('defaults the checkbox to checked and both OAuth links to remember=true', async () => {
     renderLoginPage();
