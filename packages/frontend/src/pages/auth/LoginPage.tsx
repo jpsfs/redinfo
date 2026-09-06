@@ -7,12 +7,26 @@ import MicrosoftIcon from '@mui/icons-material/Window';
 import { DelegacaoCampoLogo } from '../../components/DelegacaoCampoLogo';
 import { useT } from '../../i18n/useT';
 
+// index.html publishes window.APP_TITLE; it holds the literal
+// __APP_TITLE__ placeholder until either vite (explicit VITE_APP_TITLE build)
+// or the nginx entrypoint substitutes it. The placeholder comparison below
+// lives in the JS bundle, which the entrypoint deliberately never rewrites —
+// only index.html and manifest.webmanifest are sed'ed.
+declare global {
+  interface Window {
+    APP_TITLE?: string;
+  }
+}
+
 const API_URL = import.meta.env.VITE_API_URL ?? '';
 // Same source as the browser tab title (see vite.config.ts's injectAppTitle
-// plugin, which stamps index.html's <title> from this at build time) — falls
-// back identically so a bare `vite`/`vite build` with no env configured
-// matches the tab instead of silently going blank.
-const APP_TITLE = import.meta.env.VITE_APP_TITLE ?? 'RedInfo - Dev';
+// plugin and index.html's window.APP_TITLE) — resolution order is the
+// runtime global (once substituted), then the build-time env var (dev/local
+// builds), then the dev default, so this always matches the tab title.
+const APP_TITLE =
+  window.APP_TITLE && window.APP_TITLE !== '__APP_TITLE__'
+    ? window.APP_TITLE
+    : (import.meta.env.VITE_APP_TITLE ?? 'RedInfo - Dev');
 
 const LoginHeader = () => {
   const t = useT();

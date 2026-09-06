@@ -60,6 +60,14 @@ resources:
 # INEM_ENABLED/INEM_ENTITY/INEM_BASE_URL (#211) belong here too, once set —
 # not secret-shaped. INEM_USERNAME/INEM_PASSWORD/INEM_WORKER_TOKEN are the
 # secret-shaped half and live under `secrets` below.
+#
+# env.frontend.APP_TITLE: tab title / installed-app name, read by
+# packages/frontend/docker-entrypoint-app-title.sh at container start (NOT a
+# build arg — see packages/frontend/Dockerfile) and sed'ed into
+# index.html/manifest.webmanifest. This is what lets one frontend image be
+# built once and promoted staging → production with different branding in
+# each. Unset here (falls back to "RedInfo - Dev"); see values.staging.yaml /
+# values.production.yaml for the real per-environment values.
 env:
   backend: {}
   frontend: {}

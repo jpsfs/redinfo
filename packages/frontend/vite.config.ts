@@ -10,8 +10,7 @@ import path from 'node:path';
 // (see those files) that this plugin substitutes with the resolved
 // VITE_APP_TITLE (falling back to the dev default below), so the tab title
 // and installed-app name read "RedInfo - Dev" / "RedInfo - QA" / "CVP Portal"
-// depending on which environment's image this is (see .env.example and
-// packages/frontend/Dockerfile).
+// depending on which environment this is (see .env.example).
 //
 // Not using Vite's own built-in %VITE_APP_TITLE% HTML env replacement: it
 // only reaches HTML entry points, not public/ files copied verbatim to dist
@@ -20,7 +19,17 @@ import path from 'node:path';
 // outside Docker/compose), with no way to feed it our own fallback. Doing
 // both substitutions ourselves keeps title and manifest in lockstep and
 // warning-free everywhere.
-function injectAppTitle(title: string): Plugin {
+//
+// Build-once/promote: a production `vite build` only substitutes here when
+// VITE_APP_TITLE is explicitly set (local/compose builds may still do this
+// via the Dockerfile's ARG). Otherwise the placeholder is left untouched in
+// dist/index.html and dist/manifest.webmanifest on purpose, so ONE image can
+// be built and promoted staging → production — the actual title is stamped
+// in at container start by packages/frontend/docker-entrypoint-app-title.sh
+// (installed as an nginx `/docker-entrypoint.d/` script, see Dockerfile),
+// from that environment's APP_TITLE (see deploy/redinfo/values.*.yaml). The
+// dev server always substitutes, since there's no "build once" concern there.
+function injectAppTitle(title: string, substituteAtBuild: boolean): Plugin {
   let root = process.cwd();
   let outDir = 'dist';
   const manifestRelPath = 'manifest.webmanifest';
@@ -30,7 +39,12 @@ function injectAppTitle(title: string): Plugin {
       root = config.root;
       outDir = config.build.outDir;
     },
-    transformIndexHtml(html) {
+    transformIndexHtml(html, ctx) {
+      // `ctx.server` is only set in dev (this hook also runs during
+      // `vite build`, where it's undefined) — see substituteAtBuild's own
+      // comment above for why build only sometimes substitutes.
+      const isDev = Boolean(ctx.server);
+      if (!isDev && !substituteAtBuild) return html;
       return html.replaceAll('__APP_TITLE__', title);
     },
     configureServer(server) {
@@ -41,6 +55,7 @@ function injectAppTitle(title: string): Plugin {
       });
     },
     closeBundle() {
+      if (!substituteAtBuild) return;
       const outFile = path.join(root, outDir, manifestRelPath);
       if (!fs.existsSync(outFile)) return;
       const raw = fs.readFileSync(outFile, 'utf-8');
@@ -55,9 +70,12 @@ export default defineConfig(({ mode }) => {
   // Falls back to the dev branding so a bare `vite`/`vite build` with no env
   // configured (e.g. a first-time checkout) doesn't ship a blank tab title.
   const appTitle = env.VITE_APP_TITLE || 'RedInfo - Dev';
+  // Only an explicit VITE_APP_TITLE opts a build into stamping the title in
+  // at build time — see injectAppTitle's own comment above.
+  const substituteAtBuild = Boolean(env.VITE_APP_TITLE);
 
   return {
-    plugins: [react(), injectAppTitle(appTitle)],
+    plugins: [react(), injectAppTitle(appTitle, substituteAtBuild)],
     server: {
       host: '0.0.0.0',
       port: 5173,

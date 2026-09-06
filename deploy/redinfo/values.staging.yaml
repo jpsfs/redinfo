@@ -68,7 +68,11 @@ env:
     # googleCallback/microsoftCallback), so an http value here sends the
     # browser to a URL Cloudflare won't serve, breaking Google/Microsoft login.
     FRONTEND_URL: "https://staging-redcross.jpsfs.com"
-  frontend: {}
+  frontend:
+    # Stamped into index.html/manifest.webmanifest at container start by
+    # packages/frontend/docker-entrypoint-app-title.sh — this (not a build
+    # arg) is what lets the same frontend image serve staging and production.
+    APP_TITLE: "RedInfo - QA"
 
 # Populated by the pipeline from the `redinfo-staging` ADO variable group via
 # --set-string; left empty here so nothing sensitive is ever committed. Now

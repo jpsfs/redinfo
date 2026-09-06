@@ -14,6 +14,22 @@
     -->
     <title>__APP_TITLE__</title>
     <!--
+      Publishes the resolved title as a global so JS (LoginPage.tsx) can read
+      it without it being baked into the bundle. Named window.APP_TITLE
+      (NOT window.__APP_TITLE__) deliberately: substitution below is a plain
+      text replace of the __APP_TITLE__ placeholder (both here and in the
+      nginx entrypoint's sed), and if the property name itself contained
+      that literal substring, substituting the value would mangle the
+      property name too (window.CVP Portal = 'CVP Portal';). Left as the
+      literal placeholder when nothing rewrites it: vite's injectAppTitle
+      plugin substitutes it in dev and in a build with VITE_APP_TITLE
+      explicitly set; otherwise it survives into dist/ and the nginx
+      entrypoint (docker-entrypoint-app-title.sh) substitutes it at
+      container start instead, from that environment's APP_TITLE — the same
+      image then serves every environment.
+    -->
+    <script>window.APP_TITLE = '__APP_TITLE__';</script>
+    <!--
       Inter, self-hosted. Served from our own origin rather than
       fonts.googleapis.com because live mode is a PWA that has to open with no
       network: a third-party stylesheet cannot be cached by our service worker,
