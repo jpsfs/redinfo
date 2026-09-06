@@ -23,23 +23,19 @@ estatísticas e usar o modo live numa emergência.
 As imagens mostram o ecrã tal como aparece a um operador. O teu ecrã pode ter nomes ou
 números diferentes (turnos, colegas, datas), mas os botões e os passos são os mesmos.
 
-> **Nota para quem atualizar este manual:** as capturas de ecrã em `imagens/` são geradas
-> pelo script `capturar-ecras.mjs` nesta mesma pasta — corre-o de novo sempre que a
-> aplicação mudar de aspeto, em vez de tirar capturas à mão.
-
 ### Como entrar
 
 Abre **app.cvpcampo.org** no browser do telemóvel ou computador. Na maioria dos casos
-**não precisas de criar nenhuma palavra-passe**: usa o botão que corresponde ao email da
-tua conta profissional.
+**não precisas de criar nenhuma palavra-passe**: usa o botão que corresponde ao teu email
+pessoal.
 
-- Email **@gmail.com** ou de uma conta Google da delegação → toca em **Google**.
-- Email **@outlook.com**, **@hotmail.com** ou de uma conta Microsoft 365 da delegação →
-  toca em **Microsoft**.
+- Email **@gmail.com** ou outra conta Google pessoal → toca em **Google**.
+- Email **@outlook.com**, **@hotmail.com** ou outra conta Microsoft pessoal → toca em
+  **Microsoft**.
 
-Vais ser levado à página de login desse serviço, confirmas a tua conta habitual, e
+Vais ser levado à página de login desse serviço, confirmas a tua conta pessoal habitual, e
 prontos. Só uses os campos **Utilizador** e **Palavra-passe** se o teu coordenador te
-tiver dado uma conta local em vez de um email profissional.
+tiver dado uma conta local em vez do teu email pessoal.
 
 <p style="text-align:center">
   <img src="imagens/00-login.png" width="200">
