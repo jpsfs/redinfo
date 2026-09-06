@@ -90,6 +90,14 @@ upstream looks fine:
    `az boards` directly (MCP needs an interactive browser login unavailable in this
    environment). If no work item ID is known, skip this step rather than guessing at one.
 
+## Commit convention
+
+Conventional Commits. A tip commit typed `docs:` / `docs(<scope>):` on `dev`, `env/staging`, or
+`env/production` triggers the pipeline's `GenerateManuals` stage, which regenerates every manual
+under `docs/*/` and publishes them as the `manuals` artifact (see `.ado/README.md`). Use `docs`
+for a commit that should refresh the published manuals; use another type (e.g. `chore(docs)`) for
+docs edits that shouldn't — typos, wording, internal notes.
+
 ## Azure DevOps
 
 Org `jpsfs`, project `redinfo`. The working auth path here is the `az` CLI (`az boards ...`)
