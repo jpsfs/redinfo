@@ -148,6 +148,26 @@ stages:
           - checkout: self
             fetchDepth: 1
 
+          # Login BEFORE creating the builder, deliberately: Docker@2's login
+          # command overrides DOCKER_CONFIG to its own temp directory for the
+          # rest of this job (a documented Docker@2 behavior —
+          # microsoft/azure-pipelines-tasks#20188). `docker buildx` stores
+          # both a builder's instance definition and the "current" pointer
+          # under $DOCKER_CONFIG/buildx/ — creating the builder first, then
+          # letting login switch DOCKER_CONFIG out from under it, silently
+          # strands that builder in a config dir later steps never see again.
+          # buildx then falls back to the default `docker`-driver builder,
+          # which can't export cache at all ("Cache export is not supported
+          # for the docker driver") — hit for real on the first live run of
+          # this pipeline (build 344). Creating the builder after login keeps
+          # both the instance and the "current" pointer in the one
+          # DOCKER_CONFIG that's actually active for every step from here on.
+          - task: Docker@2
+            displayName: "Login to Docker Hub"
+            inputs:
+              containerRegistry: "$(DOCKER_SERVICE_CONNECTION)"
+              command: "login"
+
           - task: Bash@3
             displayName: "Create buildx builder"
             inputs:
@@ -156,12 +176,6 @@ stages:
                 set -euo pipefail
                 docker buildx create --name redinfo --driver docker-container --use
                 docker buildx inspect --bootstrap
-
-          - task: Docker@2
-            displayName: "Login to Docker Hub"
-            inputs:
-              containerRegistry: "$(DOCKER_SERVICE_CONNECTION)"
-              command: "login"
 
           # The frontend's tab title / installed-app name used to be baked in
           # here via a "Determine frontend app title" step + `--build-arg
@@ -196,7 +210,11 @@ stages:
                   fi
 
                   echo "── Building jpsfs/redinfo-${img} (${dockerfile}${target:+, target ${target}}) ──"
+                  # --builder explicit, not ambient "current" state: see the
+                  # comment above "Create buildx builder" for why relying on
+                  # implicit context here bit us on the first live run.
                   docker buildx build \
+                    --builder redinfo \
                     -f "${dockerfile}" "$(Build.SourcesDirectory)" \
                     "${targetArgs[@]}" \
                     --cache-from "type=registry,ref=jpsfs/redinfo-${img}:buildcache" \
