@@ -16,7 +16,7 @@
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { mkdirSync } from 'node:fs';
+import { mkdirSync, copyFileSync } from 'node:fs';
 
 const scriptDir = path.dirname(fileURLToPath(import.meta.url));
 const repoRoot = path.resolve(scriptDir, '../..');
@@ -31,6 +31,13 @@ const WIDTH = 390;
 const HEIGHT = 844;
 
 mkdirSync(OUT_DIR, { recursive: true });
+
+// imagens/ is git-ignored (see .gitignore) — capítulos e logo saem sempre daqui, nunca
+// do repositório. A capa do manual usa o mesmo logo já servido pelo frontend.
+copyFileSync(
+  path.join(repoRoot, 'packages/frontend/public/logo-delegacao.jpg'),
+  path.join(OUT_DIR, 'logo-delegacao.jpg'),
+);
 
 async function shot(page, name) {
   const outfile = path.join(OUT_DIR, `${name}.png`);

@@ -166,3 +166,8 @@ Thumbs.db
 # clinical data pulled from the production MySQL system. Never committed.
 migration/dump/
 migration/out/
+
+# Operator manual: generated binaries (screenshots + PDF). Regenerate locally with
+# docs/manual-operador/capturar-ecras.mjs and gerar-pdf.mjs — never commit the output.
+docs/manual-operador/imagens/
+docs/manual-operador/manual.pdf
