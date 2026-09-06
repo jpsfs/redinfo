@@ -47,7 +47,7 @@ COPY packages/shared/package.json ./packages/shared/
 COPY packages/legacy-migration/package.json ./packages/legacy-migration/
 COPY packages/backend/package.json ./packages/backend/
 
-RUN pnpm install
+RUN pnpm install --frozen-lockfile
 
 COPY tsconfig.base.json ./
 COPY packages/shared ./packages/shared

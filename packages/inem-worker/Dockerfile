@@ -40,7 +40,7 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/inem-worker/package.json ./packages/inem-worker/
 
-RUN pnpm install
+RUN pnpm install --frozen-lockfile
 
 COPY tsconfig.base.json ./
 COPY packages/shared ./packages/shared

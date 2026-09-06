@@ -12,6 +12,19 @@
 **/README.md
 **/*.tsbuildinfo
 
+# CI/deploy/docs tooling — none of it is ever COPYed into an image, and it's
+# large enough (docs/manual-operador/images/, .claude/ skills+worktrees) to
+# slow every build's context upload for nothing. `nginx/` and
+# `packages/backend/prisma` are deliberately NOT listed here — the frontend
+# Dockerfile copies nginx/nginx.conf, and both the backend and
+# legacy-migration Dockerfiles copy packages/backend/prisma.
+docs/
+deploy/
+.github/
+.ado/
+.claude/
+.devcontainer/
+
 # Legacy migration: the dump is real production data (never in an image
 # layer) and out/ is per-run scratch output. The Dockerfile copies neither,
 # but the build context is `.`, so without this every `docker compose build`

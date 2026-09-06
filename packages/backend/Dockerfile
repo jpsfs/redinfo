@@ -15,7 +15,7 @@ COPY packages/shared/package.json ./packages/shared/
 COPY packages/backend/package.json ./packages/backend/
 
 # Install all deps
-RUN pnpm install
+RUN pnpm install --frozen-lockfile
 
 # Copy sources
 COPY tsconfig.base.json ./
@@ -45,7 +45,7 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/backend/package.json ./packages/backend/
 
-RUN pnpm install
+RUN pnpm install --frozen-lockfile
 
 COPY tsconfig.base.json ./
 COPY packages/shared ./packages/shared
@@ -79,7 +79,7 @@ COPY packages/shared/package.json ./packages/shared/
 COPY packages/backend/package.json ./packages/backend/
 
 # Install only prod deps
-RUN pnpm install --prod
+RUN pnpm install --prod --frozen-lockfile
 
 # Copy compiled output and Prisma schema. @redinfo/shared's package.json points
 # `main` at ./dist/index.js — without this, the workspace symlink pnpm just
