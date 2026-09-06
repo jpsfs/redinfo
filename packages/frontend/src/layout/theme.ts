@@ -157,20 +157,28 @@ export const theme = createTheme({
     // deliberately has no card background either (see
     // `EventReportList`/`ScheduleFilterBar`) — the two need to read as one
     // continuous "controls" strip on the page's own grey background, not a
-    // white card sitting on top of a borderless one. Unconditional, not
-    // scoped to a mobile breakpoint: the same white strip shows above the
-    // filter chips on desktop too (`/schedules`, `/availability-windows`).
+    // white card sitting on top of a borderless one.
+    //
+    // `!important` is load-bearing, not decoration: both components set
+    // `background.paper` themselves via an inline `sx` scoped to
+    // `@media (max-width: 599.95px)`, not via a theme `styleOverrides` rule
+    // — confirmed by reading the generated stylesheet, which shows our
+    // (unconditional) rule *and* their media-scoped one as separate CSS
+    // rules of equal specificity, with theirs sorted after ours and winning
+    // below 600px. A plain override here fixes >600px (where only our rule
+    // exists) but loses the cascade tie below it, so the white strip came
+    // back at mobile widths specifically.
     RaListToolbar: {
       styleOverrides: {
         root: {
-          backgroundColor: 'transparent',
+          backgroundColor: 'transparent !important',
         },
       },
     },
     RaTopToolbar: {
       styleOverrides: {
         root: {
-          backgroundColor: 'transparent',
+          backgroundColor: 'transparent !important',
         },
       },
     },
