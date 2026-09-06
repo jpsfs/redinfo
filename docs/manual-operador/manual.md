@@ -17,8 +17,8 @@ disponibilidade, escala, estatísticas e modo live.</p>
 ## Antes de começar
 
 Este manual explica, passo a passo, como usar o CVP Portal no dia a dia de operacional:
-entregar disponibilidade, ver a escala, criar relatórios, registar horas, consultar
-estatísticas e usar o modo live numa emergência.
+instalar a aplicação no telemóvel, entregar disponibilidade, ver a escala, criar
+relatórios, registar horas, consultar estatísticas e usar o modo live numa emergência.
 
 As imagens mostram o ecrã tal como aparece a um operador. O teu ecrã pode ter nomes ou
 números diferentes (turnos, colegas, datas), mas os botões e os passos são os mesmos.
@@ -47,7 +47,40 @@ neste manual. O ecrã inicial já mostra a tua escala de hoje e os teus próximo
 
 ---
 
-## 1. Criar um relatório de evento
+## 1. Instalar o CVP Portal no telemóvel
+
+O CVP Portal pode ser instalado como uma aplicação normal, com ícone no ecrã principal e
+sem a barra de endereço do browser — não precisas de ir a nenhuma loja de aplicações,
+porque a instalação é feita a partir do próprio browser.
+
+<p style="text-align:center">
+  <img src="images/app-icon.png" width="90">
+</p>
+
+**Android (Chrome):**
+
+1. Abre **app.cvpcampo.org** no Chrome e entra com a tua conta (ver secção acima).
+2. Toca no menu **⋮**, no canto superior direito do browser.
+3. Escolhe **Instalar aplicação** (ou **Adicionar ao ecrã principal**, consoante a versão
+   do Chrome).
+4. Confirma em **Instalar**.
+
+**iPhone / iPad (Safari):**
+
+1. Abre **app.cvpcampo.org** no Safari e entra com a tua conta.
+2. Toca no ícone de **Partilhar** (o quadrado com a seta para cima), na barra inferior.
+3. Desliza a lista de opções e escolhe **Adicionar ao ecrã principal**.
+4. Toca em **Adicionar**, no canto superior direito.
+
+Em ambos os casos fica um ícone do CVP Portal no ecrã principal do telemóvel, igual a
+qualquer outra aplicação. Abre sempre por aí — entras automaticamente com a tua conta
+das vezes anteriores, sem passar pelo browser.
+
+---
+
+## 2. Criar um relatório de evento
+
+### No telemóvel
 
 1. No menu, ou na página inicial, abre **Os meus relatórios**.
 2. Toca em **+ Novo relatório**.
@@ -64,11 +97,25 @@ neste manual. O ecrã inicial já mostra a tua escala de hoje e os teus próximo
 </p>
 
 **Dica:** se a emergência ainda está a decorrer, não esperes até ao fim para escrever o
-relatório — usa o modo live (secção 6) para ires marcando as horas em tempo real.
+relatório — usa o modo live (secção 7) para ires marcando as horas em tempo real.
+
+### No computador
+
+Os passos são exatamente os mesmos — o menu **☰** dá lugar a uma barra lateral sempre
+visível, mas as opções **Os meus relatórios**, **+ Novo relatório**, os tipos de evento e
+o botão **Seguinte** estão nos mesmos sítios relativos do ecrã.
+
+<p style="text-align:center">
+  <img src="images/12-reports-list-desktop.png" width="420">
+</p>
+<p style="text-align:center">
+  <img src="images/13-reports-type-desktop.png" width="420">
+  <img src="images/14-reports-form-desktop.png" width="420">
+</p>
 
 ---
 
-## 2. Registar horas de voluntariado
+## 3. Registar horas de voluntariado
 
 As horas dos turnos que já estão na escala entram sozinhas. Usa este ecrã só para reuniões,
 formações ou outras atividades que não têm turno associado.
@@ -88,7 +135,7 @@ As horas ficam **por aprovar** até um coordenador as validar; depois passam a *
 
 ---
 
-## 3. Entregar disponibilidade
+## 4. Entregar disponibilidade
 
 Quando uma janela de disponibilidade está aberta, é aqui que dizes em que turnos podes
 fazer serviço.
@@ -108,7 +155,7 @@ Podes alterar a tua resposta as vezes que quiseres, enquanto a janela estiver ab
 
 ---
 
-## 4. Ver a escala (os meus turnos)
+## 5. Ver a escala (os meus turnos)
 
 **As minhas escalas** mostra os turnos em que já estás mesmo colocado, depois de o
 coordenador publicar a escala — diferente da disponibilidade, que é só o que disseste que
@@ -123,7 +170,7 @@ Toca em **Serviços passados** para ver turnos anteriores.
 
 ---
 
-## 5. Consultar estatísticas
+## 6. Consultar estatísticas
 
 A página **Estatísticas** mostra números da delegação — horas de voluntariado, eventos e
 frota — nos separadores **Pessoas & Horas**, **Atividade** e **Frota**. Podes mudar o
@@ -137,7 +184,7 @@ Todos os operadores veem os mesmos números — não é preciso nenhuma autoriza
 
 ---
 
-## 6. Usar o modo live numa emergência
+## 7. Usar o modo live numa emergência
 
 O modo live serve para marcares as horas de uma emergência **à medida que acontecem**, em
 vez de as escreveres tudo de memória no fim.
@@ -149,7 +196,7 @@ vez de as escreveres tudo de memória no fim.
    local** → **Saída do local** → **Chegada ao hospital** → **Ambulância disponível**.
 4. Cada toque grava a hora exata — não precisas de olhar para o relógio.
 5. No fim, o CVP Portal cria automaticamente um relatório de evento com essas horas já
-   preenchidas; só falta completar o resto e entregá-lo (secção 1).
+   preenchidas; só falta completar o resto e entregá-lo (secção 2).
 
 <p style="text-align:center">
   <img src="images/10-live-start.png" width="200">

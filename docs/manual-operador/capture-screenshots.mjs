@@ -29,15 +29,28 @@ const PASSWORD = process.env.REDINFO_PASSWORD || 'Volunteer123!';
 const OUT_DIR = path.join(scriptDir, 'images');
 const WIDTH = 390;
 const HEIGHT = 844;
+// Desktop pass (section 2's "no computador" screenshots): wide enough that
+// AppLayout renders its permanent sidebar rail instead of the mobile
+// hamburger drawer (see packages/frontend/src/layout/AppLayout.tsx, `sm`-down
+// breakpoint) — a plain laptop resolution, not a phone one.
+const DESKTOP_WIDTH = 1440;
+const DESKTOP_HEIGHT = 900;
 
 mkdirSync(OUT_DIR, { recursive: true });
 
 // images/ is git-ignored (see .gitignore) — chapters and logo always come from here,
 // never from the repository. The manual's cover page reuses the same logo the
-// frontend already serves.
+// frontend already serves, and the "install as an app" section reuses the
+// real PWA home-screen icon (public/manifest.webmanifest) rather than a
+// screenshot, since the OS install prompt itself isn't something a headless
+// browser renders.
 copyFileSync(
   path.join(repoRoot, 'packages/frontend/public/logo-delegacao.jpg'),
   path.join(OUT_DIR, 'logo-delegacao.jpg'),
+);
+copyFileSync(
+  path.join(repoRoot, 'packages/frontend/public/icons/icon-192.png'),
+  path.join(OUT_DIR, 'app-icon.png'),
 );
 
 async function shot(page, name) {
@@ -117,6 +130,40 @@ async function main() {
     await shot(page, '11-live-activation');
 
     console.log('\nScreenshots done.');
+
+    // ── Event reports, again on a desktop viewport ──────────────────────
+    // Section 2 of the manual shows the same "create a report" flow on
+    // mobile and on desktop, since AppLayout swaps the mobile hamburger
+    // drawer for a permanent sidebar rail above the `sm` breakpoint — a
+    // fresh context/login rather than just resizing the existing page, so
+    // the sidebar is actually rendered (it depends on viewport at mount).
+    const desktopContext = await browser.newContext({
+      viewport: { width: DESKTOP_WIDTH, height: DESKTOP_HEIGHT },
+      locale: 'pt-PT',
+    });
+    const desktopPage = await desktopContext.newPage();
+    desktopPage.on('pageerror', (err) => console.error('  pageerror:', err.message));
+
+    await desktopPage.goto(`${BASE_URL}/#/login`, { waitUntil: 'networkidle' });
+    await desktopPage.locator('input[name="username"], input[type="email"], #username').first().fill(USERNAME);
+    await desktopPage.locator('input[name="password"], input[type="password"]').first().fill(PASSWORD);
+    await desktopPage.locator('button[type="submit"]').first().click();
+    await desktopPage.waitForTimeout(2000);
+
+    await desktopPage.goto(`${BASE_URL}/#/my-reports`, { waitUntil: 'networkidle' });
+    await shot(desktopPage, '12-reports-list-desktop');
+
+    await desktopPage.getByText('Novo relatório', { exact: true }).click();
+    await desktopPage.waitForTimeout(1000);
+    await shot(desktopPage, '13-reports-type-desktop');
+
+    await desktopPage.locator('[data-testid="choose-EMERGENCY"]').click();
+    await desktopPage.waitForTimeout(1000);
+    await shot(desktopPage, '14-reports-form-desktop');
+
+    await desktopContext.close();
+
+    console.log('Desktop screenshots done.');
   } finally {
     await browser.close();
   }
