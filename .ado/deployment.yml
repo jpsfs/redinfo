@@ -1,135 +1,236 @@
 # Branches represent environments: pushing to env/staging or env/production builds
 # images and redeploys that environment via Helm. `dev` is Docker Compose only and
 # is not deployed by this pipeline — see deploy/redinfo/README.md.
+#
+# Pass 2 redesign — see .ado/README.md for the full picture. Short version:
+#   - Images are tagged by commit (`sha-<shortSha>`), not by Build.BuildId, so the
+#     *same* image can be promoted from staging to production by fast-forwarding
+#     the commit rather than rebuilding it.
+#   - `Prepare` decides, once, whether this commit's images already exist, whether
+#     they've already passed a staging smoke check, and whether this run should
+#     touch deploy stages at all — every other stage reads its outputs instead of
+#     re-deriving anything.
+#   - `Build` only runs when there's something to build (or `forceRebuild`).
+#   - `PromotionGate` refuses to deploy to production a commit that never had a
+#     green, smoke-tested staging deploy — unless `forceProduction` overrides it.
+#   - `GenerateManuals` is routed by commit message alone and can never block or
+#     gate a deploy — see its own comment below.
 trigger:
   branches:
     include:
+      - dev
       - env/staging
       - env/production
 
+parameters:
+  # Manual-run-only escape hatches — a push can never set these (there is no
+  # `trigger:` mechanism for pipeline parameters; only "Run pipeline" in the UI,
+  # `az pipelines run --parameters`, or the REST API's `templateParameters` can).
+  - name: forceProduction
+    displayName: "Force production deploy without a verified staging pass (see PromotionGate)"
+    type: boolean
+    default: false
+  - name: forceRebuild
+    displayName: "Rebuild and re-push all four images even if sha-<shortSha> already exists"
+    type: boolean
+    default: false
+
 variables:
-  # Azure DevOps SSH service connection ID or name
-  SSH_SERVICE_CONNECTION: "ffb6f58f-b7ba-49d3-bb90-001211d610b7" # SSH RedCross (Liberty-Server)
   # Docker Hub service connection ID or name
   DOCKER_SERVICE_CONNECTION: "74055803-059c-40b0-bb65-0318f1294758" # Docker Hub Registry
 
 stages:
-  - stage: BuildAndPush
-    displayName: Build and push images ($(Build.SourceBranchName))
+  # ── Prepare — decide routing once, let every other stage read it ────────────
+  - stage: Prepare
+    displayName: Resolve build routing
     jobs:
+      - job: Resolve
+        pool:
+          vmImage: "ubuntu-latest"
+        steps:
+          # Shallow checkout, not `checkout: none`: EmitVars below reads the tip
+          # commit's subject with `git log -1 --format=%s` rather than the
+          # Build.SourceVersionMessage predefined variable, which is unreliable/
+          # empty in jobs that skip checkout.
+          - checkout: self
+            fetchDepth: 1
+
+          - task: Docker@2
+            displayName: "Login to Docker Hub"
+            inputs:
+              containerRegistry: "$(DOCKER_SERVICE_CONNECTION)"
+              command: "login"
+
+          - task: Bash@3
+            name: EmitVars
+            displayName: "Resolve shortSha / imagesExist / stagingVerified / isDocsCommit"
+            inputs:
+              targetType: "inline"
+              script: |
+                set -euo pipefail
+
+                # docker manifest inspect is gated behind the CLI's experimental
+                # flag on some Docker versions still in the hosted images.
+                export DOCKER_CLI_EXPERIMENTAL=enabled
+
+                shortSha="$(echo "$(Build.SourceVersion)" | cut -c1-8)"
+
+                images=(backend frontend legacy-migration inem-worker)
+                imagesExist=true
+                for img in "${images[@]}"; do
+                  if ! docker manifest inspect "jpsfs/redinfo-${img}:sha-${shortSha}" >/dev/null 2>&1; then
+                    imagesExist=false
+                    break
+                  fi
+                done
+
+                stagingVerified=false
+                if docker manifest inspect "jpsfs/redinfo-backend:staging-ok-${shortSha}" >/dev/null 2>&1; then
+                  stagingVerified=true
+                fi
+
+                # Conventional Commits `docs` type, optional scope, optional `!`
+                # (breaking-change marker) — e.g. "docs(manual-operador): ...".
+                # Read via `git log`, not Build.SourceVersionMessage: the latter
+                # is truncated/unreliable and empty on jobs with no checkout.
+                commitSubject="$(git log -1 --format=%s)"
+                isDocsCommit=false
+                # The pattern must be in a variable, not inlined literally on the
+                # right of =~ — bash's own parser (not the regex engine) chokes on
+                # the parentheses otherwise ("syntax error in conditional
+                # expression"), independent of them being escaped for the regex.
+                docsCommitPattern='^docs(\([^)]*\))?!?:'
+                if [[ "${commitSubject}" =~ ${docsCommitPattern} ]]; then
+                  isDocsCommit=true
+                fi
+
+                echo "shortSha=${shortSha}"
+                echo "imagesExist=${imagesExist}"
+                echo "stagingVerified=${stagingVerified}"
+                echo "isDocsCommit=${isDocsCommit}"
+
+                echo "##vso[task.setvariable variable=shortSha;isOutput=true]${shortSha}"
+                echo "##vso[task.setvariable variable=imagesExist;isOutput=true]${imagesExist}"
+                echo "##vso[task.setvariable variable=stagingVerified;isOutput=true]${stagingVerified}"
+                echo "##vso[task.setvariable variable=isDocsCommit;isOutput=true]${isDocsCommit}"
+
+  # ── Build — only when there's something new to build ────────────────────────
+  - stage: Build
+    displayName: Build and push images ($(Build.SourceBranchName))
+    dependsOn: Prepare
+    variables:
+      shortSha: $[ stageDependencies.Prepare.Resolve.outputs['EmitVars.shortSha'] ]
+    # `dev` never builds/deploys — it's Docker Compose only (see top-of-file
+    # comment). Otherwise: build only if this commit's images don't all exist
+    # yet, or the run explicitly asked for a rebuild.
+    #
+    # NOTE on dependencies.Prepare.outputs[...]: the key inside the brackets is
+    # `<JobName>.<StepName>.<VariableName>` — three dot-separated parts — per
+    # https://learn.microsoft.com/azure/devops/pipelines/process/expressions#dependencies.
+    # Prepare's job is named `Resolve` and its output-emitting step is named
+    # `EmitVars`, so the key is `Resolve.EmitVars.<name>`.
+    condition: |
+      and(
+        ne(variables['Build.SourceBranch'], 'refs/heads/dev'),
+        in(dependencies.Prepare.result, 'Succeeded', 'SucceededWithIssues'),
+        or(
+          ne(dependencies.Prepare.outputs['Resolve.EmitVars.imagesExist'], 'true'),
+          eq(${{ parameters.forceRebuild }}, true)
+        )
+      )
+    jobs:
+      # Everything in one job: the hosted queue only has 1 free parallel job,
+      # so a matrix per image would just serialize anyway with more overhead.
       - job: BuildPushImages
         pool:
           vmImage: "ubuntu-latest"
         steps:
           - checkout: self
+            fetchDepth: 1
 
           - task: Bash@3
-            displayName: "Determine frontend app title"
+            displayName: "Create buildx builder"
             inputs:
               targetType: "inline"
-              # Tab title / installed-app name (see .env.example's
-              # VITE_APP_TITLE) — one branch per environment, so
-              # Build.SourceBranchName alone is enough to pick it, same as the
-              # envName the Deploy* stages below key off of.
               script: |
                 set -euo pipefail
-                case "$(Build.SourceBranchName)" in
-                  staging)
-                    TITLE="RedInfo - QA"
-                    ;;
-                  production)
-                    TITLE="CVP Portal"
-                    ;;
-                  *)
-                    TITLE="RedInfo - Dev"
-                    ;;
-                esac
-                echo "##vso[task.setvariable variable=viteAppTitle]${TITLE}"
+                docker buildx create --name redinfo --driver docker-container --use
+                docker buildx inspect --bootstrap
 
           - task: Docker@2
-            displayName: "Build and push backend image"
+            displayName: "Login to Docker Hub"
             inputs:
               containerRegistry: "$(DOCKER_SERVICE_CONNECTION)"
-              repository: "jpsfs/redinfo-backend"
-              command: "buildAndPush"
-              Dockerfile: "packages/backend/Dockerfile"
-              # Use repository root as build context since the backend Dockerfile copies files from the repo root
-              buildContext: "$(Build.SourcesDirectory)"
-              tags: |
-                $(Build.BuildId)
-                $(Build.SourceBranchName)
+              command: "login"
 
-          - task: Docker@2
-            displayName: "Build frontend image"
+          # The frontend's tab title / installed-app name used to be baked in
+          # here via a "Determine frontend app title" step + `--build-arg
+          # VITE_APP_TITLE`. Pass 1 moved that to container start instead (one
+          # image, promoted staging → production, is stamped per-environment by
+          # packages/frontend/docker-entrypoint-app-title.sh at boot) — nothing
+          # to do here any more.
+
+          - task: Bash@3
+            displayName: "Build and push all images (buildx, registry cache)"
             inputs:
-              containerRegistry: "$(DOCKER_SERVICE_CONNECTION)"
-              repository: "jpsfs/redinfo-frontend"
-              # `build`, not `buildAndPush`: the Docker@2 task silently drops
-              # `arguments` for buildAndPush (logs a warning, doesn't fail —
-              # easy to miss). `--target prod` happened to work anyway since
-              # prod is the Dockerfile's last stage anyway, but VITE_APP_TITLE
-              # was never actually reaching `docker build` — every environment
-              # was silently getting the ARG's Dockerfile default. Split into
-              # build + push below so `arguments` actually takes effect.
-              command: "build"
-              Dockerfile: "packages/frontend/Dockerfile"
-              buildContext: "$(Build.SourcesDirectory)"
-              # Build only the production stage so the dev stage is never run in CI.
-              # The dev stage is used by docker compose locally only.
-              arguments: '--target prod --build-arg VITE_APP_TITLE="$(viteAppTitle)"'
-              tags: |
-                $(Build.BuildId)
-                $(Build.SourceBranchName)
+              targetType: "inline"
+              script: |
+                set -euo pipefail
 
-          - task: Docker@2
-            displayName: "Push frontend image"
-            inputs:
-              containerRegistry: "$(DOCKER_SERVICE_CONNECTION)"
-              repository: "jpsfs/redinfo-frontend"
-              command: "push"
-              tags: |
-                $(Build.BuildId)
-                $(Build.SourceBranchName)
+                SHORT_SHA="$(shortSha)"
+                BRANCH="$(Build.SourceBranchName)"
 
-          - task: Docker@2
-            displayName: "Build and push legacy-migration job image"
-            inputs:
-              containerRegistry: "$(DOCKER_SERVICE_CONNECTION)"
-              repository: "jpsfs/redinfo-legacy-migration"
-              command: "buildAndPush"
-              Dockerfile: "packages/legacy-migration/Dockerfile"
-              buildContext: "$(Build.SourcesDirectory)"
-              # `job`, not the default `base` target: bundles its own throwaway
-              # MariaDB (see job-entrypoint.sh) — `base` is what docker-compose.
-              # migration.yml uses locally against a separately-run mysql-legacy.
-              arguments: "--target job"
-              tags: |
-                $(Build.BuildId)
-                $(Build.SourceBranchName)
+                # image -> "dockerfile|target" (target blank = single-stage Dockerfile)
+                declare -A IMAGES=(
+                  [backend]="packages/backend/Dockerfile|prod"
+                  [frontend]="packages/frontend/Dockerfile|prod"
+                  [legacy-migration]="packages/legacy-migration/Dockerfile|job"
+                  [inem-worker]="packages/inem-worker/Dockerfile|"
+                )
 
-          - task: Docker@2
-            displayName: "Build and push inem-worker image"
-            inputs:
-              containerRegistry: "$(DOCKER_SERVICE_CONNECTION)"
-              repository: "jpsfs/redinfo-inem-worker"
-              command: "buildAndPush"
-              Dockerfile: "packages/inem-worker/Dockerfile"
-              buildContext: "$(Build.SourcesDirectory)"
-              tags: |
-                $(Build.BuildId)
-                $(Build.SourceBranchName)
+                for img in "${!IMAGES[@]}"; do
+                  IFS='|' read -r dockerfile target <<< "${IMAGES[$img]}"
+                  targetArgs=()
+                  if [ -n "${target}" ]; then
+                    targetArgs=(--target "${target}")
+                  fi
 
+                  echo "── Building jpsfs/redinfo-${img} (${dockerfile}${target:+, target ${target}}) ──"
+                  docker buildx build \
+                    -f "${dockerfile}" "$(Build.SourcesDirectory)" \
+                    "${targetArgs[@]}" \
+                    --cache-from "type=registry,ref=jpsfs/redinfo-${img}:buildcache" \
+                    --cache-to "type=registry,ref=jpsfs/redinfo-${img}:buildcache,mode=max" \
+                    --provenance=false --sbom=false \
+                    -t "jpsfs/redinfo-${img}:sha-${SHORT_SHA}" \
+                    -t "jpsfs/redinfo-${img}:${BRANCH}" \
+                    --push
+                done
+
+  # ── DeployStaging ─────────────────────────────────────────────────────────
   - stage: DeployStaging
     displayName: Deploy to staging
-    dependsOn: BuildAndPush
-    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/env/staging'))
+    dependsOn: [Prepare, Build]
+    # Build is legitimately SKIPPED when the commit's images already exist —
+    # succeeded() alone would treat that skip as "not succeeded" and block every
+    # promotion forever after the first build. Failed/Canceled is the only
+    # outcome that should actually stop a deploy; Skipped and Succeeded both mean
+    # "there is a good image to deploy".
+    condition: |
+      and(
+        eq(variables['Build.SourceBranch'], 'refs/heads/env/staging'),
+        in(dependencies.Prepare.result, 'Succeeded', 'SucceededWithIssues'),
+        not(in(dependencies.Build.result, 'Failed', 'Canceled'))
+      )
     variables:
       - group: redinfo-staging
+      - name: shortSha
+        value: $[ stageDependencies.Prepare.Resolve.outputs['EmitVars.shortSha'] ]
     jobs:
       - deployment: DeployToStaging
         displayName: Deploy Helm chart to staging
         pool:
-          vmImage: "ubuntu-latest"
+          name: vm-redcross
         environment: redinfo-staging
         strategy:
           runOnce:
@@ -138,22 +239,118 @@ stages:
                 - template: templates/deploy-env.yml
                   parameters:
                     envName: staging
-                    sshServiceConnection: $(SSH_SERVICE_CONNECTION)
-                    imageTag: $(Build.BuildId)
+                    imageTag: sha-$(shortSha)
 
+  # ── MarkStagingVerified — the only proof a commit passed staging ────────────
+  - stage: MarkStagingVerified
+    displayName: Mark commit verified on staging
+    dependsOn: DeployStaging
+    condition: succeeded()
+    variables:
+      shortSha: $[ stageDependencies.Prepare.Resolve.outputs['EmitVars.shortSha'] ]
+    jobs:
+      - job: MarkVerified
+        pool:
+          vmImage: "ubuntu-latest"
+        steps:
+          - task: Docker@2
+            displayName: "Login to Docker Hub"
+            inputs:
+              containerRegistry: "$(DOCKER_SERVICE_CONNECTION)"
+              command: "login"
+
+          - task: Bash@3
+            displayName: "Create staging-ok-<sha> marker"
+            inputs:
+              targetType: "inline"
+              script: |
+                set -euo pipefail
+                # A registry-side manifest copy (no layer pull/push, ~1s), run on
+                # the hosted agent deliberately so nothing depends on buildx
+                # existing on vm-redcross. This marker's existence is the ONLY
+                # thing that proves "commit sha-$(shortSha) deployed to staging
+                # and passed its post-deploy smoke check" — PromotionGate below
+                # refuses production for any commit lacking it, short of
+                # forceProduction.
+                docker buildx imagetools create \
+                  -t "jpsfs/redinfo-backend:staging-ok-$(shortSha)" \
+                  "jpsfs/redinfo-backend:sha-$(shortSha)"
+                echo "Marked sha-$(shortSha) as staging-verified."
+
+  # ── PromotionGate ────────────────────────────────────────────────────────
+  - stage: PromotionGate
+    displayName: Promotion gate (staging → production)
+    dependsOn: [Prepare, Build]
+    condition: |
+      and(
+        eq(variables['Build.SourceBranch'], 'refs/heads/env/production'),
+        in(dependencies.Prepare.result, 'Succeeded', 'SucceededWithIssues'),
+        not(in(dependencies.Build.result, 'Failed', 'Canceled'))
+      )
+    variables:
+      shortSha: $[ stageDependencies.Prepare.Resolve.outputs['EmitVars.shortSha'] ]
+      stagingVerified: $[ stageDependencies.Prepare.Resolve.outputs['EmitVars.stagingVerified'] ]
+    jobs:
+      - job: Gate
+        pool:
+          vmImage: "ubuntu-latest"
+        steps:
+          - checkout: none
+          - task: Bash@3
+            displayName: "Verify this commit passed staging (or forceProduction)"
+            inputs:
+              targetType: "inline"
+              script: |
+                set -euo pipefail
+                SHA="$(shortSha)"
+                # Boolean pipeline parameters render as True/False (capitalized)
+                # when substituted into a script body — normalize before
+                # comparing.
+                FORCE="${{ parameters.forceProduction }}"
+                FORCE="${FORCE,,}"
+
+                if [ "${FORCE}" = "true" ]; then
+                  echo "##vso[task.logissue type=warning]forceProduction=true — deploying commit ${SHA} ($(Build.SourceVersion)) to production WITHOUT a verified staging deploy."
+                  echo "##vso[task.logissue type=warning]This bypasses the promotion gate entirely. Make sure that was intentional."
+                  exit 0
+                fi
+
+                if [ "$(stagingVerified)" != "true" ]; then
+                  echo "##vso[task.logissue type=error]Refusing to deploy commit ${SHA} ($(Build.SourceVersion)) to production."
+                  echo "##vso[task.logissue type=error]No staging-ok-${SHA} marker exists in the registry — this exact commit has never had a successful, smoke-tested staging deploy."
+                  echo "##vso[task.logissue type=error]Fix: fast-forward this commit onto env/staging and push it there first; wait for DeployStaging + MarkStagingVerified to go green."
+                  echo "##vso[task.logissue type=error]Escape hatch: re-run this pipeline manually with the 'forceProduction' parameter set to true."
+                  exit 1
+                fi
+
+                echo "staging-ok-${SHA} marker found — commit verified on staging. Proceeding to production."
+
+  # ── DeployProduction ─────────────────────────────────────────────────────
   - stage: DeployProduction
     displayName: Deploy to production
-    dependsOn: BuildAndPush
-    condition: and(succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/env/production'))
+    dependsOn: [Prepare, Build, PromotionGate]
+    condition: |
+      and(
+        eq(variables['Build.SourceBranch'], 'refs/heads/env/production'),
+        in(dependencies.Prepare.result, 'Succeeded', 'SucceededWithIssues'),
+        not(in(dependencies.Build.result, 'Failed', 'Canceled')),
+        succeeded('PromotionGate')
+      )
     variables:
       - group: redinfo-production
+      - name: shortSha
+        value: $[ stageDependencies.Prepare.Resolve.outputs['EmitVars.shortSha'] ]
     jobs:
       - deployment: DeployToProduction
         displayName: Deploy Helm chart to production
         pool:
-          vmImage: "ubuntu-latest"
-        # Attach a manual approval check to this ADO Environment when production
-        # goes live — no YAML change needed, it's configured on the Environment itself.
+          name: vm-redcross
+        # A manual approval check is attached to this ADO Environment itself
+        # (Environments > redinfo-production > Approvals and checks) — not
+        # expressible in this YAML. It does not exist yet as of this pipeline
+        # redesign; it gets created separately once the first green
+        # self-hosted deploy proves the rest of this pipeline out. Until then,
+        # PromotionGate above is the only gate production has.
         environment: redinfo-production
         strategy:
           runOnce:
@@ -162,5 +359,19 @@ stages:
                 - template: templates/deploy-env.yml
                   parameters:
                     envName: production
-                    sshServiceConnection: $(SSH_SERVICE_CONNECTION)
-                    imageTag: $(Build.BuildId)
+                    imageTag: sha-$(shortSha)
+
+  # ── GenerateManuals — routed by commit message, never gates a deploy ───────
+  - stage: GenerateManuals
+    displayName: Generate operator manuals
+    # Depends on Prepare ONLY, deliberately: this stage must never block or
+    # gate a release, and no deploy stage depends on it either. A failure here
+    # is visible in this pipeline's run but affects nothing else.
+    dependsOn: Prepare
+    condition: eq(dependencies.Prepare.outputs['Resolve.EmitVars.isDocsCommit'], 'true')
+    jobs:
+      - job: GenerateManuals
+        pool:
+          vmImage: "ubuntu-latest"
+        steps:
+          - template: templates/generate-manuals.yml
