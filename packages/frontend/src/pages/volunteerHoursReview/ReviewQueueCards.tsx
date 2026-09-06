@@ -1,4 +1,6 @@
-import { Box, Button, Card, Checkbox, Chip, Stack, Typography } from '@mui/material';
+import { useState, MouseEvent } from 'react';
+import { Box, Button, Card, Checkbox, Chip, IconButton, Menu, MenuItem, Stack, Typography } from '@mui/material';
+import MoreVertIcon from '@mui/icons-material/MoreVert';
 import { formatMinutes, VolunteerHoursEntry } from '@redinfo/shared';
 import { useT } from '../../i18n/useT';
 import { activityTypeLabel } from '../../i18n/labels';
@@ -22,7 +24,38 @@ export interface ReviewQueueCardsProps {
   onToggle: (id: string) => void;
   onApprove: (entry: VolunteerHoursEntry) => void;
   onAdjust: (entry: VolunteerHoursEntry) => void;
+  onDismiss: (entry: VolunteerHoursEntry) => void;
 }
+
+const CardMenu = ({ entry, onDismiss }: { entry: VolunteerHoursEntry; onDismiss: (entry: VolunteerHoursEntry) => void }) => {
+  const t = useT();
+  const [anchor, setAnchor] = useState<HTMLElement | null>(null);
+  return (
+    <>
+      <IconButton
+        size="small"
+        aria-label={t('volunteerHoursReview.moreActions')}
+        onClick={(e: MouseEvent<HTMLElement>) => {
+          e.stopPropagation();
+          setAnchor(e.currentTarget);
+        }}
+        sx={{ minWidth: touchTargetSize, minHeight: touchTargetSize }}
+      >
+        <MoreVertIcon fontSize="small" />
+      </IconButton>
+      <Menu anchorEl={anchor} open={anchor !== null} onClose={() => setAnchor(null)}>
+        <MenuItem
+          onClick={() => {
+            setAnchor(null);
+            onDismiss(entry);
+          }}
+        >
+          {t('volunteerHoursReview.dismissButton')}
+        </MenuItem>
+      </Menu>
+    </>
+  );
+};
 
 /**
  * Mobile card list — tapping the card body (not the action buttons) toggles
@@ -30,7 +63,15 @@ export interface ReviewQueueCardsProps {
  * gestures: undiscoverable, and a mis-swipe is only recoverable via the
  * Approved tab.
  */
-export const ReviewQueueCards = ({ entries, selected, savingIds, onToggle, onApprove, onAdjust }: ReviewQueueCardsProps) => {
+export const ReviewQueueCards = ({
+  entries,
+  selected,
+  savingIds,
+  onToggle,
+  onApprove,
+  onAdjust,
+  onDismiss,
+}: ReviewQueueCardsProps) => {
   const t = useT();
   return (
     <Stack spacing={1.5}>
@@ -58,9 +99,12 @@ export const ReviewQueueCards = ({ entries, selected, savingIds, onToggle, onApp
                   <Typography variant="body1" sx={{ fontWeight: 600 }}>
                     {entry.user ? `${entry.user.firstName} ${entry.user.lastName}` : entry.userId}
                   </Typography>
-                  <Typography variant="body1" sx={{ fontWeight: 600 }}>
-                    {formatMinutes(entry.proposedMinutes)}
-                  </Typography>
+                  <Stack direction="row" spacing={0.5} alignItems="center" onClick={(e) => e.stopPropagation()}>
+                    <Typography variant="body1" sx={{ fontWeight: 600 }}>
+                      {formatMinutes(entry.proposedMinutes)}
+                    </Typography>
+                    <CardMenu entry={entry} onDismiss={onDismiss} />
+                  </Stack>
                 </Stack>
                 <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap sx={{ mt: 0.5 }}>
                   {ROTA_CATEGORIES.has(entry.activityType) ? (

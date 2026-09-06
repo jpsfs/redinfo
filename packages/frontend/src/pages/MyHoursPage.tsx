@@ -40,6 +40,8 @@ import { useT } from '../i18n/useT';
 import { activityTypeLabel } from '../i18n/labels';
 import { formatDayLabel } from '../utils/dates';
 import { TimeRangeField } from '../components/TimeRangeField';
+import { useIsMobile } from '../hooks/useIsMobile';
+import { touchTargetSize } from '../layout/design-tokens';
 
 /** Defaults a fresh entry to 19:00–20:00 — evening is when most activities logged by hand happen. */
 const DEFAULT_START_MINUTE = 19 * 60;
@@ -108,7 +110,12 @@ const EntryRow = ({
         <Chip size="small" color="warning" variant="outlined" label={t('myHours.flagPossiblyLeftEarly')} />
       )}
       {entry.status === VolunteerHoursStatus.PENDING && (
-        <Button size="small" startIcon={<EditIcon fontSize="small" />} onClick={() => onEdit(entry)}>
+        <Button
+          size="small"
+          startIcon={<EditIcon fontSize="small" />}
+          onClick={() => onEdit(entry)}
+          sx={{ minHeight: touchTargetSize }}
+        >
           {t('myHours.editButton')}
         </Button>
       )}
@@ -118,6 +125,7 @@ const EntryRow = ({
           color="error"
           startIcon={<DeleteIcon fontSize="small" />}
           onClick={() => onDelete(entry)}
+          sx={{ minHeight: touchTargetSize }}
         >
           {t('volunteerHoursReview.deleteMineButton')}
         </Button>
@@ -145,6 +153,7 @@ const EntryRow = ({
  */
 export const MyHoursPage = () => {
   const t = useT();
+  const fullScreen = useIsMobile();
   const { identity } = useGetIdentity();
   const viewerId = String(identity?.id ?? '');
   const [hours, setHours] = useState<MyVolunteerHoursResponse | null>(null);
@@ -254,14 +263,21 @@ export const MyHoursPage = () => {
     <Card sx={{ mt: 2 }}>
       <Title title={t('myHours.pageTitle')} />
       <CardContent>
-        <Stack direction="row" alignItems="flex-start" justifyContent="space-between" sx={{ mb: 1 }}>
+        <Stack
+          direction="row"
+          alignItems="flex-start"
+          justifyContent="space-between"
+          flexWrap="wrap"
+          useFlexGap
+          sx={{ mb: 1 }}
+        >
           <Box>
             <Typography variant="h6">{t('myHours.heading')}</Typography>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 2, maxWidth: 640 }}>
               {t('myHours.subheading')}
             </Typography>
           </Box>
-          <Button variant="contained" startIcon={<AddIcon />} onClick={openDialog}>
+          <Button variant="contained" startIcon={<AddIcon />} onClick={openDialog} sx={{ minHeight: touchTargetSize }}>
             {t('myHours.logButton')}
           </Button>
         </Stack>
@@ -306,7 +322,7 @@ export const MyHoursPage = () => {
         )}
       </CardContent>
 
-      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} fullWidth maxWidth="xs">
+      <Dialog open={dialogOpen} onClose={() => setDialogOpen(false)} fullWidth maxWidth="xs" fullScreen={fullScreen}>
         <DialogTitle>{t('myHours.logDialogTitle')}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>
@@ -368,7 +384,7 @@ export const MyHoursPage = () => {
         </DialogActions>
       </Dialog>
 
-      <Dialog open={editing !== null} onClose={() => setEditing(null)} fullWidth maxWidth="xs">
+      <Dialog open={editing !== null} onClose={() => setEditing(null)} fullWidth maxWidth="xs" fullScreen={fullScreen}>
         <DialogTitle>{t('myHours.editDialogTitle')}</DialogTitle>
         <DialogContent>
           <Stack spacing={2} sx={{ mt: 1 }}>

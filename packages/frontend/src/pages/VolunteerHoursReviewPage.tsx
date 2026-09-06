@@ -261,7 +261,7 @@ export const VolunteerHoursReviewPage = () => {
               {t('volunteerHoursReview.subheading')}
             </Typography>
           </Box>
-          <Stack direction="row" spacing={1}>
+          <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
             {can([Action.MANAGE_VOLUNTEER_HOURS]) && (
               <Button variant="outlined" onClick={() => setBulkHoursOpen(true)}>
                 {t('bulkHours.openButton')}
@@ -346,6 +346,7 @@ export const VolunteerHoursReviewPage = () => {
                     onToggle={toggleSelect}
                     onApprove={handleApprove}
                     onAdjust={(entry) => setAdjusting(entry)}
+                    onDismiss={(entry) => setDismissing(entry)}
                   />
                 ) : (
                   <ReviewQueueTable

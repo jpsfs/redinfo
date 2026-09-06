@@ -26,7 +26,11 @@ export const TimeRangeField = ({
   const t = useT();
   const minutes = minutesBetweenTimes(startMinute, endMinute);
   return (
-    <Stack direction="row" spacing={1} alignItems="center">
+    // flexWrap: two native time inputs plus the duration label are too wide
+    // for a phone's content width in one line (e.g. inside a per-row override
+    // in BulkHoursDialog's volunteer list) — wrapping keeps every field fully
+    // visible instead of clipping or forcing horizontal scroll.
+    <Stack direction="row" spacing={1} alignItems="center" flexWrap="wrap" useFlexGap>
       <TimeField
         ariaLabel={t('timeRangeField.startAria')}
         value={startMinute}

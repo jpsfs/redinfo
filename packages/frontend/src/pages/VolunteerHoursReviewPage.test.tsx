@@ -492,4 +492,17 @@ describe('VolunteerHoursReviewPage — mobile', () => {
 
     expect(await screen.findByText(/1 selected/)).toBeInTheDocument();
   });
+
+  it('dismiss is reachable from a card, same as the desktop row menu', async () => {
+    const user = userEvent.setup();
+    mockReviewQueue([CLEAN_ENTRY]);
+    renderMobile(<VolunteerHoursReviewPage />, { locale: 'en' });
+    const card = (await screen.findByText('Bruno Alves')).closest('.MuiCard-root') as HTMLElement;
+
+    await user.click(within(card).getByLabelText('More actions'));
+    await user.click(await screen.findByRole('menuitem', { name: 'Dismiss' }));
+    await user.click(screen.getByRole('button', { name: 'Dismiss' }));
+
+    expect(await screen.findByText('Dismissing needs a reason.')).toBeInTheDocument();
+  });
 });

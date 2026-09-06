@@ -12,6 +12,7 @@ import {
 import { messages } from '../i18n/i18nProvider';
 import { MyHoursPage } from './MyHoursPage';
 import { apiFetch } from '../api';
+import { renderMobile } from '../test/renderMobile';
 
 vi.mock('../api', () => ({ apiFetch: vi.fn(), apiDownload: vi.fn() }));
 
@@ -517,5 +518,27 @@ describe('MyHoursPage', () => {
         expect.objectContaining({ method: 'DELETE' }),
       ),
     );
+  });
+});
+
+describe('MyHoursPage — mobile', () => {
+  beforeEach(() => {
+    mockApiFetch.mockReset();
+    mockApiFetch.mockResolvedValue({
+      entries: [ENTRY],
+      totalApprovedMinutes: 0,
+      totalPendingMinutes: 240,
+    });
+  });
+
+  it('opens the log dialog fullscreen, same as the review page dialogs', async () => {
+    const user = userEvent.setup();
+    renderMobile(<MyHoursPage />, { locale: 'en' });
+    await screen.findByText('Emergency');
+
+    await user.click(screen.getByRole('button', { name: 'Log hours' }));
+
+    const dialog = await screen.findByRole('dialog');
+    expect(dialog.className).toMatch(/MuiDialog-paperFullScreen/);
   });
 });
