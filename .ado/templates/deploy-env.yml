@@ -1,34 +1,70 @@
-# Shared deploy steps for one environment. The calling stage is responsible for
-# pulling in that environment's `redinfo-<envName>` variable group (secrets referenced
-# below come from there) and for the branch condition that gates the stage.
+# Shared deploy steps for one environment, run on the self-hosted `vm-redcross`
+# agent (same machine as the k8s cluster) — no SSH hop any more. The calling
+# stage is responsible for pulling in that environment's `redinfo-<envName>`
+# variable group (secrets referenced below come from there) and for the branch
+# condition that gates the stage.
 parameters:
   - name: envName # "staging" | "production" — must match values.<envName>.yaml
-    type: string
-  - name: sshServiceConnection
     type: string
   - name: imageTag
     type: string
 
 steps:
+  # Deployment jobs do not check out source by default — this must be explicit,
+  # unlike a plain `job:`.
   - checkout: self
+    fetchDepth: 1
 
   - task: Bash@3
-    displayName: "Install prerequisites"
+    displayName: "Preflight: confirm helm/kubectl actually run as this agent"
     inputs:
       targetType: "inline"
       script: |
         set -euo pipefail
-        sudo apt-get update -y
-        sudo apt-get install -y openssh-client tar
 
-  - task: Bash@3
-    displayName: "Package chart (${{ parameters.envName }})"
-    inputs:
-      targetType: "inline"
-      script: |
-        set -euo pipefail
-        cd "$(Build.SourcesDirectory)/deploy"
-        tar -czf "$(Build.ArtifactStagingDirectory)/redinfo-chart.tgz" redinfo
+        resolve_bin() {
+          local preferred="$1" fallback="$2"
+          if command -v "${preferred}" >/dev/null 2>&1; then
+            echo "${preferred}"
+          elif command -v "${fallback}" >/dev/null 2>&1; then
+            echo "${fallback}"
+          else
+            echo ""
+          fi
+        }
+
+        HELM_BIN="$(resolve_bin microk8s.helm3 helm)"
+        KUBECTL_BIN="$(resolve_bin microk8s.kubectl kubectl)"
+
+        fail_with_group_hint() {
+          echo "##vso[task.logissue type=error]$1" >&2
+          echo "##vso[task.logissue type=error]The ADO agent's service account most likely needs to be added to the 'microk8s' group on this host (sudo usermod -aG microk8s <agent-user>, then restart the agent service so the new group membership takes effect)." >&2
+          exit 1
+        }
+
+        if [ -z "${HELM_BIN}" ]; then
+          fail_with_group_hint "Neither microk8s.helm3 nor helm is on PATH for this agent."
+        fi
+        if [ -z "${KUBECTL_BIN}" ]; then
+          fail_with_group_hint "Neither microk8s.kubectl nor kubectl is on PATH for this agent."
+        fi
+
+        # A binary on PATH proves nothing by itself — actually run each one to
+        # prove the agent's service account can talk to the cluster (this is
+        # the single most likely first-run failure on a fresh self-hosted
+        # agent: the binary resolves, but the account can't reach the
+        # microk8s socket/group).
+        if ! ${HELM_BIN} version >/dev/null 2>&1; then
+          fail_with_group_hint "'${HELM_BIN} version' failed to run."
+        fi
+        if ! ${KUBECTL_BIN} version --client >/dev/null 2>&1; then
+          fail_with_group_hint "'${KUBECTL_BIN} version --client' failed to run."
+        fi
+
+        echo "HELM_BIN=${HELM_BIN}"
+        echo "KUBECTL_BIN=${KUBECTL_BIN}"
+        echo "##vso[task.setvariable variable=HELM_BIN]${HELM_BIN}"
+        echo "##vso[task.setvariable variable=KUBECTL_BIN]${KUBECTL_BIN}"
 
   - task: Bash@3
     displayName: "Render secrets values file (${{ parameters.envName }})"
@@ -39,8 +75,8 @@ steps:
         # Secret variables from the `redinfo-${{ parameters.envName }}` group are not
         # expanded via $(VAR) macro syntax into free-form script text — they're only
         # available once explicitly mapped below as process env vars. Writing them to
-        # a values file (rather than `--set` on the remote command line) also keeps
-        # them out of `ps aux`/shell history on the deploy host.
+        # a values file (rather than `--set` on the command line) also keeps them out
+        # of `ps aux`/shell history on the deploy host.
 
         # Optional-per-environment vars (RESEND_API_KEY, NOTIFICATION_EMAIL_FROM,
         # VAPID_*): when a variable doesn't exist ANYWHERE in scope — root pipeline
@@ -68,7 +104,7 @@ steps:
         INEM_PASSWORD="$(unmacro "${INEM_PASSWORD:-}")"
         INEM_WORKER_TOKEN="$(unmacro "${INEM_WORKER_TOKEN:-}")"
 
-        cat > "$(Build.ArtifactStagingDirectory)/secrets.yaml" <<EOF
+        cat > "$(Agent.TempDirectory)/secrets.yaml" <<EOF
         secrets:
           JWT_SECRET: "${JWT_SECRET}"
           IDENTITY_ENCRYPTION_KEYS: "${IDENTITY_ENCRYPTION_KEYS}"
@@ -98,6 +134,7 @@ steps:
             password: "${POSTGRES_PASSWORD}"
             postgresPassword: "${POSTGRES_PASSWORD}"
         EOF
+        chmod 600 "$(Agent.TempDirectory)/secrets.yaml"
     env:
       JWT_SECRET: $(JWT_SECRET)
       IDENTITY_ENCRYPTION_KEYS: $(IDENTITY_ENCRYPTION_KEYS)
@@ -136,53 +173,13 @@ steps:
       LEGACY_PROD_MYSQL_PASSWORD: $(LEGACY_PROD_MYSQL_PASSWORD)
       LEGACY_PROD_MYSQL_DATABASE: $(LEGACY_PROD_MYSQL_DATABASE)
 
-  - task: CopyFilesOverSSH@0
-    displayName: "Copy packaged chart + secrets to remote host (${{ parameters.envName }})"
+  - task: Bash@3
+    displayName: "Clear stale Helm release lock, if any (${{ parameters.envName }})"
     inputs:
-      sshEndpoint: "${{ parameters.sshServiceConnection }}"
-      sourceFolder: "$(Build.ArtifactStagingDirectory)"
-      contents: |
-        redinfo-chart.tgz
-        secrets.yaml
-      targetFolder: "/tmp"
-
-  - task: SSH@0
-    displayName: "Extract and deploy chart on remote host (${{ parameters.envName }})"
-    inputs:
-      sshEndpoint: "${{ parameters.sshServiceConnection }}"
-      runOptions: "inline"
-      inline: |
+      targetType: "inline"
+      script: |
         set -euo pipefail
-        cleanup() {
-          rm -f /tmp/redinfo-chart.tgz /tmp/secrets.yaml || true
-          rm -rf /tmp/redinfo || true
-        }
-        trap cleanup EXIT
-
         ENV_NAME="${{ parameters.envName }}"
-        VALUES_FILE="/tmp/redinfo/values.${ENV_NAME}.yaml"
-        # Tag by immutable Build.BuildId rather than the moving env-name tag used
-        # previously — guarantees a real rollout without relying on pullPolicy=Always.
-        IMAGE_OVERRIDES="--set-string image.backend.repository=jpsfs/redinfo-backend,image.backend.tag=${{ parameters.imageTag }},image.backend.pullPolicy=IfNotPresent,image.frontend.repository=jpsfs/redinfo-frontend,image.frontend.tag=${{ parameters.imageTag }},image.frontend.pullPolicy=IfNotPresent,image.legacyMigration.repository=jpsfs/redinfo-legacy-migration,image.legacyMigration.tag=${{ parameters.imageTag }},image.legacyMigration.pullPolicy=IfNotPresent,image.inemWorker.repository=jpsfs/redinfo-inem-worker,image.inemWorker.tag=${{ parameters.imageTag }},image.inemWorker.pullPolicy=IfNotPresent"
-
-        mkdir -p /tmp/redinfo
-        tar -xzf /tmp/redinfo-chart.tgz -C /tmp
-
-        HELM_BIN=""
-        if command -v microk8s.helm3 >/dev/null 2>&1; then
-          microk8s.status --wait || true
-          HELM_BIN="microk8s.helm3"
-        elif command -v helm >/dev/null 2>&1; then
-          HELM_BIN="helm"
-        else
-          echo "No helm found on remote host (expected microk8s.helm3 or helm)" >&2
-          exit 2
-        fi
-
-        if [ ! -f "${VALUES_FILE}" ]; then
-          echo "Missing ${VALUES_FILE} in packaged chart" >&2
-          exit 2
-        fi
 
         # A previous run that died mid-operation (agent killed, host rebooted,
         # even --atomic's own rollback getting interrupted) leaves the release
@@ -192,24 +189,36 @@ steps:
         # though nothing is actually running. Safe to clear unconditionally:
         # this stage never runs two deploys of the same release concurrently,
         # so a secret in one of these states is always stale, not a real lock.
-        KUBECTL_BIN=""
-        if command -v microk8s.kubectl >/dev/null 2>&1; then
-          KUBECTL_BIN="microk8s.kubectl"
-        elif command -v kubectl >/dev/null 2>&1; then
-          KUBECTL_BIN="kubectl"
+        STUCK_SECRETS=$($(KUBECTL_BIN) get secrets -n "${ENV_NAME}" \
+          -l "owner=helm,name=redinfo,status in (pending-install,pending-upgrade,pending-rollback)" \
+          -o name 2>/dev/null || true)
+        if [ -n "${STUCK_SECRETS}" ]; then
+          echo "Clearing stale Helm release lock(s) before upgrade:"
+          echo "${STUCK_SECRETS}"
+          echo "${STUCK_SECRETS}" | xargs -r $(KUBECTL_BIN) delete -n "${ENV_NAME}"
         fi
-        if [ -n "${KUBECTL_BIN}" ]; then
-          STUCK_SECRETS=$(${KUBECTL_BIN} get secrets -n "${ENV_NAME}" \
-            -l "owner=helm,name=redinfo,status in (pending-install,pending-upgrade,pending-rollback)" \
-            -o name 2>/dev/null || true)
-          if [ -n "${STUCK_SECRETS}" ]; then
-            echo "Clearing stale Helm release lock(s) before upgrade:"
-            echo "${STUCK_SECRETS}"
-            echo "${STUCK_SECRETS}" | xargs -r "${KUBECTL_BIN}" delete -n "${ENV_NAME}"
-          fi
-        else
-          echo "No kubectl found on remote host — skipping stuck-release check" >&2
+
+  - task: Bash@3
+    displayName: "helm upgrade --install (${{ parameters.envName }})"
+    inputs:
+      targetType: "inline"
+      script: |
+        set -euo pipefail
+        ENV_NAME="${{ parameters.envName }}"
+        VALUES_FILE="$(Build.SourcesDirectory)/deploy/redinfo/values.${ENV_NAME}.yaml"
+        SECRETS_FILE="$(Agent.TempDirectory)/secrets.yaml"
+
+        if [ ! -f "${VALUES_FILE}" ]; then
+          echo "##vso[task.logissue type=error]Missing ${VALUES_FILE}" >&2
+          exit 2
         fi
+
+        # Tag by the commit's short SHA (sha-<shortSha>) now, not the old
+        # immutable-but-meaningless Build.BuildId — same "pin an exact,
+        # traceable image" guarantee, but the tag now identifies the commit
+        # that produced the image, which is what makes staging → production
+        # promotion-by-fast-forward meaningful (see .ado/README.md).
+        IMAGE_OVERRIDES="--set-string image.backend.repository=jpsfs/redinfo-backend,image.backend.tag=${{ parameters.imageTag }},image.backend.pullPolicy=IfNotPresent,image.frontend.repository=jpsfs/redinfo-frontend,image.frontend.tag=${{ parameters.imageTag }},image.frontend.pullPolicy=IfNotPresent,image.legacyMigration.repository=jpsfs/redinfo-legacy-migration,image.legacyMigration.tag=${{ parameters.imageTag }},image.legacyMigration.pullPolicy=IfNotPresent,image.inemWorker.repository=jpsfs/redinfo-inem-worker,image.inemWorker.tag=${{ parameters.imageTag }},image.inemWorker.pullPolicy=IfNotPresent"
 
         # --timeout covers post-install/post-upgrade hooks too (job-seed, and
         # — where legacyMigration.enabled — job-legacy-migration: a fresh
@@ -219,8 +228,65 @@ steps:
         # actually failing, still rolls the whole release back at this
         # deadline — raise it further if legacy production's real dataset
         # ever makes that a false alarm.
-        "${HELM_BIN}" upgrade --install redinfo /tmp/redinfo -n "${ENV_NAME}" --create-namespace \
-          --dependency-update \
-          -f "${VALUES_FILE}" -f /tmp/secrets.yaml \
+        #
+        # No --dependency-update: the postgresql subchart is vendored at
+        # deploy/redinfo/charts/postgresql-18.5.6.tgz (see Chart.lock) — that
+        # flag would only make a pointless network call to the deprecated
+        # bitnami chart repo.
+        $(HELM_BIN) upgrade --install redinfo "$(Build.SourcesDirectory)/deploy/redinfo" -n "${ENV_NAME}" --create-namespace \
+          -f "${VALUES_FILE}" -f "${SECRETS_FILE}" \
           ${IMAGE_OVERRIDES} \
           --history-max 5 --atomic --timeout 20m --wait
+
+  - task: Bash@3
+    displayName: "Smoke check (${{ parameters.envName }})"
+    inputs:
+      targetType: "inline"
+      script: |
+        set -euo pipefail
+        ENV_NAME="${{ parameters.envName }}"
+        LOCAL_PORT=18080
+
+        # Resolved dynamically rather than assumed, since the exact Service
+        # name is a Helm-templated resource name, not a fixed string.
+        SVC="$($(KUBECTL_BIN) -n "${ENV_NAME}" get svc -l app.kubernetes.io/component=frontend -o name | head -1)"
+        if [ -z "${SVC}" ]; then
+          echo "##vso[task.logissue type=error]No frontend Service found in namespace ${ENV_NAME} (label app.kubernetes.io/component=frontend) — cannot smoke-check." >&2
+          exit 1
+        fi
+
+        # Going through the frontend Service (not the pod directly) exercises
+        # the real nginx → backend proxy path end to end — `--wait`'s readiness
+        # probes above only prove each pod is individually ready, not that
+        # routing between them actually works.
+        $(KUBECTL_BIN) -n "${ENV_NAME}" port-forward "${SVC}" "${LOCAL_PORT}:80" >/tmp/port-forward.log 2>&1 &
+        PF_PID=$!
+        trap 'kill ${PF_PID} >/dev/null 2>&1 || true' EXIT
+
+        check() {
+          local path="$1"
+          local deadline=$((SECONDS + 60))
+          while [ ${SECONDS} -lt ${deadline} ]; do
+            if curl -fsS -o /dev/null -w '%{http_code}' "http://127.0.0.1:${LOCAL_PORT}${path}" 2>/dev/null | grep -q '^200$'; then
+              echo "OK: ${path}"
+              return 0
+            fi
+            sleep 3
+          done
+          echo "##vso[task.logissue type=error]Smoke check failed: ${path} never returned HTTP 200 within 60s." >&2
+          cat /tmp/port-forward.log >&2 || true
+          return 1
+        }
+
+        # Give port-forward a moment to actually establish before the first probe.
+        sleep 3
+        check "/"
+        check "/api/health"
+
+  - task: Bash@3
+    displayName: "Clean up rendered secrets"
+    condition: always()
+    inputs:
+      targetType: "inline"
+      script: |
+        rm -f "$(Agent.TempDirectory)/secrets.yaml" || true
