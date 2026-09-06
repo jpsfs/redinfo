@@ -2174,6 +2174,10 @@ const MESSAGES = {
     pt: 'Não existe conta para esta conta Google/Microsoft. Pede a um administrador para a criar.',
     en: "There's no account for that Google/Microsoft sign-in. Ask an administrator to create one.",
   },
+  'login.oauthFailed': {
+    pt: 'A entrada falhou — se voltaste à aplicação depois de a colocar em segundo plano, tenta novamente.',
+    en: 'Sign-in failed — if you switched away from the app partway through, try again.',
+  },
   'login.localLoginDisabled': {
     pt: 'A entrada com palavra-passe está desativada — usa o Google ou o Microsoft.',
     en: 'Password sign-in is disabled — use Google or Microsoft instead.',

@@ -163,4 +163,20 @@ describe('LoginPage — local login disabled', () => {
       expect(await screen.findByText(/no account for that google\/microsoft sign-in/i)).toBeInTheDocument();
     },
   );
+
+  // `oauth_failed` (as opposed to `oauth_account_not_found` above) is what
+  // AuthController sends when the strategy itself failed — most commonly a
+  // mobile browser replaying the callback URL after its authorization code
+  // was already redeemed by the first, successful hit.
+  it('shows a distinct notification when the OAuth strategy itself failed', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(new Response(JSON.stringify({ localLoginEnabled: true }), { status: 200 }))),
+    );
+    window.history.replaceState(null, '', '/#/login?error=oauth_failed');
+
+    renderLoginPage();
+
+    expect(await screen.findByText(/sign-in failed/i)).toBeInTheDocument();
+  });
 });

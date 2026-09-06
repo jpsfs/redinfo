@@ -87,9 +87,10 @@ export class AuthController {
   @ApiExcludeEndpoint()
   @UseGuards(GoogleAuthGuard)
   async googleCallback(@Req() req: any, @Res() res: any) {
-    // No matching admin-provisioned account — see `GoogleAuthGuard.handleRequest`.
+    // No matching account, or a token-exchange failure — see
+    // `GoogleAuthGuard.handleRequest`, which sets `req.oauthError` for the latter.
     if (!req.user) {
-      return res.redirect(this.frontendRoute('/login?error=oauth_account_not_found'));
+      return res.redirect(this.frontendRoute(`/login?error=${this.oauthErrorCode(req)}`));
     }
     const remember = req.query.state === 'true';
     const tokens = await this.authService.login((req.user as User).id, remember);
@@ -110,7 +111,7 @@ export class AuthController {
   @UseGuards(MicrosoftAuthGuard)
   async microsoftCallback(@Req() req: any, @Res() res: any) {
     if (!req.user) {
-      return res.redirect(this.frontendRoute('/login?error=oauth_account_not_found'));
+      return res.redirect(this.frontendRoute(`/login?error=${this.oauthErrorCode(req)}`));
     }
     const remember = req.query.state === 'true';
     const tokens = await this.authService.login((req.user as User).id, remember);
@@ -118,6 +119,18 @@ export class AuthController {
   }
 
   // ── Redirecting back into the SPA ─────────────────────────────────────────────
+
+  /**
+   * Which flash message the login screen shows for a failed OAuth callback.
+   * `oauthError` (set by `GoogleAuthGuard`/`MicrosoftAuthGuard.handleRequest`)
+   * means the strategy itself failed — most commonly a mobile browser
+   * replaying the callback URL after its authorization code was already
+   * redeemed by the first, successful hit — as opposed to a clean `done(null,
+   * false)` for an OAuth identity with no matching admin-provisioned account.
+   */
+  private oauthErrorCode(req: any): 'oauth_failed' | 'oauth_account_not_found' {
+    return req.oauthError ? 'oauth_failed' : 'oauth_account_not_found';
+  }
 
   /**
    * Builds an absolute URL for an in-app route.

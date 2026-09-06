@@ -180,12 +180,24 @@ export const LoginPage = () => {
     // (`/#/login?error=...`, see `AuthController.frontendRoute`), so the
     // router's search is where it normally shows up. `window.location.search`
     // is the fallback for a backend still redirecting to the bare path.
-    const hasError = [search, window.location.search].some(
-      (qs) => new URLSearchParams(qs).get('error') === 'oauth_account_not_found',
-    );
-    if (!hasError) return;
+    //
+    // Two distinct codes come from AuthController.oauthErrorCode:
+    // `oauth_account_not_found` for a valid OAuth identity with no
+    // admin-provisioned account, `oauth_failed` for the strategy itself
+    // failing — most often a mobile browser replaying the callback URL
+    // after its authorization code was already redeemed.
+    const errorCode = [search, window.location.search]
+      .map((qs) => new URLSearchParams(qs).get('error'))
+      .find((code): code is 'oauth_account_not_found' | 'oauth_failed' =>
+        code === 'oauth_account_not_found' || code === 'oauth_failed',
+      );
+    if (!errorCode) return;
 
-    notify(t('login.oauthAccountNotFound'), { type: 'error' });
+    const message =
+      errorCode === 'oauth_account_not_found'
+        ? t('login.oauthAccountNotFound')
+        : t('login.oauthFailed');
+    notify(message, { type: 'error' });
     // One-shot flash param — strip it from both places so a manual refresh
     // doesn't re-show it. Never touch the hash here: it *is* the route.
     navigate('/login', { replace: true });

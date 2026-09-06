@@ -11,12 +11,12 @@ import { AuthController } from './auth.controller';
 
 const FRONTEND = 'https://staging-redcross.jpsfs.com';
 
-function makeController(user: unknown) {
+function makeController(user: unknown, oauthError?: unknown) {
   const authService = {
     login: jest.fn().mockResolvedValue({ accessToken: 'at', refreshToken: 'rt' }),
   };
   const controller = new AuthController(authService as never);
-  const req: any = { user, query: { state: 'true' } };
+  const req: any = { user, oauthError, query: { state: 'true' } };
   const res = { redirect: jest.fn() };
   return { controller, req, res, authService };
 }
@@ -76,5 +76,18 @@ describe.each(providers)('%s OAuth callback', (_provider, invoke) => {
 
     expect(authService.login).not.toHaveBeenCalled();
     expect(res.redirect).toHaveBeenCalledWith(`${FRONTEND}/#/login?error=oauth_account_not_found`);
+  });
+
+  it('sends a strategy failure (e.g. a replayed callback) to a distinct error code', async () => {
+    // Set by GoogleAuthGuard/MicrosoftAuthGuard.handleRequest when the
+    // provider's token exchange itself failed, as opposed to a clean
+    // done(null, false) for an unrecognized-but-valid OAuth identity.
+    process.env.FRONTEND_URL = FRONTEND;
+    const { controller, req, res, authService } = makeController(undefined, new Error('boom'));
+
+    await invoke(controller, req, res);
+
+    expect(authService.login).not.toHaveBeenCalled();
+    expect(res.redirect).toHaveBeenCalledWith(`${FRONTEND}/#/login?error=oauth_failed`);
   });
 });
