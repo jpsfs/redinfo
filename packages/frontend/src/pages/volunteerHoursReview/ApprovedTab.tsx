@@ -18,9 +18,11 @@ import { apiFetch } from '../../api';
 import { useT } from '../../i18n/useT';
 import { activityTypeLabel } from '../../i18n/labels';
 import { formatDate, addIsoDays, toIsoDate } from '../../utils/dates';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { useReviewQueue } from './useReviewQueue';
 import { ReviewFilters } from './ReviewFilters';
 import { DismissEntryDialog } from './DismissEntryDialog';
+import { ApprovedHistoryCards } from './ApprovedHistoryCards';
 
 function defaultRange() {
   const to = toIsoDate(new Date());
@@ -34,6 +36,7 @@ function defaultRange() {
  */
 export const ApprovedTab = () => {
   const t = useT();
+  const isMobile = useIsMobile();
   const range = defaultRange();
   const queue = useReviewQueue(VolunteerHoursStatus.APPROVED, { from: range.from, to: range.to });
   const [actingId, setActingId] = useState<string | null>(null);
@@ -89,7 +92,15 @@ export const ApprovedTab = () => {
           {t('volunteerHoursReview.noneAfterFilter')}
         </Typography>
       )}
-      {queue.data && queue.data.data.length > 0 && (
+      {queue.data && queue.data.data.length > 0 && isMobile && (
+        <ApprovedHistoryCards
+          entries={queue.data.data}
+          actingId={actingId}
+          onReopen={reopen}
+          onDismiss={setDismissing}
+        />
+      )}
+      {queue.data && queue.data.data.length > 0 && !isMobile && (
         <Table size="small">
           <TableHead>
             <TableRow>

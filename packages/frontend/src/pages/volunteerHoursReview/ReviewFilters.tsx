@@ -33,7 +33,11 @@ export const ReviewFilters = ({ filters, counts, onChange }: ReviewFiltersProps)
 
   return (
     <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.5} alignItems={{ sm: 'center' }} sx={{ py: 1 }}>
-      <Stack direction="row" spacing={1} sx={{ overflowX: 'auto', pb: { xs: 0.5, sm: 0 } }}>
+      {/* Wraps rather than scrolling horizontally: nested inside Card > CardContent
+          with no definite width along the way, an `overflowX: auto` row here never
+          actually clips — the unwrapped chip row instead stretches the whole page,
+          producing page-level horizontal scroll on a phone (see #164 follow-up). */}
+      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
         <CategoryChip
           label={t('volunteerHoursReview.filterAll', { count: counts.all })}
           selected={active === 'all'}
