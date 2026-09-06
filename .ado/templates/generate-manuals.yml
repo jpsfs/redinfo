@@ -1,0 +1,197 @@
+# Regenerates every operator manual under docs/*/ against a running,
+# dev-seeded stack, and publishes the PDFs as a pipeline artifact. Triggered
+# only by a `docs:`/`docs(<scope>):` tip commit (see Prepare's isDocsCommit in
+# .ado/deployment.yml) — never gates or blocks a deploy.
+#
+# docs/manual-operador/images/ is gitignored and untracked on purpose (see
+# commit 4e6563c) — the PDF's screenshots only ever exist by actually running
+# capture-screenshots.mjs against a live app, here or on a maintainer's
+# machine. There is no shortcut; a broken capture step must fail this stage
+# loudly rather than publish a manual with missing images.
+steps:
+  - checkout: self
+    fetchDepth: 1
+
+  - task: NodeTool@0
+    displayName: "Use Node 22"
+    inputs:
+      versionSpec: "22.x"
+
+  - task: Bash@3
+    displayName: "Enable corepack / pnpm"
+    inputs:
+      targetType: "inline"
+      script: |
+        set -euo pipefail
+        corepack enable
+        # Match the pnpm version pinned in every Dockerfile.
+        corepack prepare pnpm@10.32.1 --activate
+
+  - task: Bash@3
+    displayName: "Install pandoc"
+    inputs:
+      targetType: "inline"
+      script: |
+        set -euo pipefail
+        sudo apt-get update -y
+        sudo apt-get install -y pandoc
+
+  - task: Bash@3
+    displayName: "pnpm install (repo root)"
+    inputs:
+      targetType: "inline"
+      script: |
+        set -euo pipefail
+        # Needed so generate-pdf.mjs/capture-screenshots.mjs's
+        # require.resolve('playwright', { paths: [packages/inem-worker] })
+        # actually resolves.
+        pnpm install --frozen-lockfile
+
+  - task: Bash@3
+    displayName: "Install Chromium (Playwright)"
+    inputs:
+      targetType: "inline"
+      script: |
+        set -euo pipefail
+        pnpm --filter @redinfo/inem-worker exec playwright install --with-deps chromium
+
+  - task: Bash@3
+    displayName: "docker compose up -d --build"
+    inputs:
+      targetType: "inline"
+      script: |
+        set -euo pipefail
+        # No sudo: this is a hosted agent, unlike the local dev machine where
+        # docker needs sudo -n.
+        docker compose up -d --build
+
+  - task: Bash@3
+    displayName: "Wait for backend + frontend to answer"
+    inputs:
+      targetType: "inline"
+      script: |
+        set -euo pipefail
+        # The dev containers build packages/shared and run `prisma generate`
+        # on first start (see docker-compose.override.yml's backend command),
+        # so first boot is slow — a generous bounded retry loop, not a fixed
+        # sleep.
+        wait_for() {
+          local url="$1" name="$2"
+          local deadline=$((SECONDS + 300))
+          while [ ${SECONDS} -lt ${deadline} ]; do
+            if curl -fsS -o /dev/null "${url}" 2>/dev/null; then
+              echo "${name} is up."
+              return 0
+            fi
+            sleep 5
+          done
+          echo "##vso[task.logissue type=error]${name} never answered at ${url} within 300s." >&2
+          docker compose logs --tail 100 >&2 || true
+          return 1
+        }
+        wait_for "http://localhost:3000/health" "backend"
+        wait_for "http://localhost:5173/" "frontend"
+
+  - task: Bash@3
+    displayName: "Run dev seed data"
+    inputs:
+      targetType: "inline"
+      script: |
+        set -euo pipefail
+        # The `dev` Dockerfile stage that docker-compose.yml runs here has no
+        # entrypoint script and never migrates or seeds on its own (that only
+        # happens in the `prod` stage's docker-entrypoint.sh, which this
+        # stack doesn't use) — see README.md's manual "4. First time only"
+        # steps. All three have to run explicitly before a login can succeed.
+        docker compose exec -T backend pnpm prisma:migrate:deploy
+        docker compose exec -T backend pnpm prisma:seed
+        docker compose exec -T backend pnpm prisma:seed:dev
+
+        # Verify the account capture-screenshots.mjs logs in as actually
+        # exists, by actually logging in — the same check the script itself
+        # will perform, just failed loudly and early instead of mid-capture
+        # with a confusing screenshot of a login error.
+        HTTP_CODE=$(curl -s -o /tmp/login-check.json -w '%{http_code}' \
+          -X POST "http://localhost:3000/auth/login" \
+          -H 'Content-Type: application/json' \
+          -d '{"email":"ines.marques@redcross.local","password":"Volunteer123!"}')
+        if [ "${HTTP_CODE}" != "200" ]; then
+          echo "##vso[task.logissue type=error]Login as ines.marques@redcross.local failed (HTTP ${HTTP_CODE}) after running prisma:seed and prisma:seed:dev." >&2
+          echo "##vso[task.logissue type=error]That account is expected to come from packages/backend/prisma/seed-dev.ts — check the seed script ran cleanly (see the container logs above) rather than proceeding to capture screenshots against a half-seeded database." >&2
+          cat /tmp/login-check.json >&2 || true
+          exit 1
+        fi
+        echo "Login check OK — dev seed data present."
+
+  - task: Bash@3
+    displayName: "Generate every manual under docs/*/"
+    inputs:
+      targetType: "inline"
+      script: |
+        set -euo pipefail
+        FAILED=0
+
+        for dir in docs/*/; do
+          name="$(basename "${dir}")"
+          gen="${dir}generate-pdf.mjs"
+          [ -f "${gen}" ] || continue
+
+          echo "── ${name} ──"
+          capture="${dir}capture-screenshots.mjs"
+          if [ -f "${capture}" ]; then
+            node "${capture}"
+          fi
+
+          images_dir="${dir}images"
+          if [ ! -d "${images_dir}" ] || [ -z "$(ls -A "${images_dir}" 2>/dev/null)" ]; then
+            echo "##vso[task.logissue type=error]${name}: images/ is missing or empty after capture-screenshots.mjs — refusing to publish a manual with broken image references." >&2
+            FAILED=1
+            continue
+          fi
+
+          node "${gen}"
+
+          pdf=$(find "${dir}" -maxdepth 1 -name '*.pdf' | head -1)
+          if [ -z "${pdf}" ] || [ ! -s "${pdf}" ]; then
+            echo "##vso[task.logissue type=error]${name}: generate-pdf.mjs did not produce a non-empty PDF." >&2
+            FAILED=1
+            continue
+          fi
+          echo "OK: ${pdf}"
+        done
+
+        if [ "${FAILED}" != "0" ]; then
+          exit 1
+        fi
+
+  - task: Bash@3
+    displayName: "Stage PDFs for publishing"
+    inputs:
+      targetType: "inline"
+      script: |
+        set -euo pipefail
+        mkdir -p "$(Build.ArtifactStagingDirectory)/manuals"
+        found=0
+        for pdf in docs/*/*.pdf; do
+          [ -f "${pdf}" ] || continue
+          cp "${pdf}" "$(Build.ArtifactStagingDirectory)/manuals/"
+          found=1
+        done
+        if [ "${found}" != "1" ]; then
+          echo "##vso[task.logissue type=error]No manual PDFs found under docs/*/ to publish." >&2
+          exit 1
+        fi
+
+  - task: PublishPipelineArtifact@1
+    displayName: "Publish manuals artifact"
+    inputs:
+      targetPath: "$(Build.ArtifactStagingDirectory)/manuals"
+      artifact: "manuals"
+
+  - task: Bash@3
+    displayName: "docker compose down -v"
+    condition: always()
+    inputs:
+      targetType: "inline"
+      script: |
+        docker compose down -v || true
