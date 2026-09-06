@@ -61,6 +61,15 @@ web_modules/
 
 # Output of 'npm pack'
 *.tgz
+# ...except the Helm subchart this generic rule was accidentally also
+# catching: deploy/redinfo/charts/postgresql-*.tgz is meant to be vendored
+# (see Chart.lock, which pins it) so `helm upgrade` never needs a network
+# fetch from the deprecated Bitnami chart repo at deploy time — un-ignore it
+# specifically rather than widen the rule. Caught live: it was silently
+# missing from every checkout but this machine's, so `helm upgrade --install`
+# failed on the self-hosted agent the first time --dependency-update was
+# removed from the pipeline (see .ado/templates/deploy-env.yml).
+!deploy/redinfo/charts/*.tgz
 
 # Yarn Integrity file
 .yarn-integrity
