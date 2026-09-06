@@ -104,6 +104,49 @@ export const theme = createTheme({
     // Include react-admin's default component overrides first, then apply ours
     ...(defaultTheme.components as ThemeOptions['components']),
 
+    // ── Layout/List: let mobile content actually shrink to the viewport ────
+    // Flex items default to `min-width: auto`, which refuses to shrink an
+    // item below its own content's width. That's invisible almost
+    // everywhere, but react-admin's `<Layout>` and `<List>` roots are each a
+    // chain of nested flex containers between the app shell and one page's
+    // content (`.layout` itself even hardcodes `min-width: fit-content`, to
+    // protect the docked sidebar from being squeezed on a narrow *desktop*
+    // window) — so a single nowrap-and-scroll row anywhere down in a page
+    // (a horizontally scrolling filter-chip strip, see `ChipFilterRow`) can
+    // make any one link in that chain refuse to shrink too, turning what
+    // should be that one row's internal scroll into horizontal scroll for
+    // the whole page. Below `sm` there's no docked sidebar for
+    // `fit-content` to protect, so every link gets `min-width: 0` instead.
+    //
+    // Every class here is one of these two components' own generated
+    // classes (`RaLayout-*` from `ra-ui-materialui/src/layout/Layout.tsx`'s
+    // `LayoutClasses`, `RaList-*` from `.../list/ListView.tsx`'s
+    // `ListClasses`) — this is the full chain, not a guess at part of it;
+    // confirmed by walking `getBoundingClientRect()` on every ancestor of an
+    // overflowing `ChipFilterRow` in a real mobile browser.
+    RaLayout: {
+      styleOverrides: {
+        root: {
+          '@media (max-width: 599.95px)': {
+            minWidth: 0,
+            '& .RaLayout-appFrame': { minWidth: 0 },
+            '& .RaLayout-contentWithSidebar': { minWidth: 0 },
+            '& .RaLayout-content': { minWidth: 0 },
+          },
+        },
+      },
+    },
+    RaList: {
+      styleOverrides: {
+        root: {
+          '@media (max-width: 599.95px)': {
+            minWidth: 0,
+            '& .RaList-main': { minWidth: 0 },
+          },
+        },
+      },
+    },
+
     // ── App bar: Red Cross red ──────────────────────────────────────────────
     MuiAppBar: {
       defaultProps: { elevation: 2 },

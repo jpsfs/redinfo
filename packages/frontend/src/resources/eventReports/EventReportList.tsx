@@ -21,6 +21,7 @@ import {
 } from '@redinfo/shared';
 import { apiFetch } from '../../api';
 import { CategoryChip } from '../../components/CategoryChip';
+import { ChipFilterRow } from '../../components/ChipFilterRow';
 import { useIsMobile } from '../../hooks/useIsMobile';
 import { reportTypeLabel } from '../../i18n/labels';
 import { useT } from '../../i18n/useT';
@@ -69,7 +70,7 @@ const TypeTabs = () => {
   const active = filterValues.type as EventReportType | undefined;
 
   return (
-    <Stack direction="row" spacing={1} sx={{ flexWrap: 'wrap' }} useFlexGap>
+    <ChipFilterRow>
       <Chip
         label={`${t('report.all')}${counts ? ` · ${counts.ALL}` : ''}`}
         color={active ? 'default' : 'primary'}
@@ -87,7 +88,7 @@ const TypeTabs = () => {
           sx={{ height: 40, fontWeight: 600, cursor: 'pointer' }}
         />
       ))}
-    </Stack>
+    </ChipFilterRow>
   );
 };
 
