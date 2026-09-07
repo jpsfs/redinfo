@@ -61,6 +61,10 @@ steps:
       targetType: "inline"
       script: |
         set -euo pipefail
+        # .env.example's defaults are enough for this stage: capture-screenshots.mjs
+        # logs in with email/password (seeded below), never touches OAuth, so the
+        # placeholder Google/Microsoft credentials are never exercised.
+        cp .env.example .env
         # No sudo: this is a hosted agent, unlike the local dev machine where
         # docker needs sudo -n.
         docker compose up -d --build
