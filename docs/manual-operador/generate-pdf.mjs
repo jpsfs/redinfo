@@ -1,6 +1,13 @@
 #!/usr/bin/env node
 /**
- * Generates manual.pdf (A4) from manual.md — for printing or distribution.
+ * Generates manual_emergencyoperator.pdf (A4) from manual.md — for printing or
+ * distribution.
+ *
+ * The output filename is fixed rather than derived from manual.md's own name:
+ * `.ado/templates/generate-manuals.yml` publishes every manual's generate-pdf
+ * output as one flat `manuals` artifact, and `manual_emergencyoperator.pdf` is
+ * this manual's stable identity in that artifact — one delegation may in time
+ * publish more than one manual (coordinator, driver, …), each its own PDF.
  *
  * Two steps, each with the lightest tool that does the job (no LaTeX/texlive):
  *   1. pandoc converts the Markdown into a standalone HTML file (images embedded).
@@ -24,7 +31,7 @@ const require = createRequire(import.meta.url);
 const { chromium } = require(require.resolve('playwright', { paths: [path.join(repoRoot, 'packages/inem-worker')] }));
 
 const mdFile = path.join(scriptDir, 'manual.md');
-const pdfFile = path.join(scriptDir, 'manual.pdf');
+const pdfFile = path.join(scriptDir, 'manual_emergencyoperator.pdf');
 const tmp = mkdtempSync(path.join(tmpdir(), 'manual-operador-'));
 const htmlFile = path.join(tmp, 'manual.html');
 

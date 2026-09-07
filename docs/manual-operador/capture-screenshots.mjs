@@ -129,6 +129,46 @@ async function main() {
     await page.waitForTimeout(1200);
     await shot(page, '11-live-activation');
 
+    // Walks the run forward one stamp at a time, exactly as a crew would tap
+    // through it — each stamp both records the moment and advances the run
+    // to its next screen (see `LIVE_RUN_STATE_RULES`, shared), so a screenshot
+    // after each tap is the next screen in the walk. Fields are left blank
+    // throughout, same as every other form screenshot in this manual: these
+    // illustrate the screen's shape, not a filled example.
+    await page.getByRole('button', { name: 'A CAMINHO' }).click();
+    await page.waitForTimeout(800);
+    await shot(page, '12-live-enroute');
+
+    await page.getByRole('button', { name: 'CHEGUEI AO LOCAL' }).click();
+    await page.waitForTimeout(800);
+    await shot(page, '13-live-scene');
+
+    // Assessment is a branch off "on scene", reached and left deliberately —
+    // it does not sit on the walk above (see `LIVE_RUN_WALK`, shared).
+    await page.getByRole('button', { name: 'Avaliação' }).click();
+    await page.waitForTimeout(800);
+    await shot(page, '14-live-assessment');
+    await page.getByRole('button', { name: 'CONCLUIR AVALIAÇÃO' }).first().click();
+    await page.waitForTimeout(600);
+
+    await page.getByRole('button', { name: 'SAÍDA DO LOCAL' }).click();
+    await page.waitForTimeout(800);
+    await shot(page, '15-live-transport');
+
+    await page.getByRole('button', { name: 'CHEGADA AO HOSPITAL' }).click();
+    await page.waitForTimeout(800);
+    await shot(page, '16-live-closing');
+
+    await page.getByRole('button', { name: 'PASSAGEM AO HOSPITAL' }).click();
+    await page.waitForTimeout(800);
+    await shot(page, '17-live-handover');
+    await page.getByRole('button', { name: 'Fechar' }).click();
+    await page.waitForTimeout(400);
+
+    await page.getByRole('button', { name: 'Registar material' }).click();
+    await page.waitForTimeout(600);
+    await shot(page, '18-live-materials');
+
     console.log('\nScreenshots done.');
 
     // ── Event reports, again on a desktop viewport ──────────────────────
@@ -151,15 +191,15 @@ async function main() {
     await desktopPage.waitForTimeout(2000);
 
     await desktopPage.goto(`${BASE_URL}/#/my-reports`, { waitUntil: 'networkidle' });
-    await shot(desktopPage, '12-reports-list-desktop');
+    await shot(desktopPage, '19-reports-list-desktop');
 
     await desktopPage.getByText('Novo relatório', { exact: true }).click();
     await desktopPage.waitForTimeout(1000);
-    await shot(desktopPage, '13-reports-type-desktop');
+    await shot(desktopPage, '20-reports-type-desktop');
 
     await desktopPage.locator('[data-testid="choose-EMERGENCY"]').click();
     await desktopPage.waitForTimeout(1000);
-    await shot(desktopPage, '14-reports-form-desktop');
+    await shot(desktopPage, '21-reports-form-desktop');
 
     await desktopContext.close();
 
