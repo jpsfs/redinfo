@@ -13,8 +13,9 @@
 #   - `Build` only runs when there's something to build (or `forceRebuild`).
 #   - `PromotionGate` refuses to deploy to production a commit that never had a
 #     green, smoke-tested staging deploy — unless `forceProduction` overrides it.
-#   - `GenerateManuals` is routed by commit message alone and can never block or
-#     gate a deploy — see its own comment below.
+#   - `GenerateManuals` is routed by commit message alone, or the manual
+#     `forceGenerateManuals` override, and can never block or gate a deploy —
+#     see its own comment below.
 trigger:
   branches:
     include:
@@ -32,6 +33,10 @@ parameters:
     default: false
   - name: forceRebuild
     displayName: "Rebuild and re-push all four images even if sha-<shortSha> already exists"
+    type: boolean
+    default: false
+  - name: forceGenerateManuals
+    displayName: "Regenerate manuals even without a docs commit"
     type: boolean
     default: false
 
@@ -395,8 +400,16 @@ stages:
     # Depends on Prepare ONLY, deliberately: this stage must never block or
     # gate a release, and no deploy stage depends on it either. A failure here
     # is visible in this pipeline's run but affects nothing else.
+    #
+    # `forceGenerateManuals` is the manual-run escape hatch for regenerating
+    # the manuals without an empty `docs:` commit — see the Force parameters
+    # section in .ado/README.md.
     dependsOn: Prepare
-    condition: eq(dependencies.Prepare.outputs['Resolve.EmitVars.isDocsCommit'], 'true')
+    condition: |
+      or(
+        eq(dependencies.Prepare.outputs['Resolve.EmitVars.isDocsCommit'], 'true'),
+        eq(${{ parameters.forceGenerateManuals }}, true)
+      )
     jobs:
       - job: GenerateManuals
         pool:

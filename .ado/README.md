@@ -50,8 +50,8 @@ Prepare ──┬─▶ Build ──┬─▶ DeployStaging ──▶ MarkStagin
 - **MarkStagingVerified** stamps the `staging-ok-<shortSha>` marker described below — the only
   thing standing between "staging deploy succeeded" and "this commit is allowed to production".
 - **PromotionGate** enforces that marker on the way to production, `forceProduction` bypasses it.
-- **GenerateManuals** depends on `Prepare` alone and is routed purely by commit message — see
-  below.
+- **GenerateManuals** depends on `Prepare` alone and is routed by commit message or the manual
+  `forceGenerateManuals` override — see below.
 
 ### The skipped-`Build` condition
 
@@ -89,8 +89,8 @@ commit anywhere near `DeployProduction`.
 
 ## Force parameters
 
-Both are pipeline parameters (`type: boolean, default: false`) settable only from a **manual**
-run ("Run pipeline" in the UI, `az pipelines run --parameters`, or the REST API's
+All three are pipeline parameters (`type: boolean, default: false`) settable only from a
+**manual** run ("Run pipeline" in the UI, `az pipelines run --parameters`, or the REST API's
 `templateParameters`) — a push can never set them, there is no `trigger:`-side mechanism for
 pipeline parameters.
 
@@ -102,16 +102,20 @@ pipeline parameters.
   Use only for a deliberate, understood exception (e.g. a production-only hotfix that was never
   meant to go through staging) — the normal path is always: land the fix on `env/staging`, let it
   deploy and smoke-test, then fast-forward onto `env/production`.
+- **`forceGenerateManuals`** — run `GenerateManuals` even though the tip commit isn't a `docs`
+  commit. This is the intended way to regenerate the manuals on demand — it replaces triggering
+  the stage with an empty `docs:` commit.
 
 ## Manuals
 
 `GenerateManuals` triggers when the **tip commit** on `dev` / `env/staging` / `env/production` has
 a subject matching Conventional Commits' `docs` type — `docs: ...` or `docs(<scope>): ...`,
-optionally with a `!` (e.g. `docs(manual-operador)!: ...`). It regenerates every manual under
-`docs/*/` (see `.ado/templates/generate-manuals.yml`) against a real, dev-seeded stack it stands
-up itself, and publishes the resulting PDFs as the `manuals` pipeline artifact. It depends only on
-`Prepare`, by design — it never gates and can never block a deploy; a failure here shows up on
-that one run and nothing else.
+optionally with a `!` (e.g. `docs(manual-operador)!: ...`) — or when a manual run sets
+`forceGenerateManuals`. It regenerates every manual under `docs/*/` (see
+`.ado/templates/generate-manuals.yml`) against a real, dev-seeded stack it stands up itself, and
+publishes the resulting PDFs as the `manuals` pipeline artifact. It depends only on `Prepare`, by
+design — it never gates and can never block a deploy; a failure here shows up on that one run and
+nothing else.
 
 A commit that only touches docs but shouldn't trigger a manual regeneration (typos, wording,
 internal notes) should use a different Conventional Commits type, e.g. `chore(docs): ...`.
