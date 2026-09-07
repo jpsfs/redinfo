@@ -1,11 +1,16 @@
+import { ReactNode } from 'react';
 import { describe, expect, it } from 'vitest';
 import { cleanup, render, screen } from '@testing-library/react';
 import { AdminContext, testDataProvider } from 'react-admin';
 import polyglotI18nProvider from 'ra-i18n-polyglot';
+import { MemoryRouter } from 'react-router-dom';
+import { ThemeProvider } from '@mui/material/styles';
 import { UserRole } from '@redinfo/shared';
 import { messages } from '../i18n/i18nProvider';
-import { renderMobile } from '../test/renderMobile';
-import { RedInfoMenu, RedInfoSidebar } from './AppLayout';
+import { renderMobile, stubMobileMatchMedia } from '../test/renderMobile';
+import { theme } from './theme';
+import { useHideAppBar } from './AppChromeContext';
+import { AppLayout, RedInfoMenu, RedInfoSidebar } from './AppLayout';
 
 /**
  * Pinned to English: this file's assertions predate #180 and check the
@@ -193,5 +198,77 @@ describe('RedInfoSidebar', () => {
     expect(emittedCss).toMatch(/max-height:\s*100dvh/);
     expect(emittedCss).toMatch(/overflow-y:\s*auto/);
     expect(emittedCss).toMatch(/overscroll-behavior:\s*contain/);
+  });
+});
+
+/** A screen that draws its own header, standing in for `EventReportEditor`'s mobile layout. */
+const HideAppBarProbe = ({ hide }: { hide: boolean }) => {
+  useHideAppBar(hide);
+  return <div>page content</div>;
+};
+
+/**
+ * The full `<Layout>` (`RedInfoMenu`'s parent), so `getPermissions` and
+ * `getIdentity` both need answering — unlike `renderMenuAs` above, a bare
+ * object with only `getPermissions` is enough: `useGetIdentity` checks
+ * `typeof authProvider.getIdentity === 'function'` before calling it and
+ * degrades to an empty identity otherwise.
+ *
+ * Passed as `render`'s `wrapper`, not inlined into the element tree, so
+ * `rerender` (used below to check the app bar comes back on unmount) keeps
+ * every provider in place and only swaps `AppLayout`'s children.
+ */
+function AppLayoutProviders({ children }: { children: ReactNode }) {
+  const authProvider = {
+    login: () => Promise.resolve(),
+    logout: () => Promise.resolve(),
+    checkAuth: () => Promise.resolve(),
+    checkError: () => Promise.resolve(),
+    getPermissions: () => Promise.resolve([UserRole.EMERGENCY_OPERATIONAL]),
+  };
+  const i18nProvider = polyglotI18nProvider(messages, 'en');
+
+  return (
+    <MemoryRouter>
+      <AdminContext
+        dataProvider={testDataProvider()}
+        authProvider={authProvider}
+        i18nProvider={i18nProvider}
+      >
+        <ThemeProvider theme={theme}>{children}</ThemeProvider>
+      </AdminContext>
+    </MemoryRouter>
+  );
+}
+
+function renderAppLayoutWith(children: ReactNode, width?: number) {
+  cleanup();
+  stubMobileMatchMedia(width);
+  return render(<AppLayout>{children}</AppLayout>, { wrapper: AppLayoutProviders });
+}
+
+describe('AppLayout — a screen with its own header can hide the app bar', () => {
+  // #enhancement: EventReportEditor draws its own sticky app bar on mobile
+  // (step title, progress bar) — same idea as live mode's own header. Left
+  // stacked under RedInfoAppBar, the wizard read as two top bars where live
+  // mode has one. `useHideAppBar` is the (route-independent) signal a screen
+  // uses to ask for the real one to step aside — see `AppChromeContext.tsx`.
+  it('hides the app bar and drawer trigger once a mounted screen asks for it', () => {
+    renderAppLayoutWith(<HideAppBarProbe hide />);
+    expect(document.querySelector('.MuiAppBar-root')).not.toBeInTheDocument();
+    expect(document.querySelector('.layout')).toHaveClass('redinfo-no-app-bar');
+  });
+
+  it('keeps the app bar when the mounted screen does not ask (e.g. desktop, or before a type is chosen)', () => {
+    renderAppLayoutWith(<HideAppBarProbe hide={false} />);
+    expect(document.querySelector('.MuiAppBar-root')).toBeInTheDocument();
+  });
+
+  it('restores the app bar once the requesting screen unmounts', () => {
+    const { rerender } = renderAppLayoutWith(<HideAppBarProbe hide />);
+    expect(document.querySelector('.MuiAppBar-root')).not.toBeInTheDocument();
+
+    rerender(<AppLayout>{null}</AppLayout>);
+    expect(document.querySelector('.MuiAppBar-root')).toBeInTheDocument();
   });
 });

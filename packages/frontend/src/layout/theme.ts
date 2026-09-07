@@ -133,6 +133,15 @@ export const theme = createTheme({
             '& .RaLayout-contentWithSidebar': { minWidth: 0 },
             '& .RaLayout-content': { minWidth: 0 },
           },
+          // `.RaLayout-appFrame` always reserves `marginTop` for the app
+          // bar, whether or not one is actually rendered — it's a static
+          // rule on the wrapper, not conditional on the `appBar` prop's
+          // output. `AppLayout` marks the root with this class exactly when
+          // it swaps in `NullAppBar` (the mobile event report wizard, which
+          // draws its own sticky header — see `AppLayout.tsx`), so without
+          // this the wizard would trade one doubled bar for a blank gap the
+          // same height.
+          '&.redinfo-no-app-bar .RaLayout-appFrame': { marginTop: 0 },
         },
       },
     },

@@ -34,6 +34,7 @@ import {
 import { apiFetch } from '../../api';
 import { categoryColor } from '../../components/CategoryChip';
 import { useIsMobile } from '../../hooks/useIsMobile';
+import { useHideAppBar } from '../../layout/AppChromeContext';
 import { Translate, problemLabel, reportTypeLabel, warningLabel } from '../../i18n/labels';
 import { useT } from '../../i18n/useT';
 import { uploadAttachment } from './uploadAttachment';
@@ -107,6 +108,12 @@ export const EventReportEditor = ({ form, report = null }: EventReportEditorProp
   const isMobile = useIsMobile();
   const notify = useNotify();
   const redirect = useRedirect();
+
+  // The mobile layout below draws its own sticky app bar (step title,
+  // progress bar) — ask AppLayout to step its own aside while it's up, the
+  // same way live mode owns its own header. `isMobile` is passed straight
+  // through: the desktop layout has no header of its own, so it never asks.
+  useHideAppBar(isMobile);
 
   const lookups = useReportLookups(form.draft);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);

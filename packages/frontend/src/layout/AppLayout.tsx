@@ -27,6 +27,7 @@ import { PersonAvatar } from '../components/PersonAvatar';
 import { accountRoleLabel, Translate } from '../i18n/labels';
 import { useT } from '../i18n/useT';
 import { NAV_SECTIONS, NavEntry } from './navigation';
+import { AppChromeProvider, useAppChrome } from './AppChromeContext';
 import {
   borderRadiusMedium,
   colorRedCrossRedDark,
@@ -79,6 +80,24 @@ const RedInfoAppBar = () => (
     <TitlePortal />
   </AppBar>
 );
+
+/**
+ * On mobile, `EventReportEditor` renders its own sticky app bar (step title,
+ * progress bar) — same idea as live mode's own header. Left in place, it
+ * stacks underneath this app's normal `RedInfoAppBar`, giving the wizard two
+ * top bars where live mode has one. `RedInfoSidebar`'s hamburger trigger and
+ * user menu live in that outer bar too, so hiding it also matches live
+ * mode's other trait: no drawer navigation available mid-flow, on purpose —
+ * the crew's attention stays on the step they're filling in.
+ *
+ * `EventReportEditor` claims this via `useHideAppBar` (see
+ * `AppChromeContext.tsx`) rather than `AppLayout` matching the URL itself:
+ * `/event-reports/create` also renders the "which kind of event" chooser
+ * before a type is picked, which has no header of its own and still needs
+ * the real one. A route match can't tell those two states apart — only the
+ * screen that is actually about to draw a competing header can.
+ */
+const NullAppBar = () => null;
 
 /**
  * Two-line "Emergência / Modo em campo" block the live entry renders as its
@@ -379,6 +398,29 @@ const RedInfoUserMenu = () => {
   );
 };
 
+/**
+ * `AppChromeProvider` wraps `<Layout>` itself, not just its children: the
+ * `hideAppBar` flag it holds has to reach both the app bar `<Layout>` picks
+ * (read here, in `AppLayoutChrome`) and the routed screen that requests it
+ * (a descendant of `props.children`, rendered inside `<Layout>`) — so the
+ * provider needs to sit one level above where `<Layout>` itself is called,
+ * not inside it.
+ */
+const AppLayoutChrome = (props: LayoutProps) => {
+  const { hideAppBar } = useAppChrome();
+  return (
+    <Layout
+      {...props}
+      appBar={hideAppBar ? NullAppBar : RedInfoAppBar}
+      menu={RedInfoMenu}
+      sidebar={RedInfoSidebar}
+      className={hideAppBar ? 'redinfo-no-app-bar' : undefined}
+    />
+  );
+};
+
 export const AppLayout = (props: LayoutProps) => (
-  <Layout {...props} appBar={RedInfoAppBar} menu={RedInfoMenu} sidebar={RedInfoSidebar} />
+  <AppChromeProvider>
+    <AppLayoutChrome {...props} />
+  </AppChromeProvider>
 );
