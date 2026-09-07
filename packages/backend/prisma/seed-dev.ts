@@ -34,6 +34,7 @@ import { ScheduleAutofillService } from '../src/schedules/schedule-autofill.serv
 import { VolunteerHoursService } from '../src/volunteer-hours/volunteer-hours.service';
 import { EventReportsService } from '../src/event-reports/event-reports.service';
 import { EventReportNumbering } from '../src/event-reports/event-report-numbering';
+import { StockMovementsService } from '../src/inventory/stock-movements.service';
 
 /**
  * Rich fixtures for manual testing against the running dev stack — the
@@ -735,7 +736,12 @@ async function main() {
   console.log('✅ Volunteer hours generated from the published schedules, plus a few manual entries.');
 
   // ── Event reports ─────────────────────────────────────────────────────────
-  const eventReports = new EventReportsService(prisma, shiftSchedule, new EventReportNumbering());
+  const eventReports = new EventReportsService(
+    prisma,
+    shiftSchedule,
+    new EventReportNumbering(),
+    new StockMovementsService(prisma),
+  );
 
   const barcelos = await locality('Barcelos', 'Barcelos');
   const campo = await locality('União das Freguesias de Campo e Tamel (são Pedro Fins)', 'Barcelos');
