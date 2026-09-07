@@ -54,7 +54,7 @@ const hospital = (
 
 function makeService(
   prismaOverrides: Record<string, unknown> = {},
-  municipalityForLocality: unknown = COIMBRA,
+  originForLocality: unknown = COIMBRA,
 ) {
   const prisma = {
     hospital: {
@@ -77,9 +77,9 @@ function makeService(
   } as unknown as PrismaService;
 
   const geography = {
-    municipalityForLocality: jest.fn(() =>
-      municipalityForLocality
-        ? Promise.resolve(municipalityForLocality)
+    originForLocality: jest.fn(() =>
+      originForLocality
+        ? Promise.resolve(originForLocality)
         : Promise.reject(new NotFoundException('Locality gone')),
     ),
   } as unknown as GeographyService;
@@ -166,7 +166,7 @@ describe('the picker', () => {
 
     expect(result.map((entry) => entry.id)).toEqual(['a', 'z']);
     expect(result.every((entry) => entry.distanceKm === null)).toBe(true);
-    expect(geography.municipalityForLocality).not.toHaveBeenCalled();
+    expect(geography.originForLocality).not.toHaveBeenCalled();
   });
 
   it('offers only active hospitals', async () => {

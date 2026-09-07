@@ -3,13 +3,19 @@ import { join } from 'node:path';
 import { PrismaClient } from '@prisma/client';
 import { foldForSearch } from '@redinfo/shared';
 
+interface LocalityFixture {
+  name: string;
+  latitude: number | null;
+  longitude: number | null;
+}
+
 interface MunicipalityFixture {
   ineCode: string;
   name: string;
   district: string;
   latitude: number;
   longitude: number;
-  localities: string[];
+  localities: LocalityFixture[];
 }
 
 interface LocalityDataset {
@@ -152,8 +158,12 @@ async function loadDataset(): Promise<LocalityDataset> {
  * Idempotent by design — the INE code identifies a municipality and
  * `(municipalityId, name)` a locality, so re-running updates in place rather
  * than duplicating. That matters because this runs on every deployment: a new
- * dataset (a municipality renamed, a freguesia merged) should land by
- * re-seeding, not by a hand-written migration.
+ * dataset (a municipality renamed, a freguesia merged, a freguesia gaining a
+ * coordinate it didn't have last time this ran) should land by re-seeding,
+ * not by a hand-written migration — which is also why localities are upserted
+ * one at a time rather than `createMany`/`skipDuplicates`: `latitude`/
+ * `longitude` are mutable now, so an already-seeded row still needs the
+ * update arm.
  *
  * Nothing is ever deleted here. A locality that leaves the dataset may still be
  * named by a filed report, and the report is the record.
@@ -183,24 +193,26 @@ export async function seedGeography(prisma: PrismaClient): Promise<void> {
     });
     municipalitiesWritten += 1;
 
-    // `skipDuplicates` rather than a per-row upsert: the only mutable column is
-    // `searchName`, which is derived from `name` — the unique key — so a row
-    // that already exists cannot be stale.
-    const created = await prisma.locality.createMany({
-      data: fixture.localities.map((name) => ({
-        name,
-        searchName: foldForSearch(name),
-        municipalityId: municipality.id,
-      })),
-      skipDuplicates: true,
-    });
-    localitiesWritten += created.count;
+    for (const locality of fixture.localities) {
+      await prisma.locality.upsert({
+        where: { municipalityId_name: { municipalityId: municipality.id, name: locality.name } },
+        create: {
+          name: locality.name,
+          searchName: foldForSearch(locality.name),
+          municipalityId: municipality.id,
+          latitude: locality.latitude,
+          longitude: locality.longitude,
+        },
+        update: {
+          latitude: locality.latitude,
+          longitude: locality.longitude,
+        },
+      });
+      localitiesWritten += 1;
+    }
   }
 
-  console.log(
-    `🗺  Geography: ${municipalitiesWritten} municipalities, ${localitiesWritten} new localities ` +
-      `(dataset holds ${dataset.localityCount})`,
-  );
+  console.log(`🗺  Geography: ${municipalitiesWritten} municipalities, ${localitiesWritten} localities`);
 
   await seedHospitals(prisma);
 }

@@ -24,6 +24,8 @@ type LocalityRow = {
   id: string;
   name: string;
   municipalityId: string;
+  latitude?: number | null;
+  longitude?: number | null;
   municipality?: MunicipalityRow | null;
 };
 
@@ -50,6 +52,25 @@ export function serializeLocality(row: LocalityRow): Locality {
     municipalityId: row.municipalityId,
     ...(row.municipality ? { municipality: serializeMunicipality(row.municipality) } : {}),
   };
+}
+
+/**
+ * Where a locality actually is, for distance math: its own coordinate when
+ * the seed found one for it, else its municipality's centroid. A município
+ * can be tens of kilometres across, so that centroid is a fallback, never
+ * the first choice — the same "own point, else the area's" rule
+ * `Hospital.latitude/longitude` uses. `null` only when neither is known,
+ * which the seed guarantees never happens for a municipality but can't
+ * guarantee for every freguesia in it.
+ */
+export function localityPosition(row: LocalityRow): GeographyOrigin | null {
+  if (typeof row.latitude === 'number' && typeof row.longitude === 'number') {
+    return { latitude: row.latitude, longitude: row.longitude };
+  }
+  if (row.municipality) {
+    return { latitude: row.municipality.latitude, longitude: row.municipality.longitude };
+  }
+  return null;
 }
 
 const MUNICIPALITY_SELECT = {
@@ -209,11 +230,14 @@ export class GeographyService {
     take: number,
   ): Locality[] {
     return rows
-      .map((row) => ({
-        row,
-        score: folded ? this.matchScore(row, folded, tokens) : 0,
-        distance: row.municipality ? distanceInKm(origin, row.municipality) : Number.POSITIVE_INFINITY,
-      }))
+      .map((row) => {
+        const position = localityPosition(row);
+        return {
+          row,
+          score: folded ? this.matchScore(row, folded, tokens) : 0,
+          distance: position ? distanceInKm(origin, position) : Number.POSITIVE_INFINITY,
+        };
+      })
       .sort(
         (a, b) =>
           b.score - a.score ||
@@ -227,14 +251,17 @@ export class GeographyService {
   /**
    * Localities near a point, nearest first — what "use my location" offers.
    *
-   * Resolved through municipalities because that is where coordinates live: the
-   * nearest few municipalities are found, then their localities are offered in
-   * that order. A crew standing in a village gets that village's municipality
-   * first and its neighbours next, which is the shortlist they actually need —
-   * and it costs one small query rather than a spatial index.
+   * The *candidate pool* is resolved through municipalities, because that
+   * bounds the query to one small `IN` lookup rather than a spatial index:
+   * the nearest few municipalities (by centroid) are found first, and every
+   * freguesia inside them is a candidate. `NEAREST_MUNICIPALITIES` is 3
+   * rather than 1 because a locality on a boundary can easily sit in a
+   * município whose *centroid* is not the nearest one.
    *
-   * `NEAREST_MUNICIPALITIES` is 3 because a locality on a boundary can easily
-   * be closer to the next council's centroid than its own.
+   * The final *order*, though, is each candidate's own precise distance
+   * (`localityPosition` — its own coordinate, falling back to its
+   * municipality's) — not the municipality's rank. Two freguesias of the same
+   * município are not equally close just because they share a council.
    */
   async nearestLocalities(
     latitude: number,
@@ -250,13 +277,11 @@ export class GeographyService {
 
     const NEAREST_MUNICIPALITIES = 3;
     const take = Math.max(1, Math.min(limit, LOCALITY_SEARCH_LIMIT));
+    const point = { latitude, longitude };
 
     const municipalities = await this.loadMunicipalities();
     const nearest = municipalities
-      .map((municipality) => ({
-        municipality,
-        distance: distanceInKm({ latitude, longitude }, municipality),
-      }))
+      .map((municipality) => ({ municipality, distance: distanceInKm(point, municipality) }))
       .sort((a, b) => a.distance - b.distance)
       .slice(0, NEAREST_MUNICIPALITIES);
 
@@ -265,23 +290,16 @@ export class GeographyService {
     const rows = await this.prisma.locality.findMany({
       where: { municipalityId: { in: nearest.map((entry) => entry.municipality.id) } },
       include: { municipality: MUNICIPALITY_SELECT },
-      orderBy: [{ name: 'asc' }],
     });
 
-    // Ordered by how far their municipality is, then by name — so the closest
-    // council's villages come first rather than being interleaved.
-    const rank = new Map(
-      nearest.map((entry, index) => [entry.municipality.id, index] as const),
-    );
-
     return rows
-      .sort(
-        (a, b) =>
-          (rank.get(a.municipalityId) ?? 0) - (rank.get(b.municipalityId) ?? 0) ||
-          a.name.localeCompare(b.name, 'pt-PT'),
-      )
+      .map((row) => {
+        const position = localityPosition(row);
+        return { row, distance: position ? distanceInKm(point, position) : Number.POSITIVE_INFINITY };
+      })
+      .sort((a, b) => a.distance - b.distance || a.row.name.localeCompare(b.row.name, 'pt-PT'))
       .slice(0, take)
-      .map(serializeLocality);
+      .map((entry) => serializeLocality(entry.row));
   }
 
   async findLocality(id: string): Promise<Locality> {
@@ -294,16 +312,19 @@ export class GeographyService {
   }
 
   /**
-   * The municipality a locality sits in, which is where its coordinate lives.
-   * Used to order hospitals by distance from a report's location.
+   * Where a locality is, for distance math — its own coordinate, falling back
+   * to its municipality's centroid (`localityPosition`). Used to order
+   * hospitals by distance from a report's location.
    */
-  async municipalityForLocality(localityId: string): Promise<Municipality> {
+  async originForLocality(localityId: string): Promise<GeographyOrigin> {
     const row = await this.prisma.locality.findUnique({
       where: { id: localityId },
       include: { municipality: MUNICIPALITY_SELECT },
     });
-    if (!row?.municipality) throw new NotFoundException(`Locality ${localityId} not found`);
-    return serializeMunicipality(row.municipality);
+    if (!row) throw new NotFoundException(`Locality ${localityId} not found`);
+    const position = localityPosition(row);
+    if (!position) throw new NotFoundException(`Locality ${localityId} has no known position`);
+    return position;
   }
 
   /** Every municipality, for the hospital form's picker. 308 rows, unpaged. */

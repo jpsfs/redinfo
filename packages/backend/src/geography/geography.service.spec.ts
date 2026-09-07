@@ -39,12 +39,20 @@ const BARCELOS = {
   longitude: -8.6151,
 };
 
-const locality = (name: string, searchName: string, municipality = COIMBRA, id = name) => ({
+const locality = (
+  name: string,
+  searchName: string,
+  municipality = COIMBRA,
+  id = name,
+  coords?: { latitude: number; longitude: number },
+) => ({
   id,
   name,
   searchName,
   municipalityId: municipality.id,
   municipality,
+  latitude: coords?.latitude ?? null,
+  longitude: coords?.longitude ?? null,
 });
 
 function makeService(
@@ -189,6 +197,23 @@ describe('searching localities', () => {
     expect(result.map((entry) => entry.id)).toEqual(['l-ceira', 'l-faro']);
   });
 
+  it('breaks a relevance tie using the locality’s own coordinate, not its município’s', async () => {
+    // Both are "Coimbra" localities and both match "a" the same way (a
+    // contains-match on their own name), so distance decides — and Taveiro's
+    // own coordinate, not the shared município centroid, is what should win.
+    const { service } = makeService([
+      locality('Ceira', 'ceira', COIMBRA, 'l-ceira', { latitude: 40.2111, longitude: -0.4289 }),
+      locality('Taveiro', 'taveiro', COIMBRA, 'l-taveiro', { latitude: 40.2111, longitude: -8.4289 }),
+    ]);
+
+    const result = await service.searchLocalities('a', LOCALITY_SEARCH_LIMIT, {
+      latitude: COIMBRA.latitude,
+      longitude: COIMBRA.longitude,
+    });
+
+    expect(result.map((entry) => entry.id)).toEqual(['l-taveiro', 'l-ceira']);
+  });
+
   it('breaks distance ties alphabetically, in Portuguese collation', async () => {
     const { service } = makeService([
       locality('Óbidos', 'obidos', COIMBRA, 'l-obidos'),
@@ -296,15 +321,26 @@ describe('resolving a locality', () => {
   it('is 404 when it does not exist', async () => {
     const { service } = makeService();
     await expect(service.findLocality('gone')).rejects.toThrow(NotFoundException);
-    await expect(service.municipalityForLocality('gone')).rejects.toThrow(NotFoundException);
+    await expect(service.originForLocality('gone')).rejects.toThrow(NotFoundException);
   });
 
-  it('hands back the municipality a hospital list is measured from', async () => {
+  it('falls back to the municipality centroid when the locality has no coordinate of its own', async () => {
     const { service } = makeService([locality('Taveiro', 'taveiro')]);
 
-    await expect(service.municipalityForLocality('Taveiro')).resolves.toMatchObject({
-      name: 'Coimbra',
+    await expect(service.originForLocality('Taveiro')).resolves.toEqual({
       latitude: 40.2111,
+      longitude: -8.4289,
+    });
+  });
+
+  it('prefers the locality’s own coordinate over its municipality’s, for the hospital list it measures', async () => {
+    const { service } = makeService([
+      locality('Taveiro', 'taveiro', COIMBRA, 'l-taveiro', { latitude: 40.15, longitude: -8.45 }),
+    ]);
+
+    await expect(service.originForLocality('l-taveiro')).resolves.toEqual({
+      latitude: 40.15,
+      longitude: -8.45,
     });
   });
 });
@@ -349,6 +385,24 @@ describe('nearest localities', () => {
 
     const where = (prisma.locality.findMany as jest.Mock).mock.calls[0][0].where;
     expect(where.municipalityId.in).toHaveLength(2);
+  });
+
+  it('ranks two localities of the same município by their own distance, not the município’s', async () => {
+    // Both sit in Coimbra, so a municipality-then-name ordering could only
+    // ever put them alphabetically — "Ceira" before "Taveiro". Their own
+    // coordinates say the opposite: Taveiro is right where the search point
+    // is, Ceira is 8° of longitude away.
+    const { service } = makeService(
+      [
+        locality('Ceira', 'ceira', COIMBRA, 'l-ceira', { latitude: 40.2111, longitude: -0.4289 }),
+        locality('Taveiro', 'taveiro', COIMBRA, 'l-taveiro', { latitude: 40.2111, longitude: -8.4289 }),
+      ],
+      { municipalities: [COIMBRA] },
+    );
+
+    const result = await service.nearestLocalities(40.2111, -8.4289);
+
+    expect(result.map((entry) => entry.id)).toEqual(['l-taveiro', 'l-ceira']);
   });
 
   it('refuses a point that is not on the globe', async () => {

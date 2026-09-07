@@ -14,16 +14,26 @@
  *
  *   • geoapi.pt — the authoritative list of municipalities (with their INE
  *     `dtmn` code) and the freguesias inside each one. No coordinates.
- *   • Wikidata  — a coordinate for each municipality. No INE code exposed on
- *     the items, so municipalities are joined on an accent- and
- *     punctuation-folded name; the script fails loudly if any municipality
- *     comes out without a coordinate.
+ *   • Wikidata  — a coordinate for each municipality, *and* — separately — a
+ *     coordinate for most individual freguesias. No INE code exposed on
+ *     either, so both are joined on an accent- and punctuation-folded name;
+ *     the script fails loudly if any municipality comes out without a
+ *     coordinate (there is no fallback for those).
  *
- * Coordinates are held per *municipality*, not per freguesia: they exist only
- * to order hospitals by distance, and hospitals are tens of kilometres apart
- * while a municipality is a handful across. One coordinate per municipality is
- * accurate enough for that ordering and keeps 3,000+ freguesias from carrying
- * a number nothing reads.
+ * A freguesia gets its own coordinate when Wikidata has one (~98% of them
+ * do); the rest carry `latitude`/`longitude: null` and fall back to their
+ * municipality's centroid at read time — the same "own point, else the
+ * area's" pattern `Hospital.latitude/longitude` already uses. A municipality
+ * can be tens of kilometres across, so that centroid was never a good enough
+ * stand-in for "where in it a specific freguesia actually is" — it only ever
+ * worked for ordering *other* municipalities' hospitals from many kilometres
+ * away, not for telling two freguesias of the same município apart.
+ *
+ * Wikidata labels freguesias two ways that don't match geoapi.pt's plain
+ * names, so both are tried when joining: a disambiguated freguesia is
+ * "Freguesia de <nome>" (stripped before matching), and a post-2013 merged
+ * parish is labelled without its "União das Freguesias de " prefix (also
+ * tried stripped, on our side).
  */
 
 import { writeFile, mkdir } from 'node:fs/promises';
@@ -131,6 +141,55 @@ async function fetchMunicipalityCoordinates() {
   return byName;
 }
 
+/** `Q1131296` = "freguesia of Portugal"; `P131` ("located in the administrative territorial entity") is its município. */
+const LOCALITY_COORDS_QUERY = `
+SELECT ?fLabel ?lat ?lon ?muniLabel WHERE {
+  ?f wdt:P31 wd:Q1131296 .
+  ?f wdt:P625 ?coord .
+  BIND(geof:latitude(?coord) AS ?lat)
+  BIND(geof:longitude(?coord) AS ?lon)
+  OPTIONAL { ?f wdt:P131 ?muni . }
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "pt,en". }
+}`;
+
+/** Wikidata's own disambiguator for a freguesia whose bare name collides with something else notable. */
+const FREGUESIA_PREFIX = /^freguesia (de|do|da) /i;
+/** geoapi.pt's prefix for a post-2013 merged parish; Wikidata labels the same place without it. */
+const UNIAO_PREFIX = /^uni(a|ã)o (das|de) freguesias (de|do|da) /i;
+
+/**
+ * A coordinate per freguesia, keyed by `${foldedName}|${foldedMunicipality}`
+ * — a município-scoped key because freguesia names are not unique across the
+ * country (e.g. several councils each have their own "Santa Maria"), so the
+ * name alone cannot be the key.
+ */
+async function fetchLocalityCoordinates() {
+  const url = `${WIKIDATA_SPARQL}?query=${encodeURIComponent(LOCALITY_COORDS_QUERY)}`;
+  const body = await fetchJson(url, { headers: { Accept: 'application/sparql-results+json' } });
+
+  const byKey = new Map();
+  for (const row of body.results.bindings) {
+    const name = row.fLabel?.value;
+    const municipality = row.muniLabel?.value;
+    if (!name || !municipality || !row.lat || !row.lon) continue;
+    const key = `${fold(name.replace(FREGUESIA_PREFIX, ''))}|${fold(municipality)}`;
+    // First answer wins: some freguesias carry more than one coordinate
+    // statement (an imported one alongside a hand-set one) and neither is
+    // wrong enough, at freguesia scale, to prefer one over the other.
+    if (byKey.has(key)) continue;
+    byKey.set(key, { latitude: Number(row.lat.value), longitude: Number(row.lon.value) });
+  }
+  return byKey;
+}
+
+/** Every folded key a freguesia's own name could plausibly match under in `fetchLocalityCoordinates`'s map. */
+function localityCoordinateKeys(name, municipalityName) {
+  const municipalityKey = fold(municipalityName);
+  return [...new Set([name, name.replace(UNIAO_PREFIX, '')])].map(
+    (candidate) => `${fold(candidate)}|${municipalityKey}`,
+  );
+}
+
 /**
  * geoapi.pt lowercases the particles inside a municipality name
  * ("Alfândega da fé", "Albergaria-a-velha"). Title-case each word except the
@@ -157,10 +216,15 @@ async function main() {
   process.stdout.write(`${municipalities.length} municipalities\n`);
 
   process.stdout.write('Fetching municipality coordinates from Wikidata… ');
-  const coordinates = await fetchMunicipalityCoordinates();
-  process.stdout.write(`${coordinates.size} coordinates\n`);
+  const municipalityCoordinates = await fetchMunicipalityCoordinates();
+  process.stdout.write(`${municipalityCoordinates.size} coordinates\n`);
+
+  process.stdout.write('Fetching freguesia coordinates from Wikidata… ');
+  const localityCoordinates = await fetchLocalityCoordinates();
+  process.stdout.write(`${localityCoordinates.size} coordinates\n`);
 
   const missing = [];
+  let localitiesWithOwnCoordinate = 0;
   const rows = municipalities
     .map((municipality) => {
       const ineCode = String(municipality.dtmn ?? municipality.codigoine);
@@ -169,20 +233,30 @@ async function main() {
         throw new Error(`No district for INE code ${ineCode} (${municipality.nome})`);
       }
 
+      const municipalityName = titleCasePlaceName(municipality.nome);
       const coordinate =
-        COORDINATE_OVERRIDES[ineCode] ?? coordinates.get(fold(municipality.nome));
+        COORDINATE_OVERRIDES[ineCode] ?? municipalityCoordinates.get(fold(municipality.nome));
       if (!coordinate) missing.push(`${municipality.nome} (${ineCode})`);
+
+      // Sorted so a regenerated file diffs cleanly against the committed one.
+      const localities = [...new Set(municipality.freguesias)]
+        .map(titleCasePlaceName)
+        .sort((a, b) => a.localeCompare(b, 'pt-PT'))
+        .map((name) => {
+          const own = localityCoordinateKeys(name, municipalityName)
+            .map((key) => localityCoordinates.get(key))
+            .find(Boolean);
+          if (own) localitiesWithOwnCoordinate += 1;
+          return { name, latitude: own?.latitude ?? null, longitude: own?.longitude ?? null };
+        });
 
       return {
         ineCode,
-        name: titleCasePlaceName(municipality.nome),
+        name: municipalityName,
         district,
         latitude: coordinate?.latitude ?? null,
         longitude: coordinate?.longitude ?? null,
-        // Sorted so a regenerated file diffs cleanly against the committed one.
-        localities: [...new Set(municipality.freguesias)]
-          .map(titleCasePlaceName)
-          .sort((a, b) => a.localeCompare(b, 'pt-PT')),
+        localities,
       };
     })
     .sort((a, b) => a.ineCode.localeCompare(b.ineCode));
@@ -216,7 +290,9 @@ async function main() {
   );
 
   process.stdout.write(
-    `Wrote ${OUT}\n  ${rows.length} municipalities, ${localityCount} localities\n`,
+    `Wrote ${OUT}\n  ${rows.length} municipalities, ${localityCount} localities ` +
+      `(${localitiesWithOwnCoordinate} with their own coordinate, ` +
+      `${localityCount - localitiesWithOwnCoordinate} falling back to their município's)\n`,
   );
 }
 

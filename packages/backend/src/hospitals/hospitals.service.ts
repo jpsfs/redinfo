@@ -7,13 +7,12 @@ import {
 import {
   Hospital,
   HospitalWithDistance,
-  Municipality,
   distanceInKm,
   sortHospitalsForPicker,
   validateHospital,
 } from '@redinfo/shared';
 import { PrismaService } from '../prisma/prisma.service';
-import { GeographyService, serializeMunicipality } from '../geography/geography.service';
+import { GeographyOrigin, GeographyService, serializeMunicipality } from '../geography/geography.service';
 import { CreateHospitalDto } from './dto/create-hospital.dto';
 import { UpdateHospitalDto } from './dto/update-hospital.dto';
 
@@ -152,11 +151,11 @@ export class HospitalsService {
       include: HOSPITAL_INCLUDE,
     });
 
-    let origin: Municipality | null = null;
+    let origin: GeographyOrigin | null = null;
     if (localityId) {
       // A locality that does not exist is the caller's mistake, and saying so
       // beats silently handing back an alphabetical list they did not ask for.
-      origin = await this.geography.municipalityForLocality(localityId);
+      origin = await this.geography.originForLocality(localityId);
     }
 
     const withDistance: HospitalWithDistance[] = rows.map((row) => {

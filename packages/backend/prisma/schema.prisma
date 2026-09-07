@@ -891,6 +891,14 @@ model Locality {
   /// via `foldForSearch` (shared) — never by hand.
   searchName String
 
+  /// The freguesia's own position, when the seed's source (Wikidata) has one
+  /// for it — most do. Null falls back to the municipality centroid, the same
+  /// "own point, else the area's" pattern `Hospital.latitude/longitude` uses,
+  /// because a município can be tens of kilometres across and its centroid is
+  /// a poor stand-in for any one freguesia inside it.
+  latitude  Float?
+  longitude Float?
+
   eventReports EventReport[]
   liveRuns     LiveRun[]
   users        User[]
