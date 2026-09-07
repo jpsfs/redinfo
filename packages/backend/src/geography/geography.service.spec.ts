@@ -203,6 +203,39 @@ describe('searching localities', () => {
     expect(result.map((entry) => entry.name)).toEqual(['Abrantes', 'Óbidos']);
   });
 
+  it('outranks a municipality-only match with one where the locality itself carries the words', async () => {
+    // The real bug this guards: "Vila do Conde" is both a município and one of
+    // its own two dozen freguesias. Every freguesia in that município matches
+    // "vila do conde" (via the município), they all share its coordinates so
+    // distance cannot separate them, and "Arcos"/"Vilar de Pinheiro"
+    // alphabetically bracket "Vila do Conde" — a distance-then-name ranking
+    // truncates the freguesia itself out of a short result list. Only
+    // weighing a match against the locality's own name fixes that.
+    const VILA_DO_CONDE = {
+      id: 'mun-vdc',
+      ineCode: '1316',
+      name: 'Vila do Conde',
+      district: 'Porto',
+      latitude: 41.35,
+      longitude: -8.75,
+    };
+    const { service } = makeService(
+      [
+        locality('Arcos', 'arcos', VILA_DO_CONDE, 'l-arcos'),
+        locality('Vila do Conde', 'vila do conde', VILA_DO_CONDE, 'l-vdc'),
+        locality('Vilar de Pinheiro', 'vilar de pinheiro', VILA_DO_CONDE, 'l-vilar'),
+      ],
+      { municipalities: [VILA_DO_CONDE] },
+    );
+
+    const result = await service.searchLocalities('vila do conde', 2, {
+      latitude: VILA_DO_CONDE.latitude,
+      longitude: VILA_DO_CONDE.longitude,
+    });
+
+    expect(result[0].id).toBe('l-vdc');
+  });
+
   it('orders the empty-query branch by distance too, not alphabetically', async () => {
     const { service } = makeService([
       locality('Faro city', 'faro city', FARO, 'l-faro'),

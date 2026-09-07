@@ -109,7 +109,7 @@ export class GeographyService {
   }
 
   /**
-   * Localities matching a typed fragment, closest to `origin` first.
+   * Localities matching a typed fragment.
    *
    * Every token of the query has to match somewhere — the locality's own
    * folded name, *or* its municipality's folded name or district — so
@@ -117,9 +117,16 @@ export class GeographyService {
    * its municipality (Barcelos) even though "barcelos" never appears in the
    * locality's own name. Word order does not matter.
    *
-   * Ranked purely by distance from `origin`, nearest first — not by whether
-   * the match was a prefix, a contains, or a municipality hit. A crew that
-   * typed enough to narrow the list wants the nearest of what matched.
+   * Ranked by how well the query matches, name weighted well above
+   * municipality/district — see `matchScore` — with distance from `origin`
+   * only as the tiebreaker. Without that weighting, searching "Vila do Conde"
+   * buried the freguesia of that same name under the other two dozen
+   * freguesias of Vila do Conde *município*: every one of them matched (via
+   * the municipality) and, tied on distance (they share their município's
+   * coordinates), the alphabetical tiebreak cut "Vila do Conde" itself before
+   * the result limit. A query-less browse (empty `folded`) has no match
+   * quality to rank by, so it stays plain distance order — the "nearby"
+   * list the picker shows before anyone has typed anything.
    */
   async searchLocalities(
     query: string,
@@ -127,12 +134,12 @@ export class GeographyService {
     origin?: GeographyOrigin,
   ): Promise<Locality[]> {
     const folded = foldForSearch((query ?? '').slice(0, MAX_LOCALITY_QUERY_LENGTH));
+    const tokens = folded ? folded.split(' ') : [];
     const take = Math.max(1, Math.min(limit, LOCALITY_SEARCH_LIMIT));
     const resolvedOrigin = await this.resolveOrigin(origin);
 
     let where: Record<string, unknown> | undefined;
     if (folded) {
-      const tokens = folded.split(' ');
       const municipalities = await this.loadMunicipalities();
       where = {
         AND: tokens.map((token) => {
@@ -158,20 +165,61 @@ export class GeographyService {
       include: { municipality: MUNICIPALITY_SELECT },
     });
 
-    return this.rankByDistance(rows, resolvedOrigin, take);
+    return this.rankByRelevance(rows, folded, tokens, resolvedOrigin, take);
   }
 
-  private rankByDistance<T extends LocalityRow>(
+  /** How much of a token's credit a match in the locality's own name earns, vs. its municipality/district. */
+  private static readonly NAME_TOKEN_WEIGHT = 3;
+  private static readonly MUNICIPALITY_TOKEN_WEIGHT = 1;
+
+  /**
+   * A relevance score for one row against the typed query — higher is a
+   * better match. Every token that reached this row matched the locality's
+   * own name, or its municipality's name/district (that's what the caller's
+   * `where` clause guaranteed); this just weighs *which* it was, per token,
+   * so a locality whose own name carries the words outranks one that only
+   * shares a município with them. A small bonus on top rewards the name
+   * matching the query as a whole (prefix or exact), so "Vila do Conde" the
+   * freguesia sits above "Vila Chã" (also in that município, also starting
+   * with "vila") when both searches are for "vila do conde".
+   */
+  private matchScore(row: LocalityRow, folded: string, tokens: string[]): number {
+    const name = foldForSearch(row.name);
+    const municipality = row.municipality ? foldForSearch(row.municipality.name) : '';
+    const district = row.municipality ? foldForSearch(row.municipality.district) : '';
+
+    const tokenScore = tokens.reduce((total, token) => {
+      if (name.includes(token)) return total + GeographyService.NAME_TOKEN_WEIGHT;
+      if (municipality.includes(token) || district.includes(token)) {
+        return total + GeographyService.MUNICIPALITY_TOKEN_WEIGHT;
+      }
+      return total;
+    }, 0);
+
+    const wholeQueryBonus = name === folded ? 3 : name.startsWith(folded) ? 2 : name.includes(folded) ? 1 : 0;
+
+    return tokenScore * 10 + wholeQueryBonus;
+  }
+
+  private rankByRelevance<T extends LocalityRow>(
     rows: T[],
+    folded: string,
+    tokens: string[],
     origin: GeographyOrigin,
     take: number,
   ): Locality[] {
     return rows
       .map((row) => ({
         row,
+        score: folded ? this.matchScore(row, folded, tokens) : 0,
         distance: row.municipality ? distanceInKm(origin, row.municipality) : Number.POSITIVE_INFINITY,
       }))
-      .sort((a, b) => a.distance - b.distance || a.row.name.localeCompare(b.row.name, 'pt-PT'))
+      .sort(
+        (a, b) =>
+          b.score - a.score ||
+          a.distance - b.distance ||
+          a.row.name.localeCompare(b.row.name, 'pt-PT'),
+      )
       .slice(0, take)
       .map((entry) => serializeLocality(entry.row));
   }
