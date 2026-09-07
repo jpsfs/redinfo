@@ -72,6 +72,7 @@ import {
   warningLabel,
 } from '../../i18n/labels';
 import { useT } from '../../i18n/useT';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { NowButton } from './NowButton';
 import { AbcdeStatusPicker, AvdsPicker, VitalControl } from '../liveRuns/VitalField';
 import { VITAL_FIELDS } from '../liveRuns/vitalsFields';
@@ -106,6 +107,7 @@ const SectionLabel = ({ children }: { children: React.ReactNode }) => (
 
 export const WhenWhereSection = ({ draft, patch, lookups }: SectionProps) => {
   const t = useT();
+  const isMobile = useIsMobile();
   const [pickerOpen, setPickerOpen] = useState(false);
   const rules = eventReportRules(draft.type);
 
@@ -151,7 +153,14 @@ export const WhenWhereSection = ({ draft, patch, lookups }: SectionProps) => {
 
       <Box>
         <SectionLabel>{t('field.hours')}</SectionLabel>
-        <Stack direction="row" spacing={1.5}>
+        {/*
+          Side by side on desktop; stacked on mobile. Each column packs a time
+          input *and* a Now button — on a phone-width row, two of those columns
+          together don't leave the native time input room to render its own
+          segments, and the row overflows the page. Stacking removes the
+          contest for width; each field gets the full row to itself.
+        */}
+        <Stack direction={isMobile ? 'column' : 'row'} spacing={isMobile ? 2 : 1.5}>
           <Stack spacing={0.5} sx={{ flex: 1 }}>
             <Stack direction="row" spacing={1} alignItems="center">
               <TextField
