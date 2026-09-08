@@ -642,6 +642,35 @@ describe('the closing screen', () => {
     const chronology = (await screen.findByText('Cronologia')).closest('div')!;
     expect(within(chronology).getAllByText('não marcado').length).toBeGreaterThan(0);
   });
+
+  /**
+   * A blocker must never reach the server as a rejected request — it is
+   * caught here, on the device, from the same list the Alert above already
+   * names. See #NO_LOCATION_TYPE: the crew filling the field back on `scene`
+   * is the fix, not a retry of a request that was always going to fail.
+   */
+  it('refuses to close on a known blocker, without asking the server', async () => {
+    const user = userEvent.setup();
+    await seed({
+      state: LiveRunState.AT_HOSPITAL,
+      activationAt: '2026-08-22T20:14:00.000Z',
+      sceneArrivalAt: '2026-08-22T20:26:00.000Z',
+      availableAt: '2026-08-22T21:02:00.000Z',
+      locationType: null,
+    });
+    renderRun('closing');
+
+    await user.click(await screen.findByRole('button', { name: 'TERMINAR E ABRIR RELATÓRIO' }));
+
+    expect(mockApiFetch).not.toHaveBeenCalledWith(
+      `/live-runs/${runId}/close`,
+      expect.anything(),
+    );
+
+    // Dropped onto the field that is still missing, not left on a screen
+    // that just told it "no" and went quiet.
+    expect(await screen.findByText('Tipo de local')).toBeInTheDocument();
+  });
 });
 
 /**

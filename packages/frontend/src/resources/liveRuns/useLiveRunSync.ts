@@ -17,6 +17,17 @@ export interface LiveRunSyncHandle {
   lastError: string | null;
   /** Try now — the "Tentar agora" the closing screen offers. */
   syncNow: () => void;
+  /**
+   * Try now, and wait for the attempt to finish.
+   *
+   * `close()` awaits this before its `POST /:id/close` — that request reads
+   * whatever the server already has (see the controller's own doc comment on
+   * why closing is not folded into the `PUT`), so a patch sitting in the
+   * outbox at the moment the crew taps "Terminar" must be pushed first, or
+   * the close is refused for a field the crew can see filled in right in
+   * front of them.
+   */
+  flush: () => Promise<void>;
 }
 
 export interface UseLiveRunSyncOptions {
@@ -153,6 +164,7 @@ export function useLiveRunSync(options: UseLiveRunSyncOptions = {}): LiveRunSync
     lastSyncedAt,
     lastError,
     syncNow,
+    flush: drain,
   };
 }
 

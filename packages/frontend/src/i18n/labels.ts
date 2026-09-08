@@ -390,6 +390,10 @@ const MESSAGES = {
     pt: 'Falta o seguinte para fechar:',
     en: 'These are still needed to close:',
   },
+  'live.closeBlockedNotify': {
+    pt: 'Ainda falta: %{reasons}',
+    en: 'Still needed: %{reasons}',
+  },
   'live.closeWarnings': {
     pt: 'Podes fechar assim — isto fica para o relatório:',
     en: 'You can close as it is — these are for the report:',
@@ -2367,6 +2371,10 @@ const MESSAGES = {
   'apiError.INEM_SESSION_NOT_ACTIVE': {
     pt: 'A integração com o INEM está indisponível — define o estado deste meio diretamente no portal do INEM.',
     en: 'The INEM integration is currently unavailable — set this unit’s status directly in the INEM portal instead.',
+  },
+  'apiError.LIVE_RUN_CLOSE_BLOCKED': {
+    pt: 'Ainda falta preencher algo obrigatório — vê a lista assinalada nesta página antes de terminar.',
+    en: 'Something required is still missing — check the list flagged on this page before finishing.',
   },
 
   // ── Calendar headers (#180 phase 5) ──

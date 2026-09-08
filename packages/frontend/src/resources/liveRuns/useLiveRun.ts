@@ -89,6 +89,16 @@ export interface LiveRunHandle {
   savedAt: string | null;
   /** Replaces the whole document, after a sync or a close. */
   replace: (run: LiveRunInput) => void;
+  /**
+   * Writes a still-debounced `patchLater` to the device immediately, rather
+   * than waiting out its timer.
+   *
+   * Closing reads the device's own copy to decide what to push to the
+   * server (see `useLiveRunSync`'s `flush`) — a word typed a beat before the
+   * crew taps "Terminar" must not be the one thing left behind in a timer
+   * that never gets to fire.
+   */
+  flush: () => void;
 }
 
 /**
@@ -123,12 +133,12 @@ export function useLiveRun(options: UseLiveRunOptions): LiveRunHandle {
     setSavedAt(now.toISOString());
   }, []);
 
-  const flush = useCallback(() => {
+  const flush = useCallback((): Promise<void> => {
     const outstanding = pending.current;
-    if (!outstanding) return;
+    if (!outstanding) return Promise.resolve();
     clearTimeout(outstanding.timer);
     pending.current = null;
-    void write(outstanding.run);
+    return write(outstanding.run);
   }, [write]);
 
   /** Reads the device's own copy first. It is the source of truth. */
@@ -320,5 +330,6 @@ export function useLiveRun(options: UseLiveRunOptions): LiveRunHandle {
     canClose: canCloseLiveRun(run) && run.state !== LiveRunState.CLOSED,
     savedAt,
     replace,
+    flush,
   };
 }

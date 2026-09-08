@@ -588,6 +588,17 @@ describeIntegration('Live runs (integration)', () => {
       );
     });
 
+    // Coded (#180 phase 4 style) so the app can translate this instead of
+    // showing the crew the raw English developer message above.
+    it('codes the refusal so the app can show the crew a human reason', async () => {
+      const input = draft({ externalReference: null, localityId: null });
+      await runs.sync(input, tiagoUser);
+
+      await expect(runs.close(input.id, tiagoUser)).rejects.toMatchObject({
+        code: 'LIVE_RUN_CLOSE_BLOCKED',
+      });
+    });
+
     it('takes a hospital destination all the way onto the report', async () => {
       const input = draft({
         state: LiveRunState.AT_HOSPITAL,

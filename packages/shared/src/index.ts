@@ -6125,7 +6125,8 @@ export type ApiErrorCode =
   | 'SHIFT_ADJUSTMENT_OVERLAPS'
   | 'MATERIAL_ITEM_BARCODE_CONFLICT'
   | 'LAST_SYSTEM_ADMIN'
-  | 'INEM_SESSION_NOT_ACTIVE';
+  | 'INEM_SESSION_NOT_ACTIVE'
+  | 'LIVE_RUN_CLOSE_BLOCKED';
 
 export interface ApiErrorBody {
   code: ApiErrorCode;

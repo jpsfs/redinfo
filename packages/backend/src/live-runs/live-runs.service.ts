@@ -28,6 +28,7 @@ import {
 } from '@redinfo/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { parseIsoDate } from '../utils/date.util';
+import { ApiBadRequestException } from '../common/api-error.exception';
 import { EventReportsService, RequestUser } from '../event-reports/event-reports.service';
 import { IdentityCipher, UnknownIdentityKeyError } from '../common/identity-cipher';
 import { IdentityPurgeService } from './identity-purge.service';
@@ -292,7 +293,11 @@ export class LiveRunsService {
 
     const blockers = liveRunCloseBlockers(asInput);
     if (blockers.length > 0) {
-      throw new BadRequestException(
+      // Coded (#180 phase 4 style) so the app can show the crew the reasons
+      // it already lists on the closing screen, in their own language,
+      // instead of this English developer message.
+      throw new ApiBadRequestException(
+        'LIVE_RUN_CLOSE_BLOCKED',
         `This run cannot be closed yet: ${blockers.join(', ')}.`,
       );
     }

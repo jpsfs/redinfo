@@ -19,15 +19,17 @@ import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import {
   DelegationSettings,
   EventReportType,
+  LiveRunBlockerCode,
   LiveRunCloseResponse,
   LiveRunState,
   LiveRunSupportActionKind,
+  LiveScreen,
   Locality,
   OCCURRENCE_TIME_FIELDS,
   OccurrenceTimeField,
 } from '@redinfo/shared';
-import { apiFetch } from '../../api';
-import { liveScreenLabel, occurrenceTimeLabel } from '../../i18n/labels';
+import { ApiError, apiFetch } from '../../api';
+import { apiErrorLabel, liveBlockerLabel, liveScreenLabel, occurrenceTimeLabel } from '../../i18n/labels';
 import { useT } from '../../i18n/useT';
 import { composeInstant, timeOfDay, todayIso } from '../eventReports/reportDraft';
 import { useReportLookups } from '../eventReports/useReportLookups';
@@ -65,6 +67,18 @@ import {
  * phone: with the screen in the path, back walks screens for free and a mid-run
  * reload lands where the crew was.
  */
+/**
+ * Where the crew fills in each field the closing screen can be blocked on —
+ * so a tap on "Terminar" while one is missing lands on the field itself
+ * rather than on a rejected request.
+ */
+const BLOCKER_SCREEN: Record<LiveRunBlockerCode, LiveScreen> = {
+  NO_STAMPS: 'enroute',
+  NO_LOCALITY: 'scene',
+  NO_LOCATION_TYPE: 'scene',
+  NO_REFERENCE: 'intake',
+};
+
 export const LiveRunPage = () => {
   const { runId = '', screen } = useParams();
   const navigate = useNavigate();
@@ -222,8 +236,27 @@ export const LiveRunPage = () => {
    */
   const close = useCallback(
     async (destination: 'report' | 'home') => {
+      // Caught here rather than left to the server: a blocker the crew can
+      // see is unmarked on this very screen must never turn into a network
+      // round trip, and the crew is dropped straight onto the field that is
+      // still missing instead of onto a rejection.
+      if (form.blockers.length > 0) {
+        const reasons = form.blockers.map((code) => liveBlockerLabel(t, code)).join(' · ');
+        notify(t('live.closeBlockedNotify', { reasons }), { type: 'warning' });
+        navigate(`/live/${runId}/${BLOCKER_SCREEN[form.blockers[0]]}`);
+        return;
+      }
+
       setClosing(true);
       try {
+        // The close endpoint reads whatever the server already has, on
+        // purpose (closing is a POST, never folded into the sync PUT — see
+        // the controller) — so a still-debounced keystroke has to reach the
+        // device first, and anything sitting in the outbox after that has to
+        // reach the server, or a field the crew just filled in here can
+        // still come back as missing.
+        await form.flush();
+        await sync.flush();
         const response = await apiFetch<LiveRunCloseResponse>(`/live-runs/${runId}/close`, {
           method: 'POST',
         });
@@ -238,12 +271,19 @@ export const LiveRunPage = () => {
         notify(t('live.closedIntoDraft'), { type: 'success' });
         navigate(destination === 'report' ? `/event-reports/${response.report.id}` : '/');
       } catch (cause) {
-        notify(cause instanceof Error ? cause.message : t('sync.failed'), { type: 'error' });
+        notify(
+          cause instanceof ApiError
+            ? apiErrorLabel(t, cause)
+            : cause instanceof Error
+              ? cause.message
+              : t('sync.failed'),
+          { type: 'error' },
+        );
       } finally {
         setClosing(false);
       }
     },
-    [form, navigate, notify, runId, t],
+    [form, navigate, notify, runId, sync, t],
   );
 
   const abandon = useCallback(async () => {
