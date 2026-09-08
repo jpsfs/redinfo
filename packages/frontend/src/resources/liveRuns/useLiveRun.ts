@@ -169,7 +169,12 @@ export function useLiveRun(options: UseLiveRunOptions): LiveRunHandle {
   }, [runId, write]);
 
   /** A flush on the way out, so unmounting mid-word does not drop the word. */
-  useEffect(() => flush, [flush]);
+  useEffect(
+    () => () => {
+      void flush();
+    },
+    [flush],
+  );
 
   const apply = useCallback(
     (change: (current: LiveRunInput) => LiveRunInput, immediate: boolean) => {
