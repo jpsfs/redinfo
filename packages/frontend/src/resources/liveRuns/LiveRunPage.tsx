@@ -356,6 +356,7 @@ export const LiveRunPage = () => {
       <LiveTopBar
         run={form.run}
         sync={sync.state}
+        syncError={sync.lastError}
         screen={current}
         onJump={(target) => navigate(`/live/${runId}/${target}`)}
         coduDadosHref={telUrl(settings?.coduDadosPhone)}

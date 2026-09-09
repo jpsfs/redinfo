@@ -238,13 +238,28 @@ export function nextStampForScreen(
  * Never overwrites: a stamp records a moment, so an already-marked time is left
  * alone and only the state advances. Correcting a time is `correctedStamp`, which
  * the crew reaches deliberately.
+ *
+ * **Never advances the document into `CLOSED` itself**, even for the last stamp
+ * (`availableAt`) whose `next` state is `CLOSED` — this is a write-through
+ * change, which `useLiveRun` queues for the sync PUT the instant it happens, and
+ * that endpoint refuses a `CLOSED` document outright (closing creates a report,
+ * which only `POST /:id/close` may do — see the controller's own doc). A device
+ * that reaches this stamp first among two devices, or fast enough that no
+ * background sync ran before the crew taps "Terminar", would have that PUT
+ * permanently refused (a 400 is never retried), leaving the row never created
+ * server-side and the close's own `POST` answering "not found". The screen the
+ * crew sees is identical either way (`AT_HOSPITAL` and `CLOSED` map to the same
+ * `'closing'` screen, and the bar's own "Terminar" button already gates on
+ * `availableAt` being set, not on `state`) — so the only real difference is
+ * honesty: the document only claims `CLOSED` once the server's close response
+ * says so, exactly mirroring the invariant `sync()` already enforces server-side.
  */
 export function stampedRun(run: LiveRunInput, now: Date = new Date()): LiveRunInput {
   const step = nextStamp(run);
   if (!step) return run;
   return {
     ...run,
-    state: step.state,
+    state: step.state === LiveRunState.CLOSED ? run.state : step.state,
     [step.field]: run[step.field] ?? now.toISOString(),
     revision: run.revision + 1,
   };

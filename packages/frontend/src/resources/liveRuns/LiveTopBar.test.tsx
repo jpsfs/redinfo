@@ -7,11 +7,12 @@ import type { SyncState } from './liveRunSync';
 
 const noop = () => undefined;
 
-const renderBar = (sync: SyncState) =>
+const renderBar = (sync: SyncState, syncError?: string | null) =>
   renderMobile(
     <LiveTopBar
       run={emptyRun('r1')}
       sync={sync}
+      syncError={syncError}
       screen="intake"
       onJump={noop}
       onBack={noop}
@@ -50,5 +51,21 @@ describe('the sync indicator', () => {
     expect(region.closest('[aria-live="polite"]')).not.toBeNull();
     expect(region.closest('.MuiChip-root')).toBeNull();
     expect(region).toHaveStyle({ overflow: 'hidden' });
+  });
+
+  it('names the reason a sync failed, not just that it did', () => {
+    // Regression: the icon used to answer a tap with nothing but "Falha ao
+    // sincronizar" — the state, never why — leaving the crew no better off
+    // for having asked.
+    renderBar('failed', 'Live run r1 not found');
+
+    expect(
+      screen.getByText('Falha ao sincronizar — Live run r1 not found'),
+    ).toBeInTheDocument();
+  });
+
+  it('falls back to the bare state when nothing said why', () => {
+    renderBar('failed', null);
+    expect(screen.getByText('Falha ao sincronizar')).toBeInTheDocument();
   });
 });

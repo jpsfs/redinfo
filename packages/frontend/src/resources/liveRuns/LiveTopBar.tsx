@@ -53,6 +53,14 @@ const SYNC_NEEDS_ATTENTION: Record<SyncState, boolean> = {
 export interface LiveTopBarProps {
   run: LiveRunInput;
   sync: SyncState;
+  /**
+   * Why `sync` is `offline`/`failed`, straight from the failed attempt —
+   * `syncStateLabel` alone only names the *state* ("Falha ao sincronizar"),
+   * never the *reason*, which is exactly what left the crew with nothing to
+   * read when they tapped the icon looking for one. `null`/`undefined` when
+   * there is nothing to add (nothing has failed, or nothing said why).
+   */
+  syncError?: string | null;
   /** The screen actually on display — not necessarily the run's real one. */
   screen: LiveScreen;
   /** Jumps to a screen already visited. Never offered for one that is not. */
@@ -79,6 +87,7 @@ export interface LiveTopBarProps {
 export const LiveTopBar = ({
   run,
   sync,
+  syncError,
   screen,
   onJump,
   coduDadosHref,
@@ -92,6 +101,10 @@ export const LiveTopBar = ({
   const [elapsed, setElapsed] = useState(() => elapsedLabel(run));
   const back = previousStep(run);
   const visited = visitedScreens(run);
+  // The state alone ("Falha ao sincronizar") is what the crew already had
+  // nothing to act on — the reason, when the failed attempt left one, is
+  // appended so the icon actually answers what tapping it used to leave silent.
+  const syncMessage = syncError ? `${syncStateLabel(t, sync)} — ${syncError}` : syncStateLabel(t, sync);
 
   /** One interval for the whole screen; the label is derived, not stored. */
   useEffect(() => {
@@ -146,7 +159,7 @@ export const LiveTopBar = ({
             other thing on this bar tied to *this* occurrence.
           */}
           {SYNC_NEEDS_ATTENTION[sync] && (
-            <Tooltip title={syncStateLabel(t, sync)}>
+            <Tooltip title={syncMessage}>
               {/* Amber, not `colorWarning` (`#F57C00`, 2.64:1 on this red — under
                   the 3:1 floor for a graphical icon): `#FFD54F` measures 5.05:1
                   on `colorRedCrossRedDark` and is what actually reads as "look
@@ -186,7 +199,7 @@ export const LiveTopBar = ({
           whiteSpace: 'nowrap',
         }}
       >
-        {syncStateLabel(t, sync)}
+        {syncMessage}
       </Box>
 
       {/*

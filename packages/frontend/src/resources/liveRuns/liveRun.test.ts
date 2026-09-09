@@ -121,7 +121,7 @@ describe('stampedRun', () => {
     expect(again.activationAt).toBe(NOW.toISOString());
   });
 
-  it('walks the whole run from intake to closed, stamping each step once', () => {
+  it('walks the whole run from intake to ready-to-close, stamping each step once', () => {
     let run = emptyRun('run-1', NOW);
     const at = (minutes: number) => new Date(NOW.getTime() + minutes * 60_000);
 
@@ -131,7 +131,9 @@ describe('stampedRun', () => {
     run = stampedRun(run, at(60)); // hospital arrival
     run = stampedRun(run, at(85)); // available
 
-    expect(run.state).toBe(LiveRunState.CLOSED);
+    // Not `CLOSED` — see `stampedRun`'s own doc. Only the server's close
+    // response may write that; the device stops one stamp short of it.
+    expect(run.state).toBe(LiveRunState.AT_HOSPITAL);
     expect(OCCURRENCE_TIME_FIELDS.map((field) => run[field])).toEqual([
       at(0).toISOString(),
       at(12).toISOString(),
@@ -147,6 +149,20 @@ describe('stampedRun', () => {
   it('does nothing at all once the run is closed', () => {
     const closed = { ...emptyRun('run-1', NOW), state: LiveRunState.CLOSED };
     expect(stampedRun(closed, NOW)).toBe(closed);
+  });
+
+  it('never writes CLOSED itself — only the server close response may', () => {
+    // Regression for the run that always came back "not found" on Terminar:
+    // this stamp is write-through, so `useLiveRun` queues it for the sync PUT
+    // the instant it happens — and that PUT refuses a CLOSED document outright
+    // (400, never retried), which left the row never created server-side.
+    const run = { ...emptyRun('run-1', NOW), state: LiveRunState.AT_HOSPITAL };
+    const stamped = stampedRun(run, NOW);
+    expect(stamped.state).toBe(LiveRunState.AT_HOSPITAL);
+    expect(stamped.availableAt).toBe(NOW.toISOString());
+    // The bar itself never re-offers this stamp: `nextStamp` now reads it as
+    // already done, exactly as it would for any other already-stamped step.
+    expect(nextStamp(stamped)).toMatchObject({ field: 'availableAt', done: true });
   });
 });
 
