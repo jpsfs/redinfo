@@ -26,6 +26,30 @@ import { useT } from '../../i18n/useT';
 import { VitalField, formatVital, isImplausible, isOutOfRange, parseVital } from './vitalsFields';
 
 /**
+ * Enter, on a phone, is the only way to move on — there is no Tab key. Walks
+ * the document in render order from `current` and focuses the next focusable
+ * control, the same target a real Tab press would land on, so a crew filling
+ * in vitals one-handed never has to reach for the field below with a thumb.
+ *
+ * The last field in the flow has nothing after it — blurred instead, which
+ * dismisses the on-screen keyboard rather than leaving the caret to sit in a
+ * field the crew has already left.
+ */
+function focusNext(current: HTMLElement) {
+  // No visibility filter: the dialogs on this screen (corrections, materials)
+  // unmount their fields entirely when closed rather than hiding them, so
+  // nothing off-screen is ever a candidate here to begin with.
+  const focusable = Array.from(
+    document.querySelectorAll<HTMLElement>(
+      'input:not([disabled]), textarea:not([disabled]), button:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    ),
+  );
+  const next = focusable[focusable.indexOf(current) + 1];
+  if (next) next.focus();
+  else current.blur();
+}
+
+/**
  * One vital, with the control its value's shape deserves.
  *
  * Its own file because two screens render it: the live assessment grid, and the
@@ -181,6 +205,11 @@ export const VitalControl = ({
         inputMode: field.inputMode,
         'aria-label': vitalLabel(t, field.key),
         enterKeyHint: 'next',
+        onKeyDown: (event: React.KeyboardEvent<HTMLInputElement>) => {
+          if (event.key !== 'Enter') return;
+          event.preventDefault();
+          focusNext(event.currentTarget);
+        },
       }}
       InputProps={{
         endAdornment: field.unit ? (

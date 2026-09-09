@@ -565,8 +565,9 @@ describe('the closing screen', () => {
     renderRun('closing');
 
     // A blocker is something a report cannot exist without; a warning is
-    // something the crew finishes on the report page.
-    expect(await screen.findByText(/Escreve o nº CODU/)).toBeInTheDocument();
+    // something the crew finishes on the report page. The reason also names
+    // itself in the bottom bar's own standing note, so two matches is right.
+    expect(await screen.findAllByText(/Escreve o nº CODU/)).not.toHaveLength(0);
     expect(screen.getByText(/Não há sinais vitais registados/)).toBeInTheDocument();
   });
 
@@ -670,6 +671,27 @@ describe('the closing screen', () => {
     // Dropped onto the field that is still missing, not left on a screen
     // that just told it "no" and went quiet.
     expect(await screen.findByText('Tipo de local')).toBeInTheDocument();
+  });
+
+  /**
+   * The standing note above the buttons must name what is missing, not just
+   * say that something is — a bare "falta o seguinte" with nothing under it
+   * is a crew unable to tell what to fix (regression: the note used to reuse
+   * the alert's own header text, which reads as a list heading only because
+   * the alert below it has actual items after it).
+   */
+  it('names the actual missing field in the standing note above the buttons, not just its heading', async () => {
+    await seed({
+      state: LiveRunState.AT_HOSPITAL,
+      activationAt: '2026-08-22T20:14:00.000Z',
+      sceneArrivalAt: '2026-08-22T20:26:00.000Z',
+      availableAt: '2026-08-22T21:02:00.000Z',
+      locationType: null,
+    });
+    renderRunWithExits('closing');
+
+    const note = await screen.findByRole('status');
+    expect(note).toHaveTextContent('Escolhe o tipo de local.');
   });
 });
 
@@ -937,6 +959,17 @@ describe('the assessment grid', () => {
     await user.type(temperature, '36,8');
     expect(temperature).toHaveValue('36,8');
     expect(temperature).toHaveAttribute('inputmode', 'decimal');
+  });
+
+  it('moves to the next vital on Enter — a phone has no Tab key', async () => {
+    const user = userEvent.setup();
+    await withAssessment();
+    renderRun('assessment');
+
+    const systolic = await screen.findByLabelText('T.A. sistólica');
+    await user.type(systolic, '120{Enter}');
+
+    expect(await screen.findByLabelText('T.A. diastólica')).toHaveFocus();
   });
 
   it('captions an implausible reading without refusing it', async () => {

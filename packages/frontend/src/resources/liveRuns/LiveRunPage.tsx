@@ -98,6 +98,14 @@ export const LiveRunPage = () => {
   const sync = useLiveRunSync({ onMerged: form.replace });
   const t = useT();
 
+  // Named once, used everywhere a blocker is surfaced: the toast on a blocked
+  // tap and the bottom bar's standing note read the same reasons, so the note
+  // above the buttons is never a header with nothing under it.
+  const blockedReasons = useMemo(
+    () => form.blockers.map((code) => liveBlockerLabel(t, code)).join(' · '),
+    [form.blockers, t],
+  );
+
   // The screen stays awake for the length of an open run and no longer: a phone
   // left on the closing screen in a pocket should be allowed to sleep.
   useWakeLock(form.run.state !== LiveRunState.CLOSED);
@@ -241,8 +249,7 @@ export const LiveRunPage = () => {
       // round trip, and the crew is dropped straight onto the field that is
       // still missing instead of onto a rejection.
       if (form.blockers.length > 0) {
-        const reasons = form.blockers.map((code) => liveBlockerLabel(t, code)).join(' · ');
-        notify(t('live.closeBlockedNotify', { reasons }), { type: 'warning' });
+        notify(t('live.closeBlockedNotify', { reasons: blockedReasons }), { type: 'warning' });
         navigate(`/live/${runId}/${BLOCKER_SCREEN[form.blockers[0]]}`);
         return;
       }
@@ -283,7 +290,7 @@ export const LiveRunPage = () => {
         setClosing(false);
       }
     },
-    [form, navigate, notify, runId, sync, t],
+    [blockedReasons, form, navigate, notify, runId, sync, t],
   );
 
   const abandon = useCallback(async () => {
@@ -405,7 +412,9 @@ export const LiveRunPage = () => {
         }
         finishing={closing}
         blockedReason={
-          current === 'closing' && form.blockers.length > 0 ? t('live.closeBlocked') : null
+          current === 'closing' && form.blockers.length > 0
+            ? t('live.closeBlockedNotify', { reasons: blockedReasons })
+            : null
         }
         materialsCount={form.materials.length}
         onOpenMaterials={() => setMaterialsOpen(true)}
