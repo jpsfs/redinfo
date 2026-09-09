@@ -60,6 +60,59 @@ data:
             proxy_set_header X-Real-IP $remote_addr;
         }
 
+        # ── MCP: OAuth 2.1 Authorization Server + the /mcp resource server ────
+        # See `src/main.ts` (backend) and `nginx/nginx.conf`'s own copy of this
+        # block, which this mirrors — these are the exact root-level paths the
+        # MCP SDK's `mcpAuthRouter` fixes per spec (RFC 8414/9728/7591).
+
+        location = /oauth/consent {
+            try_files $uri /index.html;
+        }
+
+        location /mcp {
+            proxy_pass http://{{ include "redinfo.fullname" . }}-backend:{{ .Values.service.backend.port }}/mcp;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_buffering off;
+            proxy_read_timeout 1h;
+        }
+
+        location /.well-known/oauth-authorization-server {
+            proxy_pass http://{{ include "redinfo.fullname" . }}-backend:{{ .Values.service.backend.port }}/.well-known/oauth-authorization-server;
+            proxy_set_header Host $host;
+        }
+
+        location /.well-known/oauth-protected-resource/mcp {
+            proxy_pass http://{{ include "redinfo.fullname" . }}-backend:{{ .Values.service.backend.port }}/.well-known/oauth-protected-resource/mcp;
+            proxy_set_header Host $host;
+        }
+
+        location = /authorize {
+            proxy_pass http://{{ include "redinfo.fullname" . }}-backend:{{ .Values.service.backend.port }}/authorize;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+
+        location = /token {
+            proxy_pass http://{{ include "redinfo.fullname" . }}-backend:{{ .Values.service.backend.port }}/token;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+
+        location = /register {
+            proxy_pass http://{{ include "redinfo.fullname" . }}-backend:{{ .Values.service.backend.port }}/register;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+
+        location = /revoke {
+            proxy_pass http://{{ include "redinfo.fullname" . }}-backend:{{ .Values.service.backend.port }}/revoke;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+
         location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff2?)$ {
             expires 1y;
             add_header Cache-Control "public, immutable";

@@ -524,6 +524,7 @@ const MESSAGES = {
   'nav.holidays': { pt: 'Feriados', en: 'Holidays' },
   'nav.myProfile': { pt: 'O meu perfil', en: 'My Profile' },
   'nav.myNotices': { pt: 'Avisos', en: 'Notices' },
+  'nav.aiConnections': { pt: 'Assistentes de IA', en: 'AI Assistants' },
   'nav.notices': { pt: 'Gerir avisos', en: 'Manage Notices' },
   'nav.notificationConfig': { pt: 'Notificações', en: 'Notifications' },
 
@@ -2429,6 +2430,58 @@ const MESSAGES = {
   'certBadge.expiredOn': { pt: '%{label} — expirado a %{date}', en: '%{label} — expired %{date}' },
   'certBadge.validUntilDate': { pt: '%{label} — válido até %{date}', en: '%{label} — valid until %{date}' },
   'certBadge.viaGrantedBy': { pt: '%{type} · via %{grantedBy}', en: '%{type} · via %{grantedBy}' },
+
+  // ── MCP: OAuth consent + AI connections (redinfo as an Authorization
+  // Server for Claude/ChatGPT/Copilot Studio, see `src/oauth/` on the
+  // backend) ──
+  'oauthConsent.title': { pt: '%{client} pede acesso', en: '%{client} is requesting access' },
+  'oauthConsent.explanation': {
+    pt: 'Isto vai permitir que este assistente aja no redinfo como si mesmo, dentro do que a sua função já permite.',
+    en: 'This will let the assistant act in redinfo as you, within what your role already allows.',
+  },
+  'oauthConsent.scopeRead': { pt: 'Ler informação (escalas, disponibilidade, relatórios, ocorrências)', en: 'Read information (schedules, availability, reports, live runs)' },
+  'oauthConsent.scopeWrite': { pt: 'Criar e alterar dados em seu nome', en: 'Create and change data on your behalf' },
+  'oauthConsent.allow': { pt: 'Permitir', en: 'Allow' },
+  'oauthConsent.deny': { pt: 'Recusar', en: 'Deny' },
+  'oauthConsent.missingTicket': {
+    pt: 'Faltam dados nesta ligação — volte ao assistente de IA e tente ligar-se novamente.',
+    en: 'This link is missing information — go back to the AI assistant and try connecting again.',
+  },
+
+  'aiConnections.pageTitle': { pt: 'Assistentes de IA', en: 'AI Assistants' },
+  'aiConnections.heading': { pt: 'Ligar um assistente de IA', en: 'Connect an AI assistant' },
+  'aiConnections.explanation': {
+    pt: 'O redinfo pode ser usado por assistentes como o Claude, o ChatGPT ou o Copilot Studio, agindo como si mesmo — o assistente autentica-se com a sua própria conta e só pode fazer o que a sua função já permite no portal.',
+    en: 'redinfo can be used by assistants like Claude, ChatGPT, or Copilot Studio, acting as you — the assistant signs in with your own account and can only do what your role already allows in the portal.',
+  },
+  'aiConnections.urlLabel': { pt: 'Endereço do servidor MCP', en: 'MCP server address' },
+  'aiConnections.copyUrl': { pt: 'Copiar endereço', en: 'Copy address' },
+  'aiConnections.urlCopied': { pt: 'Endereço copiado', en: 'Address copied' },
+  'aiConnections.howToTitle': { pt: 'Como ligar', en: 'How to connect' },
+  'aiConnections.howToClaude': {
+    pt: 'Claude: Definições → Conectores → Adicionar conector personalizado, e cole o endereço acima.',
+    en: 'Claude: Settings → Connectors → Add custom connector, and paste the address above.',
+  },
+  'aiConnections.howToChatGpt': {
+    pt: 'ChatGPT: Definições → Conectores → Criar, e cole o endereço acima.',
+    en: 'ChatGPT: Settings → Connectors → Create, and paste the address above.',
+  },
+  'aiConnections.howToCopilotStudio': {
+    pt: 'Copilot Studio: peça ao administrador do redinfo as credenciais do conector e siga as instruções do Copilot Studio para um conector personalizado OAuth.',
+    en: 'Copilot Studio: ask a redinfo administrator for the connector credentials, then follow Copilot Studio’s own instructions for a custom OAuth connector.',
+  },
+  'aiConnections.scopeNote': {
+    pt: 'Em todos os casos vai ter de iniciar sessão no redinfo como si mesmo e aprovar a ligação — o assistente nunca usa uma conta partilhada.',
+    en: 'In every case you will sign in to redinfo as yourself and approve the connection — the assistant never uses a shared account.',
+  },
+  'aiConnections.activeHeading': { pt: 'Ligações ativas', en: 'Active connections' },
+  'aiConnections.none': { pt: 'Ainda não ligou nenhum assistente.', en: 'No assistant connected yet.' },
+  'aiConnections.lastUsed': { pt: 'Usado pela última vez a %{date}', en: 'Last used %{date}' },
+  'aiConnections.neverUsed': { pt: 'Ainda não usado', en: 'Not used yet' },
+  'aiConnections.revokeButton': { pt: 'Desligar', en: 'Disconnect' },
+  'aiConnections.revoked': { pt: 'Ligação removida', en: 'Connection removed' },
+  'aiConnections.revokeFailed': { pt: 'Não foi possível remover a ligação', en: 'Could not remove the connection' },
+  'aiConnections.loadFailed': { pt: 'Não foi possível carregar as ligações', en: 'Could not load connections' },
 } as const;
 
 export type MessageKey = keyof typeof MESSAGES;

@@ -8,6 +8,8 @@ import { AppLayout } from './layout/AppLayout';
 import { LoginPage } from './pages/auth/LoginPage';
 import { Dashboard } from './pages/Dashboard';
 import { OAuthCallback } from './pages/auth/OAuthCallback';
+import { ConsentPage } from './pages/oauth/ConsentPage';
+import { AiConnectionsPage } from './pages/AiConnectionsPage';
 import { UserList, UserEdit, UserCreate, UserShow } from './resources/users';
 import {
   VehicleList,
@@ -127,6 +129,12 @@ export default function App() {
             Ungated otherwise, matching the Export CSV button it sits beside on
             `ScheduleBoard`. */}
         <Route path="/schedules/:id/print" element={<SchedulePrintPage />} />
+
+        {/* The human half of the MCP OAuth flow (`OAuthProviderService.authorize()`
+            on the backend redirects here with `?ticket=`) — a focused prompt, not
+            the app shell, same reasoning as the print/live routes above.
+            `useAuthenticated()` inside `ConsentPage` is what actually gates it. */}
+        <Route path="/oauth/consent" element={<ConsentPage />} />
       </CustomRoutes>
 
       {/* Personal action page rather than a resource: it only ever shows the
@@ -174,6 +182,11 @@ export default function App() {
             MANAGE_INEM_STATUS in the drawer manifest. Not react-admin CRUD:
             there is nothing to create or delete, only status to set. */}
         <Route path="/inem-status" element={<INEMStatusPage />} />
+        {/* "How to connect an AI assistant" + the caller's own active connections
+            (MCP/OAuth). Ungated — every authenticated person may connect an
+            assistant to their own account; what it can then do is still bounded
+            by their role. */}
+        <Route path="/ai-connections" element={<AiConnectionsPage />} />
       </CustomRoutes>
 
       <Resource

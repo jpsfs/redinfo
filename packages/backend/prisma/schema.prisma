@@ -102,6 +102,9 @@ model User {
 
   refreshTokens RefreshToken[]
 
+  oauthAuthorizationCodes OAuthAuthorizationCode[]
+  oauthGrants             OAuthGrant[]
+
   windowsOpened           AvailabilityWindow[]     @relation("WindowOpenedBy")
   windowsClosed           AvailabilityWindow[]     @relation("WindowClosedBy")
   availabilitySubmissions AvailabilitySubmission[]
@@ -132,13 +135,13 @@ model User {
   volunteerHoursReopened VolunteerHoursEntry[] @relation("VolunteerHoursReopenedBy")
   volunteerHoursDeleted  VolunteerHoursEntry[] @relation("VolunteerHoursDeletedBy")
 
-  noticesCreated          Notice[]                      @relation("NoticeCreatedBy")
-  noticeReceipts          NoticeReceipt[]                @relation("NoticeReceiptOwner")
-  notificationDeliveries  NotificationDelivery[]         @relation("NotificationDeliveryRecipient")
-  pushSubscriptions       PushSubscription[]              @relation("PushSubscriptionOwner")
-  notificationPreferences UserNotificationPreference[]   @relation("NotificationPreferenceOwner")
-  notificationTypeSettings UserNotificationTypeSetting[]  @relation("NotificationTypeSettingOwner")
-  inemStatusAudits        INEMStatusAudit[]               @relation("INEMStatusAuditActor")
+  noticesCreated           Notice[]                      @relation("NoticeCreatedBy")
+  noticeReceipts           NoticeReceipt[]               @relation("NoticeReceiptOwner")
+  notificationDeliveries   NotificationDelivery[]        @relation("NotificationDeliveryRecipient")
+  pushSubscriptions        PushSubscription[]            @relation("PushSubscriptionOwner")
+  notificationPreferences  UserNotificationPreference[]  @relation("NotificationPreferenceOwner")
+  notificationTypeSettings UserNotificationTypeSetting[] @relation("NotificationTypeSettingOwner")
+  inemStatusAudits         INEMStatusAudit[]             @relation("INEMStatusAuditActor")
 
   @@index([email])
   @@index([provider, providerId])
@@ -218,6 +221,96 @@ model RefreshToken {
   remember  Boolean   @default(false)
 
   @@index([userId])
+}
+
+// ── OAuth 2.1 Authorization Server (MCP) ────────────────────────────────────
+// Lets an AI assistant (Claude, ChatGPT, Copilot Studio, ...) act as a
+// signed-in user over the MCP endpoint (`/mcp`) instead of as a shared
+// service account. redinfo is its own Authorization Server: whichever login
+// a user already has (local password, Google, Microsoft — see
+// `AuthProvider`) is what the `/oauth/authorize/decision` consent step
+// trusts. See `src/oauth/` (this AS) and `src/mcp/` (the resource server
+// that accepts the tokens it issues).
+
+/// A registered OAuth client — either self-registered via Dynamic Client
+/// Registration (RFC 7591, `isDynamic: true`, `clientSecretSealed: null`,
+/// PKCE-only "public" client — the SDK's `clientRegistrationHandler` refuses
+/// anything else, see `RedinfoClientsStore.registerClient`) or
+/// hand-provisioned by a SYSTEM_ADMIN for a confidential client such as a
+/// Copilot Studio connector. A confidential client's secret must be
+/// recoverable in plaintext (the SDK's own `authenticateClient` middleware
+/// does a literal string compare — see `src/oauth/`), so unlike every other
+/// secret in this schema it is not hashed but sealed with `IdentityCipher`
+/// (scope `"oauth-client-secret"`, AAD-bound to this row's `id`).
+model OAuthClient {
+  id                 String    @id @default(cuid())
+  clientId           String    @unique
+  clientSecretSealed Bytes?
+  clientName         String
+  redirectUris       String[]
+  isDynamic          Boolean   @default(false)
+  createdAt          DateTime  @default(now())
+  disabledAt         DateTime?
+
+  authorizationCodes OAuthAuthorizationCode[]
+  grants             OAuthGrant[]
+
+  @@index([isDynamic])
+}
+
+/// A short-lived authorization code from the `/oauth/authorize` redirect,
+/// redeemed once at `/oauth/token`. Unlike `RefreshToken`'s JWT, `code` is a
+/// plain random opaque value (`crypto.randomBytes`) — nothing needs to
+/// self-verify it, only look it up, so there is nothing a JWT would add.
+model OAuthAuthorizationCode {
+  id                  String      @id @default(cuid())
+  code                String      @unique
+  /// The SDK's own `client.client_id` string, not `OAuthClient.id` — the FK
+  /// targets `OAuthClient.clientId` directly so provider code never has to
+  /// translate between "the id the SDK hands us" and "the id Prisma wants".
+  clientId            String
+  client              OAuthClient @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  userId              String
+  user                User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  redirectUri         String
+  codeChallenge       String
+  /// Always "S256" — PKCE "plain" never reaches this far; the SDK's own
+  /// authorization handler rejects it before `provider.authorize()` runs.
+  codeChallengeMethod String      @default("S256")
+  scopes              String[]
+  expiresAt           DateTime
+  consumedAt          DateTime?
+  createdAt           DateTime    @default(now())
+
+  @@index([clientId])
+  @@index([userId])
+}
+
+/// The durable connection between a user and an AI client, created on
+/// consent approval — what the "AI connections" settings page lists and
+/// revokes. `refreshToken` is a plain random opaque value, `RefreshToken`-row
+/// style (a raw, unique-indexed secret looked up by exact match); the
+/// short-lived access token itself is a signed JWT (`aud: "redinfo-mcp"`)
+/// and is never persisted — `verifyAccessToken` re-checks this row (for
+/// `revokedAt`) on every call so a revoke takes effect before that JWT would
+/// otherwise expire.
+model OAuthGrant {
+  id           String      @id @default(cuid())
+  userId       String
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// See `OAuthAuthorizationCode.clientId` — same "SDK's client_id, not
+  /// OAuthClient.id" relation shape.
+  clientId     String
+  client       OAuthClient @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  scopes       String[]
+  refreshToken String      @unique
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  lastUsedAt   DateTime?
+  createdAt    DateTime    @default(now())
+
+  @@index([userId])
+  @@index([clientId])
 }
 
 enum VehicleType {
@@ -597,12 +690,12 @@ model Schedule {
   publishedAt   DateTime?
   updatedAt     DateTime           @updatedAt
 
-  assignments    ScheduleAssignment[]
+  assignments           ScheduleAssignment[]
   /// Reports whose crew was pre-filled from a shift of this schedule.
-  eventReports   EventReport[]
+  eventReports          EventReport[]
   /// Runs in progress whose crew came from a shift of this schedule.
-  liveRuns       LiveRun[]
-  shiftOverrides ScheduleShiftOverride[]
+  liveRuns              LiveRun[]
+  shiftOverrides        ScheduleShiftOverride[]
   /// Volunteer-hours entries generated from this schedule's assignments.
   volunteerHoursEntries VolunteerHoursEntry[]
 
@@ -756,15 +849,15 @@ model VolunteerHoursEntry {
   /// SetNull rather than Cascade when the assignment itself is later removed
   /// — unassigning someone must not erase an approval already on record, only
   /// the live link back to the roster.
-  assignmentId String?              @unique
-  assignment   ScheduleAssignment?  @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
+  assignmentId String?             @unique
+  assignment   ScheduleAssignment? @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
   /// Denormalised alongside `assignmentId` so the schedule this came from is
   /// still known after the assignment link itself is gone.
   scheduleId   String?
-  schedule     Schedule?            @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
+  schedule     Schedule?           @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
   /// The shift's own date for a SCHEDULED entry, or the date logged for a
   /// MANUAL one. Drives grace-period timing and every aggregation view.
-  date         DateTime             @db.Date
+  date         DateTime            @db.Date
 
   /// Optional free text for a MANUAL entry (what the meeting/training/other
   /// activity was) — required only when activityType is OTHER; unused for
@@ -781,7 +874,7 @@ model VolunteerHoursEntry {
   proposedMinutes Int
   /// What actually counts towards totals. Equal to `proposedMinutes` until a
   /// coordinator corrects it.
-  minutes Int
+  minutes         Int
 
   /// The wall-clock span a MANUAL entry was reported for, minutes from
   /// midnight (mirrors `ShiftTimes`). Null for SCHEDULED — a shift's own
@@ -802,13 +895,13 @@ model VolunteerHoursEntry {
   /// rather than a child table.
   flagDetails Json?
 
-  status       VolunteerHoursStatus @default(PENDING)
-  approvedById String?
-  approvedBy   User?                @relation("VolunteerHoursApprovedBy", fields: [approvedById], references: [id])
-  approvedAt   DateTime?
+  status           VolunteerHoursStatus @default(PENDING)
+  approvedById     String?
+  approvedBy       User?                @relation("VolunteerHoursApprovedBy", fields: [approvedById], references: [id])
+  approvedAt       DateTime?
   /// True when PENDING became APPROVED through the grace-period sweep rather
   /// than a person's own action. Never true for MANUAL, or once corrected.
-  autoApproved     Boolean @default(false)
+  autoApproved     Boolean              @default(false)
   /// Present exactly when `minutes` differs from `proposedMinutes`.
   correctionReason String?
 
@@ -1173,7 +1266,7 @@ model EventReportAssessment {
   diastolic       Int?
   /// °C. Decimal rather than Float, following `MaintenanceEntry.cost`: 36.8 is
   /// a number, not a float to be surprised by.
-  temperature     Decimal? @db.Decimal(3, 1)
+  temperature     Decimal?   @db.Decimal(3, 1)
   /// bpm
   heartRate       Int?
   /// cpm
@@ -1686,26 +1779,26 @@ model NoticeReceipt {
 /// instead of joined from one, keeping this delivery record generic across
 /// producers rather than coupled to `Notice` specifically.
 model NotificationDelivery {
-  id       String            @id @default(cuid())
-  type     NotificationType  @default(NOTICE)
-  noticeId String?
-  notice   Notice?           @relation(fields: [noticeId], references: [id], onDelete: Cascade)
-  userId   String
-  user     User              @relation("NotificationDeliveryRecipient", fields: [userId], references: [id], onDelete: Cascade)
-  channel  NotificationChannel
+  id                String                     @id @default(cuid())
+  type              NotificationType           @default(NOTICE)
+  noticeId          String?
+  notice            Notice?                    @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User                       @relation("NotificationDeliveryRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  channel           NotificationChannel
   /// Subject line for `EMAIL`, unused for `WEB_PUSH`.
-  emailSubject String
-  emailBody    String
+  emailSubject      String
+  emailBody         String
   /// Notification title/body for `WEB_PUSH`, unused for `EMAIL`.
-  pushTitle    String
-  pushBody     String
-  status            NotificationDeliveryStatus  @default(PENDING)
+  pushTitle         String
+  pushBody          String
+  status            NotificationDeliveryStatus @default(PENDING)
   error             String?
   /// The provider's own id for this send (e.g. Resend's email id), so a
   /// webhook event can be matched back to this row without guessing.
   providerMessageId String?
-  attemptedAt       DateTime                    @default(now())
-  updatedAt         DateTime                    @updatedAt
+  attemptedAt       DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
 
   @@index([noticeId])
   @@index([userId])
@@ -1801,16 +1894,16 @@ enum OWASessionStatus {
 /// The INEM portal session (`alAuth` + friends). One row, sealed with
 /// `IdentityCipher` the same way `LiveRun.identity` is.
 model INEMSession {
-  id           String            @id @default("inem")
-  status       INEMSessionStatus @default(UNKNOWN)
+  id                    String            @id @default("inem")
+  status                INEMSessionStatus @default(UNKNOWN)
   /// IdentityCipher-sealed cookie jar (alAuth + the FortiWeb affinity cookie).
-  cookies      Bytes?
-  expiresAt    DateTime?
+  cookies               Bytes?
+  expiresAt             DateTime?
   /// Consecutive login failures. The circuit breaker in #214 trips at 2 and
   /// stops retrying — automated retries are the most likely thing to wake
   /// the (currently dormant) login captcha.
-  failureCount Int               @default(0)
-  lastError    String?
+  failureCount          Int               @default(0)
+  lastError             String?
   /// Identifies the in-flight cold-login attempt (#215's worker job) while
   /// `status` is `LOGGING_IN`. A generated id rather than a separate job
   /// table: single-flight (the advisory lock in `InemSessionService`) means
@@ -1820,7 +1913,7 @@ model INEMSession {
   /// So the worker only accepts an OTP mail newer than this attempt — see
   /// `INEMLoginJob.startedAt` in the shared contract.
   pendingLoginStartedAt DateTime?
-  updatedAt    DateTime          @updatedAt
+  updatedAt             DateTime          @updatedAt
 }
 
 /// The Outlook Web Access session the worker reads the INEM OTP mail from.

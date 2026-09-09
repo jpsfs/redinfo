@@ -17,6 +17,8 @@ import { StatisticsModule } from './statistics/statistics.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { NoticesModule } from './notices/notices.module';
 import { InemModule } from './inem/inem.module';
+import { OAuthModule } from './oauth/oauth.module';
+import { McpModule } from './mcp/mcp.module';
 
 @Module({
   imports: [
@@ -41,6 +43,8 @@ import { InemModule } from './inem/inem.module';
     NotificationsModule,
     NoticesModule,
     InemModule,
+    OAuthModule,
+    McpModule,
   ],
 })
 export class AppModule {}

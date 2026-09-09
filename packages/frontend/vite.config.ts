@@ -107,6 +107,20 @@ export default defineConfig(({ mode }) => {
             if (path === '/auth/callback') return req.url;
           },
         },
+        // ── MCP: OAuth 2.1 Authorization Server + the /mcp resource server ──
+        // Mirrors nginx/nginx.conf's own copy of this block — the exact
+        // root-level paths the MCP SDK's `mcpAuthRouter` fixes per spec
+        // (RFC 8414/9728/7591), reached directly by an external AI client.
+        // No bypass carve-out needed for /oauth/consent (the SPA's own
+        // route): unlike /auth, there is no blanket /oauth proxy rule here
+        // to shadow it — this app's OAuth consent/grants API calls go
+        // through /api/oauth/..., matching every other resource.
+        '/mcp': { target: 'http://backend:3000', changeOrigin: true, ws: true },
+        '/.well-known': { target: 'http://backend:3000', changeOrigin: true },
+        '/authorize': { target: 'http://backend:3000', changeOrigin: true },
+        '/token': { target: 'http://backend:3000', changeOrigin: true },
+        '/register': { target: 'http://backend:3000', changeOrigin: true },
+        '/revoke': { target: 'http://backend:3000', changeOrigin: true },
       },
     },
     resolve: {

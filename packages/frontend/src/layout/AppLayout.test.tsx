@@ -64,6 +64,7 @@ describe('RedInfoMenu', () => {
       '/my-hours',
       '/my-reports',
       '/my-notices',
+      '/ai-connections',
       // Org-wide reading — see the matching note in navigation.test.tsx.
       '/event-reports',
       '/schedules',
@@ -74,14 +75,15 @@ describe('RedInfoMenu', () => {
     ]);
   });
 
-  it('gives a Logistics Coordinator exactly twelve entries and no live mode', async () => {
-    // Twelve, not seven — see the matching note in navigation.test.tsx.
+  it('gives a Logistics Coordinator exactly thirteen entries and no live mode', async () => {
+    // Thirteen, not seven — see the matching note in navigation.test.tsx.
     const links = await renderMenuAs([UserRole.LOGISTICS_COORDINATOR]);
     expect(links).toEqual([
       '/',
       '/my-duties',
       '/my-hours',
       '/my-notices',
+      '/ai-connections',
       '/event-reports',
       '/schedules',
       '/statistics',
@@ -103,6 +105,7 @@ describe('RedInfoMenu', () => {
       '/my-hours',
       '/my-reports',
       '/my-notices',
+      '/ai-connections',
       '/live-runs',
       '/event-reports',
       '/schedules',
@@ -136,6 +139,7 @@ describe('RedInfoMenu', () => {
       '/my-hours',
       '/my-reports',
       '/my-notices',
+      '/ai-connections',
       '/live-runs',
       '/event-reports',
       '/schedules',

@@ -19,6 +19,6 @@ import { AuditInterceptor } from '../auth/interceptors/audit.interceptor';
     AuditInterceptor,
   ],
   controllers: [HolidaysController, AvailabilityWindowsController, AvailabilityController],
-  exports: [ShiftScheduleService, AvailabilityWindowsService],
+  exports: [ShiftScheduleService, AvailabilityWindowsService, AvailabilityService],
 })
 export class AvailabilityModule {}

@@ -20,6 +20,7 @@ import EventBusyIcon from '@mui/icons-material/EventBusy';
 import QueryStatsIcon from '@mui/icons-material/QueryStats';
 import NotificationsIcon from '@mui/icons-material/Notifications';
 import CampaignIcon from '@mui/icons-material/Campaign';
+import SmartToyIcon from '@mui/icons-material/SmartToy';
 import { Action } from '@redinfo/shared';
 import { MessageKey } from '../i18n/labels';
 
@@ -100,6 +101,14 @@ export const NAV_SECTIONS: NavSection[] = [
         to: '/my-notices',
         label: 'nav.myNotices',
         icon: <NotificationsIcon />,
+      },
+      {
+        // Connecting an AI assistant to one's own account — ungated for the
+        // same reason as /my-duties above: what it can do once connected is
+        // still bounded by the signed-in person's own role.
+        to: '/ai-connections',
+        label: 'nav.aiConnections',
+        icon: <SmartToyIcon />,
       },
     ],
   },
