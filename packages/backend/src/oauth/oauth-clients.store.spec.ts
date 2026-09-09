@@ -10,15 +10,32 @@ function makeStore() {
 
 describe('RedinfoClientsStore', () => {
   describe('registerClient', () => {
-    it('refuses a confidential client (anything but token_endpoint_auth_method: "none")', async () => {
-      const { store } = makeStore();
+    it('downgrades a client asking for client_secret_basic/post to public, PKCE-only', async () => {
+      const { store, prisma } = makeStore();
+      prisma.oAuthClient.create.mockResolvedValue(undefined);
 
-      await expect(
-        store.registerClient({
-          redirect_uris: ['https://assistant.example/callback'],
-          token_endpoint_auth_method: 'client_secret_post',
-        } as never),
-      ).rejects.toBeInstanceOf(InvalidClientMetadataError);
+      const result = await store.registerClient({
+        client_id: 'c-2',
+        client_id_issued_at: 1,
+        client_name: 'Claude',
+        redirect_uris: ['https://claude.ai/api/mcp/auth_callback'],
+        token_endpoint_auth_method: 'client_secret_basic',
+        client_secret: 'whatever-the-sdk-minted',
+      } as never);
+
+      // Persisted with no secret, same as any other DCR client.
+      expect(prisma.oAuthClient.create).toHaveBeenCalledWith({
+        data: {
+          clientId: 'c-2',
+          clientName: 'Claude',
+          redirectUris: ['https://claude.ai/api/mcp/auth_callback'],
+          isDynamic: true,
+        },
+      });
+      // And the response handed back to the caller says so too — it must
+      // never believe a secret it can't actually authenticate with later.
+      expect(result.token_endpoint_auth_method).toBe('none');
+      expect(result.client_secret).toBeUndefined();
     });
 
     it('refuses a client with no redirect_uris', async () => {

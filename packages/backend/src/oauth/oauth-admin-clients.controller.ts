@@ -14,8 +14,10 @@ const CLIENT_SECRET_SCOPE = 'oauth-client-secret';
 /**
  * Hand-provisioning for a confidential OAuth client — the half of the
  * "open DCR + admin pre-registration" decision that open registration
- * (`RedinfoClientsStore.registerClient`) deliberately refuses. Exists for a
- * platform like Copilot Studio that expects a `client_secret` rather than
+ * (`RedinfoClientsStore.registerClient`) never grants: DCR always downgrades
+ * to a public, PKCE-only client, no matter what a caller asks for, so this
+ * is the only path that ever hands out a durable `client_secret`. Exists for
+ * a platform like Copilot Studio that actually requires one rather than
  * self-registering with PKCE.
  *
  * `@Roles(SYSTEM_ADMIN)` rather than `@Actions(...)`: this is an operational
