@@ -33,7 +33,7 @@ import { apiErrorLabel, liveBlockerLabel, liveScreenLabel, occurrenceTimeLabel }
 import { useT } from '../../i18n/useT';
 import { composeInstant, timeOfDay, todayIso } from '../eventReports/reportDraft';
 import { useReportLookups } from '../eventReports/useReportLookups';
-import { attachPhotosToReport, deleteRun, saveRun } from './liveRunDb';
+import { attachPhotosToReport, deleteRun } from './liveRunDb';
 import { isLiveScreen, screenForRun, writeCurrentRunId } from './liveRun';
 import { useLiveRun } from './useLiveRun';
 import { useLiveRunSync } from './useLiveRunSync';
@@ -85,7 +85,6 @@ export const LiveRunPage = () => {
   const notify = useNotify();
 
   const form = useLiveRun({ runId });
-  const [reportId, setReportId] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
   const [correcting, setCorrecting] = useState(false);
   const [materialsOpen, setMaterialsOpen] = useState(false);
@@ -93,7 +92,7 @@ export const LiveRunPage = () => {
   const [homeLocality, setHomeLocality] = useState<Locality | null>(null);
   const [settings, setSettings] = useState<DelegationSettings | null>(null);
 
-  const photos = usePhotoQueue({ runId, reportId });
+  const photos = usePhotoQueue({ runId, reportId: form.reportId });
   const dictation = useDictation();
   const sync = useLiveRunSync({ onMerged: form.replace });
   const t = useT();
@@ -244,6 +243,19 @@ export const LiveRunPage = () => {
    */
   const close = useCallback(
     async (destination: 'report' | 'home') => {
+      // Already closed — either this very tap a moment ago, or an earlier
+      // visit: the device's own copy remembers `reportId` once closing has
+      // written it (see `useLiveRun`'s load), so a run reopened from a
+      // reload or the board's own-run link lands here too. The server has
+      // already turned this into a report and refuses a second `close`
+      // (`assertCanWriteRun`'s "closed into a report" guard), so don't ask
+      // it again — just take the exit the crew asked for.
+      if (form.reportId) {
+        writeCurrentRunId(null);
+        navigate(destination === 'report' ? `/event-reports/${form.reportId}` : '/');
+        return;
+      }
+
       // Caught here rather than left to the server: a blocker the crew can
       // see is unmarked on this very screen must never turn into a network
       // round trip, and the crew is dropped straight onto the field that is
@@ -268,16 +280,16 @@ export const LiveRunPage = () => {
           method: 'POST',
         });
 
-        // One merged object, used everywhere below — `form.run` inside this
-        // closure is still the pre-close snapshot even after `form.replace`
-        // fires (that only lands on the *next* render), so a second write built
-        // from `form.run` would race the first and could leave the device's own
-        // copy behind at its old, unclosed state while the server — and the
-        // report it just created — have already moved on.
+        // One merged object, one write — `form.run` inside this closure is
+        // still the pre-close snapshot even after `replace` fires (that only
+        // lands on the *next* render), so a second, separate write built
+        // from `form.run` would race this one and could leave the device's
+        // own copy behind at its old, unclosed state (or its `reportId`
+        // reverted to null) while the server — and the report it just
+        // created — have already moved on. `replace` takes both the run and
+        // its `reportId` together for exactly this reason.
         const closedRun = { ...form.run, ...response.run };
-        form.replace(closedRun);
-        setReportId(response.report.id);
-        await saveRun(closedRun, { reportId: response.report.id });
+        await form.replace(closedRun, response.report.id);
         await attachPhotosToReport(runId, response.report.id);
         // The run is finished; the device stops offering to resume it.
         writeCurrentRunId(null);

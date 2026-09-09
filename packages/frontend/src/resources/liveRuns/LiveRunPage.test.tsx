@@ -659,6 +659,33 @@ describe('the closing screen', () => {
     expect(stored?.reportId).toBe('rep-new');
   });
 
+  /**
+   * Regression: a run the device already knows is closed — from an earlier
+   * visit, e.g. reopened via the board's "jump back to your own run" link —
+   * still lands on this same closing screen, because the screen a run opens
+   * on is driven purely by `run.state` and `CLOSED` still means "closing".
+   * Tapping either exit here used to re-POST `/close`, which the server
+   * refuses once `reportId` is already set (`assertCanWriteRun`'s "closed
+   * into a report" guard) — surfaced to the crew as a bare rejection with no
+   * way out but abandoning the run. Knowing `reportId` already, from the
+   * device's own stored copy, must take the same exit without asking the
+   * server again.
+   */
+  it('takes the same exit without re-closing a run the device already knows is closed', async () => {
+    const user = userEvent.setup();
+    const run = await readyToClose();
+    await saveRun({ ...run, state: LiveRunState.CLOSED } as never, { reportId: 'rep-existing' });
+    renderRunWithExits('closing');
+
+    await user.click(await screen.findByRole('button', { name: 'TERMINAR E ABRIR RELATÓRIO' }));
+
+    expect(await screen.findByText('O RASCUNHO')).toBeInTheDocument();
+    expect(mockApiFetch).not.toHaveBeenCalledWith(
+      `/live-runs/${runId}/close`,
+      expect.objectContaining({ method: 'POST' }),
+    );
+  });
+
   it('names every unmarked time rather than leaving the row blank', async () => {
     await seed({ state: LiveRunState.AT_HOSPITAL, activationAt: '2026-08-22T20:14:00.000Z' });
     renderRun('closing');

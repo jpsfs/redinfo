@@ -87,8 +87,23 @@ export interface LiveRunHandle {
 
   /** When the device last wrote it — the "gravado" caption. */
   savedAt: string | null;
-  /** Replaces the whole document, after a sync or a close. */
-  replace: (run: LiveRunInput) => void;
+  /**
+   * The draft report this run became, once closing has produced one — read
+   * back from the device's own copy on load, so a run reopened after closing
+   * (a reload, or the board's own-run link) knows it without a round trip.
+   * `null` for a run still open.
+   */
+  reportId: string | null;
+  /**
+   * Replaces the whole document, after a sync or a close.
+   *
+   * `reportId` is the second half of what closing writes — passing both here
+   * makes it one IndexedDB write instead of two racing ones (see `close`'s
+   * own call site): the record and its `reportId` land together or not at
+   * all, rather than whichever of two independent writes happens to finish
+   * last deciding what the device remembers.
+   */
+  replace: (run: LiveRunInput, reportId?: string | null) => Promise<void>;
   /**
    * Writes a still-debounced `patchLater` to the device immediately, rather
    * than waiting out its timer.
@@ -121,6 +136,7 @@ export function useLiveRun(options: UseLiveRunOptions): LiveRunHandle {
   const [run, setRun] = useState<LiveRunInput>(() => initial ?? emptyRun(runId));
   const [ready, setReady] = useState(false);
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [reportId, setReportId] = useState<string | null>(null);
 
   // The pending write, so a debounced patch that is still in flight when the
   // crew taps a stamp is flushed rather than lost.
@@ -152,6 +168,7 @@ export function useLiveRun(options: UseLiveRunOptions): LiveRunHandle {
         // reopened after a reload must come back exactly as it was left.
         setRun(stored.run);
         setSavedAt(stored.savedAt);
+        setReportId(stored.reportId ?? null);
       } else {
         const seed = initial ?? emptyRun(runId);
         setRun(seed);
@@ -295,11 +312,17 @@ export function useLiveRun(options: UseLiveRunOptions): LiveRunHandle {
   );
 
   const replace = useCallback(
-    (next: LiveRunInput) => {
+    (next: LiveRunInput, nextReportId?: string | null): Promise<void> => {
       if (pending.current) clearTimeout(pending.current.timer);
       pending.current = null;
       setRun(next);
-      void saveRun(next).then(() => setSavedAt(new Date().toISOString()));
+      // `undefined` (the sync merge's own call, `onMerged`) leaves whatever
+      // `reportId` the device already knew about untouched — only `close`
+      // passing one explicitly moves it.
+      if (nextReportId !== undefined) setReportId(nextReportId);
+      return saveRun(next, nextReportId !== undefined ? { reportId: nextReportId } : {}).then(
+        () => setSavedAt(new Date().toISOString()),
+      );
     },
     [],
   );
@@ -334,6 +357,7 @@ export function useLiveRun(options: UseLiveRunOptions): LiveRunHandle {
     blockers,
     canClose: canCloseLiveRun(run) && run.state !== LiveRunState.CLOSED,
     savedAt,
+    reportId,
     replace,
     flush,
   };
