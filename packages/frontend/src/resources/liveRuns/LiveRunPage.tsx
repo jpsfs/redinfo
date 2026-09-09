@@ -268,9 +268,16 @@ export const LiveRunPage = () => {
           method: 'POST',
         });
 
-        form.replace({ ...form.run, ...response.run });
+        // One merged object, used everywhere below — `form.run` inside this
+        // closure is still the pre-close snapshot even after `form.replace`
+        // fires (that only lands on the *next* render), so a second write built
+        // from `form.run` would race the first and could leave the device's own
+        // copy behind at its old, unclosed state while the server — and the
+        // report it just created — have already moved on.
+        const closedRun = { ...form.run, ...response.run };
+        form.replace(closedRun);
         setReportId(response.report.id);
-        await saveRun(form.run, { reportId: response.report.id });
+        await saveRun(closedRun, { reportId: response.report.id });
         await attachPhotosToReport(runId, response.report.id);
         // The run is finished; the device stops offering to resume it.
         writeCurrentRunId(null);

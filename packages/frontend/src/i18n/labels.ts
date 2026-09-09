@@ -235,6 +235,10 @@ const MESSAGES = {
     en: 'Mark the times as they happen.',
   },
   'live.resume': { pt: 'Continuar ocorrência em curso', en: 'Continue the run in progress' },
+  'live.boardResume': {
+    pt: 'É a tua ocorrência — toca para continuar',
+    en: "It's your run — tap to continue",
+  },
   'live.openRuns': { pt: 'Ocorrências em curso', en: 'Runs in progress' },
   'live.noOpenRuns': { pt: 'Não há ocorrências em curso.', en: 'No runs in progress.' },
   'live.newRun': { pt: 'Nova ocorrência', en: 'New run' },

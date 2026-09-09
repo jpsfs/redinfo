@@ -16,7 +16,7 @@ import { renderMobile } from '../../test/renderMobile';
 import { apiFetch } from '../../api';
 import { LiveRunPage } from './LiveRunPage';
 import { emptyRun } from './liveRun';
-import { resetLiveRunDb, saveMaterialFavourites, saveRun } from './liveRunDb';
+import { loadRun, resetLiveRunDb, saveMaterialFavourites, saveRun } from './liveRunDb';
 
 vi.mock('../../api', () => ({ apiFetch: vi.fn(), apiDownload: vi.fn() }));
 
@@ -634,6 +634,29 @@ describe('the closing screen', () => {
       ),
     );
     expect(await screen.findByText('O INÍCIO')).toBeInTheDocument();
+  });
+
+  /**
+   * Regression for a race between the response's own `form.replace` and the
+   * follow-up write that stamps `reportId` onto the device's copy: the second
+   * write used to start from the pre-close snapshot still sitting in this
+   * closure rather than from what `replace` had just computed, so whichever
+   * write landed last could leave the device's own record behind at its old,
+   * unclosed state even though the server — and the report it just made —
+   * had already moved on. Either exit must leave the *local* copy closed too,
+   * or the device goes on believing the run is still open.
+   */
+  it("closes the device's own copy, not just the server's, on either exit", async () => {
+    const user = userEvent.setup();
+    await readyToClose();
+    renderRunWithExits('closing');
+
+    await user.click(await screen.findByRole('button', { name: 'GUARDAR E SAIR' }));
+    await screen.findByText('O INÍCIO');
+
+    const stored = await loadRun(runId);
+    expect(stored?.run.state).toBe(LiveRunState.CLOSED);
+    expect(stored?.reportId).toBe('rep-new');
   });
 
   it('names every unmarked time rather than leaving the row blank', async () => {
