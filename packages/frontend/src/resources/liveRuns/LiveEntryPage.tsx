@@ -18,9 +18,8 @@ import { liveScreenLabel } from '../../i18n/labels';
 import { useT } from '../../i18n/useT';
 import { colorRedCrossRedDark } from '../../layout/design-tokens';
 import { timeOfDay } from '../eventReports/reportDraft';
-import { StoredRun, listRuns } from './liveRunDb';
+import { StoredRun, enqueue, listRuns, saveRun } from './liveRunDb';
 import { emptyRun, newRunId, screenForRun, writeCurrentRunId } from './liveRun';
-import { saveRun } from './liveRunDb';
 
 /**
  * Start a run, or pick up one already open.
@@ -44,7 +43,11 @@ export const LiveEntryPage = () => {
 
   const start = useCallback(async () => {
     const run = emptyRun(newRunId());
+    // Same write-through as useLiveRun's `write`: saved and enqueued together,
+    // so a run abandoned before its first stamp is still visible to the
+    // coordinator board rather than sitting invisibly on the device.
     await saveRun(run);
+    await enqueue(run.id, run.revision);
     writeCurrentRunId(run.id);
     navigate(`/live/${run.id}/intake`);
   }, [navigate]);
