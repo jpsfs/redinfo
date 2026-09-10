@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { INEMSessionStatus, OWASessionStatus } from '@prisma/client';
 import { Agent } from 'undici';
 import { IdentityCipher } from '../common/identity-cipher';
-import { InemApiClient, InemCookieJar, InemSessionExpiredError } from './inem-api.client';
+import { InemApiClient, InemApiError, InemCookieJar, InemSessionExpiredError } from './inem-api.client';
 import { InemSessionService } from './inem-session.service';
 
 const CIPHER_KEY = `k1:${randomBytes(32).toString('base64')}`;
@@ -275,6 +275,73 @@ describe('InemSessionService', () => {
       expect(recoverSpy).toHaveBeenCalledTimes(1);
       expect(sessionRow.status).toBe(INEMSessionStatus.EXPIRED);
     });
+
+    it('records a generic failure against the breaker instead of throwing it', async () => {
+      const cookies: InemCookieJar = { alAuth: 'a1', samlsessionid: 's1', deviceId: null };
+      const { stub, sessionRow } = buildPrismaStub(
+        inemSessionRow({ status: INEMSessionStatus.ACTIVE, cookies: sealedCookies(cipher, cookies) }),
+      );
+      const service = new InemSessionService(stub as never, cipher, client);
+      jest.spyOn(client, 'getStatistics').mockRejectedValue(new Error('ECONNRESET'));
+
+      await expect(service.pingStatistics()).resolves.toBeUndefined();
+
+      expect(sessionRow.status).toBe(INEMSessionStatus.EXPIRED);
+      expect(sessionRow.failureCount).toBe(1);
+      expect(sessionRow.lastError).toBe('ECONNRESET');
+    });
+  });
+
+  describe('recordApiFailure', () => {
+    it('stays EXPIRED after a first non-4xx failure — one retry of grace before tripping', async () => {
+      const { stub, sessionRow } = buildPrismaStub(inemSessionRow({ status: INEMSessionStatus.ACTIVE, failureCount: 0 }));
+      const service = new InemSessionService(stub as never, cipher, client);
+
+      await service.recordApiFailure(new Error('ETIMEDOUT'));
+
+      expect(sessionRow.status).toBe(INEMSessionStatus.EXPIRED);
+      expect(sessionRow.failureCount).toBe(1);
+    });
+
+    it('trips to FAILED on the second consecutive non-4xx failure', async () => {
+      const { stub, sessionRow } = buildPrismaStub(inemSessionRow({ status: INEMSessionStatus.EXPIRED, failureCount: 1 }));
+      const service = new InemSessionService(stub as never, cipher, client);
+
+      await service.recordApiFailure(new Error('ETIMEDOUT again'));
+
+      expect(sessionRow.status).toBe(INEMSessionStatus.FAILED);
+      expect(sessionRow.failureCount).toBe(2);
+    });
+
+    it('trips to FAILED immediately on a single 4xx — retrying an identical bad request would not change the outcome', async () => {
+      const { stub, sessionRow } = buildPrismaStub(inemSessionRow({ status: INEMSessionStatus.ACTIVE, failureCount: 0 }));
+      const service = new InemSessionService(stub as never, cipher, client);
+
+      await service.recordApiFailure(new InemApiError('INEM PUT /api/unit -> 400', 400));
+
+      expect(sessionRow.status).toBe(INEMSessionStatus.FAILED);
+      expect(sessionRow.failureCount).toBe(1);
+    });
+
+    it('does not immediately trip on a 5xx — that is INEM having a bad moment, not a request that will always fail', async () => {
+      const { stub, sessionRow } = buildPrismaStub(inemSessionRow({ status: INEMSessionStatus.ACTIVE, failureCount: 0 }));
+      const service = new InemSessionService(stub as never, cipher, client);
+
+      await service.recordApiFailure(new InemApiError('INEM GET /api/unit -> 503', 503));
+
+      expect(sessionRow.status).toBe(INEMSessionStatus.EXPIRED);
+      expect(sessionRow.failureCount).toBe(1);
+    });
+
+    it('is a no-op once already FAILED — nothing left to escalate', async () => {
+      const { stub, sessionRow } = buildPrismaStub(inemSessionRow({ status: INEMSessionStatus.FAILED, failureCount: 2 }));
+      const service = new InemSessionService(stub as never, cipher, client);
+
+      await service.recordApiFailure(new Error('anything'));
+
+      expect(sessionRow.status).toBe(INEMSessionStatus.FAILED);
+      expect(stub.iNEMSession.update).not.toHaveBeenCalled();
+    });
   });
 
   describe('recover', () => {
@@ -316,6 +383,38 @@ describe('InemSessionService', () => {
       expect(sessionRow.lastError).toBeNull();
       const opened = cipher.open<InemCookieJar>('inem-session', 'inem', sessionRow.cookies as Buffer);
       expect(opened.alAuth).toBe('fresh-alauth');
+    });
+
+    it('stays EXPIRED after a first warm re-mint failure — one retry of grace before tripping', async () => {
+      const cookies: InemCookieJar = { alAuth: 'stale', samlsessionid: 'saml-1', deviceId: null };
+      const { stub, sessionRow } = buildPrismaStub(
+        inemSessionRow({ cookies: sealedCookies(cipher, cookies), status: INEMSessionStatus.EXPIRED, failureCount: 0 }),
+      );
+      const service = new InemSessionService(stub as never, cipher, client);
+      fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'));
+
+      await service.recover();
+
+      expect(sessionRow.status).toBe(INEMSessionStatus.EXPIRED);
+      expect(sessionRow.failureCount).toBe(1);
+    });
+
+    it('trips to FAILED — a full stop, no more outbound calls from any loop — after a second consecutive warm re-mint failure', async () => {
+      // The exact storm found live 2026-09-10: a bare TLS/network failure on
+      // this chain used to retry forever with no cap, hammering
+      // portalpem.inem.pt indefinitely. Must trip on the same 2-failure
+      // threshold as a cold-login failure, not stay EXPIRED forever.
+      const cookies: InemCookieJar = { alAuth: 'stale', samlsessionid: 'saml-1', deviceId: null };
+      const { stub, sessionRow } = buildPrismaStub(
+        inemSessionRow({ cookies: sealedCookies(cipher, cookies), status: INEMSessionStatus.EXPIRED, failureCount: 1 }),
+      );
+      const service = new InemSessionService(stub as never, cipher, client);
+      fetchMock.mockRejectedValueOnce(new TypeError('fetch failed'));
+
+      await service.recover();
+
+      expect(sessionRow.status).toBe(INEMSessionStatus.FAILED);
+      expect(sessionRow.failureCount).toBe(2);
     });
 
     it('dispatches every warm re-mint request through the INEM trusted-CA workaround, not the bare default fetch', async () => {

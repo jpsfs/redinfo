@@ -56,7 +56,7 @@ export class InemReconcilerService implements OnModuleInit {
     // mirrors `EventReportNumbering`'s own `pg_advisory_xact_lock` pattern,
     // and INEM's own unit count is small enough that holding one Postgres
     // connection for the length of two HTTP round trips is a non-issue.
-    const needsRecovery = await this.prisma.$transaction(
+    const outcome = await this.prisma.$transaction(
       async (tx) => {
         await tx.$executeRaw(RECONCILE_LOCK_SQL);
         return this.reconcileLocked(tx);
@@ -64,23 +64,40 @@ export class InemReconcilerService implements OnModuleInit {
       { timeout: 20_000 },
     );
 
-    // Recovery/health-marking deliberately run *after* this transaction has
-    // committed — both open their own, and nesting either inside this one
-    // buys nothing but a second connection held idle.
-    if (needsRecovery) {
-      await this.session.recover();
-    } else {
-      // The two INEM calls above just succeeded with the current cookies —
-      // clear a stale `EXPIRED` flag left over from an earlier transient
-      // failure that never got a chance to self-correct.
-      await this.session.markHealthy();
+    // Recovery/health-marking/failure-recording deliberately run *after* this
+    // transaction has committed — all three open their own, and nesting any
+    // of them inside this one buys nothing but a second connection held idle.
+    switch (outcome.kind) {
+      case 'session-expired':
+        await this.session.recover();
+        break;
+      case 'ok':
+        // The two INEM calls above just succeeded with the current cookies —
+        // clear a stale `EXPIRED` flag left over from an earlier transient
+        // failure that never got a chance to self-correct.
+        await this.session.markHealthy();
+        break;
+      case 'api-error':
+        await this.session.recordApiFailure(outcome.error);
+        break;
     }
   }
 
-  /** Returns `true` when the session turned out to be dead and recovery should run once this transaction is done. */
-  private async reconcileLocked(tx: Prisma.TransactionClient): Promise<boolean> {
+  /**
+   * `'session-expired'` when the cookies turned out to be dead and recovery
+   * should run once this transaction is done; `'api-error'` when INEM was
+   * reached but answered with something else (a bad status, a malformed
+   * body) — carries the error so `reconcile()` can hand it to the breaker
+   * *after* this transaction commits, not from in here (see that method's
+   * own comment on why). Either error case still lets a `syncUnits` write
+   * that already ran (e.g. the batch push after the two `GET`s failed)
+   * commit — partial progress from this pass is still real progress.
+   */
+  private async reconcileLocked(
+    tx: Prisma.TransactionClient,
+  ): Promise<{ kind: 'ok' } | { kind: 'session-expired' } | { kind: 'api-error'; error: unknown }> {
     const cookies = await this.session.getCookiesOrNull();
-    if (!cookies) return true;
+    if (!cookies) return { kind: 'session-expired' };
     const entity = this.session.entityId;
 
     try {
@@ -96,10 +113,10 @@ export class InemReconcilerService implements OnModuleInit {
         await this.client.putUnits(cookies, entity, pending);
         await this.markPushed(tx, pending);
       }
-      return false;
+      return { kind: 'ok' };
     } catch (err) {
-      if (err instanceof InemSessionExpiredError) return true;
-      throw err;
+      if (err instanceof InemSessionExpiredError) return { kind: 'session-expired' };
+      return { kind: 'api-error', error: err };
     }
   }
 

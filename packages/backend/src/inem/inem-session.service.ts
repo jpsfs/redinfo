@@ -4,7 +4,7 @@ import { INEMSession, INEMSessionStatus, OWASessionStatus, Prisma } from '@prism
 import { INEMLoginJob, INEMLoginJobResult } from '@redinfo/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { IdentityCipher, UnknownIdentityKeyError } from '../common/identity-cipher';
-import { InemApiClient, InemCookieJar, InemSessionExpiredError } from './inem-api.client';
+import { InemApiClient, InemApiError, InemCookieJar, InemSessionExpiredError } from './inem-api.client';
 import { extractSamlAssertion, isInemLoginForm } from './inem-saml.util';
 import { inemTrustedDispatcher } from './inem-trusted-ca';
 
@@ -13,8 +13,20 @@ const INEM_SESSION_SCOPE = 'inem-session';
 const OWA_SESSION_ID = 'owa';
 const OWA_SESSION_SCOPE = 'owa-session';
 
-/** After this many consecutive cold-login failures, the breaker trips and stays tripped until a human intervenes. */
-const LOGIN_FAILURE_LIMIT = 2;
+/**
+ * After this many consecutive failures of the *same kind of effort* — cold
+ * login, warm re-mint, or a live reconcile/keep-alive call — the breaker
+ * trips and every scheduled loop goes outbound-silent until a human
+ * intervenes (`getCookiesOrNull`/`performRecovery` both refuse to touch a
+ * `FAILED` session). Found live 2026-09-10: a bare TLS/network failure on the
+ * warm re-mint chain used to retry forever without ever tripping, hammering
+ * `portalpem.inem.pt` every few minutes indefinitely — the platform this
+ * integration talks to is someone else's, and repeatedly failing the exact
+ * same way is a signal to stop, not to keep trying. Set to 2 rather than 1 so
+ * a single transient blip doesn't require a manual reset; not higher, so a
+ * real, persistent problem can't run unbounded.
+ */
+const CONSECUTIVE_FAILURE_LIMIT = 2;
 
 /** Single-flight key: only one recovery attempt (warm re-mint or cold-login handoff) runs at a time. */
 const RECOVERY_LOCK_SQL = Prisma.sql`SELECT pg_advisory_xact_lock(hashtext('inem-session-recover')::bigint)`;
@@ -145,7 +157,8 @@ export class InemSessionService implements OnModuleInit {
         await this.recover();
         return;
       }
-      throw err;
+      await this.recordApiFailure(err);
+      return;
     }
     await this.markHealthy();
   }
@@ -168,6 +181,50 @@ export class InemSessionService implements OnModuleInit {
     await this.prisma.iNEMSession.update({
       where: { id: INEM_SESSION_ID },
       data: { status: INEMSessionStatus.ACTIVE, failureCount: 0, lastError: null },
+    });
+  }
+
+  /**
+   * Records a failure from a live call that reached INEM with cookies good
+   * enough to be sent (i.e. not `InemSessionExpiredError` — that has its own
+   * `recover()` path) — the reconciler's `GET`/`PUT` calls and the
+   * statistics keep-alive ping both funnel their non-session errors here.
+   *
+   * A 4xx response trips the breaker immediately, no second chance: it's
+   * INEM telling us the request itself is wrong (bad payload, a permission
+   * revoked, ...), and retrying the identical request on a schedule forever
+   * only hammers their server for an outcome that cannot change without a
+   * code or config fix here. Anything else (a network blip, INEM's own 5xx)
+   * gets the same one-retry grace as a cold-login or warm re-mint failure
+   * before tripping — see `CONSECUTIVE_FAILURE_LIMIT`.
+   *
+   * A no-op once already `FAILED`: nothing to escalate, and the loops that
+   * call this already stopped reaching INEM at all by that point.
+   */
+  async recordApiFailure(err: unknown): Promise<void> {
+    if (!this.enabled) return;
+    const row = await this.row();
+    if (row.status === INEMSessionStatus.FAILED) return;
+
+    const message = err instanceof Error ? err.message : String(err);
+    const status = err instanceof InemApiError ? err.status : undefined;
+    const isClientError = status !== undefined && status >= 400 && status < 500;
+    const failureCount = row.failureCount + 1;
+    const tripped = isClientError || failureCount >= CONSECUTIVE_FAILURE_LIMIT;
+
+    if (tripped) {
+      this.logger.error(
+        isClientError
+          ? `INEM circuit breaker tripped immediately on a ${status} response — retrying the same request would not change the outcome; recovery is manual: ${message}`
+          : `INEM circuit breaker tripped after ${CONSECUTIVE_FAILURE_LIMIT} consecutive failures — automated retries stop here; recovery is manual: ${message}`,
+      );
+    } else {
+      this.logger.warn(`INEM call failed: ${message}`);
+    }
+
+    await this.prisma.iNEMSession.update({
+      where: { id: INEM_SESSION_ID },
+      data: { status: tripped ? INEMSessionStatus.FAILED : INEMSessionStatus.EXPIRED, failureCount, lastError: message },
     });
   }
 
@@ -255,11 +312,11 @@ export class InemSessionService implements OnModuleInit {
       }
 
       const failureCount = row.failureCount + 1;
-      const tripped = failureCount >= LOGIN_FAILURE_LIMIT;
+      const tripped = failureCount >= CONSECUTIVE_FAILURE_LIMIT;
       this.logger.error(`INEM cold login failed (${result.reason}): ${result.message}`);
       if (tripped) {
         this.logger.error(
-          'INEM login circuit breaker tripped after 2 consecutive failures — automated retries stop here; recovery is manual.',
+          `INEM circuit breaker tripped after ${CONSECUTIVE_FAILURE_LIMIT} consecutive cold-login failures — automated retries stop here; recovery is manual.`,
         );
       }
       await tx.iNEMSession.update({
@@ -325,10 +382,23 @@ export class InemSessionService implements OnModuleInit {
       return;
     }
 
-    this.logger.warn(`INEM warm re-mint failed, will retry: ${remint.message}`);
+    // Used to stay EXPIRED forever regardless of how many times this failed —
+    // found live 2026-09-10 retrying every few minutes against a TLS error
+    // that could never self-correct, indefinitely. Now shares the same
+    // breaker and threshold as a cold-login failure: one retry's grace, then
+    // a full stop.
+    const failureCount = row.failureCount + 1;
+    const tripped = failureCount >= CONSECUTIVE_FAILURE_LIMIT;
+    const message = remint.message ?? 'warm re-mint failed';
+    this.logger.warn(`INEM warm re-mint failed: ${message}`);
+    if (tripped) {
+      this.logger.error(
+        `INEM circuit breaker tripped after ${CONSECUTIVE_FAILURE_LIMIT} consecutive warm re-mint failures — automated retries stop here; recovery is manual.`,
+      );
+    }
     await tx.iNEMSession.update({
       where: { id: INEM_SESSION_ID },
-      data: { status: INEMSessionStatus.EXPIRED, lastError: remint.message ?? 'warm re-mint failed' },
+      data: { status: tripped ? INEMSessionStatus.FAILED : INEMSessionStatus.EXPIRED, failureCount, lastError: message },
     });
   }
 

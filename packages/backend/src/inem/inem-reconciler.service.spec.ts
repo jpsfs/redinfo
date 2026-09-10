@@ -59,6 +59,7 @@ function buildSessionStub(overrides: Record<string, unknown> = {}) {
     setCachedInopReasons: jest.fn(),
     recover: jest.fn().mockResolvedValue(undefined),
     markHealthy: jest.fn().mockResolvedValue(undefined),
+    recordApiFailure: jest.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }
@@ -187,13 +188,18 @@ describe('InemReconcilerService', () => {
     expect(session.recover).toHaveBeenCalledTimes(1);
   });
 
-  it('lets a genuinely unexpected error propagate rather than swallowing it as recoverable', async () => {
+  it('hands a genuinely unexpected error to the breaker instead of swallowing it as recoverable or retrying unbounded', async () => {
     const prisma = buildPrismaStub();
-    const client = buildClientStub({ getUnits: jest.fn().mockRejectedValue(new Error('network down')) });
+    const err = new Error('network down');
+    const client = buildClientStub({ getUnits: jest.fn().mockRejectedValue(err) });
     const session = buildSessionStub();
     const service = new InemReconcilerService(prisma as never, client as never, session as never, queue as never);
 
-    await expect(service.reconcile()).rejects.toThrow('network down');
+    // Must not throw: the chain's own `finally` reschedules regardless, but
+    // letting this reject would surface as an unhandled pg-boss job failure
+    // on top of a breaker that's already tracking the same error.
+    await expect(service.reconcile()).resolves.toBeUndefined();
+    expect(session.recordApiFailure).toHaveBeenCalledWith(err);
     expect(session.recover).not.toHaveBeenCalled();
     expect(session.markHealthy).not.toHaveBeenCalled();
   });
