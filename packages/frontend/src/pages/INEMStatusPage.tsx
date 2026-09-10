@@ -60,6 +60,7 @@ export const INEMStatusPage = () => {
   const [overview, setOverview] = useState<INEMStatusOverview | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [savingUnitId, setSavingUnitId] = useState<string | null>(null);
+  const [syncingNow, setSyncingNow] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -76,6 +77,22 @@ export const INEMStatusPage = () => {
     const timer = setInterval(() => void load(), REFRESH_MS);
     return () => clearInterval(timer);
   }, [load]);
+
+  // "Sync now" (unlike a per-unit Save) waits on the pass itself — it's a
+  // direct request for feedback, so it's worth the round trip to be able to
+  // say whether it actually worked instead of firing and hoping.
+  const handleSyncNow = async () => {
+    setSyncingNow(true);
+    try {
+      await apiFetch('/inem/sync-now', { method: 'POST' });
+      notify(t('inem.syncNowSuccess'), { type: 'info' });
+      void load();
+    } catch (e) {
+      notify(e instanceof ApiError ? apiErrorLabel(t, e) : t('inem.syncNowFailed'), { type: 'warning' });
+    } finally {
+      setSyncingNow(false);
+    }
+  };
 
   const setUnitStatus = async (unitId: string, inopCode: string) => {
     setSavingUnitId(unitId);
@@ -103,12 +120,26 @@ export const INEMStatusPage = () => {
   return (
     <Box sx={{ mt: 2 }}>
       <Title title={t('inem.pageTitle')} />
-      <Typography variant="h6" sx={{ mb: 0.5 }}>
-        {t('inem.heading')}
-      </Typography>
-      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-        {t('inem.subheading')}
-      </Typography>
+      <Stack direction={{ xs: 'column', sm: 'row' }} justifyContent="space-between" alignItems={{ xs: 'stretch', sm: 'flex-start' }} spacing={1} sx={{ mb: 2 }}>
+        <Box>
+          <Typography variant="h6" sx={{ mb: 0.5 }}>
+            {t('inem.heading')}
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            {t('inem.subheading')}
+          </Typography>
+        </Box>
+        <Button
+          variant="outlined"
+          size="small"
+          startIcon={syncingNow ? <CircularProgress size={16} /> : <SyncIcon fontSize="small" />}
+          disabled={!overview || syncingNow}
+          onClick={handleSyncNow}
+          sx={{ flexShrink: 0 }}
+        >
+          {t('inem.syncNow')}
+        </Button>
+      </Stack>
 
       {overview && overview.sessionStatus !== INEMSessionStatus.ACTIVE && (
         <DegradedBanner status={overview.sessionStatus} />

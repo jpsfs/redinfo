@@ -46,6 +46,7 @@ function buildSessionStub(overrides: Record<string, unknown> = {}) {
 function buildReconcilerStub(overrides: Record<string, unknown> = {}) {
   return {
     triggerNow: jest.fn(),
+    reconcile: jest.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }
@@ -156,6 +157,41 @@ describe('InemService', () => {
       const service = new InemService(prisma as never, session as never, buildReconcilerStub() as never);
 
       await expect(service.setUnitStatus(ACTOR, 'GHOST1', '00')).rejects.toThrow('GHOST1');
+    });
+  });
+
+  describe('syncNow', () => {
+    it('awaits a real reconcile pass — the "Sync now" button needs to know whether it actually worked', async () => {
+      const prisma = buildPrismaStub();
+      const session = buildSessionStub();
+      const reconciler = buildReconcilerStub();
+      const service = new InemService(prisma as never, session as never, reconciler as never);
+
+      await service.syncNow();
+
+      expect(reconciler.reconcile).toHaveBeenCalledTimes(1);
+      expect(reconciler.triggerNow).not.toHaveBeenCalled();
+    });
+
+    it('lets a genuine reconcile failure propagate, rather than reporting a false success', async () => {
+      const prisma = buildPrismaStub();
+      const session = buildSessionStub();
+      const reconciler = buildReconcilerStub({ reconcile: jest.fn().mockRejectedValue(new Error('network down')) });
+      const service = new InemService(prisma as never, session as never, reconciler as never);
+
+      await expect(service.syncNow()).rejects.toThrow('network down');
+    });
+
+    it('rejects with INEM_SESSION_NOT_ACTIVE once the circuit breaker has tripped, without running a pass', async () => {
+      const prisma = buildPrismaStub();
+      const session = buildSessionStub({
+        getOverview: jest.fn().mockResolvedValue({ status: INEMSessionStatus.FAILED, lastError: 'boom' }),
+      });
+      const reconciler = buildReconcilerStub();
+      const service = new InemService(prisma as never, session as never, reconciler as never);
+
+      await expect(service.syncNow()).rejects.toMatchObject({ code: 'INEM_SESSION_NOT_ACTIVE' });
+      expect(reconciler.reconcile).not.toHaveBeenCalled();
     });
   });
 });

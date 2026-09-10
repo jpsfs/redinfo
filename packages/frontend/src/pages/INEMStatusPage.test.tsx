@@ -208,6 +208,33 @@ describe('INEMStatusPage', () => {
     await waitFor(() => expect(toggle).not.toBeChecked());
   });
 
+  it('"Sync now" pushes a pass immediately, independent of any unit\'s Save, and reloads on success', async () => {
+    const user = userEvent.setup();
+    mockApiFetch.mockResolvedValue(overview([unit({ desiredInopCode: '00', reportedInopCode: '00' })]));
+    renderPage();
+    await screen.findByText('12-AB-34 – CV1');
+    mockApiFetch.mockClear();
+
+    await user.click(screen.getByRole('button', { name: 'Sync now' }));
+
+    await waitFor(() => expect(mockApiFetch).toHaveBeenCalledWith('/inem/sync-now', { method: 'POST' }));
+    // Reloads afterward so the page reflects whatever the pass just changed.
+    await waitFor(() => expect(mockApiFetch).toHaveBeenCalledWith('/inem/status'));
+  });
+
+  it('"Sync now" re-enables after a failure instead of getting stuck mid-request', async () => {
+    const user = userEvent.setup();
+    mockApiFetch.mockResolvedValueOnce(overview([unit({ desiredInopCode: '00', reportedInopCode: '00' })]));
+    renderPage();
+    await screen.findByText('12-AB-34 – CV1');
+
+    mockApiFetch.mockRejectedValueOnce(new ApiError('unavailable', 409, 'INEM_SESSION_NOT_ACTIVE'));
+    const syncNow = screen.getByRole('button', { name: 'Sync now' });
+    await user.click(syncNow);
+
+    await waitFor(() => expect(syncNow).toBeEnabled());
+  });
+
   it('shows the calm empty state when the delegation has no INEM units', async () => {
     mockApiFetch.mockResolvedValue(overview([]));
     renderPage();

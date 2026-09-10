@@ -21,14 +21,20 @@ const UNIT_INCLUDE = {
 
 /**
  * The public-facing half of the INEM integration (#214): the fleet-board
- * screen's `GET /inem/status` and a crew member's `PUT /inem/units/:unitId`.
+ * screen's `GET /inem/status`, a crew member's `PUT /inem/units/:unitId`,
+ * and `POST /inem/sync-now`.
  *
- * Neither route talks to INEM directly — writing `desiredInopCode` and an
- * audit row is the entire job of `setUnitStatus`; `InemReconcilerService`
- * does the pushing. A crew member sets a unit's status and moves on; they
- * never wait on a scraped SSO session — `setUnitStatus` only kicks the
- * reconciler's `triggerNow()` in the background once its own write has
- * committed, it doesn't await it.
+ * `setUnitStatus` never talks to INEM directly — writing `desiredInopCode`
+ * and an audit row is its entire job; `InemReconcilerService` does the
+ * pushing. A crew member sets a unit's status and moves on; they never wait
+ * on a scraped SSO session — `setUnitStatus` only kicks the reconciler's
+ * `triggerNow()` in the background once its own write has committed, it
+ * doesn't await it.
+ *
+ * `syncNow` is the one deliberate exception: the UI's own "Sync now" button
+ * is a direct request for feedback ("did that actually work?"), so it
+ * awaits a real reconcile pass and lets a genuine failure surface as an
+ * error toast, rather than firing-and-forgetting like `setUnitStatus` does.
  */
 @Injectable()
 export class InemService {
@@ -53,16 +59,7 @@ export class InemService {
   }
 
   async setUnitStatus(actor: { id: string }, unitId: string, inopCode: string): Promise<void> {
-    const overview = await this.session.getOverview();
-    if (overview.status === PrismaINEMSessionStatus.FAILED) {
-      // The breaker has tripped — accepting more desired-state changes that
-      // will never sync would be misleading. The status banner (#216) names
-      // the manual fallback: set it directly in INEM's own portal.
-      throw new ApiConflictException(
-        'INEM_SESSION_NOT_ACTIVE',
-        'The INEM integration is currently unavailable — set this unit’s status directly in the INEM portal instead.',
-      );
-    }
+    await this.assertSessionUsable();
 
     const unit = await this.prisma.iNEMUnit.findUnique({ where: { unitId } });
     if (!unit) throw new NotFoundException(`INEM unit ${unitId} not found`);
@@ -76,6 +73,32 @@ export class InemService {
     // loop's own randomized delay — not awaited, so this request still
     // returns as soon as the write above has committed.
     this.reconciler.triggerNow();
+  }
+
+  /**
+   * Runs one reconcile pass right away and waits for it — the "Sync now"
+   * button's whole job. Rejects with the same `INEM_SESSION_NOT_ACTIVE` a
+   * blocked `setUnitStatus` would, rather than resolving a no-op pass: the
+   * breaker being tripped means `reconcile()` would just recover-and-return
+   * having pushed nothing, and a button that reports success while doing
+   * nothing is worse than one that plainly says the integration is down.
+   */
+  async syncNow(): Promise<void> {
+    await this.assertSessionUsable();
+    await this.reconciler.reconcile();
+  }
+
+  /** Shared guard for both write paths — see their own doc comments for why each needs it. */
+  private async assertSessionUsable(): Promise<void> {
+    const overview = await this.session.getOverview();
+    if (overview.status === PrismaINEMSessionStatus.FAILED) {
+      // The breaker has tripped — the status banner (#216) names the manual
+      // fallback: set/check status directly in INEM's own portal.
+      throw new ApiConflictException(
+        'INEM_SESSION_NOT_ACTIVE',
+        'The INEM integration is currently unavailable — set this unit’s status directly in the INEM portal instead.',
+      );
+    }
   }
 }
 

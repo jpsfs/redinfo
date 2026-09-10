@@ -7,13 +7,15 @@ export const INEM_KEEPALIVE_SAML_QUEUE = 'inem.keepalive.saml';
 
 /**
  * Bounds for the randomized delay between reconcile passes (see
- * `workReconcile`) — gentle on INEM's server by default (roughly a third of
- * the old fixed one-a-minute cadence) and jittered so the requests it does
- * see never fall into an exact, bot-like cadence. Configurable without a
- * redeploy; see `.env.example`.
+ * `workReconcile`) — a 20-minute base cadence, jittered ±5 minutes so the
+ * requests INEM sees never fall into an exact, bot-like pattern. Gentle on
+ * INEM's server by default; a coordinator's save or the "Sync now" button
+ * both reach INEM immediately regardless (`InemReconcilerService.triggerNow`),
+ * so this bound is about the background loop's idle cadence, not
+ * responsiveness. Configurable without a redeploy; see `.env.example`.
  */
-const DEFAULT_RECONCILE_MIN_INTERVAL_SECONDS = 90;
-const DEFAULT_RECONCILE_MAX_INTERVAL_SECONDS = 180;
+const DEFAULT_RECONCILE_MIN_INTERVAL_SECONDS = 15 * 60;
+const DEFAULT_RECONCILE_MAX_INTERVAL_SECONDS = 25 * 60;
 
 /**
  * pg-boss connection dedicated to the INEM integration's scheduled jobs
@@ -124,11 +126,11 @@ export class InemQueueService implements OnModuleInit, OnModuleDestroy {
    * Registers the reconcile loop's handler. Unlike `work()`, every pass —
    * whether it succeeds or throws — schedules its own successor at a
    * randomized delay (`INEM_RECONCILE_MIN_INTERVAL_SECONDS`..
-   * `INEM_RECONCILE_MAX_INTERVAL_SECONDS`, default 90–180s) once it's done,
-   * rather than firing on a fixed cron. Two things that buys: the loop is
-   * gentler on INEM's server than the old flat one-a-minute cadence, and the
-   * randomized gap means INEM never sees a metronomic, easily-fingerprinted
-   * polling pattern. A coordinator's save doesn't wait out this delay —
+   * `INEM_RECONCILE_MAX_INTERVAL_SECONDS`, default 15–25 minutes) once it's
+   * done, rather than firing on a fixed cron. Two things that buys: the loop
+   * is gentle on INEM's server, and the randomized gap means INEM never sees
+   * a metronomic, easily-fingerprinted polling pattern. A coordinator's save
+   * (or the UI's "Sync now" button) doesn't wait out this delay —
    * `InemReconcilerService.triggerNow()` runs a pass directly, independent
    * of this chain.
    */

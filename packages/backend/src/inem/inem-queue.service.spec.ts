@@ -116,8 +116,8 @@ describe('InemQueueService', () => {
       const [queue, data, options] = bossInstance.send.mock.calls[0];
       expect(queue).toBe(INEM_RECONCILE_QUEUE);
       expect(data).toEqual({});
-      expect(options.startAfter).toBeGreaterThanOrEqual(90);
-      expect(options.startAfter).toBeLessThanOrEqual(180);
+      expect(options.startAfter).toBeGreaterThanOrEqual(15 * 60);
+      expect(options.startAfter).toBeLessThanOrEqual(25 * 60);
     });
 
     it('still schedules the next pass when the handler throws — one bad pass must not stall the loop', async () => {
