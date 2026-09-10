@@ -1,4 +1,7 @@
+import { rootCertificates } from 'node:tls';
 import { Injectable, Logger } from '@nestjs/common';
+import { Agent } from 'undici';
+import { INEM_TRUSTED_INTERMEDIATE_CA_PEM } from './inem-trusted-ca';
 
 /** The `alAuth` + friends jar this client is handed for every call. Owns no state itself. */
 export interface InemCookieJar {
@@ -67,6 +70,19 @@ export class InemApiError extends Error {
 export class InemApiClient {
   private readonly logger = new Logger(InemApiClient.name);
   private readonly baseUrl: string;
+
+  /**
+   * A custom CA list is inherently a full replacement of Node's own trusted
+   * list, not an addition to it — `rootCertificates` here is what keeps every
+   * *other* site this client might ever talk to still verifying normally.
+   * See `inem-trusted-ca.ts` for why `portalpem.inem.pt` specifically needs
+   * one more.
+   *
+   * `undici` is an explicit dependency (pinned to `6.28.0`, exactly what
+   * Node 22 bundles internally) purely to get `Agent`/`dispatcher` — global
+   * `fetch` has no other way to override its TLS options per-request.
+   */
+  private readonly agent = new Agent({ connect: { ca: [...rootCertificates, INEM_TRUSTED_INTERMEDIATE_CA_PEM] } });
 
   constructor(baseUrl: string = process.env.INEM_BASE_URL ?? 'https://portalpem.inem.pt') {
     this.baseUrl = baseUrl.replace(/\/$/, '');
@@ -148,6 +164,7 @@ export class InemApiClient {
         'Content-Type': 'application/json',
         Cookie: `alAuth=${cookies.alAuth}`,
       },
+      dispatcher: this.agent,
     });
   }
 

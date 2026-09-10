@@ -1,3 +1,4 @@
+import { Agent } from 'undici';
 import { InemApiClient, InemApiError, InemCookieJar, InemSessionExpiredError } from './inem-api.client';
 
 const COOKIES: InemCookieJar = { alAuth: 'a-token', samlsessionid: null, deviceId: null };
@@ -27,6 +28,14 @@ describe('InemApiClient', () => {
     expect(url).toBe('https://portalpem.inem.pt/api/Entity');
     expect(init.headers.Cookie).toBe('alAuth=a-token');
     expect(init.headers.Authorization).toBeUndefined();
+  });
+
+  it('dispatches through the agent carrying the INEM trusted-CA workaround, not the bare default fetch', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(['CVCAMPO']));
+    await client.getEntities(COOKIES);
+
+    const [, init] = fetchMock.mock.calls[0];
+    expect(init.dispatcher).toBeInstanceOf(Agent);
   });
 
   it('never follows a redirect', async () => {
