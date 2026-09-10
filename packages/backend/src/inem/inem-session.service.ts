@@ -28,7 +28,15 @@ const OWA_SESSION_SCOPE = 'owa-session';
  */
 const CONSECUTIVE_FAILURE_LIMIT = 2;
 
-/** Single-flight key: only one recovery attempt (warm re-mint or cold-login handoff) runs at a time. */
+/**
+ * Single-flight key for every read-then-write on the `INEMSession` row:
+ * `recover()`/`proactiveReMint()` (warm re-mint or cold-login handoff),
+ * `markHealthy()`, and `recordApiFailure()` all take this same lock before
+ * reading the row, so none of them can act on a state another one is mid-way
+ * through changing. A Postgres advisory lock rather than an in-process one
+ * by design — it still serializes correctly once there is more than one
+ * backend instance talking to this database.
+ */
 const RECOVERY_LOCK_SQL = Prisma.sql`SELECT pg_advisory_xact_lock(hashtext('inem-session-recover')::bigint)`;
 
 type WarmReMintResult =
@@ -171,16 +179,25 @@ export class InemSessionService implements OnModuleInit {
    * calls this on the success path — only a warm re-mint's own success
    * does). Never touches a tripped breaker or a login in flight; those are
    * `recover()`'s job, not this one's.
+   *
+   * Shares `RECOVERY_LOCK_SQL` with `recover()`/`proactiveReMint()` rather
+   * than doing its own plain read-then-write — found live 2026-09-10 as the
+   * unlocked twin of `recordApiFailure()`'s race (see that method's comment
+   * for the concrete clobber scenario). Being a Postgres advisory lock
+   * rather than an in-process one, this also serializes correctly across
+   * multiple backend instances sharing one database, not just concurrent
+   * calls within a single process.
    */
   async markHealthy(): Promise<void> {
     if (!this.enabled) return;
-    const row = await this.row();
-    if (row.status === INEMSessionStatus.ACTIVE || row.status === INEMSessionStatus.FAILED || row.status === INEMSessionStatus.LOGGING_IN) {
-      return;
-    }
-    await this.prisma.iNEMSession.update({
-      where: { id: INEM_SESSION_ID },
-      data: { status: INEMSessionStatus.ACTIVE, failureCount: 0, lastError: null },
+    await this.withRecoveryLock(async (tx, row) => {
+      if (row.status === INEMSessionStatus.ACTIVE || row.status === INEMSessionStatus.FAILED || row.status === INEMSessionStatus.LOGGING_IN) {
+        return;
+      }
+      await tx.iNEMSession.update({
+        where: { id: INEM_SESSION_ID },
+        data: { status: INEMSessionStatus.ACTIVE, failureCount: 0, lastError: null },
+      });
     });
   }
 
@@ -212,31 +229,48 @@ export class InemSessionService implements OnModuleInit {
    * (it requires `status === LOGGING_IN`), and the worker's eventual
    * `submitLoginResult` for a human's already-completed MFA is discarded as
    * "unknown/stale job".
+   *
+   * Runs under `RECOVERY_LOCK_SQL`, the same advisory lock `recover()` /
+   * `proactiveReMint()` / `markHealthy()` take — found live 2026-09-10 as a
+   * plain read-then-write racing them with no lock at all. Two concrete
+   * failures that closed: a reconcile pass's post-commit bookkeeping call
+   * here could interleave with a concurrent `proactiveReMint()`'s own
+   * read-then-write and lose an update (an under-counted `failureCount`
+   * that lets a real, persistent failure run past `CONSECUTIVE_FAILURE_LIMIT`
+   * before tripping); worse, a `recordApiFailure()` that read the row
+   * *before* a concurrent `recover()` committed a successful warm re-mint
+   * could still write *after* it, flipping a session `recover()` had just
+   * fixed back to `EXPIRED`/`FAILED` with a stale error message. Serializing
+   * on the shared lock makes each caller's read-then-write atomic relative
+   * to the others. This is a Postgres advisory lock, not an in-process one,
+   * so it also holds once there is more than one backend instance sharing
+   * this database.
    */
   async recordApiFailure(err: unknown): Promise<void> {
     if (!this.enabled) return;
-    const row = await this.row();
-    if (row.status === INEMSessionStatus.FAILED || row.status === INEMSessionStatus.LOGGING_IN) return;
+    await this.withRecoveryLock(async (tx, row) => {
+      if (row.status === INEMSessionStatus.FAILED || row.status === INEMSessionStatus.LOGGING_IN) return;
 
-    const message = err instanceof Error ? err.message : String(err);
-    const status = err instanceof InemApiError ? err.status : undefined;
-    const isClientError = status !== undefined && status >= 400 && status < 500;
-    const failureCount = row.failureCount + 1;
-    const tripped = isClientError || failureCount >= CONSECUTIVE_FAILURE_LIMIT;
+      const message = err instanceof Error ? err.message : String(err);
+      const status = err instanceof InemApiError ? err.status : undefined;
+      const isClientError = status !== undefined && status >= 400 && status < 500;
+      const failureCount = row.failureCount + 1;
+      const tripped = isClientError || failureCount >= CONSECUTIVE_FAILURE_LIMIT;
 
-    if (tripped) {
-      this.logger.error(
-        isClientError
-          ? `INEM circuit breaker tripped immediately on a ${status} response — retrying the same request would not change the outcome; recovery is manual: ${message}`
-          : `INEM circuit breaker tripped after ${CONSECUTIVE_FAILURE_LIMIT} consecutive failures — automated retries stop here; recovery is manual: ${message}`,
-      );
-    } else {
-      this.logger.warn(`INEM call failed: ${message}`);
-    }
+      if (tripped) {
+        this.logger.error(
+          isClientError
+            ? `INEM circuit breaker tripped immediately on a ${status} response — retrying the same request would not change the outcome; recovery is manual: ${message}`
+            : `INEM circuit breaker tripped after ${CONSECUTIVE_FAILURE_LIMIT} consecutive failures — automated retries stop here; recovery is manual: ${message}`,
+        );
+      } else {
+        this.logger.warn(`INEM call failed: ${message}`);
+      }
 
-    await this.prisma.iNEMSession.update({
-      where: { id: INEM_SESSION_ID },
-      data: { status: tripped ? INEMSessionStatus.FAILED : INEMSessionStatus.EXPIRED, failureCount, lastError: message },
+      await tx.iNEMSession.update({
+        where: { id: INEM_SESSION_ID },
+        data: { status: tripped ? INEMSessionStatus.FAILED : INEMSessionStatus.EXPIRED, failureCount, lastError: message },
+      });
     });
   }
 
