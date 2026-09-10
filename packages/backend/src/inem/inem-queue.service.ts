@@ -45,6 +45,14 @@ const DEFAULT_RECONCILE_MAX_INTERVAL_SECONDS = 25 * 60;
  * current one finishes (success or failure). See its own doc comment. The
  * two keep-alive layers stay on plain cron; they're cheap, side-effect-light
  * pings, not what the "don't hammer INEM's server" concern is about.
+ *
+ * That chain only stays *one* chain because the queue's `'exclusive'` policy
+ * (below) makes pg-boss itself refuse a second queued-or-active job for it.
+ * Without that, every `onModuleInit` — i.e. every restart or redeploy — adds
+ * one more permanent, parallel chain that never merges back: found live in
+ * production on 2026-09-10 as 42 concurrent chains hammering INEM's login
+ * every ~20-35s instead of the intended 15-25min, after a run of same-day
+ * redeploys during this integration's rollout.
  */
 @Injectable()
 export class InemQueueService implements OnModuleInit, OnModuleDestroy {
@@ -75,7 +83,22 @@ export class InemQueueService implements OnModuleInit, OnModuleDestroy {
     boss.on('error', (err) => this.logger.error(`pg-boss error: ${err.message}`));
     await boss.start();
 
-    await boss.createQueue(INEM_RECONCILE_QUEUE);
+    // 'exclusive': pg-boss refuses to insert a second queued-or-active job
+    // for this queue (a partial unique index, not app-level logic) — see the
+    // class comment on why that guarantee matters for a self-perpetuating
+    // chain. Policy is fixed at creation and pg-boss's `updateQueue` won't
+    // touch it — a queue an older deploy already created under the default
+    // 'standard' policy has to be dropped and recreated to pick up
+    // 'exclusive'. Safe: a reconcile job carries no state of its own (INEM's
+    // session/unit data lives in Postgres, not the job payload), and
+    // `onModuleInit` always reseeds exactly one job at the end regardless.
+    // Only runs the drop when the policy actually needs to change, so a
+    // steady-state restart doesn't discard an in-flight job for nothing.
+    const existingReconcileQueue = await boss.getQueue(INEM_RECONCILE_QUEUE);
+    if (existingReconcileQueue && existingReconcileQueue.policy !== 'exclusive') {
+      await boss.deleteQueue(INEM_RECONCILE_QUEUE);
+    }
+    await boss.createQueue(INEM_RECONCILE_QUEUE, { policy: 'exclusive' });
     await boss.createQueue(INEM_KEEPALIVE_SESSION_QUEUE);
     await boss.createQueue(INEM_KEEPALIVE_SAML_QUEUE);
 

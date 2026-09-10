@@ -10,6 +10,8 @@ const bossInstance = {
   start: jest.fn().mockResolvedValue(undefined),
   stop: jest.fn().mockResolvedValue(undefined),
   createQueue: jest.fn().mockResolvedValue(undefined),
+  getQueue: jest.fn().mockResolvedValue(null),
+  deleteQueue: jest.fn().mockResolvedValue(undefined),
   schedule: jest.fn().mockResolvedValue(undefined),
   unschedule: jest.fn().mockResolvedValue(undefined),
   send: jest.fn().mockResolvedValue('job-1'),
@@ -48,9 +50,12 @@ describe('InemQueueService', () => {
 
     expect(PgBossMock).toHaveBeenCalledWith('postgresql://test/db');
     expect(bossInstance.start).toHaveBeenCalled();
-    expect(bossInstance.createQueue).toHaveBeenCalledWith(INEM_RECONCILE_QUEUE);
+    expect(bossInstance.createQueue).toHaveBeenCalledWith(INEM_RECONCILE_QUEUE, { policy: 'exclusive' });
     expect(bossInstance.createQueue).toHaveBeenCalledWith(INEM_KEEPALIVE_SESSION_QUEUE);
     expect(bossInstance.createQueue).toHaveBeenCalledWith(INEM_KEEPALIVE_SAML_QUEUE);
+    // A brand-new queue (no existing row) never needs the drop-and-recreate
+    // migration below.
+    expect(bossInstance.deleteQueue).not.toHaveBeenCalled();
     expect(bossInstance.schedule).toHaveBeenCalledWith(INEM_KEEPALIVE_SESSION_QUEUE, '*/5 * * * *');
     expect(bossInstance.schedule).toHaveBeenCalledWith(INEM_KEEPALIVE_SAML_QUEUE, '0 */5 * * *');
     // Not a cron — seeds the self-rescheduling chain's first link, right away.
@@ -60,6 +65,31 @@ describe('InemQueueService', () => {
     // pg-boss's own `schedule` table — a stale minute-cron would silently
     // double the reconcile frequency underneath the jittered chain above.
     expect(bossInstance.unschedule).toHaveBeenCalledWith(INEM_RECONCILE_QUEUE);
+  });
+
+  it('drops and recreates the reconcile queue when an older deploy created it without the exclusive policy', async () => {
+    // Found live in production on 2026-09-10: a queue created under the
+    // default 'standard' policy let every restart add one more permanent,
+    // parallel self-rescheduling chain — 42 of them concurrently, none ever
+    // merging back into one. `updateQueue` can't flip `policy` after the
+    // fact, so migrating a pre-existing queue means drop-then-recreate.
+    bossInstance.getQueue.mockResolvedValueOnce({ name: INEM_RECONCILE_QUEUE, policy: 'standard' });
+    const service = new InemQueueService();
+    await service.onModuleInit();
+
+    expect(bossInstance.deleteQueue).toHaveBeenCalledWith(INEM_RECONCILE_QUEUE);
+    expect(bossInstance.createQueue).toHaveBeenCalledWith(INEM_RECONCILE_QUEUE, { policy: 'exclusive' });
+    // The drop wipes any stray duplicate jobs too — onModuleInit's own seed
+    // at the end is what guarantees exactly one survives.
+    expect(bossInstance.send).toHaveBeenCalledWith(INEM_RECONCILE_QUEUE, {}, { startAfter: 0 });
+  });
+
+  it('leaves an already-exclusive reconcile queue alone', async () => {
+    bossInstance.getQueue.mockResolvedValueOnce({ name: INEM_RECONCILE_QUEUE, policy: 'exclusive' });
+    const service = new InemQueueService();
+    await service.onModuleInit();
+
+    expect(bossInstance.deleteQueue).not.toHaveBeenCalled();
   });
 
   it('registers a handler immediately when boss is already started', async () => {
