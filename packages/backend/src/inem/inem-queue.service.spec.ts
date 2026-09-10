@@ -16,6 +16,7 @@ const bossInstance = {
   unschedule: jest.fn().mockResolvedValue(undefined),
   send: jest.fn().mockResolvedValue('job-1'),
   work: jest.fn().mockResolvedValue('worker-1'),
+  complete: jest.fn().mockResolvedValue(undefined),
 };
 const PgBossMock = jest.fn().mockImplementation(() => bossInstance);
 
@@ -145,7 +146,7 @@ describe('InemQueueService', () => {
       const registered = bossInstance.work.mock.calls[0][1] as (jobs: unknown[]) => Promise<void>;
 
       bossInstance.send.mockClear(); // drop the startAfter:0 seed call from onModuleInit
-      await registered([{}]);
+      await registered([{ id: 'job-1' }]);
 
       expect(bossInstance.send).toHaveBeenCalledTimes(1);
       const [queue, data, options] = bossInstance.send.mock.calls[0];
@@ -166,7 +167,7 @@ describe('InemQueueService', () => {
       // Same as pg-boss's own contract for a `work()` handler — a rejection
       // propagates so pg-boss can mark the job failed; the rescheduling in
       // this wrapper's `finally` still has to run regardless.
-      await expect(registered([{}])).rejects.toThrow('boom');
+      await expect(registered([{ id: 'job-1' }])).rejects.toThrow('boom');
 
       expect(failingHandler).toHaveBeenCalled();
       expect(bossInstance.send).toHaveBeenCalledWith(INEM_RECONCILE_QUEUE, {}, expect.objectContaining({ startAfter: expect.any(Number) }));
@@ -181,11 +182,68 @@ describe('InemQueueService', () => {
       const registered = bossInstance.work.mock.calls[0][1] as (jobs: unknown[]) => Promise<void>;
 
       bossInstance.send.mockClear();
-      await registered([{}]);
+      await registered([{ id: 'job-1' }]);
 
       const [, , options] = bossInstance.send.mock.calls[0];
       expect(options.startAfter).toBeGreaterThanOrEqual(10);
       expect(options.startAfter).toBeLessThanOrEqual(20);
+    });
+
+    /**
+     * Regression test for the bug found live in production on 2026-09-10:
+     * `INEM_RECONCILE_QUEUE`'s `'exclusive'` policy refuses a second
+     * queued-or-active job under its name, and pg-boss doesn't move a job
+     * out of `active` until the handler it invoked returns. Sending the
+     * successor before completing the current job (the original shape of
+     * this method) raced that index and always lost — the chain ran its
+     * seeded first pass and then died silently forever. Complete must run,
+     * and must resolve, before send is even called.
+     */
+    it('completes the current job before sending its successor, not after', async () => {
+      const service = new InemQueueService();
+      await service.onModuleInit();
+      await service.workReconcile(jest.fn().mockResolvedValue(undefined));
+      const registered = bossInstance.work.mock.calls[0][1] as (jobs: unknown[]) => Promise<void>;
+
+      bossInstance.send.mockClear();
+      const callOrder: string[] = [];
+      bossInstance.complete.mockImplementationOnce(async () => {
+        callOrder.push('complete');
+      });
+      bossInstance.send.mockImplementationOnce(async () => {
+        callOrder.push('send');
+        return 'job-2';
+      });
+
+      await registered([{ id: 'job-1' }]);
+
+      expect(bossInstance.complete).toHaveBeenCalledWith(INEM_RECONCILE_QUEUE, 'job-1');
+      expect(callOrder).toEqual(['complete', 'send']);
+    });
+
+    it('completes each job even when the handler throws, so a bad pass still frees the exclusive slot', async () => {
+      const service = new InemQueueService();
+      await service.onModuleInit();
+      await service.workReconcile(jest.fn().mockRejectedValue(new Error('boom')));
+      const registered = bossInstance.work.mock.calls[0][1] as (jobs: unknown[]) => Promise<void>;
+
+      bossInstance.complete.mockClear();
+      await expect(registered([{ id: 'job-1' }])).rejects.toThrow('boom');
+
+      expect(bossInstance.complete).toHaveBeenCalledWith(INEM_RECONCILE_QUEUE, 'job-1');
+    });
+
+    it('buffers a workReconcile() call that arrives before onModuleInit finishes, and flushes it once boss is ready', async () => {
+      const service = new InemQueueService();
+      const handler = jest.fn().mockResolvedValue(undefined);
+
+      const registerCall = service.workReconcile(handler);
+      expect(bossInstance.work).not.toHaveBeenCalled();
+
+      await service.onModuleInit();
+      await registerCall;
+
+      expect(bossInstance.work).toHaveBeenCalledWith(INEM_RECONCILE_QUEUE, expect.any(Function));
     });
   });
 

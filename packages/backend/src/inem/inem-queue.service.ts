@@ -53,12 +53,18 @@ const DEFAULT_RECONCILE_MAX_INTERVAL_SECONDS = 25 * 60;
  * production on 2026-09-10 as 42 concurrent chains hammering INEM's login
  * every ~20-35s instead of the intended 15-25min, after a run of same-day
  * redeploys during this integration's rollout.
+ *
+ * The same `'exclusive'` policy also means the chain's own successor must
+ * not be sent until the current job is actually `complete`d — see
+ * `registerReconcileWork`'s comment for the corollary bug that shipped
+ * alongside the fix above and killed the chain after its very first pass.
  */
 @Injectable()
 export class InemQueueService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(InemQueueService.name);
   private boss: PgBoss | null = null;
   private readonly pendingWork: Array<{ queue: string; handler: () => Promise<void> }> = [];
+  private pendingReconcileHandler: (() => Promise<void>) | null = null;
 
   private get reconcileMinIntervalSeconds(): number {
     return Number(process.env.INEM_RECONCILE_MIN_INTERVAL_SECONDS) || DEFAULT_RECONCILE_MIN_INTERVAL_SECONDS;
@@ -125,6 +131,11 @@ export class InemQueueService implements OnModuleInit, OnModuleDestroy {
     for (const { queue, handler } of queued) {
       await this.registerWork(boss, queue, handler);
     }
+    if (this.pendingReconcileHandler) {
+      const handler = this.pendingReconcileHandler;
+      this.pendingReconcileHandler = null;
+      await this.registerReconcileWork(boss, handler);
+    }
 
     // Seeds the reconcile chain's very first link. Safe even if
     // `workReconcile` hasn't registered a handler for it yet — same as any
@@ -166,13 +177,52 @@ export class InemQueueService implements OnModuleInit, OnModuleDestroy {
    * (or the UI's "Sync now" button) doesn't wait out this delay —
    * `InemReconcilerService.triggerNow()` runs a pass directly, independent
    * of this chain.
+   *
+   * Not built on the generic `work()`/`pendingWork` plumbing — see
+   * `registerReconcileWork` for why it needs the job's own id, not just the
+   * caller's handler. Same before-`boss`-is-ready buffering as `work()`,
+   * just through its own single-slot field (there's only ever one reconcile
+   * handler).
    */
   async workReconcile(handler: () => Promise<void>): Promise<void> {
-    await this.work(INEM_RECONCILE_QUEUE, async () => {
-      try {
-        await handler();
-      } finally {
-        if (this.boss) await this.scheduleReconcile(this.boss, this.randomReconcileDelaySeconds());
+    if (!this.boss) {
+      this.pendingReconcileHandler = handler;
+      return;
+    }
+    await this.registerReconcileWork(this.boss, handler);
+  }
+
+  /**
+   * Completes the just-run job *before* sending its successor — the order
+   * matters. `INEM_RECONCILE_QUEUE`'s `'exclusive'` policy is a partial
+   * unique index on `(name, singleton_key) WHERE state <= 'active'`, and
+   * pg-boss doesn't move a job out of `active` until the handler it invoked
+   * — this one — returns. Sending the next link first (from inside that same
+   * still-active handler, the original shape of this method) raced that
+   * index: the insert lost to pg-boss's own `ON CONFLICT DO NOTHING` every
+   * time, so the chain ran its seeded first pass and then died silently —
+   * no thrown error, no log line, nothing to catch a breaker or a test.
+   * Found live in production on 2026-09-10, hours after the exclusive-policy
+   * fix (fc20de2) shipped: `INEMUnit.lastSyncedAt` frozen at the deploy
+   * before it, while the unrelated keep-alive cron queues (plain `standard`
+   * policy, unaffected by this) kept ticking and made the integration look
+   * healthy from `INEMSession.updatedAt` alone.
+   *
+   * Completing here first is safe even though pg-boss's own post-handler
+   * `complete()` call still runs right after this returns: that call is
+   * itself guarded by `WHERE state = 'active'` (`completeJobs` in pg-boss's
+   * `plans.js`), so it just affects zero rows the second time — not an
+   * error, not a retry.
+   */
+  private async registerReconcileWork(boss: PgBoss, handler: () => Promise<void>): Promise<void> {
+    await boss.work(INEM_RECONCILE_QUEUE, async (jobs) => {
+      for (const job of jobs) {
+        try {
+          await handler();
+        } finally {
+          await boss.complete(INEM_RECONCILE_QUEUE, job.id);
+          if (this.boss) await this.scheduleReconcile(this.boss, this.randomReconcileDelaySeconds());
+        }
       }
     });
   }
