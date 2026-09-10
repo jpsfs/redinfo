@@ -13,9 +13,12 @@ function unitRow(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function buildPrismaStub(existingUnits: ReturnType<typeof unitRow>[] = []) {
+function buildPrismaStub(
+  existingUnits: ReturnType<typeof unitRow>[] = [],
+  vehicles: { id: string; licensePlate: string }[] = [{ id: 'v1', licensePlate: '80-PS-45' }],
+) {
   const stub = {
-    vehicle: { findUnique: jest.fn().mockResolvedValue({ id: 'v1' }) },
+    vehicle: { findMany: jest.fn().mockResolvedValue(vehicles) },
     iNEMUnit: {
       upsert: jest.fn().mockResolvedValue({}),
       findMany: jest.fn().mockResolvedValue(existingUnits),
@@ -86,23 +89,38 @@ describe('InemReconcilerService', () => {
     expect(session.recover).toHaveBeenCalledTimes(1);
   });
 
-  it('upserts units from GET /api/unit, joining to the vehicle by CarID', async () => {
-    const prisma = buildPrismaStub();
+  it('upserts units from GET /api/unit, joining to the vehicle by CarID despite the dashless-vs-dashed plate format mismatch', async () => {
+    // INEM's CarID comes back dashless ("80PS45"); the fleet's own record of
+    // the same ambulance is stored dashed ("80-PS-45") — same vehicle, #218.
+    const prisma = buildPrismaStub([], [{ id: 'v1', licensePlate: '80-PS-45' }]);
     const client = buildClientStub();
     const session = buildSessionStub();
     const service = new InemReconcilerService(prisma as never, client as never, session as never, queue as never);
 
     await service.reconcile();
 
-    expect(prisma.vehicle.findUnique).toHaveBeenCalledWith({
-      where: { licensePlate: '80PS45' },
-      select: { id: true },
-    });
+    expect(prisma.vehicle.findMany).toHaveBeenCalledWith({ select: { id: true, licensePlate: true } });
     expect(prisma.iNEMUnit.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { unitId: 'CVCAMPO1' },
         create: expect.objectContaining({ vehicleId: 'v1', reportedInopCode: INEM_AVAILABLE_INOP_CODE }),
         update: expect.objectContaining({ vehicleId: 'v1', reportedInopCode: INEM_AVAILABLE_INOP_CODE }),
+      }),
+    );
+  });
+
+  it('leaves vehicleId null when no vehicle matches CarID even after normalizing', async () => {
+    const prisma = buildPrismaStub([], [{ id: 'v1', licensePlate: '11-AA-11' }]);
+    const client = buildClientStub();
+    const session = buildSessionStub();
+    const service = new InemReconcilerService(prisma as never, client as never, session as never, queue as never);
+
+    await service.reconcile();
+
+    expect(prisma.iNEMUnit.upsert).toHaveBeenCalledWith(
+      expect.objectContaining({
+        create: expect.objectContaining({ vehicleId: null }),
+        update: expect.objectContaining({ vehicleId: null }),
       }),
     );
   });

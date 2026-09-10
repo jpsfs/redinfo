@@ -178,6 +178,15 @@ const UnitCard = ({ unit, reasons, saving, onSetStatus }: UnitCardProps) => {
     : '';
   const syncing = unit.desiredInopCode !== unit.reportedInopCode;
 
+  // `reasons` (the live map, or its compile-time fallback) may not have a
+  // key for the code already selected here — e.g. it was set while the live
+  // map was up, then the backend fell back to the compile-time table on a
+  // restart. Without this, the select would silently render blank for a
+  // value it can't find among its own options, hiding what's actually
+  // selected. Synthesize an entry from the code itself rather than drop it.
+  const reasonEntries =
+    reasonValue && !(reasonValue in reasons) ? { ...reasons, [reasonValue]: reasonValue } : reasons;
+
   const vehicleLabel = unit.vehicle
     ? `${unit.vehicle.licensePlate} – ${unit.vehicle.numeroCauda}`
     : (unit.carId ?? unit.unitId);
@@ -239,7 +248,7 @@ const UnitCard = ({ unit, reasons, saving, onSetStatus }: UnitCardProps) => {
             <MenuItem value="" disabled>
               {t('inem.reasonPlaceholder')}
             </MenuItem>
-            {Object.entries(reasons).map(([code, apiLabel]) => (
+            {Object.entries(reasonEntries).map(([code, apiLabel]) => (
               <MenuItem key={code} value={code}>
                 {inemReasonLabel(t, code, apiLabel)}
               </MenuItem>

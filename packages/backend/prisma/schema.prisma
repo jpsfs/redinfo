@@ -1913,6 +1913,12 @@ model INEMSession {
   /// So the worker only accepts an OTP mail newer than this attempt — see
   /// `INEMLoginJob.startedAt` in the shared contract.
   pendingLoginStartedAt DateTime?
+  /// The last `GET /api/INOP` map the reconciler actually fetched from INEM
+  /// (code → label), so a process restart re-hydrates from real production
+  /// data instead of falling straight back to the compile-time
+  /// `INEM_INOP_REASONS` guess (#218). Display data, not secret — stored
+  /// plain, unlike `cookies`.
+  cachedInopReasons     Json?
   updatedAt             DateTime          @updatedAt
 }
 

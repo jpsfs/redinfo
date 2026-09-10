@@ -15,6 +15,7 @@ interface InemSessionRow {
   lastError: string | null;
   pendingLoginId: string | null;
   pendingLoginStartedAt: Date | null;
+  cachedInopReasons: Record<string, string> | null;
   updatedAt: Date;
 }
 
@@ -35,6 +36,7 @@ function inemSessionRow(overrides: Partial<InemSessionRow> = {}): InemSessionRow
     lastError: null,
     pendingLoginId: null,
     pendingLoginStartedAt: null,
+    cachedInopReasons: null,
     updatedAt: new Date(),
     ...overrides,
   };
@@ -136,6 +138,61 @@ describe('InemSessionService', () => {
       const { stub } = buildPrismaStub(inemSessionRow({ cookies: sealedCookies(cipher, cookies) }));
       const service = new InemSessionService(stub as never, cipher, client);
       expect(await service.getCookiesOrNull()).toEqual(cookies);
+    });
+  });
+
+  // #218: a bare in-memory cache resets to null on every restart, which in
+  // production means every deploy re-serves the wrong-scheme compile-time
+  // fallback until the next reconcile. Persisting it closes that gap.
+  describe('cached INOP reasons', () => {
+    it('starts with nothing cached before onModuleInit has run', () => {
+      const { stub } = buildPrismaStub();
+      const service = new InemSessionService(stub as never, cipher, client);
+      expect(service.getCachedInopReasons()).toBeNull();
+    });
+
+    it('never touches the database on module init when disabled', async () => {
+      delete process.env.INEM_USERNAME;
+      const { stub } = buildPrismaStub();
+      const service = new InemSessionService(stub as never, cipher, client);
+
+      await service.onModuleInit();
+
+      expect(stub.iNEMSession.findUniqueOrThrow).not.toHaveBeenCalled();
+    });
+
+    it('hydrates the in-memory cache from the persisted row on module init', async () => {
+      const live = { '04': 'Ocupada' };
+      const { stub } = buildPrismaStub(inemSessionRow({ cachedInopReasons: live }));
+      const service = new InemSessionService(stub as never, cipher, client);
+
+      await service.onModuleInit();
+
+      expect(service.getCachedInopReasons()).toEqual(live);
+    });
+
+    it('leaves the cache null on module init when nothing was ever persisted', async () => {
+      const { stub } = buildPrismaStub(inemSessionRow({ cachedInopReasons: null }));
+      const service = new InemSessionService(stub as never, cipher, client);
+
+      await service.onModuleInit();
+
+      expect(service.getCachedInopReasons()).toBeNull();
+    });
+
+    it('setCachedInopReasons updates the in-memory cache and persists it, so a later restart can rehydrate it', async () => {
+      const { stub, sessionRow } = buildPrismaStub();
+      const service = new InemSessionService(stub as never, cipher, client);
+      const live = { '04': 'Ocupada' };
+
+      await service.setCachedInopReasons(live);
+
+      expect(service.getCachedInopReasons()).toEqual(live);
+      expect(stub.iNEMSession.update).toHaveBeenCalledWith({
+        where: { id: 'inem' },
+        data: { cachedInopReasons: live },
+      });
+      expect(sessionRow.cachedInopReasons).toEqual(live);
     });
   });
 

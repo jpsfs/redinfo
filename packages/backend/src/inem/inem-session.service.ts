@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { INEMSession, INEMSessionStatus, OWASessionStatus, Prisma } from '@prisma/client';
 import { INEMLoginJob, INEMLoginJobResult } from '@redinfo/shared';
 import { PrismaService } from '../prisma/prisma.service';
@@ -33,7 +33,7 @@ type WarmReMintResult =
  * `docs/inem-portal-contract.md` for the wire contract this drives.
  */
 @Injectable()
-export class InemSessionService {
+export class InemSessionService implements OnModuleInit {
   private readonly logger = new Logger(InemSessionService.name);
   private readonly baseUrl: string;
   private readonly entity: string;
@@ -41,9 +41,12 @@ export class InemSessionService {
 
   /**
    * The live `GET /api/INOP` map, refreshed by the reconciler on every
-   * successful pass. In-memory rather than persisted: it's display data with
-   * a documented compile-time fallback (`INEM_INOP_REASONS`), not state that
-   * needs to survive a restart.
+   * successful pass. Kept in memory for cheap reads, but backed by
+   * `INEMSession.cachedInopReasons` (#218): a bare in-memory cache reset to
+   * null on every restart, which in production means every deploy re-serves
+   * the wrong-scheme compile-time `INEM_INOP_REASONS` fallback until the
+   * next reconcile — persisting it means a restart re-hydrates yesterday's
+   * real map instead.
    */
   private cachedInopReasons: Record<string, string> | null = null;
 
@@ -59,6 +62,15 @@ export class InemSessionService {
     this.enabled = process.env.INEM_ENABLED === 'true' && !!process.env.INEM_USERNAME;
   }
 
+  async onModuleInit(): Promise<void> {
+    // Same guard as `getCookiesOrNull`: staging/dev run with the feature
+    // disabled and no INEM row to speak of — never touch Prisma here unless
+    // the integration is actually on.
+    if (!this.enabled) return;
+    const row = await this.row();
+    if (row.cachedInopReasons) this.cachedInopReasons = row.cachedInopReasons as Record<string, string>;
+  }
+
   get entityId(): string {
     return this.entity;
   }
@@ -67,8 +79,12 @@ export class InemSessionService {
     return this.enabled;
   }
 
-  setCachedInopReasons(reasons: Record<string, string>): void {
+  async setCachedInopReasons(reasons: Record<string, string>): Promise<void> {
     this.cachedInopReasons = reasons;
+    await this.prisma.iNEMSession.update({
+      where: { id: INEM_SESSION_ID },
+      data: { cachedInopReasons: reasons },
+    });
   }
 
   getCachedInopReasons(): Record<string, string> | null {

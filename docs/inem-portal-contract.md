@@ -164,7 +164,10 @@ the label, never from the code.
 }]
 ```
 
-`CarID` is the licence plate — the join key to `Vehicle.licensePlate`. `Active` is a read-only
+`CarID` is the licence plate — the join key to `Vehicle.licensePlate`, but **not** byte-for-byte:
+INEM sends it dashless (`"80PS45"`) while redinfo always stores it dashed (`"80-PS-45"`, see
+`PT_LICENSE_PLATE_REGEX`). The reconciler joins on `normalizeLicensePlate` (bare upper-cased
+alphanumerics) on both sides, never on the raw strings (#218). `Active` is a read-only
 Portuguese label derived by INEM; it is **not** writable and must not be modelled as desired
 state.
 
@@ -227,6 +230,7 @@ step names, status codes and unit ids. No API response may expose the shared INE
 | Purpose of the `device_id` cookie | Unconfirmed, low priority. |
 | Shape of the enhanced unit table | Pending the announced INEM platform update. |
 | `GET /api/unit` shape for an *available* unit | Every capture so far shows a unit that is INOP (`INOPReason` present). #214's reconciler infers "no `INOPReason`" as available (`INEM_AVAILABLE_INOP_CODE`) — a reasonable reading of the write-path sentinel, not something observed on the read path. Re-verify against a real available-unit response before trusting it further. |
+| What production's `GET /api/INOP` reason-code scheme actually is | #218: a live production `GET /api/unit` returned `INOPReason: "04"` — a bare numeric code, not a member of the descriptive-string set (`TEPH_Falta`, …) this doc's `GET /api/INOP` sample shows above. That sample was very likely captured against the `X-ENV: TESTE` session (see the row above), not production — the two environments may use different code schemes entirely. `INEM_INOP_REASONS` is not to be extended with a guessed label for `"04"` or any other numeric code; only from a confirmed live `GET /api/INOP` capture against production. |
 
 ## Provenance
 
@@ -235,3 +239,4 @@ step names, status codes and unit ids. No API response may expose the shared INE
 | 2026-09-02 | Chrome netlog (`Everything` capture mode) | Login field names, OTP length, `PUT /api/unit` batch shape, `"00"` semantics, `/api/INOP` map, cookie attributes |
 | 2026-09-02 | HAR export (sanitized) | Warm re-mint chain, `403 application/problem+json`, empty-table failure mode, `samlsessionid` 8h rolling window |
 | 2026-09-02 | OTP `.msg` | Mailbox, sender, subject format |
+| 2026-09-10 | First live production reconcile pass (after 609b7bd's TLS fix unblocked it) | `CarID`'s dashless format vs. `Vehicle.licensePlate`'s dashed one (#218); production's `GET /api/unit` returning a numeric `INOPReason` (`"04"`) unlike the earlier `TESTE`-tagged capture |

@@ -606,6 +606,16 @@ export enum VehicleType {
 export const PT_LICENSE_PLATE_REGEX =
   /^([A-Z]{2}-\d{2}-\d{2}|\d{2}-\d{2}-[A-Z]{2}|\d{2}-[A-Z]{2}-\d{2}|[A-Z]{2}-\d{2}-[A-Z]{2})$/;
 
+/**
+ * Collapses a licence plate to bare upper-cased alphanumerics — `"80-PS-45"`
+ * and `"80PS45"` normalize to the same key. `Vehicle.licensePlate` is always
+ * stored dashed (see `PT_LICENSE_PLATE_REGEX`); external sources don't
+ * necessarily agree — INEM's own `CarID` (`INEMUnit.carId`, see the INEM
+ * integration section below) comes back dashless. Join on this, never on the
+ * raw strings, or the same vehicle silently fails to match.
+ */
+export const normalizeLicensePlate = (plate: string): string => plate.toUpperCase().replace(/[^A-Z0-9]/g, '');
+
 export interface MaintenanceEntry {
   id: string;
   vehicleId: string;
@@ -6001,15 +6011,28 @@ export enum INEMSessionStatus {
 export const INEM_AVAILABLE_INOP_CODE = '00' as const;
 
 /**
- * The reason code → INEM's own Portuguese display label, exactly as
- * `GET /api/INOP` returns it (see docs/inem-portal-contract.md). Labels are
- * kept verbatim — accents and odd casing included (`Limpar/Repor_Mat`) — for
- * two reasons: it's the `pt` source text #216's screen translates against,
- * and it's the fallback for any code INEM adds later that redinfo has no
- * key for. The *code* is the contract, wire format and `desiredInopCode`
- * value; the *label* is display data. Runtime source of truth stays the live
+ * The reason code → INEM's own Portuguese display label, as captured from a
+ * `GET /api/INOP` response during #212's original recon (see
+ * docs/inem-portal-contract.md). Labels are kept verbatim — accents and odd
+ * casing included (`Limpar/Repor_Mat`) — for two reasons: it's the `pt`
+ * source text #216's screen translates against, and it's the last-resort
+ * fallback when there is no better one to hand.
+ *
+ * **This table is now known to not match live production.** #218: a real
+ * production capture returned a bare numeric `INOPReason` (`"04"`) that
+ * isn't a key here — the descriptive-string scheme above was very likely
+ * only ever true of the `X-ENV: TESTE` session the recon captured against
+ * (see docs/inem-portal-contract.md's open questions), not production. Do
+ * not extend this table by guessing at what a numeric code means; only add
+ * an entry once it's confirmed from a live `GET /api/INOP` capture.
+ *
+ * The *code* is the contract, wire format and `desiredInopCode` value; the
+ * *label* is display data. Runtime source of truth is always the live
  * `GET /api/INOP` call (surfaced through `INEMStatusOverview.inopReasons`)
- * — this constant is the compile-time type and the offline fallback.
+ * — `InemSessionService` now persists the last one it fetched (#218) so a
+ * process restart falls back to yesterday's real map before it ever falls
+ * back to this compile-time one. This constant only matters pre-first-sync,
+ * or if the live map itself has genuinely never been fetched.
  */
 export const INEM_INOP_REASONS = {
   TEPH_Falta: 'Sem Tripulação',

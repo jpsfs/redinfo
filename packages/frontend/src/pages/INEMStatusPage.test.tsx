@@ -120,6 +120,19 @@ describe('INEMStatusPage', () => {
     expect(screen.getByRole('option', { name: 'Nova Razão' })).toBeInTheDocument();
   });
 
+  it('still shows the currently selected reason verbatim when it is missing from the reasons map — e.g. after a fallback-table restart (#218)', async () => {
+    const user = userEvent.setup();
+    mockApiFetch.mockResolvedValue(
+      overview([unit({ desiredInopCode: '04', reportedInopCode: '04' })], {
+        inopReasons: { TEPH_Falta: 'Sem Tripulação' }, // no "04" key
+      }),
+    );
+    renderPage();
+
+    await user.click(await screen.findByLabelText('Reason'));
+    expect(await screen.findByRole('option', { name: '04' })).toBeInTheDocument();
+  });
+
   it('shows a syncing badge when the desired state has not yet reached INEM', async () => {
     mockApiFetch.mockResolvedValue(
       overview([unit({ desiredInopCode: '00', reportedInopCode: 'TEPH_Falta' })]),

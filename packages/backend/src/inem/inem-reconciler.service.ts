@@ -1,6 +1,6 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { INEM_AVAILABLE_INOP_CODE } from '@redinfo/shared';
+import { INEM_AVAILABLE_INOP_CODE, normalizeLicensePlate } from '@redinfo/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { InemApiClient, InemSessionExpiredError, InemUnitApiRow } from './inem-api.client';
 import { InemQueueService, INEM_KEEPALIVE_SAML_QUEUE, INEM_KEEPALIVE_SESSION_QUEUE, INEM_RECONCILE_QUEUE } from './inem-queue.service';
@@ -68,7 +68,7 @@ export class InemReconcilerService implements OnModuleInit {
         this.client.getUnits(cookies, entity),
         this.client.getInopReasons(cookies),
       ]);
-      this.session.setCachedInopReasons(inopReasons);
+      await this.session.setCachedInopReasons(inopReasons);
       await this.syncUnits(tx, units);
 
       const pending = await this.buildPendingBatch(tx);
@@ -95,10 +95,10 @@ export class InemReconcilerService implements OnModuleInit {
    * available-unit response.
    */
   private async syncUnits(tx: Prisma.TransactionClient, units: InemUnitApiRow[]): Promise<void> {
+    const vehicleIdByPlate = await this.loadVehicleIdsByNormalizedPlate(tx);
+
     for (const unit of units) {
-      const vehicle = unit.CarID
-        ? await tx.vehicle.findUnique({ where: { licensePlate: unit.CarID }, select: { id: true } })
-        : null;
+      const vehicleId = unit.CarID ? vehicleIdByPlate.get(normalizeLicensePlate(unit.CarID)) ?? null : null;
 
       await tx.iNEMUnit.upsert({
         where: { unitId: unit.UnitID },
@@ -109,7 +109,7 @@ export class InemReconcilerService implements OnModuleInit {
           unitType: unit.UnitType,
           reportedInopCode: unit.INOPReason ?? INEM_AVAILABLE_INOP_CODE,
           reportedActive: unit.Active,
-          vehicleId: vehicle?.id ?? null,
+          vehicleId,
           lastSyncedAt: new Date(),
           lastError: null,
         },
@@ -119,12 +119,26 @@ export class InemReconcilerService implements OnModuleInit {
           unitType: unit.UnitType,
           reportedInopCode: unit.INOPReason ?? INEM_AVAILABLE_INOP_CODE,
           reportedActive: unit.Active,
-          vehicleId: vehicle?.id ?? null,
+          vehicleId,
           lastSyncedAt: new Date(),
           lastError: null,
         },
       });
     }
+  }
+
+  /**
+   * Keyed by `normalizeLicensePlate`, not the raw string: INEM's own `CarID`
+   * comes back dashless (`"80PS45"`) while `Vehicle.licensePlate` is always
+   * stored dashed (`"80-PS-45"`) — an exact-match lookup never joins the two
+   * to the same vehicle even though it's the same ambulance (#218). Loaded
+   * once per reconcile pass rather than per unit; the fleet is small enough
+   * that this is cheaper than N lookups and the aggregate connection time is
+   * the same either way.
+   */
+  private async loadVehicleIdsByNormalizedPlate(tx: Prisma.TransactionClient): Promise<Map<string, string>> {
+    const vehicles = await tx.vehicle.findMany({ select: { id: true, licensePlate: true } });
+    return new Map(vehicles.map((v) => [normalizeLicensePlate(v.licensePlate), v.id]));
   }
 
   /** Units whose desired state has never been set are excluded — pushing nothing is not the same as pushing "available". */
