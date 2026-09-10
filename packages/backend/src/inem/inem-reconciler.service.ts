@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { INEM_AVAILABLE_INOP_CODE, normalizeLicensePlate } from '@redinfo/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { InemApiClient, InemSessionExpiredError, InemUnitApiRow } from './inem-api.client';
-import { InemQueueService, INEM_KEEPALIVE_SAML_QUEUE, INEM_KEEPALIVE_SESSION_QUEUE } from './inem-queue.service';
+import { InemQueueService, INEM_KEEPALIVE_SAML_QUEUE } from './inem-queue.service';
 import { InemSessionService } from './inem-session.service';
 
 /** Only one reconcile pass runs at a time — a second overlapping pass is what could push a stale write out of order. */
@@ -31,7 +31,7 @@ export class InemReconcilerService implements OnModuleInit {
 
   async onModuleInit(): Promise<void> {
     await this.queue.workReconcile(() => this.reconcile());
-    await this.queue.work(INEM_KEEPALIVE_SESSION_QUEUE, () => this.session.pingStatistics());
+    await this.queue.workKeepaliveSession(() => this.session.pingStatistics());
     await this.queue.work(INEM_KEEPALIVE_SAML_QUEUE, () => this.session.proactiveReMint());
   }
 

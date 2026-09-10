@@ -45,48 +45,58 @@ describe('InemQueueService', () => {
     process.env = ORIGINAL_ENV;
   });
 
-  it('starts pg-boss, creates all three queues, crons the two keep-alives and seeds the reconcile chain', async () => {
+  it('starts pg-boss, creates all three queues exclusively where it matters, crons the SAML layer and seeds both chains', async () => {
     const service = new InemQueueService();
     await service.onModuleInit();
 
     expect(PgBossMock).toHaveBeenCalledWith('postgresql://test/db');
     expect(bossInstance.start).toHaveBeenCalled();
     expect(bossInstance.createQueue).toHaveBeenCalledWith(INEM_RECONCILE_QUEUE, { policy: 'exclusive' });
-    expect(bossInstance.createQueue).toHaveBeenCalledWith(INEM_KEEPALIVE_SESSION_QUEUE);
+    expect(bossInstance.createQueue).toHaveBeenCalledWith(INEM_KEEPALIVE_SESSION_QUEUE, { policy: 'exclusive' });
     expect(bossInstance.createQueue).toHaveBeenCalledWith(INEM_KEEPALIVE_SAML_QUEUE);
     // A brand-new queue (no existing row) never needs the drop-and-recreate
     // migration below.
     expect(bossInstance.deleteQueue).not.toHaveBeenCalled();
-    expect(bossInstance.schedule).toHaveBeenCalledWith(INEM_KEEPALIVE_SESSION_QUEUE, '*/5 * * * *');
+    // Only the SAML layer is still a plain cron — the session keep-alive
+    // moved onto the same self-rescheduling chain as the reconciler on
+    // 2026-09-10 to cut its load on INEM.
     expect(bossInstance.schedule).toHaveBeenCalledWith(INEM_KEEPALIVE_SAML_QUEUE, '0 */5 * * *');
-    // Not a cron — seeds the self-rescheduling chain's first link, right away.
+    expect(bossInstance.schedule).not.toHaveBeenCalledWith(INEM_KEEPALIVE_SESSION_QUEUE, expect.anything());
     expect(bossInstance.schedule).not.toHaveBeenCalledWith(INEM_RECONCILE_QUEUE, expect.anything());
+    // Not a cron — seeds each self-rescheduling chain's first link, right away.
     expect(bossInstance.send).toHaveBeenCalledWith(INEM_RECONCILE_QUEUE, {}, { startAfter: 0 });
+    expect(bossInstance.send).toHaveBeenCalledWith(INEM_KEEPALIVE_SESSION_QUEUE, {}, { startAfter: 0 });
     // Self-heals a leftover cron row an older deploy may have left behind in
-    // pg-boss's own `schedule` table — a stale minute-cron would silently
-    // double the reconcile frequency underneath the jittered chain above.
+    // pg-boss's own `schedule` table for either chain — a stale row would
+    // silently run alongside the jittered chain above instead of it.
     expect(bossInstance.unschedule).toHaveBeenCalledWith(INEM_RECONCILE_QUEUE);
+    expect(bossInstance.unschedule).toHaveBeenCalledWith(INEM_KEEPALIVE_SESSION_QUEUE);
   });
 
-  it('drops and recreates the reconcile queue when an older deploy created it without the exclusive policy', async () => {
-    // Found live in production on 2026-09-10: a queue created under the
-    // default 'standard' policy let every restart add one more permanent,
-    // parallel self-rescheduling chain — 42 of them concurrently, none ever
-    // merging back into one. `updateQueue` can't flip `policy` after the
-    // fact, so migrating a pre-existing queue means drop-then-recreate.
-    bossInstance.getQueue.mockResolvedValueOnce({ name: INEM_RECONCILE_QUEUE, policy: 'standard' });
-    const service = new InemQueueService();
-    await service.onModuleInit();
+  it.each([INEM_RECONCILE_QUEUE, INEM_KEEPALIVE_SESSION_QUEUE])(
+    'drops and recreates %s when an older deploy created it without the exclusive policy',
+    async (queue) => {
+      // Found live in production on 2026-09-10: a queue created under the
+      // default 'standard' policy let every restart add one more permanent,
+      // parallel self-rescheduling chain — 42 of them concurrently, none ever
+      // merging back into one. `updateQueue` can't flip `policy` after the
+      // fact, so migrating a pre-existing queue means drop-then-recreate.
+      bossInstance.getQueue.mockImplementation(async (name: string) =>
+        name === queue ? { name, policy: 'standard' } : null,
+      );
+      const service = new InemQueueService();
+      await service.onModuleInit();
 
-    expect(bossInstance.deleteQueue).toHaveBeenCalledWith(INEM_RECONCILE_QUEUE);
-    expect(bossInstance.createQueue).toHaveBeenCalledWith(INEM_RECONCILE_QUEUE, { policy: 'exclusive' });
-    // The drop wipes any stray duplicate jobs too — onModuleInit's own seed
-    // at the end is what guarantees exactly one survives.
-    expect(bossInstance.send).toHaveBeenCalledWith(INEM_RECONCILE_QUEUE, {}, { startAfter: 0 });
-  });
+      expect(bossInstance.deleteQueue).toHaveBeenCalledWith(queue);
+      expect(bossInstance.createQueue).toHaveBeenCalledWith(queue, { policy: 'exclusive' });
+      // The drop wipes any stray duplicate jobs too — onModuleInit's own seed
+      // at the end is what guarantees exactly one survives.
+      expect(bossInstance.send).toHaveBeenCalledWith(queue, {}, { startAfter: 0 });
+    },
+  );
 
-  it('leaves an already-exclusive reconcile queue alone', async () => {
-    bossInstance.getQueue.mockResolvedValueOnce({ name: INEM_RECONCILE_QUEUE, policy: 'exclusive' });
+  it('leaves an already-exclusive queue alone', async () => {
+    bossInstance.getQueue.mockResolvedValue({ policy: 'exclusive' });
     const service = new InemQueueService();
     await service.onModuleInit();
 
@@ -244,6 +254,129 @@ describe('InemQueueService', () => {
       await registerCall;
 
       expect(bossInstance.work).toHaveBeenCalledWith(INEM_RECONCILE_QUEUE, expect.any(Function));
+    });
+  });
+
+  describe('workKeepaliveSession', () => {
+    it('registers its handler under INEM_KEEPALIVE_SESSION_QUEUE', async () => {
+      const service = new InemQueueService();
+      await service.onModuleInit();
+
+      await service.workKeepaliveSession(jest.fn().mockResolvedValue(undefined));
+
+      expect(bossInstance.work).toHaveBeenCalledWith(INEM_KEEPALIVE_SESSION_QUEUE, expect.any(Function));
+    });
+
+    it('schedules the next ping within the default 12-18min bounds once a pass resolves', async () => {
+      const service = new InemQueueService();
+      await service.onModuleInit();
+      await service.workKeepaliveSession(jest.fn().mockResolvedValue(undefined));
+      const registered = bossInstance.work.mock.calls.find(
+        ([queue]) => queue === INEM_KEEPALIVE_SESSION_QUEUE,
+      )![1] as (jobs: unknown[]) => Promise<void>;
+
+      bossInstance.send.mockClear(); // drop the startAfter:0 seed call from onModuleInit
+      await registered([{ id: 'job-1' }]);
+
+      expect(bossInstance.send).toHaveBeenCalledTimes(1);
+      const [queue, data, options] = bossInstance.send.mock.calls[0];
+      expect(queue).toBe(INEM_KEEPALIVE_SESSION_QUEUE);
+      expect(data).toEqual({});
+      expect(options.startAfter).toBeGreaterThanOrEqual(12 * 60);
+      expect(options.startAfter).toBeLessThanOrEqual(18 * 60);
+    });
+
+    it('honors INEM_KEEPALIVE_SESSION_MIN/MAX_INTERVAL_SECONDS overrides', async () => {
+      process.env.INEM_KEEPALIVE_SESSION_MIN_INTERVAL_SECONDS = '10';
+      process.env.INEM_KEEPALIVE_SESSION_MAX_INTERVAL_SECONDS = '20';
+      const service = new InemQueueService();
+      await service.onModuleInit();
+      await service.workKeepaliveSession(jest.fn().mockResolvedValue(undefined));
+      const registered = bossInstance.work.mock.calls.find(
+        ([queue]) => queue === INEM_KEEPALIVE_SESSION_QUEUE,
+      )![1] as (jobs: unknown[]) => Promise<void>;
+
+      bossInstance.send.mockClear();
+      await registered([{ id: 'job-1' }]);
+
+      const [, , options] = bossInstance.send.mock.calls[0];
+      expect(options.startAfter).toBeGreaterThanOrEqual(10);
+      expect(options.startAfter).toBeLessThanOrEqual(20);
+    });
+
+    it('does not borrow the reconcile chain\'s bounds — the two chains schedule independently', async () => {
+      process.env.INEM_RECONCILE_MIN_INTERVAL_SECONDS = '9000';
+      process.env.INEM_RECONCILE_MAX_INTERVAL_SECONDS = '9000';
+      const service = new InemQueueService();
+      await service.onModuleInit();
+      await service.workKeepaliveSession(jest.fn().mockResolvedValue(undefined));
+      const registered = bossInstance.work.mock.calls.find(
+        ([queue]) => queue === INEM_KEEPALIVE_SESSION_QUEUE,
+      )![1] as (jobs: unknown[]) => Promise<void>;
+
+      bossInstance.send.mockClear();
+      await registered([{ id: 'job-1' }]);
+
+      const [, , options] = bossInstance.send.mock.calls[0];
+      expect(options.startAfter).toBeLessThan(9000);
+    });
+
+    it('completes the current job before sending its successor, not after', async () => {
+      const service = new InemQueueService();
+      await service.onModuleInit();
+      await service.workKeepaliveSession(jest.fn().mockResolvedValue(undefined));
+      const registered = bossInstance.work.mock.calls.find(
+        ([queue]) => queue === INEM_KEEPALIVE_SESSION_QUEUE,
+      )![1] as (jobs: unknown[]) => Promise<void>;
+
+      bossInstance.send.mockClear();
+      const callOrder: string[] = [];
+      bossInstance.complete.mockImplementationOnce(async () => {
+        callOrder.push('complete');
+      });
+      bossInstance.send.mockImplementationOnce(async () => {
+        callOrder.push('send');
+        return 'job-2';
+      });
+
+      await registered([{ id: 'job-1' }]);
+
+      expect(bossInstance.complete).toHaveBeenCalledWith(INEM_KEEPALIVE_SESSION_QUEUE, 'job-1');
+      expect(callOrder).toEqual(['complete', 'send']);
+    });
+
+    it('still schedules the next ping when the handler throws — one bad ping must not stall the loop', async () => {
+      const service = new InemQueueService();
+      await service.onModuleInit();
+      const failingHandler = jest.fn().mockRejectedValue(new Error('boom'));
+      await service.workKeepaliveSession(failingHandler);
+      const registered = bossInstance.work.mock.calls.find(
+        ([queue]) => queue === INEM_KEEPALIVE_SESSION_QUEUE,
+      )![1] as (jobs: unknown[]) => Promise<void>;
+
+      bossInstance.send.mockClear();
+      await expect(registered([{ id: 'job-1' }])).rejects.toThrow('boom');
+
+      expect(failingHandler).toHaveBeenCalled();
+      expect(bossInstance.complete).toHaveBeenCalledWith(INEM_KEEPALIVE_SESSION_QUEUE, 'job-1');
+      expect(bossInstance.send).toHaveBeenCalledWith(
+        INEM_KEEPALIVE_SESSION_QUEUE,
+        {},
+        expect.objectContaining({ startAfter: expect.any(Number) }),
+      );
+    });
+
+    it('buffers a workKeepaliveSession() call that arrives before onModuleInit finishes, and flushes it once boss is ready', async () => {
+      const service = new InemQueueService();
+      const handler = jest.fn().mockResolvedValue(undefined);
+
+      const registerCall = service.workKeepaliveSession(handler);
+      expect(bossInstance.work).not.toHaveBeenCalled();
+
+      await service.onModuleInit();
+      await registerCall;
+
+      expect(bossInstance.work).toHaveBeenCalledWith(INEM_KEEPALIVE_SESSION_QUEUE, expect.any(Function));
     });
   });
 
