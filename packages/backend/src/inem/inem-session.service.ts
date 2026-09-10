@@ -199,12 +199,24 @@ export class InemSessionService implements OnModuleInit {
    * before tripping — see `CONSECUTIVE_FAILURE_LIMIT`.
    *
    * A no-op once already `FAILED`: nothing to escalate, and the loops that
-   * call this already stopped reaching INEM at all by that point.
+   * call this already stopped reaching INEM at all by that point. Also a
+   * no-op mid-`LOGGING_IN` — same reasoning as `markHealthy`'s own guard,
+   * and the gap `markHealthy` doesn't have: `getCookiesOrNull` can still hand
+   * back a non-null jar while a cold login is in flight (`beginColdLogin`
+   * only flips `status`, it never clears the old `cookies` column), so a
+   * reconcile pass or the keep-alive ping racing against that login can spend
+   * those stale cookies, get back something other than the `403` `recover()`
+   * knows to ignore during `LOGGING_IN`, and land here instead — which used
+   * to flip `status` to `EXPIRED`/`FAILED` out from under the login, orphaning
+   * it: `pendingLoginId` stays set forever, `claimLoginJob` starts refusing it
+   * (it requires `status === LOGGING_IN`), and the worker's eventual
+   * `submitLoginResult` for a human's already-completed MFA is discarded as
+   * "unknown/stale job".
    */
   async recordApiFailure(err: unknown): Promise<void> {
     if (!this.enabled) return;
     const row = await this.row();
-    if (row.status === INEMSessionStatus.FAILED) return;
+    if (row.status === INEMSessionStatus.FAILED || row.status === INEMSessionStatus.LOGGING_IN) return;
 
     const message = err instanceof Error ? err.message : String(err);
     const status = err instanceof InemApiError ? err.status : undefined;

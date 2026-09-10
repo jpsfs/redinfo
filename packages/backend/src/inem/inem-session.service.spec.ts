@@ -342,6 +342,32 @@ describe('InemSessionService', () => {
       expect(sessionRow.status).toBe(INEMSessionStatus.FAILED);
       expect(stub.iNEMSession.update).not.toHaveBeenCalled();
     });
+
+    /**
+     * Regression test: `beginColdLogin` flips `status` to `LOGGING_IN` but
+     * never clears the row's old `cookies` column, so `getCookiesOrNull` can
+     * still hand a reconcile pass or the keep-alive ping a stale (but
+     * non-null) jar while a cold login is in flight. Before this guard, a
+     * non-403 failure from spending that stale jar flipped `status` away from
+     * `LOGGING_IN` out from under the login — orphaning it: `pendingLoginId`
+     * stays set forever and `claimLoginJob` (which requires
+     * `status === LOGGING_IN`) starts refusing it, silently discarding a
+     * human's already-in-progress MFA. `markHealthy` already had this same
+     * guard (see its own "never clobbers a login already in flight" test);
+     * this was the asymmetric gap.
+     */
+    it('never clobbers a login already in flight', async () => {
+      const { stub, sessionRow } = buildPrismaStub(
+        inemSessionRow({ status: INEMSessionStatus.LOGGING_IN, pendingLoginId: 'inem-login-abc' }),
+      );
+      const service = new InemSessionService(stub as never, cipher, client);
+
+      await service.recordApiFailure(new Error('ECONNRESET'));
+
+      expect(sessionRow.status).toBe(INEMSessionStatus.LOGGING_IN);
+      expect(sessionRow.pendingLoginId).toBe('inem-login-abc');
+      expect(stub.iNEMSession.update).not.toHaveBeenCalled();
+    });
   });
 
   describe('recover', () => {
