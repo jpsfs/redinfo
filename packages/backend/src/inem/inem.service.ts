@@ -8,6 +8,7 @@ import {
 import { INEMSessionStatus as PrismaINEMSessionStatus, Prisma } from '@prisma/client';
 import { ApiConflictException } from '../common/api-error.exception';
 import { PrismaService } from '../prisma/prisma.service';
+import { InemReconcilerService } from './inem-reconciler.service';
 import { InemSessionService } from './inem-session.service';
 
 type INEMUnitRow = Prisma.INEMUnitGetPayload<{
@@ -24,14 +25,17 @@ const UNIT_INCLUDE = {
  *
  * Neither route talks to INEM directly — writing `desiredInopCode` and an
  * audit row is the entire job of `setUnitStatus`; `InemReconcilerService`
- * does the pushing on its own schedule. A crew member sets a unit's status
- * and moves on; they never wait on a scraped SSO session.
+ * does the pushing. A crew member sets a unit's status and moves on; they
+ * never wait on a scraped SSO session — `setUnitStatus` only kicks the
+ * reconciler's `triggerNow()` in the background once its own write has
+ * committed, it doesn't await it.
  */
 @Injectable()
 export class InemService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly session: InemSessionService,
+    private readonly reconciler: InemReconcilerService,
   ) {}
 
   async getStatusOverview(): Promise<INEMStatusOverview> {
@@ -67,6 +71,11 @@ export class InemService {
       this.prisma.iNEMUnit.update({ where: { unitId }, data: { desiredInopCode: inopCode } }),
       this.prisma.iNEMStatusAudit.create({ data: { unitId, userId: actor.id, inopCode } }),
     ]);
+
+    // Starts the push now instead of leaving it to sit for the reconcile
+    // loop's own randomized delay — not awaited, so this request still
+    // returns as soon as the write above has committed.
+    this.reconciler.triggerNow();
   }
 }
 

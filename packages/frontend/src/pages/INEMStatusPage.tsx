@@ -3,6 +3,7 @@ import { Title, useNotify } from 'react-admin';
 import {
   Alert,
   Box,
+  Button,
   Card,
   CardContent,
   Chip,
@@ -14,6 +15,7 @@ import {
   TextField,
   Typography,
 } from '@mui/material';
+import SaveIcon from '@mui/icons-material/Save';
 import SyncIcon from '@mui/icons-material/Sync';
 import {
   INEM_AVAILABLE_INOP_CODE,
@@ -38,12 +40,19 @@ const REFRESH_MS = 20_000;
  * per-unit availability toggle and INOP reason (#216).
  *
  * Read-and-write, but never talks to INEM directly: `PUT /inem/units/:id`
- * only records the desired state, and `InemReconcilerService` pushes it
- * asynchronously on its own schedule. The gap between "desired" and
- * "reported" is normal and shown as a syncing badge, not an error — and when
- * the session itself is down, the banner below says so plainly and names the
- * fallback (INEM's own portal), because a silently stale toggle here is the
- * worst failure this feature has.
+ * only records the desired state, and `InemReconcilerService` pushes it —
+ * right away, not just on its next scheduled pass — in the background. The
+ * gap between "desired" and "reported" is normal and shown as a syncing
+ * badge, not an error — and when the session itself is down, the banner
+ * below says so plainly and names the fallback (INEM's own portal), because
+ * a silently stale toggle here is the worst failure this feature has.
+ *
+ * Flipping the switch or picking a reason only edits `UnitCard`'s own local
+ * state — nothing reaches the server until the crew member hits "Save".
+ * Earlier this fired a request on every click, which meant a slip of the
+ * thumb (or an accidental double-tap while scrolling) could report an
+ * ambulance INOP on INEM's own portal without the crew ever meaning to
+ * commit that change; requiring an explicit save makes that intent real.
  */
 export const INEMStatusPage = () => {
   const t = useT();
@@ -162,21 +171,33 @@ interface UnitCardProps {
 const UnitCard = ({ unit, reasons, saving, onSetStatus }: UnitCardProps) => {
   const t = useT();
   const intlLocale = useIntlLocale();
-  const isAvailable = unit.desiredInopCode === INEM_AVAILABLE_INOP_CODE;
-  // Tracks the reason picker's visibility from `isAvailable`, but only when
-  // *that* actually changes — set directly (not derived inline) so a click
-  // on the switch reveals the picker immediately, before any request has
-  // gone out and before `isAvailable` itself has moved. Without that, the
-  // next poll would land with server truth still unchanged and flip the
-  // switch back on under the coordinator's thumb.
-  const [editing, setEditing] = useState(!isAvailable);
-  useEffect(() => setEditing(!isAvailable), [isAvailable]);
 
-  const checked = isAvailable && !editing;
-  const reasonValue = !checked && unit.desiredInopCode && unit.desiredInopCode !== INEM_AVAILABLE_INOP_CODE
-    ? unit.desiredInopCode
-    : '';
-  const syncing = unit.desiredInopCode !== unit.reportedInopCode;
+  // The server's last-committed intent — what a Save would overwrite if the
+  // crew member hasn't started editing.
+  const serverCode = unit.desiredInopCode ?? '';
+
+  // Buffers the crew member's in-progress choice until they hit Save — no
+  // request goes out just from flipping the switch or picking a reason.
+  // Synced from the server only while there's no unsaved edit (`!dirty`);
+  // once one starts, a poll landing mid-edit must not stomp on it, the same
+  // concern the old `editing` flag existed for.
+  const [pending, setPending] = useState(serverCode);
+  const [dirty, setDirty] = useState(false);
+  useEffect(() => {
+    if (!dirty) setPending(serverCode);
+  }, [serverCode, dirty]);
+
+  const setPendingCode = (code: string) => {
+    setPending(code);
+    setDirty(code !== serverCode);
+  };
+
+  const checked = pending === INEM_AVAILABLE_INOP_CODE;
+  const reasonValue = !checked ? pending : '';
+  // A reason must actually be picked before "Save" means anything — an
+  // empty `pending` (switch just flipped off) is dirty but not yet savable.
+  const canSave = dirty && pending !== '';
+  const syncing = !dirty && unit.desiredInopCode !== unit.reportedInopCode;
 
   // `reasons` (the live map, or its compile-time fallback) may not have a
   // key for the code already selected here — e.g. it was set while the live
@@ -191,6 +212,11 @@ const UnitCard = ({ unit, reasons, saving, onSetStatus }: UnitCardProps) => {
     ? `${unit.vehicle.licensePlate} – ${unit.vehicle.numeroCauda}`
     : (unit.carId ?? unit.unitId);
 
+  const handleSave = () => {
+    setDirty(false);
+    onSetStatus(unit.unitId, pending);
+  };
+
   return (
     <Card variant="outlined">
       <CardContent>
@@ -204,6 +230,7 @@ const UnitCard = ({ unit, reasons, saving, onSetStatus }: UnitCardProps) => {
               {!unit.vehicle && ` · ${t('inem.noVehicleMatch')}`}
             </Typography>
           </Box>
+          {dirty && <Chip size="small" label={t('inem.unsavedChanges')} color="warning" variant="outlined" />}
           {syncing && (
             <Chip
               size="small"
@@ -221,14 +248,7 @@ const UnitCard = ({ unit, reasons, saving, onSetStatus }: UnitCardProps) => {
             <Switch
               checked={checked}
               disabled={saving}
-              onChange={(event) => {
-                if (event.target.checked) {
-                  setEditing(false);
-                  onSetStatus(unit.unitId, INEM_AVAILABLE_INOP_CODE);
-                } else {
-                  setEditing(true);
-                }
-              }}
+              onChange={(event) => setPendingCode(event.target.checked ? INEM_AVAILABLE_INOP_CODE : '')}
             />
           }
           label={t('inem.available')}
@@ -242,7 +262,7 @@ const UnitCard = ({ unit, reasons, saving, onSetStatus }: UnitCardProps) => {
             label={t('inem.reasonLabel')}
             value={reasonValue}
             disabled={saving}
-            onChange={(event) => onSetStatus(unit.unitId, event.target.value)}
+            onChange={(event) => setPendingCode(event.target.value)}
             sx={{ mt: 1 }}
           >
             <MenuItem value="" disabled>
@@ -255,6 +275,17 @@ const UnitCard = ({ unit, reasons, saving, onSetStatus }: UnitCardProps) => {
             ))}
           </TextField>
         )}
+
+        <Button
+          size="small"
+          variant={canSave ? 'contained' : 'outlined'}
+          startIcon={<SaveIcon fontSize="small" />}
+          disabled={!canSave || saving}
+          onClick={handleSave}
+          sx={{ mt: 1 }}
+        >
+          {t('inem.save')}
+        </Button>
 
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
           {unit.lastSyncedAt

@@ -43,12 +43,19 @@ function buildSessionStub(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function buildReconcilerStub(overrides: Record<string, unknown> = {}) {
+  return {
+    triggerNow: jest.fn(),
+    ...overrides,
+  };
+}
+
 describe('InemService', () => {
   describe('getStatusOverview', () => {
     it('joins units to their vehicle and reports session status', async () => {
       const prisma = buildPrismaStub();
       const session = buildSessionStub();
-      const service = new InemService(prisma as never, session as never);
+      const service = new InemService(prisma as never, session as never, buildReconcilerStub() as never);
 
       const overview = await service.getStatusOverview();
 
@@ -64,7 +71,7 @@ describe('InemService', () => {
     it('falls back to the compile-time INOP reason map when nothing has been cached yet', async () => {
       const prisma = buildPrismaStub();
       const session = buildSessionStub({ getCachedInopReasons: jest.fn().mockReturnValue(null) });
-      const service = new InemService(prisma as never, session as never);
+      const service = new InemService(prisma as never, session as never, buildReconcilerStub() as never);
 
       const overview = await service.getStatusOverview();
       expect(overview.inopReasons).toEqual(INEM_INOP_REASONS);
@@ -74,7 +81,7 @@ describe('InemService', () => {
       const prisma = buildPrismaStub();
       const live = { TEPH_Falta: 'Sem Tripulação', NEW_CODE: 'Something new' };
       const session = buildSessionStub({ getCachedInopReasons: jest.fn().mockReturnValue(live) });
-      const service = new InemService(prisma as never, session as never);
+      const service = new InemService(prisma as never, session as never, buildReconcilerStub() as never);
 
       const overview = await service.getStatusOverview();
       expect(overview.inopReasons).toEqual(live);
@@ -83,7 +90,7 @@ describe('InemService', () => {
     it('reports a unit INEM lists but redinfo has no matching vehicle for as vehicle: null', async () => {
       const prisma = buildPrismaStub([unitRow({ vehicle: null, carId: 'UNKNOWN1' })]);
       const session = buildSessionStub();
-      const service = new InemService(prisma as never, session as never);
+      const service = new InemService(prisma as never, session as never, buildReconcilerStub() as never);
 
       const overview = await service.getStatusOverview();
       expect(overview.units[0].vehicle).toBeNull();
@@ -94,7 +101,7 @@ describe('InemService', () => {
     it('writes desiredInopCode and an audit row in one transaction', async () => {
       const prisma = buildPrismaStub();
       const session = buildSessionStub();
-      const service = new InemService(prisma as never, session as never);
+      const service = new InemService(prisma as never, session as never, buildReconcilerStub() as never);
 
       await service.setUnitStatus(ACTOR, 'CVCAMPO1', 'TEPH_Falta');
 
@@ -107,33 +114,46 @@ describe('InemService', () => {
       });
     });
 
+    it('kicks an immediate reconcile pass once the write commits, instead of leaving it for the scheduled loop', async () => {
+      const prisma = buildPrismaStub();
+      const session = buildSessionStub();
+      const reconciler = buildReconcilerStub();
+      const service = new InemService(prisma as never, session as never, reconciler as never);
+
+      await service.setUnitStatus(ACTOR, 'CVCAMPO1', 'TEPH_Falta');
+
+      expect(reconciler.triggerNow).toHaveBeenCalledTimes(1);
+    });
+
     it('never calls INEM directly — the reconciler does the pushing', async () => {
       const prisma = buildPrismaStub();
       const session = buildSessionStub();
-      const service = new InemService(prisma as never, session as never);
+      const service = new InemService(prisma as never, session as never, buildReconcilerStub() as never);
 
       await service.setUnitStatus(ACTOR, 'CVCAMPO1', '00');
       // No method on `session` beyond the read-only status check was touched.
       expect(session.getOverview).toHaveBeenCalled();
     });
 
-    it('rejects with INEM_SESSION_NOT_ACTIVE once the circuit breaker has tripped', async () => {
+    it('rejects with INEM_SESSION_NOT_ACTIVE once the circuit breaker has tripped, without triggering a reconcile pass', async () => {
       const prisma = buildPrismaStub();
       const session = buildSessionStub({
         getOverview: jest.fn().mockResolvedValue({ status: INEMSessionStatus.FAILED, lastError: 'boom' }),
       });
-      const service = new InemService(prisma as never, session as never);
+      const reconciler = buildReconcilerStub();
+      const service = new InemService(prisma as never, session as never, reconciler as never);
 
       await expect(service.setUnitStatus(ACTOR, 'CVCAMPO1', '00')).rejects.toMatchObject({
         code: 'INEM_SESSION_NOT_ACTIVE',
       });
       expect(prisma.iNEMUnit.update).not.toHaveBeenCalled();
+      expect(reconciler.triggerNow).not.toHaveBeenCalled();
     });
 
     it('404s for a unit id INEM has never reported', async () => {
       const prisma = buildPrismaStub([]);
       const session = buildSessionStub();
-      const service = new InemService(prisma as never, session as never);
+      const service = new InemService(prisma as never, session as never, buildReconcilerStub() as never);
 
       await expect(service.setUnitStatus(ACTOR, 'GHOST1', '00')).rejects.toThrow('GHOST1');
     });

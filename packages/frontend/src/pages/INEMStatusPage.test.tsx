@@ -71,14 +71,25 @@ describe('INEMStatusPage', () => {
     expect(screen.getByText(/No matching vehicle/)).toBeInTheDocument();
   });
 
-  it('toggling the switch on marks the unit available', async () => {
+  it('stages the toggle locally and does not save until the user confirms', async () => {
     const user = userEvent.setup();
     mockApiFetch.mockResolvedValue(overview([unit({ desiredInopCode: 'TEPH_Falta', reportedInopCode: 'TEPH_Falta' })]));
     renderPage();
 
     const toggle = await screen.findByRole('checkbox', { name: 'Available' });
+    const save = await screen.findByRole('button', { name: 'Save' });
     expect(toggle).not.toBeChecked();
+    expect(save).toBeDisabled();
+
     await user.click(toggle);
+
+    // Flipping the switch only stages the change — no request yet, and the
+    // "unsaved changes" badge says so.
+    expect(mockApiFetch).not.toHaveBeenCalledWith('/inem/units/CVCAMPO1', expect.anything());
+    expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
+    expect(save).toBeEnabled();
+
+    await user.click(save);
 
     await waitFor(() =>
       expect(mockApiFetch).toHaveBeenCalledWith('/inem/units/CVCAMPO1', {
@@ -88,19 +99,26 @@ describe('INEMStatusPage', () => {
     );
   });
 
-  it('reveals the reason dropdown only once the unit is not available, and sends the chosen code', async () => {
+  it('reveals the reason dropdown only once the unit is not available, and Save is disabled until a reason is actually picked', async () => {
     const user = userEvent.setup();
     mockApiFetch.mockResolvedValue(overview([unit({ desiredInopCode: '00', reportedInopCode: '00' })]));
     renderPage();
 
     const toggle = await screen.findByRole('checkbox', { name: 'Available' });
+    const save = await screen.findByRole('button', { name: 'Save' });
     expect(screen.queryByLabelText('Reason')).not.toBeInTheDocument();
 
     await user.click(toggle);
     expect(await screen.findByLabelText('Reason')).toBeInTheDocument();
+    // Dirty (the switch moved), but nothing to send yet — no reason chosen.
+    expect(save).toBeDisabled();
 
     await user.click(screen.getByLabelText('Reason'));
     await user.click(await screen.findByRole('option', { name: 'No crew' }));
+    expect(save).toBeEnabled();
+
+    expect(mockApiFetch).not.toHaveBeenCalledWith('/inem/units/CVCAMPO1', expect.anything());
+    await user.click(save);
 
     await waitFor(() =>
       expect(mockApiFetch).toHaveBeenCalledWith('/inem/units/CVCAMPO1', {
@@ -169,7 +187,7 @@ describe('INEMStatusPage', () => {
     expect(screen.queryByText(/INEM portal/)).not.toBeInTheDocument();
   });
 
-  it('reverts the optimistic toggle and surfaces the session-down error on a conflict', async () => {
+  it('reverts the staged toggle and surfaces the session-down error on a conflict, once saved', async () => {
     const user = userEvent.setup();
     mockApiFetch.mockResolvedValueOnce(
       overview([unit({ desiredInopCode: 'TEPH_Falta', reportedInopCode: 'TEPH_Falta' })]),
@@ -177,13 +195,15 @@ describe('INEMStatusPage', () => {
     renderPage();
 
     const toggle = await screen.findByRole('checkbox', { name: 'Available' });
+    await user.click(toggle);
+
     mockApiFetch.mockRejectedValueOnce(
       new ApiError('unavailable', 409, 'INEM_SESSION_NOT_ACTIVE'),
     );
     mockApiFetch.mockResolvedValueOnce(
       overview([unit({ desiredInopCode: 'TEPH_Falta', reportedInopCode: 'TEPH_Falta' })]),
     );
-    await user.click(toggle);
+    await user.click(screen.getByRole('button', { name: 'Save' }));
 
     await waitFor(() => expect(toggle).not.toBeChecked());
   });

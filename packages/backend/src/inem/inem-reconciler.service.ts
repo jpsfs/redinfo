@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { INEM_AVAILABLE_INOP_CODE, normalizeLicensePlate } from '@redinfo/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { InemApiClient, InemSessionExpiredError, InemUnitApiRow } from './inem-api.client';
-import { InemQueueService, INEM_KEEPALIVE_SAML_QUEUE, INEM_KEEPALIVE_SESSION_QUEUE, INEM_RECONCILE_QUEUE } from './inem-queue.service';
+import { InemQueueService, INEM_KEEPALIVE_SAML_QUEUE, INEM_KEEPALIVE_SESSION_QUEUE } from './inem-queue.service';
 import { InemSessionService } from './inem-session.service';
 
 /** Only one reconcile pass runs at a time — a second overlapping pass is what could push a stale write out of order. */
@@ -30,9 +30,22 @@ export class InemReconcilerService implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    await this.queue.work(INEM_RECONCILE_QUEUE, () => this.reconcile());
+    await this.queue.workReconcile(() => this.reconcile());
     await this.queue.work(INEM_KEEPALIVE_SESSION_QUEUE, () => this.session.pingStatistics());
     await this.queue.work(INEM_KEEPALIVE_SAML_QUEUE, () => this.session.proactiveReMint());
+  }
+
+  /**
+   * Runs one reconcile pass right away, outside the scheduled chain — used
+   * when a coordinator saves a unit's desired status so the push to INEM
+   * starts immediately instead of sitting for up to the loop's own delay
+   * (see `InemQueueService.workReconcile`). Errors are logged, not thrown:
+   * the caller already committed its own write and must not fail because a
+   * live INEM round trip hiccuped — the next scheduled pass retries
+   * regardless, same as any other reconcile failure.
+   */
+  triggerNow(): void {
+    this.reconcile().catch((err) => this.logger.warn(`Immediate reconcile pass failed: ${err.message}`));
   }
 
   async reconcile(): Promise<void> {

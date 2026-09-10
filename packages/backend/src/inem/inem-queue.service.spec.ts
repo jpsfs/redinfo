@@ -11,6 +11,7 @@ const bossInstance = {
   stop: jest.fn().mockResolvedValue(undefined),
   createQueue: jest.fn().mockResolvedValue(undefined),
   schedule: jest.fn().mockResolvedValue(undefined),
+  send: jest.fn().mockResolvedValue('job-1'),
   work: jest.fn().mockResolvedValue('worker-1'),
 };
 const PgBossMock = jest.fn().mockImplementation(() => bossInstance);
@@ -40,7 +41,7 @@ describe('InemQueueService', () => {
     process.env = ORIGINAL_ENV;
   });
 
-  it('starts pg-boss, creates all three queues and schedules them on init', async () => {
+  it('starts pg-boss, creates all three queues, crons the two keep-alives and seeds the reconcile chain', async () => {
     const service = new InemQueueService();
     await service.onModuleInit();
 
@@ -49,7 +50,11 @@ describe('InemQueueService', () => {
     expect(bossInstance.createQueue).toHaveBeenCalledWith(INEM_RECONCILE_QUEUE);
     expect(bossInstance.createQueue).toHaveBeenCalledWith(INEM_KEEPALIVE_SESSION_QUEUE);
     expect(bossInstance.createQueue).toHaveBeenCalledWith(INEM_KEEPALIVE_SAML_QUEUE);
-    expect(bossInstance.schedule).toHaveBeenCalledWith(INEM_RECONCILE_QUEUE, '* * * * *');
+    expect(bossInstance.schedule).toHaveBeenCalledWith(INEM_KEEPALIVE_SESSION_QUEUE, '*/5 * * * *');
+    expect(bossInstance.schedule).toHaveBeenCalledWith(INEM_KEEPALIVE_SAML_QUEUE, '0 */5 * * *');
+    // Not a cron — seeds the self-rescheduling chain's first link, right away.
+    expect(bossInstance.schedule).not.toHaveBeenCalledWith(INEM_RECONCILE_QUEUE, expect.anything());
+    expect(bossInstance.send).toHaveBeenCalledWith(INEM_RECONCILE_QUEUE, {}, { startAfter: 0 });
   });
 
   it('registers a handler immediately when boss is already started', async () => {
@@ -86,6 +91,67 @@ describe('InemQueueService', () => {
     await workCall;
 
     expect(bossInstance.work).toHaveBeenCalledWith(INEM_RECONCILE_QUEUE, expect.any(Function));
+  });
+
+  describe('workReconcile', () => {
+    it('registers its handler under INEM_RECONCILE_QUEUE', async () => {
+      const service = new InemQueueService();
+      await service.onModuleInit();
+
+      await service.workReconcile(jest.fn().mockResolvedValue(undefined));
+
+      expect(bossInstance.work).toHaveBeenCalledWith(INEM_RECONCILE_QUEUE, expect.any(Function));
+    });
+
+    it('schedules the next pass within the configured bounds once a pass resolves', async () => {
+      const service = new InemQueueService();
+      await service.onModuleInit();
+      await service.workReconcile(jest.fn().mockResolvedValue(undefined));
+      const registered = bossInstance.work.mock.calls[0][1] as (jobs: unknown[]) => Promise<void>;
+
+      bossInstance.send.mockClear(); // drop the startAfter:0 seed call from onModuleInit
+      await registered([{}]);
+
+      expect(bossInstance.send).toHaveBeenCalledTimes(1);
+      const [queue, data, options] = bossInstance.send.mock.calls[0];
+      expect(queue).toBe(INEM_RECONCILE_QUEUE);
+      expect(data).toEqual({});
+      expect(options.startAfter).toBeGreaterThanOrEqual(90);
+      expect(options.startAfter).toBeLessThanOrEqual(180);
+    });
+
+    it('still schedules the next pass when the handler throws — one bad pass must not stall the loop', async () => {
+      const service = new InemQueueService();
+      await service.onModuleInit();
+      const failingHandler = jest.fn().mockRejectedValue(new Error('boom'));
+      await service.workReconcile(failingHandler);
+      const registered = bossInstance.work.mock.calls[0][1] as (jobs: unknown[]) => Promise<void>;
+
+      bossInstance.send.mockClear();
+      // Same as pg-boss's own contract for a `work()` handler — a rejection
+      // propagates so pg-boss can mark the job failed; the rescheduling in
+      // this wrapper's `finally` still has to run regardless.
+      await expect(registered([{}])).rejects.toThrow('boom');
+
+      expect(failingHandler).toHaveBeenCalled();
+      expect(bossInstance.send).toHaveBeenCalledWith(INEM_RECONCILE_QUEUE, {}, expect.objectContaining({ startAfter: expect.any(Number) }));
+    });
+
+    it('honors INEM_RECONCILE_MIN/MAX_INTERVAL_SECONDS overrides', async () => {
+      process.env.INEM_RECONCILE_MIN_INTERVAL_SECONDS = '10';
+      process.env.INEM_RECONCILE_MAX_INTERVAL_SECONDS = '20';
+      const service = new InemQueueService();
+      await service.onModuleInit();
+      await service.workReconcile(jest.fn().mockResolvedValue(undefined));
+      const registered = bossInstance.work.mock.calls[0][1] as (jobs: unknown[]) => Promise<void>;
+
+      bossInstance.send.mockClear();
+      await registered([{}]);
+
+      const [, , options] = bossInstance.send.mock.calls[0];
+      expect(options.startAfter).toBeGreaterThanOrEqual(10);
+      expect(options.startAfter).toBeLessThanOrEqual(20);
+    });
   });
 
   it('unwraps the pg-boss job batch so the caller’s handler is invoked once per job', async () => {

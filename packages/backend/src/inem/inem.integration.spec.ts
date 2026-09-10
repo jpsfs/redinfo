@@ -127,7 +127,8 @@ describeIntegration('INEM integration', () => {
         data: { unitId: id, carId: vehicle.licensePlate, vehicleId: vehicle.id, reportedInopCode: '00' },
       });
       const session = { getOverview: async () => ({ status: 'ACTIVE' as const, lastError: null }), getCachedInopReasons: () => null };
-      const service = new InemService(prisma, session as unknown as InemSessionService);
+      const reconciler = { triggerNow: () => undefined };
+      const service = new InemService(prisma, session as unknown as InemSessionService, reconciler as unknown as InemReconcilerService);
 
       await service.setUnitStatus({ id: actor.id }, id, 'TEPH_Falta');
 
