@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto';
 import { INEMSessionStatus, OWASessionStatus } from '@prisma/client';
+import { Agent } from 'undici';
 import { IdentityCipher } from '../common/identity-cipher';
 import { InemApiClient, InemCookieJar, InemSessionExpiredError } from './inem-api.client';
 import { InemSessionService } from './inem-session.service';
@@ -315,6 +316,28 @@ describe('InemSessionService', () => {
       expect(sessionRow.lastError).toBeNull();
       const opened = cipher.open<InemCookieJar>('inem-session', 'inem', sessionRow.cookies as Buffer);
       expect(opened.alAuth).toBe('fresh-alauth');
+    });
+
+    it('dispatches every warm re-mint request through the INEM trusted-CA workaround, not the bare default fetch', async () => {
+      const cookies: InemCookieJar = { alAuth: 'stale', samlsessionid: 'saml-1', deviceId: null };
+      const { stub } = buildPrismaStub(
+        inemSessionRow({ cookies: sealedCookies(cipher, cookies), status: INEMSessionStatus.EXPIRED, failureCount: 1 }),
+      );
+      const service = new InemSessionService(stub as never, cipher, client);
+
+      fetchMock
+        .mockResolvedValueOnce(
+          new Response(null, { status: 302, headers: { location: 'https://fac.inem.pt/saml-idp/portalpem/login/' } }),
+        )
+        .mockResolvedValueOnce(assertionResponse())
+        .mockResolvedValueOnce(acsResponse('fresh-alauth'));
+
+      await service.recover();
+
+      expect(fetchMock).toHaveBeenCalledTimes(3);
+      for (const [, init] of fetchMock.mock.calls) {
+        expect((init as { dispatcher: unknown }).dispatcher).toBeInstanceOf(Agent);
+      }
     });
 
     it('falls through to a cold login when the IdP session is also dead', async () => {

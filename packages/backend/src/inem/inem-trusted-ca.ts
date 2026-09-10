@@ -1,4 +1,6 @@
 import { X509Certificate } from 'node:crypto';
+import { rootCertificates } from 'node:tls';
+import { Agent } from 'undici';
 
 /**
  * A trust-store patch for one specific, confirmed INEM server misconfiguration.
@@ -8,24 +10,31 @@ import { X509Certificate } from 'node:crypto';
  * Authentication CA DV R36", but the intermediate INEM's server actually
  * sends is an unrelated "GlobalSign GCC R6 AlphaSSL CA 2025" — looks like two
  * different certificates' material got mixed in their server config. No
- * strict TLS client (Node's own `fetch`/undici, `curl` without `-k`, this
- * client) can complete a chain from that pair, and fails with
+ * strict TLS client (Node's own `fetch`/undici, `curl` without `-k`) can
+ * complete a chain from that pair, and fails with
  * `UNABLE_TO_VERIFY_LEAF_SIGNATURE`. A real browser survives this silently by
  * chasing the leaf's Authority Information Access extension and fetching the
  * *correct* intermediate itself — which is exactly why the Playwright-driven
- * cold login in `packages/inem-worker` has always worked while this client's
- * plain HTTPS calls (`GET /api/unit` etc.) never have.
+ * cold login in `packages/inem-worker` has always worked while every plain
+ * HTTPS call this module's callers make (`InemApiClient`'s `GET /api/unit`
+ * etc., *and* `InemSessionService`'s SAML warm re-mint chain) has not: the
+ * first pass at this fix (2026-09-10, this same day) only wired the CA into
+ * `InemApiClient`, missing that the warm re-mint chain's own bare `fetch`
+ * calls hit the identical broken chain on `/saml/signin` and `/saml/acs` —
+ * so re-mint kept failing with a bare "fetch failed" forever, `InemApiClient`
+ * always spent a stale `alAuth`, and production never actually recovered
+ * despite this file existing.
  *
  * Confirmed 2026-09-10 from the production backend pod with
  * `openssl s_client -showcerts`, and the correct intermediate fetched from
  * its own AIA URL (`http://crt.sectigo.com/SectigoPublicServerAuthenticationCADVR36.crt`)
  * and independently `openssl verify`d against the system trust store.
  *
- * `InemApiClient` adds this one certificate to its own request-scoped CA
- * list (alongside the platform defaults) rather than widening trust for the
- * whole process via `NODE_EXTRA_CA_CERTS` — this is the only outbound call
- * that needs it, and scoping it keeps a future, unrelated integration from
- * silently inheriting a workaround for someone else's server bug.
+ * Every caller dispatches through `inemTrustedDispatcher` below — one
+ * request-scoped CA list (alongside the platform defaults) rather than
+ * widening trust for the whole process via `NODE_EXTRA_CA_CERTS` — so a
+ * future, unrelated integration never silently inherits a workaround for
+ * someone else's server bug.
  *
  * This is not a weakening of verification: it is INEM's own real,
  * independently-issued intermediate for their own domain, still chained and
@@ -75,3 +84,13 @@ const cert = new X509Certificate(INEM_TRUSTED_INTERMEDIATE_CA_PEM);
 if (cert.subject !== 'C=GB\nO=Sectigo Limited\nCN=Sectigo Public Server Authentication CA DV R36') {
   throw new Error(`inem-trusted-ca.ts: unexpected certificate subject "${cert.subject}"`);
 }
+
+/**
+ * Single shared dispatcher carrying the workaround above, for every plain
+ * HTTPS call this module's callers make to `portalpem.inem.pt` — that's
+ * `InemApiClient`'s `/api/*` REST surface *and* `InemSessionService`'s SAML
+ * warm re-mint chain (`/saml/signin`, the IdP hop, `/saml/acs`), which hits
+ * the exact same broken chain. A second `Agent` per caller would still work,
+ * but would needlessly split the connection pool for calls to the same host.
+ */
+export const inemTrustedDispatcher = new Agent({ connect: { ca: [...rootCertificates, INEM_TRUSTED_INTERMEDIATE_CA_PEM] } });

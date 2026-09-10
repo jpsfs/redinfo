@@ -6,6 +6,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { IdentityCipher, UnknownIdentityKeyError } from '../common/identity-cipher';
 import { InemApiClient, InemCookieJar, InemSessionExpiredError } from './inem-api.client';
 import { extractSamlAssertion, isInemLoginForm } from './inem-saml.util';
+import { inemTrustedDispatcher } from './inem-trusted-ca';
 
 const INEM_SESSION_ID = 'inem';
 const INEM_SESSION_SCOPE = 'inem-session';
@@ -361,18 +362,27 @@ export class InemSessionService implements OnModuleInit {
    * login form (dead) or a SAML auto-POST assertion (alive) → `POST` the
    * assertion to `/saml/acs` → the redirect response carries the new
    * `alAuth`. Three requests, no browser, no password, no OTP.
+   *
+   * All three go through `inemTrustedDispatcher` (`inem-trusted-ca.ts`) — the
+   * first two are `portalpem.inem.pt`, same broken TLS chain `InemApiClient`
+   * needs the workaround for. Skipping it here is exactly the bug that kept
+   * production stuck failing "fetch failed" after that fix already shipped.
    */
   private async attemptWarmReMint(cookies: InemCookieJar): Promise<WarmReMintResult> {
     if (!cookies.samlsessionid) return { ok: false, reason: 'login_required' };
 
     try {
-      const signin = await fetch(`${this.baseUrl}/saml/signin`, { redirect: 'manual' });
+      const signin = await fetch(`${this.baseUrl}/saml/signin`, { redirect: 'manual', dispatcher: inemTrustedDispatcher });
       const idpUrl = signin.headers.get('location');
       if (!isRedirect(signin) || !idpUrl) {
         return { ok: false, reason: 'error', message: `unexpected /saml/signin response (status ${signin.status})` };
       }
 
-      const idpRes = await fetch(idpUrl, { headers: { Cookie: facCookieHeader(cookies) } });
+      // Same trust-store workaround applies here even though `idpUrl` is
+      // `fac.inem.pt`, not `portalpem.inem.pt` — the extra intermediate is
+      // additive to Node's own roots (see `inem-trusted-ca.ts`), so it's a
+      // no-op if this host's chain is actually fine and a fix if it isn't.
+      const idpRes = await fetch(idpUrl, { headers: { Cookie: facCookieHeader(cookies) }, dispatcher: inemTrustedDispatcher });
       const html = await idpRes.text();
       const rolledSamlSessionId =
         extractCookieValue(idpRes.headers.getSetCookie(), 'samlsessionid') ?? cookies.samlsessionid;
@@ -391,6 +401,7 @@ export class InemSessionService implements OnModuleInit {
         redirect: 'manual',
         headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
         body: new URLSearchParams({ SAMLResponse: assertion.samlResponse, RelayState: assertion.relayState }).toString(),
+        dispatcher: inemTrustedDispatcher,
       });
       const alAuth = extractCookieValue(acsRes.headers.getSetCookie(), 'alAuth');
       if (!alAuth) {
