@@ -51,10 +51,17 @@ export class InemReconcilerService implements OnModuleInit {
       { timeout: 20_000 },
     );
 
-    // Recovery deliberately runs *after* this transaction has committed —
-    // `InemSessionService.recover()` opens its own transaction, and nesting
-    // that inside this one buys nothing but a second connection held idle.
-    if (needsRecovery) await this.session.recover();
+    // Recovery/health-marking deliberately run *after* this transaction has
+    // committed — both open their own, and nesting either inside this one
+    // buys nothing but a second connection held idle.
+    if (needsRecovery) {
+      await this.session.recover();
+    } else {
+      // The two INEM calls above just succeeded with the current cookies —
+      // clear a stale `EXPIRED` flag left over from an earlier transient
+      // failure that never got a chance to self-correct.
+      await this.session.markHealthy();
+    }
   }
 
   /** Returns `true` when the session turned out to be dead and recovery should run once this transaction is done. */

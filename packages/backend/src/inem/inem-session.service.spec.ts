@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { INEMSessionStatus, OWASessionStatus } from '@prisma/client';
 import { IdentityCipher } from '../common/identity-cipher';
-import { InemApiClient, InemCookieJar } from './inem-api.client';
+import { InemApiClient, InemCookieJar, InemSessionExpiredError } from './inem-api.client';
 import { InemSessionService } from './inem-session.service';
 
 const CIPHER_KEY = `k1:${randomBytes(32).toString('base64')}`;
@@ -193,6 +193,86 @@ describe('InemSessionService', () => {
         data: { cachedInopReasons: live },
       });
       expect(sessionRow.cachedInopReasons).toEqual(live);
+    });
+  });
+
+  // A prior transient failure can leave the session flagged EXPIRED even
+  // once cookies are proven to work again — nothing else clears that flag
+  // on a plain success, so a real outbound call succeeding is the trigger.
+  describe('markHealthy', () => {
+    it('never touches the database when disabled', async () => {
+      delete process.env.INEM_USERNAME;
+      const { stub } = buildPrismaStub();
+      const service = new InemSessionService(stub as never, cipher, client);
+      await service.markHealthy();
+      expect(stub.iNEMSession.findUniqueOrThrow).not.toHaveBeenCalled();
+    });
+
+    it('clears a stale EXPIRED flag back to ACTIVE and resets the failure count', async () => {
+      const { stub, sessionRow } = buildPrismaStub(
+        inemSessionRow({ status: INEMSessionStatus.EXPIRED, failureCount: 1, lastError: 'fetch failed' }),
+      );
+      const service = new InemSessionService(stub as never, cipher, client);
+
+      await service.markHealthy();
+
+      expect(sessionRow.status).toBe(INEMSessionStatus.ACTIVE);
+      expect(sessionRow.failureCount).toBe(0);
+      expect(sessionRow.lastError).toBeNull();
+    });
+
+    it('is a no-op once already ACTIVE — no wasted write', async () => {
+      const { stub } = buildPrismaStub(inemSessionRow({ status: INEMSessionStatus.ACTIVE }));
+      const service = new InemSessionService(stub as never, cipher, client);
+      await service.markHealthy();
+      expect(stub.iNEMSession.update).not.toHaveBeenCalled();
+    });
+
+    it('never overrides a tripped breaker', async () => {
+      const { stub, sessionRow } = buildPrismaStub(inemSessionRow({ status: INEMSessionStatus.FAILED }));
+      const service = new InemSessionService(stub as never, cipher, client);
+      await service.markHealthy();
+      expect(sessionRow.status).toBe(INEMSessionStatus.FAILED);
+      expect(stub.iNEMSession.update).not.toHaveBeenCalled();
+    });
+
+    it('never clobbers a login already in flight', async () => {
+      const { stub, sessionRow } = buildPrismaStub(inemSessionRow({ status: INEMSessionStatus.LOGGING_IN }));
+      const service = new InemSessionService(stub as never, cipher, client);
+      await service.markHealthy();
+      expect(sessionRow.status).toBe(INEMSessionStatus.LOGGING_IN);
+      expect(stub.iNEMSession.update).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('pingStatistics', () => {
+    it('marks the session healthy once the statistics call succeeds', async () => {
+      const cookies: InemCookieJar = { alAuth: 'a1', samlsessionid: 's1', deviceId: null };
+      const { stub, sessionRow } = buildPrismaStub(
+        inemSessionRow({ status: INEMSessionStatus.EXPIRED, lastError: 'fetch failed', cookies: sealedCookies(cipher, cookies) }),
+      );
+      const service = new InemSessionService(stub as never, cipher, client);
+      jest.spyOn(client, 'getStatistics').mockResolvedValue(undefined as never);
+
+      await service.pingStatistics();
+
+      expect(sessionRow.status).toBe(INEMSessionStatus.ACTIVE);
+      expect(sessionRow.lastError).toBeNull();
+    });
+
+    it('recovers instead of marking healthy when the session turns out to be expired', async () => {
+      const cookies: InemCookieJar = { alAuth: 'a1', samlsessionid: 's1', deviceId: null };
+      const { stub, sessionRow } = buildPrismaStub(
+        inemSessionRow({ status: INEMSessionStatus.EXPIRED, cookies: sealedCookies(cipher, cookies) }),
+      );
+      const service = new InemSessionService(stub as never, cipher, client);
+      jest.spyOn(client, 'getStatistics').mockRejectedValue(new InemSessionExpiredError('/api/statistics'));
+      const recoverSpy = jest.spyOn(service, 'recover').mockResolvedValue(undefined);
+
+      await service.pingStatistics();
+
+      expect(recoverSpy).toHaveBeenCalledTimes(1);
+      expect(sessionRow.status).toBe(INEMSessionStatus.EXPIRED);
     });
   });
 

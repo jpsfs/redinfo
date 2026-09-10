@@ -168,6 +168,7 @@ describeIntegration('INEM integration', () => {
         getCookiesOrNull: async () => ({ alAuth: 'a', samlsessionid: null, deviceId: null }) as InemCookieJar,
         setCachedInopReasons: () => undefined,
         recover: async () => undefined,
+        markHealthy: async () => undefined,
       };
       const queue = { work: async () => undefined };
       const reconciler = new InemReconcilerService(

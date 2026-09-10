@@ -58,6 +58,7 @@ function buildSessionStub(overrides: Record<string, unknown> = {}) {
     getCookiesOrNull: jest.fn().mockResolvedValue(COOKIES),
     setCachedInopReasons: jest.fn(),
     recover: jest.fn().mockResolvedValue(undefined),
+    markHealthy: jest.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }
@@ -194,5 +195,29 @@ describe('InemReconcilerService', () => {
 
     await expect(service.reconcile()).rejects.toThrow('network down');
     expect(session.recover).not.toHaveBeenCalled();
+    expect(session.markHealthy).not.toHaveBeenCalled();
+  });
+
+  it('marks the session healthy after a pass that actually succeeds, clearing a stale EXPIRED flag left over from an earlier blip', async () => {
+    const prisma = buildPrismaStub();
+    const client = buildClientStub();
+    const session = buildSessionStub();
+    const service = new InemReconcilerService(prisma as never, client as never, session as never, queue as never);
+
+    await service.reconcile();
+
+    expect(session.markHealthy).toHaveBeenCalledTimes(1);
+    expect(session.recover).not.toHaveBeenCalled();
+  });
+
+  it('does not mark the session healthy when recovery was needed instead', async () => {
+    const prisma = buildPrismaStub();
+    const client = buildClientStub({ getUnits: jest.fn().mockRejectedValue(new InemSessionExpiredError('/api/unit')) });
+    const session = buildSessionStub();
+    const service = new InemReconcilerService(prisma as never, client as never, session as never, queue as never);
+
+    await service.reconcile();
+
+    expect(session.markHealthy).not.toHaveBeenCalled();
   });
 });

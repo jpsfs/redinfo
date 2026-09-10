@@ -146,6 +146,28 @@ export class InemSessionService implements OnModuleInit {
       }
       throw err;
     }
+    await this.markHealthy();
+  }
+
+  /**
+   * Called after any outbound INEM call that just succeeded with the
+   * session's current cookies — the surest evidence the session is fine,
+   * even if it's still flagged `EXPIRED` from an earlier transient failure
+   * (a blip that never got a chance to self-correct, since nothing else
+   * calls this on the success path — only a warm re-mint's own success
+   * does). Never touches a tripped breaker or a login in flight; those are
+   * `recover()`'s job, not this one's.
+   */
+  async markHealthy(): Promise<void> {
+    if (!this.enabled) return;
+    const row = await this.row();
+    if (row.status === INEMSessionStatus.ACTIVE || row.status === INEMSessionStatus.FAILED || row.status === INEMSessionStatus.LOGGING_IN) {
+      return;
+    }
+    await this.prisma.iNEMSession.update({
+      where: { id: INEM_SESSION_ID },
+      data: { status: INEMSessionStatus.ACTIVE, failureCount: 0, lastError: null },
+    });
   }
 
   /** #214's half of the worker contract: hand the in-flight job to a polling worker. `null` when there is none. */
