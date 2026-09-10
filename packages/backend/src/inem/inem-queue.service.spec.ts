@@ -11,6 +11,7 @@ const bossInstance = {
   stop: jest.fn().mockResolvedValue(undefined),
   createQueue: jest.fn().mockResolvedValue(undefined),
   schedule: jest.fn().mockResolvedValue(undefined),
+  unschedule: jest.fn().mockResolvedValue(undefined),
   send: jest.fn().mockResolvedValue('job-1'),
   work: jest.fn().mockResolvedValue('worker-1'),
 };
@@ -55,6 +56,10 @@ describe('InemQueueService', () => {
     // Not a cron — seeds the self-rescheduling chain's first link, right away.
     expect(bossInstance.schedule).not.toHaveBeenCalledWith(INEM_RECONCILE_QUEUE, expect.anything());
     expect(bossInstance.send).toHaveBeenCalledWith(INEM_RECONCILE_QUEUE, {}, { startAfter: 0 });
+    // Self-heals a leftover cron row an older deploy may have left behind in
+    // pg-boss's own `schedule` table — a stale minute-cron would silently
+    // double the reconcile frequency underneath the jittered chain above.
+    expect(bossInstance.unschedule).toHaveBeenCalledWith(INEM_RECONCILE_QUEUE);
   });
 
   it('registers a handler immediately when boss is already started', async () => {

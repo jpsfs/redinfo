@@ -49,9 +49,9 @@
       "Read(//home/jpsfs-work/**)",
       "Bash(awk '{print $1}')",
       "Bash(sudo -n chown -R jpsfs:workspace-share /home/jpsfs/workspace/redinfo/.git)",
-      "Bash(python3 -c \"import sys,json; f=json.load\\(sys.stdin\\)['fields']; print\\({k:v for k,v in f.items\\(\\) if k.startswith\\('System.'\\) and k!='System.Description'}\\)\")",
-      "Bash(git push *)",
-      "Bash(git fetch *)"
+      "Bash(cat)",
+      "Bash(kubectl -n production apply -f /tmp/debugpod.yaml)",
+      "Bash(kubectl -n production wait --for=condition=Ready pod/inem-owa-probe --timeout=180s)"
     ]
   },
   "enableAllProjectMcpServers": true,

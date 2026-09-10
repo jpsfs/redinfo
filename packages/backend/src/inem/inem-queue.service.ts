@@ -79,6 +79,16 @@ export class InemQueueService implements OnModuleInit, OnModuleDestroy {
     await boss.createQueue(INEM_KEEPALIVE_SESSION_QUEUE);
     await boss.createQueue(INEM_KEEPALIVE_SAML_QUEUE);
 
+    // Self-heals a stale cron row `boss.schedule(INEM_RECONCILE_QUEUE, ...)`
+    // left behind in pg-boss's own `schedule` table before the loop became
+    // self-perpetuating (see the class comment) — pg-boss persists schedules
+    // in Postgres, not in process memory, so simply no longer calling
+    // `schedule()` here doesn't remove a row an older deploy already wrote.
+    // A leftover minute-cron row would silently double the reconcile
+    // frequency underneath the intended 15–25min jitter. No-op (a plain
+    // DELETE) if the row is already gone.
+    await boss.unschedule(INEM_RECONCILE_QUEUE);
+
     // Layer 1: a cheap, side-effect-free alAuth ping.
     await boss.schedule(INEM_KEEPALIVE_SESSION_QUEUE, '*/5 * * * *');
     // Layer 2: a deliberate samlsessionid roll, comfortably inside its 8h
