@@ -4,12 +4,13 @@ import { StatisticsController } from './statistics.controller';
 import { StatisticsPeopleService } from './statistics-people.service';
 import { StatisticsActivityService } from './statistics-activity.service';
 import { StatisticsFleetService } from './statistics-fleet.service';
+import { StatisticsInemService } from './statistics-inem.service';
 import { AuditInterceptor } from '../auth/interceptors/audit.interceptor';
 
 /** Imports VolunteerHoursModule for `VolunteerHoursService.refreshGeneration()` — tab 1's hours must be as fresh as `/volunteer-hours/summary`'s. */
 @Module({
   imports: [VolunteerHoursModule],
-  providers: [StatisticsPeopleService, StatisticsActivityService, StatisticsFleetService, AuditInterceptor],
+  providers: [StatisticsPeopleService, StatisticsActivityService, StatisticsFleetService, StatisticsInemService, AuditInterceptor],
   controllers: [StatisticsController],
 })
 export class StatisticsModule {}

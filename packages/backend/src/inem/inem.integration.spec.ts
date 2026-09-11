@@ -62,6 +62,10 @@ describeIntegration('INEM integration', () => {
   afterAll(async () => {
     if (createdUnitIds.length) {
       await prisma.iNEMStatusAudit.deleteMany({ where: { unitId: { in: createdUnitIds } } });
+      // The reconciler (#post-#216) opens one of these on every unit it
+      // syncs, including a brand-new unit's first pass — this suite drives
+      // that path for real, so it leaves one behind too.
+      await prisma.iNEMUnitStatusPeriod.deleteMany({ where: { unitId: { in: createdUnitIds } } });
       await prisma.iNEMUnit.deleteMany({ where: { unitId: { in: createdUnitIds } } });
     }
     await prisma.vehicle.deleteMany({ where: { id: vehicle?.id } });

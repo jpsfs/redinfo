@@ -24,6 +24,10 @@ function buildPrismaStub(
       findMany: jest.fn().mockResolvedValue(existingUnits),
       update: jest.fn().mockResolvedValue({}),
     },
+    iNEMUnitStatusPeriod: {
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      create: jest.fn().mockResolvedValue({}),
+    },
     $executeRaw: jest.fn().mockResolvedValue(0),
     $transaction: jest.fn().mockImplementation((fn: (tx: unknown) => unknown) => fn(stub)),
   };
@@ -125,6 +129,48 @@ describe('InemReconcilerService', () => {
         update: expect.objectContaining({ vehicleId: null }),
       }),
     );
+  });
+
+  it('opens a status period on a brand-new unit\'s first-ever sync', async () => {
+    const prisma = buildPrismaStub([]); // no existing INEMUnit rows at all
+    const client = buildClientStub(); // INOPReason: null → reports '00'
+    const session = buildSessionStub();
+    const service = new InemReconcilerService(prisma as never, client as never, session as never, queue as never);
+
+    await service.reconcile();
+
+    expect(prisma.iNEMUnitStatusPeriod.create).toHaveBeenCalledWith({
+      data: { unitId: 'CVCAMPO1', vehicleId: 'v1', inopCode: INEM_AVAILABLE_INOP_CODE, startedAt: expect.any(Date) },
+    });
+  });
+
+  it('closes the open period and opens a new one when the reported code actually changes', async () => {
+    const prisma = buildPrismaStub([unitRow({ unitId: 'CVCAMPO1', reportedInopCode: 'TEPH_Falta' })]);
+    const client = buildClientStub(); // now reports '00' — a real transition
+    const session = buildSessionStub();
+    const service = new InemReconcilerService(prisma as never, client as never, session as never, queue as never);
+
+    await service.reconcile();
+
+    expect(prisma.iNEMUnitStatusPeriod.updateMany).toHaveBeenCalledWith({
+      where: { unitId: 'CVCAMPO1', endedAt: null },
+      data: { endedAt: expect.any(Date) },
+    });
+    expect(prisma.iNEMUnitStatusPeriod.create).toHaveBeenCalledWith({
+      data: { unitId: 'CVCAMPO1', vehicleId: 'v1', inopCode: INEM_AVAILABLE_INOP_CODE, startedAt: expect.any(Date) },
+    });
+  });
+
+  it('writes no status period at all when the reported code is unchanged', async () => {
+    const prisma = buildPrismaStub([unitRow({ unitId: 'CVCAMPO1', reportedInopCode: INEM_AVAILABLE_INOP_CODE })]);
+    const client = buildClientStub(); // still reports '00'
+    const session = buildSessionStub();
+    const service = new InemReconcilerService(prisma as never, client as never, session as never, queue as never);
+
+    await service.reconcile();
+
+    expect(prisma.iNEMUnitStatusPeriod.updateMany).not.toHaveBeenCalled();
+    expect(prisma.iNEMUnitStatusPeriod.create).not.toHaveBeenCalled();
   });
 
   it('caches the live INOP reason map for GET /inem/status to serve', async () => {

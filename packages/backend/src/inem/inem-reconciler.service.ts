@@ -130,12 +130,21 @@ export class InemReconcilerService implements OnModuleInit {
    * `docs/inem-portal-contract.md`'s open questions), the best inference
    * from the documented shape, and worth re-checking against a real
    * available-unit response.
+   *
+   * Also the sole writer of `INEMUnitStatusPeriod` (#post-#216 statistics
+   * pass): whenever the *confirmed* code actually changes from what this
+   * unit last reported — including a brand-new unit's first-ever sync — this
+   * closes the currently open interval (a no-op if there isn't one yet) and
+   * opens a new one. An unchanged pass writes nothing there, so a steady
+   * unit doesn't grow a row every reconcile tick.
    */
   private async syncUnits(tx: Prisma.TransactionClient, units: InemUnitApiRow[]): Promise<void> {
     const vehicleIdByPlate = await this.loadVehicleIdsByNormalizedPlate(tx);
+    const previousReportedByUnitId = await this.loadPreviousReportedCodes(tx);
 
     for (const unit of units) {
       const vehicleId = unit.CarID ? vehicleIdByPlate.get(normalizeLicensePlate(unit.CarID)) ?? null : null;
+      const reportedInopCode = unit.INOPReason ?? INEM_AVAILABLE_INOP_CODE;
 
       await tx.iNEMUnit.upsert({
         where: { unitId: unit.UnitID },
@@ -144,7 +153,7 @@ export class InemReconcilerService implements OnModuleInit {
           station: unit.Station,
           carId: unit.CarID,
           unitType: unit.UnitType,
-          reportedInopCode: unit.INOPReason ?? INEM_AVAILABLE_INOP_CODE,
+          reportedInopCode,
           reportedActive: unit.Active,
           vehicleId,
           lastSyncedAt: new Date(),
@@ -154,14 +163,36 @@ export class InemReconcilerService implements OnModuleInit {
           station: unit.Station,
           carId: unit.CarID,
           unitType: unit.UnitType,
-          reportedInopCode: unit.INOPReason ?? INEM_AVAILABLE_INOP_CODE,
+          reportedInopCode,
           reportedActive: unit.Active,
           vehicleId,
           lastSyncedAt: new Date(),
           lastError: null,
         },
       });
+
+      const previous = previousReportedByUnitId.get(unit.UnitID);
+      if (previous === undefined || previous !== reportedInopCode) {
+        await this.recordStatusTransition(tx, unit.UnitID, vehicleId, reportedInopCode);
+      }
     }
+  }
+
+  /** `undefined` for a unit key means "never seen before" — distinct from a `null` `reportedInopCode`. */
+  private async loadPreviousReportedCodes(tx: Prisma.TransactionClient): Promise<Map<string, string | null>> {
+    const rows = await tx.iNEMUnit.findMany({ select: { unitId: true, reportedInopCode: true } });
+    return new Map(rows.map((r) => [r.unitId, r.reportedInopCode]));
+  }
+
+  private async recordStatusTransition(
+    tx: Prisma.TransactionClient,
+    unitId: string,
+    vehicleId: string | null,
+    inopCode: string,
+  ): Promise<void> {
+    const now = new Date();
+    await tx.iNEMUnitStatusPeriod.updateMany({ where: { unitId, endedAt: null }, data: { endedAt: now } });
+    await tx.iNEMUnitStatusPeriod.create({ data: { unitId, vehicleId, inopCode, startedAt: now } });
   }
 
   /**

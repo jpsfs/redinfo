@@ -53,6 +53,11 @@ const overview = (units: INEMUnit[], overrides: Partial<INEMStatusOverview> = {}
   ...overrides,
 });
 
+const openDialog = async (user: ReturnType<typeof userEvent.setup>) => {
+  await user.click(await screen.findByRole('button', { name: 'Change status' }));
+  return screen.findByRole('dialog');
+};
+
 describe('INEMStatusPage', () => {
   beforeEach(() => mockApiFetch.mockReset());
 
@@ -71,22 +76,51 @@ describe('INEMStatusPage', () => {
     expect(screen.getByText(/No matching vehicle/)).toBeInTheDocument();
   });
 
-  it('stages the toggle locally and does not save until the user confirms', async () => {
+  it('shows a plain status chip instead of a toggle to interpret — available reads as available', async () => {
+    mockApiFetch.mockResolvedValue(overview([unit({ desiredInopCode: '00', reportedInopCode: '00' })]));
+    renderPage();
+
+    await screen.findByText('12-AB-34 – CV1');
+    expect(screen.getByText('Available')).toBeInTheDocument();
+    expect(screen.queryByText('Unavailable')).not.toBeInTheDocument();
+  });
+
+  it('shows a plain "Unavailable" chip plus the reason, right on the card, for an INOP unit', async () => {
+    mockApiFetch.mockResolvedValue(
+      overview([unit({ desiredInopCode: 'TEPH_Falta', reportedInopCode: 'TEPH_Falta' })]),
+    );
+    renderPage();
+
+    await screen.findByText('12-AB-34 – CV1');
+    expect(screen.getByText('Unavailable')).toBeInTheDocument();
+    expect(screen.getByText('No crew')).toBeInTheDocument();
+  });
+
+  it('shows a neutral "not set" chip when no one has ever chosen a status for the unit', async () => {
+    mockApiFetch.mockResolvedValue(overview([unit({ desiredInopCode: null })]));
+    renderPage();
+
+    await screen.findByText('12-AB-34 – CV1');
+    expect(screen.getByText('Status not set')).toBeInTheDocument();
+  });
+
+  it('opens a dialog titled with the vehicle\'s own name — never ambiguous about scope — and stages edits there until confirmed', async () => {
     const user = userEvent.setup();
     mockApiFetch.mockResolvedValue(overview([unit({ desiredInopCode: 'TEPH_Falta', reportedInopCode: 'TEPH_Falta' })]));
     renderPage();
 
-    const toggle = await screen.findByRole('checkbox', { name: 'Available' });
-    const save = await screen.findByRole('button', { name: 'Save' });
+    const dialog = await openDialog(user);
+    expect(dialog).toHaveTextContent('Change status — 12-AB-34 – CV1');
+
+    const toggle = screen.getByRole('checkbox', { name: 'Available' });
+    const save = screen.getByRole('button', { name: 'Save' });
     expect(toggle).not.toBeChecked();
     expect(save).toBeDisabled();
 
     await user.click(toggle);
 
-    // Flipping the switch only stages the change — no request yet, and the
-    // "unsaved changes" badge says so.
+    // Flipping the switch only stages the change — no request yet.
     expect(mockApiFetch).not.toHaveBeenCalledWith('/inem/units/CVCAMPO1', expect.anything());
-    expect(screen.getByText('Unsaved changes')).toBeInTheDocument();
     expect(save).toBeEnabled();
 
     await user.click(save);
@@ -97,6 +131,8 @@ describe('INEMStatusPage', () => {
         body: { inopCode: '00' },
       }),
     );
+    // Closes on success.
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
   });
 
   it('reveals the reason dropdown only once the unit is not available, and Save is disabled until a reason is actually picked', async () => {
@@ -104,8 +140,9 @@ describe('INEMStatusPage', () => {
     mockApiFetch.mockResolvedValue(overview([unit({ desiredInopCode: '00', reportedInopCode: '00' })]));
     renderPage();
 
-    const toggle = await screen.findByRole('checkbox', { name: 'Available' });
-    const save = await screen.findByRole('button', { name: 'Save' });
+    await openDialog(user);
+    const toggle = screen.getByRole('checkbox', { name: 'Available' });
+    const save = screen.getByRole('button', { name: 'Save' });
     expect(screen.queryByLabelText('Reason')).not.toBeInTheDocument();
 
     await user.click(toggle);
@@ -133,7 +170,8 @@ describe('INEMStatusPage', () => {
     mockApiFetch.mockResolvedValue(overview([unit({ desiredInopCode: 'Nova_Razao', reportedInopCode: 'Nova_Razao' })]));
     renderPage();
 
-    await user.click(await screen.findByLabelText('Reason'));
+    await openDialog(user);
+    await user.click(screen.getByLabelText('Reason'));
     expect(await screen.findByRole('option', { name: 'No crew' })).toBeInTheDocument();
     expect(screen.getByRole('option', { name: 'Nova Razão' })).toBeInTheDocument();
   });
@@ -147,8 +185,22 @@ describe('INEMStatusPage', () => {
     );
     renderPage();
 
-    await user.click(await screen.findByLabelText('Reason'));
+    await openDialog(user);
+    await user.click(screen.getByLabelText('Reason'));
     expect(await screen.findByRole('option', { name: '04' })).toBeInTheDocument();
+  });
+
+  it('cancel discards the staged edit without saving', async () => {
+    const user = userEvent.setup();
+    mockApiFetch.mockResolvedValue(overview([unit({ desiredInopCode: '00', reportedInopCode: '00' })]));
+    renderPage();
+
+    await openDialog(user);
+    await user.click(screen.getByRole('checkbox', { name: 'Available' }));
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(mockApiFetch).not.toHaveBeenCalledWith('/inem/units/CVCAMPO1', expect.anything());
   });
 
   it('shows a syncing badge when the desired state has not yet reached INEM', async () => {
@@ -187,25 +239,27 @@ describe('INEMStatusPage', () => {
     expect(screen.queryByText(/INEM portal/)).not.toBeInTheDocument();
   });
 
-  it('reverts the staged toggle and surfaces the session-down error on a conflict, once saved', async () => {
+  it('keeps the dialog open with the staged edit intact so the crew member can just retry, on a save conflict', async () => {
     const user = userEvent.setup();
     mockApiFetch.mockResolvedValueOnce(
       overview([unit({ desiredInopCode: 'TEPH_Falta', reportedInopCode: 'TEPH_Falta' })]),
     );
     renderPage();
 
-    const toggle = await screen.findByRole('checkbox', { name: 'Available' });
+    await openDialog(user);
+    const toggle = screen.getByRole('checkbox', { name: 'Available' });
     await user.click(toggle);
 
-    mockApiFetch.mockRejectedValueOnce(
-      new ApiError('unavailable', 409, 'INEM_SESSION_NOT_ACTIVE'),
-    );
+    mockApiFetch.mockRejectedValueOnce(new ApiError('unavailable', 409, 'INEM_SESSION_NOT_ACTIVE'));
     mockApiFetch.mockResolvedValueOnce(
       overview([unit({ desiredInopCode: 'TEPH_Falta', reportedInopCode: 'TEPH_Falta' })]),
     );
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
-    await waitFor(() => expect(toggle).not.toBeChecked());
+    await waitFor(() => expect(mockApiFetch).toHaveBeenCalledWith('/inem/status'));
+    // Still open, and the crew member's chosen "Available" wasn't reverted.
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(toggle).toBeChecked();
   });
 
   it('"Sync now" pushes a pass immediately, independent of any unit\'s Save, and reloads on success', async () => {

@@ -1626,8 +1626,8 @@ const MESSAGES = {
   'inem.pageTitle': { pt: 'Estado dos meios INEM', en: 'INEM unit status' },
   'inem.heading': { pt: 'Estado dos meios INEM', en: 'INEM unit status' },
   'inem.subheading': {
-    pt: 'Disponibilidade das ambulâncias no portal do INEM. Escolhe o estado e prime "Guardar" para o enviar — o emblema "A sincronizar" é normal enquanto isso acontece.',
-    en: 'Ambulance availability on INEM’s own portal. Pick a state and hit “Save” to send it — the “Syncing” badge is normal while that happens.',
+    pt: 'Disponibilidade das ambulâncias no portal do INEM. Usa "Alterar estado" para atualizar — o emblema "A sincronizar" é normal enquanto isso acontece.',
+    en: 'Ambulance availability on INEM’s own portal. Use “Change status” to update it — the “Syncing” badge is normal while that happens.',
   },
   'inem.loadFailed': { pt: 'Não foi possível carregar o estado dos meios INEM.', en: 'Could not load INEM unit status.' },
   'inem.saveFailed': { pt: 'Não foi possível guardar o estado deste meio.', en: 'Could not save this unit’s status.' },
@@ -1638,6 +1638,10 @@ const MESSAGES = {
   'inem.syncNowSuccess': { pt: 'Sincronizado com o INEM.', en: 'Synced with INEM.' },
   'inem.syncNowFailed': { pt: 'Não foi possível sincronizar agora.', en: 'Could not sync right now.' },
   'inem.available': { pt: 'Disponível', en: 'Available' },
+  'inem.statusUnavailable': { pt: 'Indisponível', en: 'Unavailable' },
+  'inem.statusUnset': { pt: 'Estado por definir', en: 'Status not set' },
+  'inem.changeStatus': { pt: 'Alterar estado', en: 'Change status' },
+  'inem.dialogTitle': { pt: 'Alterar estado — %{vehicle}', en: 'Change status — %{vehicle}' },
   'inem.reasonLabel': { pt: 'Motivo', en: 'Reason' },
   'inem.reasonPlaceholder': { pt: 'Escolhe um motivo', en: 'Choose a reason' },
   'inem.syncing': { pt: 'A sincronizar…', en: 'Syncing…' },
@@ -1957,6 +1961,7 @@ const MESSAGES = {
   'statistics.tabPeople': { pt: 'Pessoas & Horas', en: 'People & Hours' },
   'statistics.tabActivity': { pt: 'Atividade', en: 'Activity' },
   'statistics.tabFleet': { pt: 'Frota & Resposta', en: 'Fleet & Response' },
+  'statistics.tabInem': { pt: 'INEM', en: 'INEM' },
   'statistics.periodLabel': { pt: 'Período', en: 'Period' },
   'statistics.period.thisMonth': { pt: 'Este mês', en: 'This month' },
   'statistics.period.last12Months': { pt: '12 meses', en: '12 months' },
@@ -2107,6 +2112,30 @@ const MESSAGES = {
   'statistics.fleet.leg.ON_SCENE': { pt: 'No local', en: 'On scene' },
   'statistics.fleet.leg.SCENE_TO_HOSPITAL': { pt: 'Local → hospital', en: 'Scene → hospital' },
   'statistics.fleet.leg.HOSPITAL_TO_AVAILABLE': { pt: 'Hospital → disponível', en: 'Hospital → available' },
+
+  // Tab 4 — INEM downtime & reasons (#post-#216), sourced from
+  // `INEMUnitStatusPeriod` — the confirmed-state trail, not the desired
+  // toggle on the live status screen (`inem.*` above).
+  'statistics.inem.heroTitle': { pt: 'Tempo de indisponibilidade', en: 'Downtime' },
+  'statistics.inem.heroDescription': {
+    pt: '%{units} viaturas com indisponibilidade registada neste período.',
+    en: '%{units} vehicles with recorded downtime in this period.',
+  },
+  'statistics.inem.topReason': { pt: 'Motivo mais frequente', en: 'Most frequent reason' },
+  'statistics.inem.affectedUnits': { pt: 'Viaturas afetadas', en: 'Affected vehicles' },
+  'statistics.inem.averagePerUnit': { pt: 'Média por viatura', en: 'Average per vehicle' },
+  'statistics.inem.byReasonTitle': { pt: 'Motivos de indisponibilidade', en: 'Downtime reasons' },
+  'statistics.inem.byReasonSubtitle': {
+    pt: 'Tempo total indisponível, por motivo.',
+    en: 'Total downtime, by reason.',
+  },
+  'statistics.inem.perUnitTitle': { pt: 'Por viatura', en: 'By vehicle' },
+  'statistics.inem.perUnitSubtitle': {
+    pt: 'Tempo indisponível e motivo principal, por viatura.',
+    en: 'Downtime and top reason, per vehicle.',
+  },
+  'statistics.inem.vehicleColumn': { pt: 'Viatura', en: 'Vehicle' },
+  'statistics.inem.hoursColumn': { pt: 'Horas', en: 'Hours' },
 
   'myAvailability.pageTitle': { pt: 'A minha disponibilidade', en: 'My availability' },
   'myAvailability.heading': { pt: 'A minha disponibilidade', en: 'My availability' },

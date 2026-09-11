@@ -50,7 +50,7 @@ Don't ask for a list of all exports — grep them.
 | The delegation's own configuration | `DelegationSettings`-adjacent shapes |
 | Live emergency runs | `LiveRun` shapes and state |
 | Notices & notifications | `Notice`, `NotificationChannel`/`NotificationType`, delivery/preference shapes, `resolveEffectiveNotificationChannels` (#165) |
-| Statistics | `/statistics/*` query and response shapes (people/activity/fleet) |
+| Statistics | `/statistics/*` query and response shapes (people/activity/fleet/inem) |
 | INEM integration | `INEMSessionStatus`, `INEM_AVAILABLE_INOP_CODE`, `INEM_INOP_REASONS`, `INEMInopCode`, `INEMUnit`, `SetINEMUnitStatusRequest`, `INEMStatusOverview`, worker job contract (`INEMLoginJob`/`INEMLoginJobResult`) (#211) |
 | API error codes | `ApiErrorCode` |
 

@@ -20,6 +20,7 @@ import { VolunteerHoursService } from '../volunteer-hours/volunteer-hours.servic
 import { StatisticsPeopleService } from './statistics-people.service';
 import { StatisticsActivityService } from './statistics-activity.service';
 import { StatisticsFleetService } from './statistics-fleet.service';
+import { StatisticsInemService } from './statistics-inem.service';
 
 /**
  * Integration coverage for the `/statistics/*` aggregations, against a real
@@ -40,6 +41,7 @@ describeIntegration('Statistics module (integration)', () => {
   let people: StatisticsPeopleService;
   let activity: StatisticsActivityService;
   let fleet: StatisticsFleetService;
+  let inem: StatisticsInemService;
 
   let ana: { id: string };
   let bruno: { id: string };
@@ -63,6 +65,7 @@ describeIntegration('Statistics module (integration)', () => {
     people = new StatisticsPeopleService(prisma, noopVolunteerHours);
     activity = new StatisticsActivityService(prisma);
     fleet = new StatisticsFleetService(prisma);
+    inem = new StatisticsInemService(prisma);
 
     const makeUser = async (local: string) =>
       prisma.user.create({
@@ -137,9 +140,37 @@ describeIntegration('Statistics module (integration)', () => {
       },
     });
     createdEntryIds.push(entry.id);
+
+    // A downtime period followed by the unit becoming available again —
+    // exercises the reason breakdown alongside available time in one go.
+    // (Fixture dates here are 2029, same as the rest of this suite's data —
+    // an actually-open, `endedAt: null` period would fall back to real
+    // "now" for its provisional end, which is *earlier* than these fixture
+    // dates and would clip to nothing; the "clip a still-open period" path
+    // is covered instead by `statistics-inem.service.spec.ts`, where `now`
+    // can be controlled relative to the query range.)
+    await prisma.iNEMUnitStatusPeriod.create({
+      data: {
+        unitId: `IT-${RUN}`,
+        vehicleId: vehicle.id,
+        inopCode: 'TEPH_Falta',
+        startedAt: new Date('2029-01-15T08:00:00.000Z'),
+        endedAt: new Date('2029-01-15T09:30:00.000Z'),
+      },
+    });
+    await prisma.iNEMUnitStatusPeriod.create({
+      data: {
+        unitId: `IT-${RUN}`,
+        vehicleId: vehicle.id,
+        inopCode: '00',
+        startedAt: new Date('2029-01-15T09:30:00.000Z'),
+        endedAt: new Date('2029-01-15T10:30:00.000Z'),
+      },
+    });
   });
 
   afterAll(async () => {
+    await prisma.iNEMUnitStatusPeriod.deleteMany({ where: { unitId: `IT-${RUN}` } });
     if (createdEntryIds.length) {
       await prisma.volunteerHoursEntry.deleteMany({ where: { id: { in: createdEntryIds } } });
     }
@@ -178,5 +209,15 @@ describeIntegration('Statistics module (integration)', () => {
     const activationLeg = stats.responseLegs.find((l) => l.leg === 'ACTIVATION_TO_SCENE')!;
     expect(activationLeg.medianMinutes).not.toBeNull();
     expect(stats.totalDurationMedianMinutes).not.toBeNull();
+  });
+
+  it('derives INEM downtime minutes and reasons from the confirmed-state trail, clipping the still-open tail to the query range', async () => {
+    const stats = await inem.getStatistics({ from: FROM, to: TO });
+    const unitStats = stats.units.find((u) => u.unitId === `IT-${RUN}`);
+    expect(unitStats?.vehicle?.id).toBe(vehicle.id);
+    expect(unitStats?.totalDowntimeMinutes).toBe(90);
+    expect(unitStats?.downtimeByReason).toEqual([{ inopCode: 'TEPH_Falta', minutes: 90 }]);
+    expect(unitStats?.availableMinutes).toBe(60);
+    expect(stats.downtimeByReason.some((r) => r.inopCode === 'TEPH_Falta')).toBe(true);
   });
 });

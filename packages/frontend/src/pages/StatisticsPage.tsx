@@ -9,14 +9,18 @@ import { DEFAULT_STATISTICS_PERIOD_PRESET, resolveStatisticsPeriod, StatisticsPe
 import { PeopleTab } from './statistics/PeopleTab';
 import { ActivityTab } from './statistics/ActivityTab';
 import { FleetTab } from './statistics/FleetTab';
+import { INEMTab } from './statistics/INEMTab';
 
-type TabIndex = 0 | 1 | 2;
+type TabIndex = 0 | 1 | 2 | 3;
 
 /**
  * `/statistics` — aggregate, organisation-wide numbers
  * (docs/plans/estatisticas-dashboards.md). Every authenticated member sees
- * all three tabs; there is no capability gate here or on the API routes
- * behind it, only the query range and an optional report-type filter.
+ * all four tabs; there is no capability gate here or on the API routes
+ * behind it, only the query range and an optional report-type filter. The
+ * INEM tab (#post-#216) ignores the report-type filter entirely — its data
+ * isn't event-report-shaped — so the filter bar hides it there, same as it
+ * already does on the people tab.
  */
 export const StatisticsPage = () => {
   const t = useT();
@@ -41,7 +45,7 @@ export const StatisticsPage = () => {
       <StatisticsFilters
         period={period}
         onPeriodChange={setPeriod}
-        showTypeFilter={tab > 0}
+        showTypeFilter={tab === 1 || tab === 2}
         type={type}
         onTypeChange={setType}
       />
@@ -50,11 +54,13 @@ export const StatisticsPage = () => {
         <Tab label={t('statistics.tabPeople')} />
         <Tab label={t('statistics.tabActivity')} />
         <Tab label={t('statistics.tabFleet')} />
+        <Tab label={t('statistics.tabInem')} />
       </Tabs>
 
       {tab === 0 && identity && <PeopleTab filters={filters} viewerId={String(identity.id)} />}
       {tab === 1 && <ActivityTab filters={filters} />}
       {tab === 2 && <FleetTab filters={filters} />}
+      {tab === 3 && <INEMTab filters={filters} />}
     </Box>
   );
 };

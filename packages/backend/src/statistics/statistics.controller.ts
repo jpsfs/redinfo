@@ -7,6 +7,7 @@ import { AuditInterceptor } from '../auth/interceptors/audit.interceptor';
 import { StatisticsPeopleService } from './statistics-people.service';
 import { StatisticsActivityService } from './statistics-activity.service';
 import { StatisticsFleetService } from './statistics-fleet.service';
+import { StatisticsInemService } from './statistics-inem.service';
 import { StatisticsQueryDto } from './dto/statistics-query.dto';
 
 /**
@@ -26,6 +27,7 @@ export class StatisticsController {
     private readonly people: StatisticsPeopleService,
     private readonly activity: StatisticsActivityService,
     private readonly fleet: StatisticsFleetService,
+    private readonly inem: StatisticsInemService,
   ) {}
 
   @Get('people')
@@ -41,5 +43,10 @@ export class StatisticsController {
   @Get('fleet')
   getFleet(@Query() query: StatisticsQueryDto) {
     return this.fleet.getStatistics(query);
+  }
+
+  @Get('inem')
+  getInem(@Query() query: StatisticsQueryDto) {
+    return this.inem.getStatistics(query);
   }
 }

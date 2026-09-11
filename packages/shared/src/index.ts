@@ -5986,6 +5986,34 @@ export interface FleetStatistics {
   totalEmergencies: number;
 }
 
+export interface StatisticsInemReasonMinutes {
+  /** `INEM_AVAILABLE_INOP_CODE` is never included here — this is downtime only. */
+  inopCode: string;
+  minutes: number;
+}
+
+export interface StatisticsInemUnit {
+  unitId: string;
+  vehicle: { id: string; licensePlate: string; numeroCauda: string } | null;
+  availableMinutes: number;
+  totalDowntimeMinutes: number;
+  downtimeByReason: StatisticsInemReasonMinutes[];
+}
+
+/**
+ * `GET /statistics/inem` — how long each unit actually sat in each confirmed
+ * state (`INEMUnitStatusPeriod`, not the merely desired state), and why.
+ * Minutes are clipped to `[from, to]`; a period still open at `to` counts up
+ * to `to`, not to whenever it eventually closes.
+ */
+export interface INEMStatistics {
+  from: string;
+  to: string;
+  totalDowntimeMinutes: number;
+  downtimeByReason: StatisticsInemReasonMinutes[];
+  units: StatisticsInemUnit[];
+}
+
 // ─── INEM integration (#211) ───────────────────────────────────────────────────
 //
 // Lets CVP crews set ambulance operational status on INEM's own portal

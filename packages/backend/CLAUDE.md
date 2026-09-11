@@ -79,7 +79,8 @@ Model index by domain (names only — grep for fields/relations):
 - **Notices & notifications** (#165): `Notice`, `NoticeTargetRole`, `NoticeChannel`,
   `NoticeReceipt`, `NotificationDelivery`, `PushSubscription`, `NotificationTypeSetting`,
   `UserNotificationPreference`
-- **INEM integration** (#211): `INEMSession`, `OWASession`, `INEMUnit`, `INEMStatusAudit`
+- **INEM integration** (#211): `INEMSession`, `OWASession`, `INEMUnit`, `INEMStatusAudit`,
+  `INEMUnitStatusPeriod`
 
 Migrations: `prisma:migrate` (dev, interactive) / `prisma:migrate:deploy` (non-interactive —
 prefer this in scripts/CI, per `.github/AI-GOVERNANCE.md`). Run `prisma:generate` after every

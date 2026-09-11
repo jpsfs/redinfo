@@ -1983,3 +1983,24 @@ model INEMStatusAudit {
   @@index([unitId])
   @@index([userId])
 }
+
+/// One confirmed-state interval per unit, sourced from what the reconciler
+/// actually reads back from INEM (`reportedInopCode`) — never from the merely
+/// desired state, which is intent, not fact. This is what answers "how long
+/// was this vehicle really unavailable, and why" for `/statistics/inem`.
+/// `endedAt: null` is the currently open interval. `unitId`/`vehicleId` are
+/// deliberately not FKs — same reasoning as `INEMStatusAudit` above: the
+/// trail must outlive the unit INEM stops listing or the vehicle it was
+/// linked to at the time.
+model INEMUnitStatusPeriod {
+  id        String    @id @default(cuid())
+  unitId    String
+  vehicleId String?
+  inopCode  String
+  startedAt DateTime
+  endedAt   DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([unitId, startedAt])
+  @@index([vehicleId, startedAt])
+}

@@ -10,7 +10,7 @@ export interface StatisticsFilterState {
 }
 
 /** Fetch state for one `/statistics/<endpoint>` tab. */
-export function useStatisticsTab<T>(endpoint: 'people' | 'activity' | 'fleet', filters: StatisticsFilterState) {
+export function useStatisticsTab<T>(endpoint: 'people' | 'activity' | 'fleet' | 'inem', filters: StatisticsFilterState) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);

@@ -1,32 +1,16 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Title, useNotify } from 'react-admin';
-import {
-  Alert,
-  Box,
-  Button,
-  Card,
-  CardContent,
-  Chip,
-  CircularProgress,
-  FormControlLabel,
-  MenuItem,
-  Stack,
-  Switch,
-  TextField,
-  Typography,
-} from '@mui/material';
-import SaveIcon from '@mui/icons-material/Save';
+import { Alert, Box, Button, Card, CardContent, Chip, CircularProgress, Stack, Typography } from '@mui/material';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
+import CancelIcon from '@mui/icons-material/Cancel';
+import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import SyncIcon from '@mui/icons-material/Sync';
-import {
-  INEM_AVAILABLE_INOP_CODE,
-  INEMSessionStatus,
-  INEMStatusOverview,
-  INEMUnit,
-} from '@redinfo/shared';
+import { INEM_AVAILABLE_INOP_CODE, INEMSessionStatus, INEMStatusOverview, INEMUnit } from '@redinfo/shared';
 import { apiFetch, ApiError } from '../api';
 import { apiErrorLabel, inemReasonLabel } from '../i18n/labels';
 import { useT } from '../i18n/useT';
 import { useIntlLocale } from '../i18n/useIntlLocale';
+import { SetUnitStatusDialog } from './inem/SetUnitStatusDialog';
 
 /**
  * How often the page re-polls `GET /inem/status`. Same cadence as
@@ -37,7 +21,7 @@ const REFRESH_MS = 20_000;
 
 /**
  * The delegation's INEM units — in practice its emergency ambulances — with a
- * per-unit availability toggle and INOP reason (#216).
+ * per-unit availability status and INOP reason (#216).
  *
  * Read-and-write, but never talks to INEM directly: `PUT /inem/units/:id`
  * only records the desired state, and `InemReconcilerService` pushes it —
@@ -45,14 +29,16 @@ const REFRESH_MS = 20_000;
  * gap between "desired" and "reported" is normal and shown as a syncing
  * badge, not an error — and when the session itself is down, the banner
  * below says so plainly and names the fallback (INEM's own portal), because
- * a silently stale toggle here is the worst failure this feature has.
+ * a silently stale status here is the worst failure this feature has.
  *
- * Flipping the switch or picking a reason only edits `UnitCard`'s own local
- * state — nothing reaches the server until the crew member hits "Save".
- * Earlier this fired a request on every click, which meant a slip of the
- * thumb (or an accidental double-tap while scrolling) could report an
- * ambulance INOP on INEM's own portal without the crew ever meaning to
- * commit that change; requiring an explicit save makes that intent real.
+ * `UnitCard` is a pure display — a status a non-tech crew member can read at
+ * a glance, no toggle to interpret — and `SetUnitStatusDialog` is the only
+ * thing that writes: its title names the one vehicle it edits, so it can
+ * never read as a fleet-wide action. Earlier this fired a request on every
+ * click of an inline switch, which meant a slip of the thumb (or an
+ * accidental double-tap while scrolling) could report an ambulance INOP on
+ * INEM's own portal without the crew ever meaning to commit that change;
+ * routing every edit through an explicit dialog Save keeps that intent real.
  */
 export const INEMStatusPage = () => {
   const t = useT();
@@ -61,6 +47,7 @@ export const INEMStatusPage = () => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [savingUnitId, setSavingUnitId] = useState<string | null>(null);
   const [syncingNow, setSyncingNow] = useState(false);
+  const [dialogUnitId, setDialogUnitId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -98,7 +85,7 @@ export const INEMStatusPage = () => {
     setSavingUnitId(unitId);
     // Optimistic: the write returns immediately and the reconciler pushes
     // asynchronously, so waiting on a full reload here would make every
-    // toggle feel like it did nothing for a moment.
+    // save feel like it did nothing for a moment.
     setOverview((prev) =>
       prev
         ? {
@@ -109,13 +96,18 @@ export const INEMStatusPage = () => {
     );
     try {
       await apiFetch(`/inem/units/${unitId}`, { method: 'PUT', body: { inopCode } });
+      setDialogUnitId(null); // close on success
     } catch (e) {
       notify(e instanceof ApiError ? apiErrorLabel(t, e) : t('inem.saveFailed'), { type: 'warning' });
       void load(); // revert the optimistic write to server truth
+      // The dialog stays open (`dialogUnitId` untouched) so the crew member
+      // can just retry Save instead of having to reopen and redo the edit.
     } finally {
       setSavingUnitId(null);
     }
   };
+
+  const dialogUnit = overview?.units.find((u) => u.unitId === dialogUnitId) ?? null;
 
   return (
     <Box sx={{ mt: 2 }}>
@@ -171,12 +163,19 @@ export const INEMStatusPage = () => {
               key={unit.unitId}
               unit={unit}
               reasons={overview.inopReasons}
-              saving={savingUnitId === unit.unitId}
-              onSetStatus={setUnitStatus}
+              onChangeStatus={() => setDialogUnitId(unit.unitId)}
             />
           ))}
         </Box>
       )}
+
+      <SetUnitStatusDialog
+        unit={dialogUnit}
+        reasons={overview?.inopReasons ?? {}}
+        saving={savingUnitId === dialogUnitId}
+        onConfirm={setUnitStatus}
+        onClose={() => setDialogUnitId(null)}
+      />
     </Box>
   );
 };
@@ -195,58 +194,25 @@ interface UnitCardProps {
   unit: INEMUnit;
   /** The live `GET /api/INOP` map (code → INEM's own label), or its offline fallback. */
   reasons: Record<string, string>;
-  saving: boolean;
-  onSetStatus: (unitId: string, inopCode: string) => void;
+  onChangeStatus: () => void;
 }
 
-const UnitCard = ({ unit, reasons, saving, onSetStatus }: UnitCardProps) => {
+/**
+ * Purely a display — see the page's own doc comment for why editing moved
+ * out of here and into `SetUnitStatusDialog`. Status reads off the *desired*
+ * code (what the crew last asked for), same as before; the syncing chip is
+ * what tells a reader whether INEM has actually confirmed it yet.
+ */
+const UnitCard = ({ unit, reasons, onChangeStatus }: UnitCardProps) => {
   const t = useT();
   const intlLocale = useIntlLocale();
 
-  // The server's last-committed intent — what a Save would overwrite if the
-  // crew member hasn't started editing.
-  const serverCode = unit.desiredInopCode ?? '';
-
-  // Buffers the crew member's in-progress choice until they hit Save — no
-  // request goes out just from flipping the switch or picking a reason.
-  // Synced from the server only while there's no unsaved edit (`!dirty`);
-  // once one starts, a poll landing mid-edit must not stomp on it, the same
-  // concern the old `editing` flag existed for.
-  const [pending, setPending] = useState(serverCode);
-  const [dirty, setDirty] = useState(false);
-  useEffect(() => {
-    if (!dirty) setPending(serverCode);
-  }, [serverCode, dirty]);
-
-  const setPendingCode = (code: string) => {
-    setPending(code);
-    setDirty(code !== serverCode);
-  };
-
-  const checked = pending === INEM_AVAILABLE_INOP_CODE;
-  const reasonValue = !checked ? pending : '';
-  // A reason must actually be picked before "Save" means anything — an
-  // empty `pending` (switch just flipped off) is dirty but not yet savable.
-  const canSave = dirty && pending !== '';
-  const syncing = !dirty && unit.desiredInopCode !== unit.reportedInopCode;
-
-  // `reasons` (the live map, or its compile-time fallback) may not have a
-  // key for the code already selected here — e.g. it was set while the live
-  // map was up, then the backend fell back to the compile-time table on a
-  // restart. Without this, the select would silently render blank for a
-  // value it can't find among its own options, hiding what's actually
-  // selected. Synthesize an entry from the code itself rather than drop it.
-  const reasonEntries =
-    reasonValue && !(reasonValue in reasons) ? { ...reasons, [reasonValue]: reasonValue } : reasons;
+  const code = unit.desiredInopCode;
+  const syncing = code !== null && code !== unit.reportedInopCode;
 
   const vehicleLabel = unit.vehicle
     ? `${unit.vehicle.licensePlate} – ${unit.vehicle.numeroCauda}`
     : (unit.carId ?? unit.unitId);
-
-  const handleSave = () => {
-    setDirty(false);
-    onSetStatus(unit.unitId, pending);
-  };
 
   return (
     <Card variant="outlined">
@@ -261,7 +227,6 @@ const UnitCard = ({ unit, reasons, saving, onSetStatus }: UnitCardProps) => {
               {!unit.vehicle && ` · ${t('inem.noVehicleMatch')}`}
             </Typography>
           </Box>
-          {dirty && <Chip size="small" label={t('inem.unsavedChanges')} color="warning" variant="outlined" />}
           {syncing && (
             <Chip
               size="small"
@@ -273,49 +238,12 @@ const UnitCard = ({ unit, reasons, saving, onSetStatus }: UnitCardProps) => {
           )}
         </Stack>
 
-        <FormControlLabel
-          sx={{ mt: 1, ml: 0 }}
-          control={
-            <Switch
-              checked={checked}
-              disabled={saving}
-              onChange={(event) => setPendingCode(event.target.checked ? INEM_AVAILABLE_INOP_CODE : '')}
-            />
-          }
-          label={t('inem.available')}
-        />
+        <Box sx={{ mt: 1.5 }}>
+          <StatusChip code={code} reasons={reasons} />
+        </Box>
 
-        {!checked && (
-          <TextField
-            select
-            fullWidth
-            size="small"
-            label={t('inem.reasonLabel')}
-            value={reasonValue}
-            disabled={saving}
-            onChange={(event) => setPendingCode(event.target.value)}
-            sx={{ mt: 1 }}
-          >
-            <MenuItem value="" disabled>
-              {t('inem.reasonPlaceholder')}
-            </MenuItem>
-            {Object.entries(reasonEntries).map(([code, apiLabel]) => (
-              <MenuItem key={code} value={code}>
-                {inemReasonLabel(t, code, apiLabel)}
-              </MenuItem>
-            ))}
-          </TextField>
-        )}
-
-        <Button
-          size="small"
-          variant={canSave ? 'contained' : 'outlined'}
-          startIcon={<SaveIcon fontSize="small" />}
-          disabled={!canSave || saving}
-          onClick={handleSave}
-          sx={{ mt: 1 }}
-        >
-          {t('inem.save')}
+        <Button size="small" variant="outlined" onClick={onChangeStatus} sx={{ mt: 1.5 }}>
+          {t('inem.changeStatus')}
         </Button>
 
         <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 1 }}>
@@ -330,5 +258,32 @@ const UnitCard = ({ unit, reasons, saving, onSetStatus }: UnitCardProps) => {
         )}
       </CardContent>
     </Card>
+  );
+};
+
+/**
+ * The whole point of this pass: a status a non-tech crew member reads at a
+ * glance, not one they have to infer from a switch's position. Three states —
+ * available, INOP-with-reason, or "nobody's told INEM anything yet" — never
+ * a bare toggle.
+ */
+const StatusChip = ({ code, reasons }: { code: string | null; reasons: Record<string, string> }) => {
+  const t = useT();
+
+  if (code === null) {
+    return <Chip size="small" icon={<HelpOutlineIcon fontSize="small" />} label={t('inem.statusUnset')} variant="outlined" />;
+  }
+
+  if (code === INEM_AVAILABLE_INOP_CODE) {
+    return <Chip size="small" icon={<CheckCircleIcon fontSize="small" />} label={t('inem.available')} color="success" />;
+  }
+
+  return (
+    <Stack spacing={0.5} alignItems="flex-start">
+      <Chip size="small" icon={<CancelIcon fontSize="small" />} label={t('inem.statusUnavailable')} color="error" />
+      <Typography variant="body2" color="text.secondary">
+        {inemReasonLabel(t, code, reasons[code] ?? code)}
+      </Typography>
+    </Stack>
   );
 };

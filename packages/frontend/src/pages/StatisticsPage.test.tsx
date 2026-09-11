@@ -9,6 +9,7 @@ import {
   ActivityStatistics,
   EventReportType,
   FleetStatistics,
+  INEMStatistics,
   PeopleStatistics,
   VictimDestinationKind,
   VolunteerActivityType,
@@ -135,11 +136,28 @@ const FLEET: FleetStatistics = {
   totalEmergencies: 497,
 };
 
+const INEM: INEMStatistics = {
+  from: '2025-09-01',
+  to: '2026-08-28',
+  totalDowntimeMinutes: 300,
+  downtimeByReason: [{ inopCode: 'TEPH_Falta', minutes: 300 }],
+  units: [
+    {
+      unitId: 'CVCAMPO1',
+      vehicle: { id: 'v-1', licensePlate: 'AA-11-BB', numeroCauda: 'ABT 01' },
+      availableMinutes: 1200,
+      totalDowntimeMinutes: 300,
+      downtimeByReason: [{ inopCode: 'TEPH_Falta', minutes: 300 }],
+    },
+  ],
+};
+
 function respondByEndpoint() {
   mockApiFetch.mockImplementation((path: string) => {
     if (path.startsWith('/statistics/people')) return Promise.resolve(PEOPLE);
     if (path.startsWith('/statistics/activity')) return Promise.resolve(ACTIVITY);
     if (path.startsWith('/statistics/fleet')) return Promise.resolve(FLEET);
+    if (path.startsWith('/statistics/inem')) return Promise.resolve(INEM);
     return Promise.reject(new Error(`unexpected path ${path}`));
   });
 }
@@ -226,6 +244,17 @@ describe('StatisticsPage', () => {
     await userEvent.click(screen.getByRole('tab', { name: 'Frota & Resposta' }));
     expect(await screen.findByText('Quilómetros percorridos')).toBeInTheDocument();
     expect(screen.getByText((_, el) => el?.textContent?.replace(/\D/g, '') === '13860')).toBeTruthy();
+  });
+
+  it('shows the INEM tab hero and per-reason downtime, with no type filter', async () => {
+    renderDesktop();
+    await userEvent.click(screen.getByRole('tab', { name: 'INEM' }));
+
+    const heroTitle = await screen.findByText('Tempo de indisponibilidade');
+    const heroCard = heroTitle.closest('.MuiCard-root') as HTMLElement;
+    expect(within(heroCard).getByText('5')).toBeInTheDocument(); // 300 minutes → 5h
+    expect(screen.getAllByText('Sem Tripulação').length).toBeGreaterThan(0); // TEPH_Falta's label
+    expect(screen.queryByText('Todos')).not.toBeInTheDocument();
   });
 
   it('renders on a phone without crashing, and still shows the roster', async () => {
