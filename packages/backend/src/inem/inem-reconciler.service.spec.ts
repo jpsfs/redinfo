@@ -9,6 +9,7 @@ function unitRow(overrides: Record<string, unknown> = {}) {
     unitId: 'CVCAMPO1',
     desiredInopCode: null,
     reportedInopCode: '00',
+    lastPushedInopCode: null,
     ...overrides,
   };
 }
@@ -199,6 +200,54 @@ describe('InemReconcilerService', () => {
     expect(client.putUnits).toHaveBeenCalledWith(COOKIES, 'CVCAMPO', { CVCAMPO1: { INOP: 'TEPH_Falta' } });
   });
 
+  it('still pushes the desired state when reported merely lags redinfo\'s own last-confirmed push', async () => {
+    // lastPushedInopCode ('TEPH_Falta') matches reportedInopCode, so this
+    // divergence is explained entirely by a brand-new desired state
+    // ('Fora_de_turno') that redinfo hasn't told INEM about yet — not by
+    // INEM's portal moving on its own.
+    const prisma = buildPrismaStub([
+      unitRow({
+        unitId: 'CVCAMPO1',
+        desiredInopCode: 'Fora_de_turno',
+        reportedInopCode: 'TEPH_Falta',
+        lastPushedInopCode: 'TEPH_Falta',
+      }),
+    ]);
+    const client = buildClientStub();
+    const session = buildSessionStub();
+    const service = new InemReconcilerService(prisma as never, client as never, session as never, queue as never);
+
+    await service.reconcile();
+
+    expect(client.putUnits).toHaveBeenCalledWith(COOKIES, 'CVCAMPO', { CVCAMPO1: { INOP: 'Fora_de_turno' } });
+  });
+
+  it("adopts INEM's own reported status instead of pushing redinfo's stale desired state over it, when a coordinator changed it directly in INEM's portal", async () => {
+    // lastPushedInopCode ('TEPH_Falta') no longer matches reportedInopCode
+    // ('Alimentacao') — INEM's own value moved without redinfo pushing
+    // anything, so it must have changed directly in INEM's portal. That wins
+    // over redinfo's stale desired state instead of being overwritten by it.
+    const prisma = buildPrismaStub([
+      unitRow({
+        unitId: 'CVCAMPO1',
+        desiredInopCode: 'TEPH_Falta',
+        reportedInopCode: 'Alimentacao',
+        lastPushedInopCode: 'TEPH_Falta',
+      }),
+    ]);
+    const client = buildClientStub();
+    const session = buildSessionStub();
+    const service = new InemReconcilerService(prisma as never, client as never, session as never, queue as never);
+
+    await service.reconcile();
+
+    expect(client.putUnits).not.toHaveBeenCalled();
+    expect(prisma.iNEMUnit.update).toHaveBeenCalledWith({
+      where: { unitId: 'CVCAMPO1' },
+      data: { desiredInopCode: 'Alimentacao', lastPushedInopCode: 'Alimentacao' },
+    });
+  });
+
   it('optimistically marks pushed units as synced', async () => {
     const prisma = buildPrismaStub([unitRow({ unitId: 'CVCAMPO1', desiredInopCode: 'TEPH_Falta', reportedInopCode: '00' })]);
     const client = buildClientStub();
@@ -209,7 +258,7 @@ describe('InemReconcilerService', () => {
 
     expect(prisma.iNEMUnit.update).toHaveBeenCalledWith({
       where: { unitId: 'CVCAMPO1' },
-      data: { reportedInopCode: 'TEPH_Falta', lastSyncedAt: expect.any(Date) },
+      data: { reportedInopCode: 'TEPH_Falta', lastPushedInopCode: 'TEPH_Falta', lastSyncedAt: expect.any(Date) },
     });
   });
 

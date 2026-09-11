@@ -15,8 +15,10 @@ const RECONCILE_LOCK_SQL = Prisma.sql`SELECT pg_advisory_xact_lock(hashtext('ine
  *
  * Unit state is desired vs. reported, never a fire-and-forget command: this
  * is what pushes a diverging `desiredInopCode` to INEM and polls
- * `reportedInopCode` back, in one pass, so a coordinator's change made
- * directly in INEM's own portal is picked up too.
+ * `reportedInopCode` back, in one pass. INEM's own portal always has the
+ * last word — a coordinator's change made directly there is picked up and
+ * adopted as the new desired state (see `buildPendingBatch`), not clobbered
+ * by redinfo pushing its own stale value back over it.
  */
 @Injectable()
 export class InemReconcilerService implements OnModuleInit {
@@ -209,17 +211,40 @@ export class InemReconcilerService implements OnModuleInit {
     return new Map(vehicles.map((v) => [normalizeLicensePlate(v.licensePlate), v.id]));
   }
 
-  /** Units whose desired state has never been set are excluded — pushing nothing is not the same as pushing "available". */
+  /**
+   * Units whose desired state has never been set are excluded — pushing
+   * nothing is not the same as pushing "available".
+   *
+   * A divergent unit isn't automatically a push candidate: INEM's own portal
+   * takes precedence over redinfo's desired state, and `lastPushedInopCode`
+   * — the code redinfo's own last successful push actually asked for — is
+   * how the two divergence causes are told apart. If `reportedInopCode`
+   * still matches it (or nothing has ever been pushed), the divergence is
+   * just redinfo's push not having landed yet, so it's queued. If
+   * `reportedInopCode` moved to something else entirely, that move didn't
+   * come from redinfo — a coordinator changed this unit directly in INEM's
+   * own portal — so that value wins: it's adopted as the new desired state
+   * instead of being clobbered by a push.
+   */
   private async buildPendingBatch(tx: Prisma.TransactionClient): Promise<Record<string, { INOP: string }>> {
     const candidates = await tx.iNEMUnit.findMany({
       where: { desiredInopCode: { not: null } },
-      select: { unitId: true, desiredInopCode: true, reportedInopCode: true },
+      select: { unitId: true, desiredInopCode: true, reportedInopCode: true, lastPushedInopCode: true },
     });
 
     const pending: Record<string, { INOP: string }> = {};
     for (const unit of candidates) {
-      if (unit.desiredInopCode && unit.desiredInopCode !== unit.reportedInopCode) {
+      if (!unit.desiredInopCode || unit.desiredInopCode === unit.reportedInopCode) continue;
+
+      const stillWaitingOnOurOwnPush =
+        unit.lastPushedInopCode === null || unit.lastPushedInopCode === unit.reportedInopCode;
+      if (stillWaitingOnOurOwnPush) {
         pending[unit.unitId] = { INOP: unit.desiredInopCode };
+      } else {
+        await tx.iNEMUnit.update({
+          where: { unitId: unit.unitId },
+          data: { desiredInopCode: unit.reportedInopCode, lastPushedInopCode: unit.reportedInopCode },
+        });
       }
     }
     return pending;
@@ -236,7 +261,7 @@ export class InemReconcilerService implements OnModuleInit {
     for (const [unitId, { INOP }] of Object.entries(pending)) {
       await tx.iNEMUnit.update({
         where: { unitId },
-        data: { reportedInopCode: INOP, lastSyncedAt: now },
+        data: { reportedInopCode: INOP, lastPushedInopCode: INOP, lastSyncedAt: now },
       });
     }
   }

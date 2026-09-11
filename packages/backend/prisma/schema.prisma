@@ -1954,6 +1954,15 @@ model INEMUnit {
   desiredInopCode  String?
   /// What the reconciler last read back from `GET /api/unit`.
   reportedInopCode String?
+  /// The INOP code the reconciler's own last successful `PUT /api/unit` last
+  /// asked INEM to set — distinct from `reportedInopCode`, which also gets
+  /// optimistically pre-set to the same value right after that push. The gap
+  /// between the two is what lets the reconciler tell "our push just hasn't
+  /// been confirmed by the next GET yet" apart from "INEM's own portal moved
+  /// since then" — the latter means a coordinator changed this unit's status
+  /// directly in INEM, which must win over redinfo's stale desired state.
+  /// Null means redinfo has never successfully pushed a status for this unit.
+  lastPushedInopCode String?
   /// INEM's own read-only Portuguese label (`Active`), display only — never
   /// treated as desired state.
   reportedActive   String?
