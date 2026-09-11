@@ -1,4 +1,4 @@
-import { Fragment } from 'react';
+import { Fragment, useState } from 'react';
 import {
   Layout,
   LayoutProps,
@@ -19,8 +19,9 @@ import {
   LocalesMenuButton,
   LoadingIndicator,
 } from 'react-admin';
-import { Box, Divider, ListSubheader } from '@mui/material';
+import { Box, Divider, ListItemIcon, ListItemText, ListSubheader, MenuItem } from '@mui/material';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import { useCapabilities } from '../hooks/useCapabilities';
 import { useIsMobile } from '../hooks/useIsMobile';
 import { PersonAvatar } from '../components/PersonAvatar';
@@ -28,6 +29,7 @@ import { accountRoleLabel, Translate } from '../i18n/labels';
 import { useT } from '../i18n/useT';
 import { NAV_SECTIONS, NavEntry } from './navigation';
 import { AppChromeProvider, useAppChrome } from './AppChromeContext';
+import { AboutDialog } from './AboutDialog';
 import {
   borderRadiusMedium,
   colorRedCrossRedDark,
@@ -344,57 +346,85 @@ const MyProfileMenuItem = () => {
 };
 
 /**
+ * Same shape as react-admin's own `Logout` (`MenuItem` + `ListItemIcon` +
+ * `ListItemText`), not `MenuItemLink` — About opens a dialog, it isn't a route.
+ */
+const AboutMenuItem = ({ onOpen }: { onOpen: () => void }) => {
+  const userMenu = useUserMenu();
+  const t = useT();
+  return (
+    <MenuItem
+      onClick={() => {
+        userMenu?.onClose();
+        onOpen();
+      }}
+    >
+      <ListItemIcon>
+        <InfoOutlinedIcon fontSize="small" />
+      </ListItemIcon>
+      <ListItemText>{t('nav.about')}</ListItemText>
+    </MenuItem>
+  );
+};
+
+/**
  * My Profile and Log out, moved here from the drawer per #181's approved
- * design — they are account actions, not places to navigate to.
+ * design — they are account actions, not places to navigate to. About sits
+ * between them: also an account-menu action, not a place to navigate to.
  */
 const RedInfoUserMenu = () => {
   const t = useT();
   const { identity } = useGetIdentity();
   const initials = `${identity?.firstName?.[0] ?? ''}${identity?.lastName?.[0] ?? ''}`;
+  const [aboutOpen, setAboutOpen] = useState(false);
 
   return (
-    <UserMenu
-      icon={
-        // MUI's Button styles its `startIcon` slot with
-        // `.MuiButton-startIcon > *:nth-of-type(1) { font-size: <n> }` —
-        // aimed at sizing a plain SvgIcon, but it matches *any* direct
-        // child, including our Avatar, and its specificity beats a plain
-        // sx class, so it was overriding PersonAvatar's own font-size and
-        // rendering the initials oversized. Wrapping in a span keeps the
-        // Avatar one level deeper, out of that selector's reach.
-        <Box component="span" sx={{ display: 'inline-flex' }}>
-          <PersonAvatar
-            userId={identity ? String(identity.id) : ''}
-            hasPhoto={Boolean(identity?.hasPhoto)}
-            initials={initials}
-            size={32}
-          />
-        </Box>
-      }
-    >
-      {identity && (
-        <Box sx={{ px: 2, py: 1.5, minWidth: 200 }}>
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+    <Fragment>
+      <UserMenu
+        icon={
+          // MUI's Button styles its `startIcon` slot with
+          // `.MuiButton-startIcon > *:nth-of-type(1) { font-size: <n> }` —
+          // aimed at sizing a plain SvgIcon, but it matches *any* direct
+          // child, including our Avatar, and its specificity beats a plain
+          // sx class, so it was overriding PersonAvatar's own font-size and
+          // rendering the initials oversized. Wrapping in a span keeps the
+          // Avatar one level deeper, out of that selector's reach.
+          <Box component="span" sx={{ display: 'inline-flex' }}>
             <PersonAvatar
-              userId={String(identity.id)}
-              hasPhoto={Boolean(identity.hasPhoto)}
+              userId={identity ? String(identity.id) : ''}
+              hasPhoto={Boolean(identity?.hasPhoto)}
               initials={initials}
-              size={40}
+              size={32}
             />
-            <Box sx={{ minWidth: 0 }}>
-              <Box sx={{ fontWeight: 600, fontSize: '0.9375rem' }}>{identity.fullName}</Box>
-              <Box sx={{ fontSize: fontSizeXSmall, color: 'text.secondary' }}>
-                {identityRoleLabel(t, identity.roles)}
+          </Box>
+        }
+      >
+        {identity && (
+          <Box sx={{ px: 2, py: 1.5, minWidth: 200 }}>
+            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+              <PersonAvatar
+                userId={String(identity.id)}
+                hasPhoto={Boolean(identity.hasPhoto)}
+                initials={initials}
+                size={40}
+              />
+              <Box sx={{ minWidth: 0 }}>
+                <Box sx={{ fontWeight: 600, fontSize: '0.9375rem' }}>{identity.fullName}</Box>
+                <Box sx={{ fontSize: fontSizeXSmall, color: 'text.secondary' }}>
+                  {identityRoleLabel(t, identity.roles)}
+                </Box>
               </Box>
             </Box>
           </Box>
-        </Box>
-      )}
-      <Divider />
-      <MyProfileMenuItem />
-      <Divider />
-      <Logout />
-    </UserMenu>
+        )}
+        <Divider />
+        <MyProfileMenuItem />
+        <Divider />
+        <AboutMenuItem onOpen={() => setAboutOpen(true)} />
+        <Logout />
+      </UserMenu>
+      <AboutDialog open={aboutOpen} onClose={() => setAboutOpen(false)} />
+    </Fragment>
   );
 };
 

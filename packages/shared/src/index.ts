@@ -589,6 +589,14 @@ export interface ApiError {
   error: string;
 }
 
+/** `GET /health/version` — the commit this backend was built from, for the About dialog. */
+export interface AppVersionInfo {
+  /** Short commit sha (e.g. `sha-a1b2c3d4`), or `'dev'` outside a CI-built image. */
+  commit: string;
+  /** ISO 8601 commit date, or `null` outside a CI-built image. */
+  commitDate: string | null;
+}
+
 // ─── Vehicles ─────────────────────────────────────────────────────────────────
 
 export enum VehicleType {

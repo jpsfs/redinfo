@@ -66,6 +66,17 @@ RUN pnpm build:seed
 # ─── Production stage ─────────────────────────────────────────────────────────
 FROM node:22-bookworm-slim AS prod
 
+# Commit this image was built from, for the About dialog's GET /health/version
+# (see health.controller.ts). The build context has no .git (.dockerignore
+# excludes it), so these come in as build args from the CI pipeline, which
+# knows Build.SourceVersion — see .ado/deployment.yml. Unset (empty ARG
+# default) for a plain local `docker compose build`, which the controller's
+# own fallback turns into 'dev' / null rather than a stale-looking value.
+ARG GIT_COMMIT_SHA=""
+ARG GIT_COMMIT_DATE=""
+ENV GIT_COMMIT_SHA=$GIT_COMMIT_SHA
+ENV GIT_COMMIT_DATE=$GIT_COMMIT_DATE
+
 RUN corepack enable && corepack prepare pnpm@10.32.1 --activate
 
 RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*

@@ -527,6 +527,15 @@ const MESSAGES = {
   'nav.aiConnections': { pt: 'Assistentes de IA', en: 'AI Assistants' },
   'nav.notices': { pt: 'Gerir avisos', en: 'Manage Notices' },
   'nav.notificationConfig': { pt: 'Notificações', en: 'Notifications' },
+  'nav.about': { pt: 'Acerca de', en: 'About' },
+
+  // ── About dialog (user menu, before Logout) — version/build info for
+  // support purposes. ──
+  'about.title': { pt: 'Acerca do RedInfo', en: 'About RedInfo' },
+  'about.version': { pt: 'Versão', en: 'Version' },
+  'about.builtOn': { pt: 'Compilado em', en: 'Built on' },
+  'about.builtBy': { pt: 'Criado por José Pedro Silva', en: 'Built by José Pedro Silva' },
+  'about.close': { pt: 'Fechar', en: 'Close' },
 
   // ── Resource names — react-admin's `resources.<name>.name`, replacing the
   // `options={{ label }}` prop removed from every `<Resource>` in App.tsx. ──

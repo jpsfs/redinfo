@@ -198,6 +198,9 @@ stages:
 
                 SHORT_SHA="$(shortSha)"
                 BRANCH="$(Build.SourceBranchName)"
+                # HEAD's own commit date — fetchDepth:1 still carries this one
+                # commit's full metadata, just no history behind it.
+                COMMIT_DATE="$(git log -1 --format=%cI)"
 
                 # image -> "dockerfile|target" (target blank = single-stage Dockerfile)
                 declare -A IMAGES=(
@@ -214,6 +217,15 @@ stages:
                     targetArgs=(--target "${target}")
                   fi
 
+                  # Only the backend serves GET /health/version (the About
+                  # dialog's source) — passing these to the other Dockerfiles,
+                  # which don't declare the ARG, would just print buildx's
+                  # "build-arg not consumed" warning for nothing.
+                  buildArgs=()
+                  if [ "${img}" = "backend" ]; then
+                    buildArgs=(--build-arg "GIT_COMMIT_SHA=${SHORT_SHA}" --build-arg "GIT_COMMIT_DATE=${COMMIT_DATE}")
+                  fi
+
                   echo "── Building jpsfs/redinfo-${img} (${dockerfile}${target:+, target ${target}}) ──"
                   # --builder explicit, not ambient "current" state: see the
                   # comment above "Create buildx builder" for why relying on
@@ -222,6 +234,7 @@ stages:
                     --builder redinfo \
                     -f "${dockerfile}" "$(Build.SourcesDirectory)" \
                     "${targetArgs[@]}" \
+                    "${buildArgs[@]}" \
                     --cache-from "type=registry,ref=jpsfs/redinfo-${img}:buildcache" \
                     --cache-to "type=registry,ref=jpsfs/redinfo-${img}:buildcache,mode=max" \
                     --provenance=false --sbom=false \
