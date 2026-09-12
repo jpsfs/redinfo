@@ -41,7 +41,15 @@ import {
 } from './schedules.service';
 
 const ASSIGNMENT_INCLUDE = {
-  user: { select: { id: true, firstName: true, lastName: true, certifications: { select: CERT_HELD_SELECT } } },
+  user: {
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      isPaidStaff: true,
+      certifications: { select: CERT_HELD_SELECT },
+    },
+  },
   role: true,
   assignedBy: { select: { id: true, firstName: true, lastName: true } },
 } as const;
@@ -50,6 +58,7 @@ const PERSON_SELECT = {
   id: true,
   firstName: true,
   lastName: true,
+  isPaidStaff: true,
   certifications: { select: CERT_HELD_SELECT },
 } as const;
 
@@ -172,6 +181,7 @@ export class ScheduleAssignmentsService {
         roleId: role?.id ?? null,
         isOverride: submission === null,
         certificationOverrideReason: meetsRequirement ? null : (overrideReason as string),
+        compensationOverride: dto.compensationOverride ?? null,
         assignedById,
       },
       include: ASSIGNMENT_INCLUDE,

@@ -1762,8 +1762,33 @@ export interface SchedulePerson {
   firstName: string;
   lastName: string;
   isDriver: boolean;
+  /** Paid staff rather than a volunteer (#223) — see `AssignmentCompensationKind` for what this changes about assignment. */
+  isPaidStaff: boolean;
   /** What they hold, for checking a post's `requiredCertification` client-side. */
   certifications: HeldCertification[];
+}
+
+/**
+ * A coordinator's explicit call on whether one *off-the-clock* assignment
+ * counts as volunteering or paid work, overriding the default (#245).
+ * Schedule data alone can say whether a paid staffer was on or off the
+ * clock; it cannot say whether a specific piece of off-clock work was
+ * volunteered or paid overtime — that is a human decision made at
+ * assignment time, not something to infer.
+ *
+ * On-the-clock assignments are never affected by this field: on-clock time
+ * is already paid via salary and never generates volunteer-hours, override
+ * or not — that is #223's original rule and this does not reopen it. The
+ * field only changes anything for an assignment `isOnPaidClock` judges
+ * off-clock: left unset, it generates volunteer-hours by default, same as
+ * any volunteer; `PAID_EXTRA` suppresses that generation instead. A
+ * non-paid-staff assignment is unaffected by clock resolution at all, but
+ * `PAID_EXTRA` still suppresses it — the escape hatch a volunteer's paid
+ * non-urgent-transport stipend (#246) will eventually need.
+ */
+export enum AssignmentCompensationKind {
+  VOLUNTEER = 'VOLUNTEER',
+  PAID_EXTRA = 'PAID_EXTRA',
 }
 
 export interface ScheduleAssignment {
@@ -1793,6 +1818,8 @@ export interface ScheduleAssignment {
    * without a reason — see `CreateScheduleAssignmentRequest.overrideReason`.
    */
   certificationOverrideReason?: string | null;
+  /** See `AssignmentCompensationKind` (#245). Null = default resolution applies. */
+  compensationOverride?: AssignmentCompensationKind | null;
   /**
    * The person put themselves here, on a published schedule.
    *
@@ -1952,6 +1979,11 @@ export interface CreateScheduleAssignmentRequest {
    * ignores it otherwise. Stored as `ScheduleAssignment.certificationOverrideReason`.
    */
   overrideReason?: string;
+  /**
+   * Only meaningful for a paid-staff assignee, and only when off the clock
+   * — see `AssignmentCompensationKind` (#245). Omitted or ignored otherwise.
+   */
+  compensationOverride?: AssignmentCompensationKind;
 }
 
 /** `PUT /schedules/:id/shifts/:date/:slot` — move one shift's hours for this schedule alone. */
@@ -2326,6 +2358,116 @@ export function shiftMandatoryRolesFilled({
     const filled = assignments.filter((a) => a.roleId === role.id).length;
     return filled >= role.mandatoryCount;
   });
+}
+
+// ─── Paid staff schedule (#245) ─────────────────────────────────────────────────
+
+/**
+ * A paid staffer's recurring on-the-clock hours: worked every `dayOfWeek`
+ * from `startMinute` to `endMinute`, for as long as `effectiveFrom`–
+ * `effectiveTo` covers the date in question. `effectiveTo` null means still
+ * current. A contract change is a new block, not an edit to this one — the
+ * old block's `effectiveTo` gets set instead — so a past assignment's
+ * on-clock resolution never rewrites itself under a later change.
+ *
+ * Supersedes #223's blanket `User.isPaidStaff`-only gate: that flag still
+ * marks *who* is paid staff, but no longer decides on its own whether a
+ * given assignment counts as volunteering — see `isOnPaidClock` below.
+ */
+export interface PaidStaffScheduleBlock {
+  id: string;
+  userId: string;
+  /** `Date#getDay()` convention: 0 = Sunday … 6 = Saturday. */
+  dayOfWeek: number;
+  startMinute: number;
+  endMinute: number;
+  /** ISO date. */
+  effectiveFrom: string;
+  /** ISO date, inclusive. Null = still in effect. */
+  effectiveTo?: string | null;
+}
+
+/**
+ * A one-off exception to the recurring pattern for a single date — either a
+ * full day off, or custom hours replacing the pattern for that date alone.
+ * Independent of the staff absence calendar (#224): that records vacation
+ * and sick leave as a durable HR fact, this records an ad-hoc schedule
+ * shuffle ("working the evening instead of the morning today"). A date
+ * carries at most one override; where one exists it wins outright over
+ * every recurring block for that date, never merges with them.
+ */
+export interface PaidStaffScheduleOverride {
+  id: string;
+  userId: string;
+  /** ISO date. */
+  date: string;
+  isOff: boolean;
+  /** Required, and only meaningful, when `isOff` is false. */
+  startMinute?: number | null;
+  endMinute?: number | null;
+  notes?: string | null;
+}
+
+export interface PaidStaffScheduleResponse {
+  userId: string;
+  blocks: PaidStaffScheduleBlock[];
+  overrides: PaidStaffScheduleOverride[];
+}
+
+export interface CreatePaidStaffScheduleBlockRequest {
+  dayOfWeek: number;
+  startMinute: number;
+  endMinute: number;
+  effectiveFrom: string;
+  effectiveTo?: string | null;
+}
+
+export interface CreatePaidStaffScheduleOverrideRequest {
+  date: string;
+  isOff: boolean;
+  startMinute?: number | null;
+  endMinute?: number | null;
+  notes?: string | null;
+}
+
+/** Two half-open minute ranges sharing any time at all, not just an endpoint. */
+function minuteRangesOverlap(aStart: number, aEnd: number, bStart: number, bEnd: number): boolean {
+  return aStart < bEnd && bStart < aEnd;
+}
+
+/**
+ * Whether a paid staffer was on the clock for some `[shiftStartMinute,
+ * shiftEndMinute)` window on `date` — the question `VolunteerHoursService`
+ * asks before generating an entry from a paid-staff assignment (#245). A
+ * date override, if one exists for `date`, wins outright: `isOff` means off
+ * regardless of the recurring pattern, custom hours replace it entirely.
+ * Otherwise every recurring block whose `dayOfWeek` and effective range
+ * cover `date` applies — a split shift is two blocks, not a reason to pick
+ * one. "On the clock" means the shift overlaps the resolved work window at
+ * all, not that it falls entirely inside it: a shift that starts on salaried
+ * time and runs past it was still, in part, worked on the clock.
+ */
+export function isOnPaidClock(
+  blocks: PaidStaffScheduleBlock[],
+  overrides: PaidStaffScheduleOverride[],
+  date: string,
+  shiftStartMinute: number,
+  shiftEndMinute: number,
+): boolean {
+  const override = overrides.find((o) => o.date === date);
+  if (override) {
+    if (override.isOff) return false;
+    if (override.startMinute == null || override.endMinute == null) return false;
+    return minuteRangesOverlap(shiftStartMinute, shiftEndMinute, override.startMinute, override.endMinute);
+  }
+  const dayOfWeek = new Date(`${date}T00:00:00.000Z`).getUTCDay();
+  return blocks.some(
+    (block) =>
+      block.dayOfWeek === dayOfWeek &&
+      block.effectiveFrom <= date &&
+      (!block.effectiveTo || date <= block.effectiveTo) &&
+      minuteRangesOverlap(shiftStartMinute, shiftEndMinute, block.startMinute, block.endMinute),
+  );
 }
 
 // ─── Volunteer hours ────────────────────────────────────────────────────────────
@@ -6284,7 +6426,8 @@ export type ApiErrorCode =
   | 'MATERIAL_ITEM_BARCODE_CONFLICT'
   | 'LAST_SYSTEM_ADMIN'
   | 'INEM_SESSION_NOT_ACTIVE'
-  | 'LIVE_RUN_CLOSE_BLOCKED';
+  | 'LIVE_RUN_CLOSE_BLOCKED'
+  | 'PAID_STAFF_SCHEDULE_INVALID_RANGE';
 
 export interface ApiErrorBody {
   code: ApiErrorCode;

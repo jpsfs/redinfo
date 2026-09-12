@@ -14,9 +14,9 @@ NestJS + Prisma. Read `../shared/CLAUDE.md` first if the feature touches shared 
 **`src/schedules/` is the richest exemplar — copy its shape for a new feature module.**
 
 Current modules: `auth`, `availability`, `event-reports`, `facilities`, `geography`, `health`,
-`inem`, `inventory`, `live-runs`, `notices`, `notifications`, `schedules`, `statistics`, `storage`,
-`users`, `vehicles`, `vehicle-occupancy`, `volunteer-hours`, `prisma`. New modules are wired into
-`src/app.module.ts`.
+`inem`, `inventory`, `live-runs`, `notices`, `notifications`, `paid-staff-schedule`, `schedules`,
+`statistics`, `storage`, `users`, `vehicles`, `vehicle-occupancy`, `volunteer-hours`, `prisma`.
+New modules are wired into `src/app.module.ts`.
 Bootstrap (global `ValidationPipe`, global `ApiErrorFilter`, port 3000) is in `src/main.ts`.
 
 `notifications` is the generic delivery framework (channels, pg-boss queue, org/user
@@ -76,6 +76,10 @@ Model index by domain (names only — grep for fields/relations):
 - **Inventory**: `MaterialItem`, `MaterialItemBarcode`, `InventoryTemplate`, `InventoryTemplateItem`, `VehicleInventoryItem`, `VehicleInventoryAudit`, `StockMovement`
 - **Availability**: `Holiday`, `AvailabilityWindow`, `AvailabilityWindowShift`, `AvailabilityWindowRole`, `AvailabilitySubmission`, `AvailabilityResponse`
 - **Schedules**: `Schedule`, `ScheduleAssignment`, `ScheduleShiftOverride`
+- **Paid staff schedule** (#245): `PaidStaffSchedule` (recurring on-the-clock pattern),
+  `PaidStaffScheduleOverride` (per-date exception) — replaces #223's blanket
+  `User.isPaidStaff`-only volunteer-hours gate with a real schedule; `ScheduleAssignment
+  .compensationOverride` is the per-assignment escape hatch schedule data alone can't resolve
 - **Volunteer hours**: `VolunteerHoursEntry`
 - **Geography**: `Municipality`, `Locality`
 - **Facilities** (#220): `Facility` — hospitals, clinics and private medical facilities, one

@@ -39,14 +39,14 @@ describe('getSummary', () => {
     );
   });
 
-  // #223: paid staff must not appear in this aggregate, consistently with
-  // generation — not just via the generation gate producing no rows for them.
-  it('excludes paid staff from the query', async () => {
+  // #245 superseded #223's blanket exclusion: a paid staffer volunteering
+  // off the clock has a legitimate entry, so no `isPaidStaff` filter belongs
+  // here — eligibility is resolved per assignment at generation time instead.
+  it('does not filter by isPaidStaff — #245 resolves eligibility per assignment, not via a blanket aggregate rule', async () => {
     const { service, prisma } = makeService([]);
     await service.getSummary('2026-10-01', '2026-10-31');
-    expect(prisma.volunteerHoursEntry.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: expect.objectContaining({ user: { isPaidStaff: false } }) }),
-    );
+    const [args] = prisma.volunteerHoursEntry.findMany.mock.calls[0];
+    expect(args.where).not.toHaveProperty('user');
   });
 
   it('splits approved and pending minutes per volunteer', async () => {

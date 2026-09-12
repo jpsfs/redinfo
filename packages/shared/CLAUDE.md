@@ -38,6 +38,7 @@ Don't ask for a list of all exports — grep them.
 | Availability | Windows, shifts, submissions, responses |
 | Window roles | Roles within an availability window |
 | Schedules | Schedule, assignment, shift-override shapes and rules |
+| Paid staff schedule | `PaidStaffScheduleBlock`/`Override`, `isOnPaidClock` (#245) — on/off-clock resolution for `AssignmentCompensationKind` |
 | Volunteer hours | `VolunteerHoursEntry`, exception detection, auto-approval rules |
 | Geography | Municipality, locality location shapes |
 | Facilities | `Facility` shapes — hospitals, clinics, private medical facilities; independent `isEmergencyDestination`/`isTransportDestination` flags, `validateFacility` (#220) |

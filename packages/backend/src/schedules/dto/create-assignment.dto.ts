@@ -1,6 +1,6 @@
-import { IsDateString, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { IsDateString, IsEnum, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { MAX_SHIFTS_PER_DAY } from '@redinfo/shared';
+import { AssignmentCompensationKind, MAX_SHIFTS_PER_DAY } from '@redinfo/shared';
 
 /** A reason typed by hand; long enough to say something, short enough for a chip. */
 export const MAX_OVERRIDE_REASON_LENGTH = 500;
@@ -88,4 +88,14 @@ export class CreateScheduleAssignmentDto {
   @IsString()
   @MaxLength(MAX_OVERRIDE_REASON_LENGTH)
   overrideReason?: string;
+
+  @ApiPropertyOptional({
+    enum: AssignmentCompensationKind,
+    description:
+      'Only meaningful for a paid-staff assignee, and only when off the clock (#245). ' +
+      'Omitted or ignored otherwise.',
+  })
+  @IsOptional()
+  @IsEnum(AssignmentCompensationKind)
+  compensationOverride?: AssignmentCompensationKind;
 }

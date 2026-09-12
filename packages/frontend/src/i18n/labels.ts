@@ -678,6 +678,36 @@ const MESSAGES = {
   'userShow.createdLabel': { pt: 'Criado', en: 'Created' },
   'userShow.updatedLabel': { pt: 'Atualizado', en: 'Updated' },
 
+  // ── Paid staff schedule (#245) ──
+  'userShow.paidStaffScheduleHeading': { pt: 'Horário de trabalho', en: 'Work schedule' },
+  'userShow.paidStaffScheduleHint': {
+    pt: 'Os turnos dentro deste horário nunca geram horas de voluntariado — só os turnos fora dele o fazem, tal como um voluntário.',
+    en: 'Shifts inside this schedule never generate volunteer hours — only shifts outside it do, the same as for a volunteer.',
+  },
+  'userShow.paidStaffScheduleLoadFailed': { pt: 'Não foi possível carregar o horário.', en: 'Could not load the schedule.' },
+  'userShow.scheduleBlocksHeading': { pt: 'Horário recorrente', en: 'Recurring pattern' },
+  'userShow.noScheduleBlocks': { pt: 'Sem horário recorrente definido.', en: 'No recurring pattern set.' },
+  'userShow.addScheduleBlock': { pt: 'Adicionar bloco', en: 'Add block' },
+  'userShow.scheduleBlockDayLabel': { pt: 'Dia da semana', en: 'Day of week' },
+  'userShow.scheduleBlockEffectiveFrom': { pt: 'A partir de', en: 'Effective from' },
+  'userShow.scheduleBlockSave': { pt: 'Guardar bloco', en: 'Save block' },
+  'userShow.scheduleBlockSaved': { pt: 'Bloco guardado', en: 'Block saved' },
+  'userShow.scheduleBlockSaveFailed': { pt: 'Não foi possível guardar o bloco.', en: 'Could not save the block.' },
+  'userShow.scheduleBlockRemoved': { pt: 'Bloco removido', en: 'Block removed' },
+  'userShow.scheduleBlockRemoveFailed': { pt: 'Não foi possível remover o bloco.', en: 'Could not remove the block.' },
+  'userShow.scheduleOverridesHeading': { pt: 'Exceções pontuais', en: 'One-off exceptions' },
+  'userShow.noScheduleOverrides': { pt: 'Sem exceções registadas.', en: 'No exceptions on file.' },
+  'userShow.addScheduleOverride': { pt: 'Adicionar exceção', en: 'Add exception' },
+  'userShow.scheduleOverrideDateLabel': { pt: 'Data', en: 'Date' },
+  'userShow.scheduleOverrideDayOffLabel': { pt: 'Folga', en: 'Day off' },
+  'userShow.scheduleOverrideNotesLabel': { pt: 'Notas', en: 'Notes' },
+  'userShow.scheduleOverrideDayOffChip': { pt: 'Folga', en: 'Day off' },
+  'userShow.scheduleOverrideSave': { pt: 'Guardar exceção', en: 'Save exception' },
+  'userShow.scheduleOverrideSaved': { pt: 'Exceção guardada', en: 'Exception saved' },
+  'userShow.scheduleOverrideSaveFailed': { pt: 'Não foi possível guardar a exceção.', en: 'Could not save the exception.' },
+  'userShow.scheduleOverrideRemoved': { pt: 'Exceção removida', en: 'Exception removed' },
+  'userShow.scheduleOverrideRemoveFailed': { pt: 'Não foi possível remover a exceção.', en: 'Could not remove the exception.' },
+
   'certificationDialog.add': { pt: 'Adicionar certificação', en: 'Add certification' },
   'certificationDialog.edit': { pt: 'Editar certificação', en: 'Edit certification' },
   'certificationDialog.certificationLabel': { pt: 'Certificação', en: 'Certification' },
@@ -1415,6 +1445,10 @@ const MESSAGES = {
   'assignDialog.reasonHelp': {
     pt: 'Aparece na escala e na versão publicada.',
     en: 'Shown on the board and on the published schedule.',
+  },
+  'assignDialog.paidExtraLabel': {
+    pt: 'Contar como horas extra pagas (não gera horas de voluntariado)',
+    en: 'Count as paid extra hours (does not generate volunteer hours)',
   },
   'autofillDialog.title': { pt: 'Preenchimento automático', en: 'Auto-fill draft' },
   'autofillDialog.description': {
@@ -2470,6 +2504,10 @@ const MESSAGES = {
   'apiError.LIVE_RUN_CLOSE_BLOCKED': {
     pt: 'Ainda falta preencher algo obrigatório — vê a lista assinalada nesta página antes de terminar.',
     en: 'Something required is still missing — check the list flagged on this page before finishing.',
+  },
+  'apiError.PAID_STAFF_SCHEDULE_INVALID_RANGE': {
+    pt: 'A hora de fim tem de ser depois da hora de início.',
+    en: 'The end time must be after the start time.',
   },
 
   // ── Calendar headers (#180 phase 5) ──

@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client';
 import {
+  AssignmentCompensationKind,
   AvailabilityWindowCategory,
   UserRole,
   VolunteerHoursStatus,
@@ -13,6 +14,7 @@ import { SchedulesService } from '../schedules/schedules.service';
 import { ScheduleAssignmentsService } from '../schedules/schedule-assignments.service';
 import { VolunteerHoursService } from './volunteer-hours.service';
 import { VolunteerHoursSummaryService } from './volunteer-hours-summary.service';
+import { PaidStaffScheduleService } from '../paid-staff-schedule/paid-staff-schedule.service';
 
 /**
  * Integration coverage for volunteer-hours generation (#164), against a real
@@ -83,6 +85,7 @@ describeIntegration('Volunteer hours module (integration)', () => {
   let assignments: ScheduleAssignmentsService;
   let volunteerHours: VolunteerHoursService;
   let summary: VolunteerHoursSummaryService;
+  let paidStaffSchedule: PaidStaffScheduleService;
 
   let ana: { id: string };
   let bruno: { id: string };
@@ -148,7 +151,8 @@ describeIntegration('Volunteer hours module (integration)', () => {
     windows = new AvailabilityWindowsService(prisma, shiftSchedule);
     schedules = new SchedulesService(prisma, shiftSchedule);
     assignments = new ScheduleAssignmentsService(prisma, schedules, shiftSchedule);
-    volunteerHours = new VolunteerHoursService(prisma, shiftSchedule);
+    paidStaffSchedule = new PaidStaffScheduleService(prisma);
+    volunteerHours = new VolunteerHoursService(prisma, shiftSchedule, paidStaffSchedule);
     summary = new VolunteerHoursSummaryService(prisma, volunteerHours);
 
     [ana, bruno, carla, dario, coordinator] = await Promise.all([
@@ -263,11 +267,24 @@ describeIntegration('Volunteer hours module (integration)', () => {
     expect(entries).toHaveLength(0);
   });
 
-  // #223 — the trap Feature #219 named explicitly: reusing the rota engine
-  // unchanged for paid staff would silently credit them volunteer time.
-  it('integration: a paid staff member on a shift generates nothing, a volunteer on the same shift still does', async () => {
+  // #223 / #245 — the trap Feature #219 named explicitly: reusing the rota
+  // engine unchanged for paid staff would silently credit them volunteer
+  // time. #245 refined the rule to resolve per assignment against the paid
+  // staffer's actual schedule rather than a blanket per-user gate.
+  it('integration: a paid staff member on the clock generates nothing, a volunteer on the same shift still does', async () => {
     const window = await openWindow();
     const schedule = await schedules.create({ windowId: window.id }, coordinator.id);
+
+    // Dario's contracted hours cover this shift (20:00–24:00) on every day of
+    // the week, so he is on the clock for it regardless of which weekday
+    // DAY_ONE lands on.
+    for (let dayOfWeek = 0; dayOfWeek <= 6; dayOfWeek += 1) {
+      await paidStaffSchedule.addBlock(
+        dario.id,
+        { dayOfWeek, startMinute: 1200, endMinute: 1440, effectiveFrom: '2020-01-01' },
+        coordinator.id,
+      );
+    }
 
     await assignments.assign(
       schedule.id,
@@ -295,6 +312,61 @@ describeIntegration('Volunteer hours module (integration)', () => {
 
     const { data: pending } = await volunteerHours.getReviewQueue({});
     expect(pending.some((e) => e.userId === dario.id)).toBe(false);
+
+    // Dario is a shared fixture across this describe block — clean up the
+    // blocks this test added so the next test's "no schedule at all" premise
+    // still holds.
+    await prisma.paidStaffSchedule.deleteMany({ where: { userId: dario.id } });
+  });
+
+  it('integration: a paid staff member off the clock still generates a volunteer-hours entry, same as a volunteer', async () => {
+    const window = await openWindow();
+    const schedule = await schedules.create({ windowId: window.id }, coordinator.id);
+    // No PaidStaffSchedule configured for Dario at all — off the clock by default.
+
+    await assignments.assign(
+      schedule.id,
+      { date: DAY_ONE, slot: 1, userId: ana.id, roleId: roleId(window, 'Driver') },
+      coordinator.id,
+    );
+    await assignments.assign(
+      schedule.id,
+      { date: DAY_ONE, slot: 1, userId: dario.id, roleId: roleId(window, 'Team Leader') },
+      coordinator.id,
+    );
+    await schedules.publish(schedule.id, coordinator.id);
+
+    const darioHours = await volunteerHours.getMyHours(dario.id);
+    expect(darioHours.entries).toHaveLength(1);
+
+    const { data: pending } = await volunteerHours.getReviewQueue({});
+    expect(pending.some((e) => e.userId === dario.id)).toBe(true);
+  });
+
+  it('integration: PAID_EXTRA on the assignment suppresses generation even off the clock', async () => {
+    const window = await openWindow();
+    const schedule = await schedules.create({ windowId: window.id }, coordinator.id);
+
+    await assignments.assign(
+      schedule.id,
+      { date: DAY_ONE, slot: 1, userId: ana.id, roleId: roleId(window, 'Driver') },
+      coordinator.id,
+    );
+    await assignments.assign(
+      schedule.id,
+      {
+        date: DAY_ONE,
+        slot: 1,
+        userId: dario.id,
+        roleId: roleId(window, 'Team Leader'),
+        compensationOverride: AssignmentCompensationKind.PAID_EXTRA,
+      },
+      coordinator.id,
+    );
+    await schedules.publish(schedule.id, coordinator.id);
+
+    const darioHours = await volunteerHours.getMyHours(dario.id);
+    expect(darioHours.entries).toHaveLength(0);
   });
 
   it('integration: a coordinator reviews the queue and corrects an entry', async () => {

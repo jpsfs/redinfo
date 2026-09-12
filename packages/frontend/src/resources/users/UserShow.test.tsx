@@ -157,6 +157,64 @@ describe('UserShow', () => {
   });
 });
 
+// ── Paid staff schedule (#245) ─────────────────────────────────────────────────
+
+describe('UserShow — paid staff schedule', () => {
+  beforeEach(() => {
+    mockApiFetch.mockReset();
+  });
+
+  it('is not shown for a volunteer, and never fetched for one', async () => {
+    renderShow(person({ isPaidStaff: false }));
+
+    await waitFor(() => expect(screen.getAllByText('TAS').length).toBeGreaterThan(0));
+    expect(screen.queryByText('Work schedule')).not.toBeInTheDocument();
+    expect(mockApiFetch).not.toHaveBeenCalled();
+  });
+
+  it('is hidden from someone without MANAGE_PERSONNEL, even for a paid staff member', async () => {
+    renderShow(person({ isPaidStaff: true }), [UserRole.EMERGENCY_OPERATIONAL]);
+
+    await waitFor(() => expect(screen.getAllByText('TAS').length).toBeGreaterThan(0));
+    expect(screen.queryByText('Work schedule')).not.toBeInTheDocument();
+    expect(mockApiFetch).not.toHaveBeenCalled();
+  });
+
+  it("shows a paid staff member's recurring pattern and one-off exceptions", async () => {
+    mockApiFetch.mockResolvedValue({
+      userId: 'u-1',
+      blocks: [
+        { id: 'b1', userId: 'u-1', dayOfWeek: 1, startMinute: 480, endMinute: 960, effectiveFrom: '2026-01-01', effectiveTo: null },
+      ],
+      overrides: [
+        { id: 'o1', userId: 'u-1', date: '2026-10-05', isOff: true, startMinute: null, endMinute: null, notes: null },
+      ],
+    });
+    renderShow(person({ isPaidStaff: true }));
+
+    expect(await screen.findByText('Work schedule')).toBeInTheDocument();
+    expect(await screen.findByText(/08:00–16:00/)).toBeInTheDocument();
+    expect(screen.getByText('2026-10-05')).toBeInTheDocument();
+    expect(screen.getByText('Day off')).toBeInTheDocument();
+  });
+
+  it('adds a recurring block for a paid staff member', async () => {
+    const user = userEvent.setup();
+    mockApiFetch.mockResolvedValue({ userId: 'u-1', blocks: [], overrides: [] });
+    renderShow(person({ isPaidStaff: true }));
+
+    await user.click(await screen.findByRole('button', { name: /add block/i }));
+    await user.click(screen.getByRole('button', { name: /save block/i }));
+
+    await waitFor(() =>
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        '/paid-staff-schedule/u-1/blocks',
+        expect.objectContaining({ method: 'POST' }),
+      ),
+    );
+  });
+});
+
 // ── Photo — a coordinator manages someone else's from their record ────────────
 
 describe('UserShow — photo', () => {

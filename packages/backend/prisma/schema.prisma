@@ -120,6 +120,11 @@ model User {
   assignmentsMade      ScheduleAssignment[]    @relation("ScheduleAssignedBy")
   shiftAdjustmentsMade ScheduleShiftOverride[] @relation("ScheduleShiftAdjustedBy")
 
+  paidStaffSchedule           PaidStaffSchedule[]         @relation("PaidStaffScheduleOwner")
+  paidStaffScheduleCreated    PaidStaffSchedule[]         @relation("PaidStaffScheduleCreatedBy")
+  paidStaffScheduleOverride   PaidStaffScheduleOverride[] @relation("PaidStaffScheduleOverrideOwner")
+  paidStaffScheduleOverrideBy PaidStaffScheduleOverride[] @relation("PaidStaffScheduleOverrideCreatedBy")
+
   eventReportsCreated    EventReport[]           @relation("EventReportCreatedBy")
   eventReportsSubmitted  EventReport[]           @relation("EventReportSubmittedBy")
   eventReportCrew        EventReportCrewMember[]
@@ -716,6 +721,13 @@ enum ScheduleStatus {
   PUBLISHED
 }
 
+/// A coordinator's explicit call on one off-the-clock assignment (#245) — see
+/// the shared enum's doc comment for the full resolution rule.
+enum AssignmentCompensationKind {
+  VOLUNTEER
+  PAID_EXTRA
+}
+
 /// The duty roster built from one availability window.
 ///
 /// One per window, and identified by it: windows of different categories may
@@ -771,6 +783,11 @@ model ScheduleAssignment {
   /// Distinct from `isOverride`, which is about availability, not
   /// certification: an assignment may carry either, both, or neither.
   certificationOverrideReason String?
+  /// A coordinator's explicit volunteer-vs-paid call for this one
+  /// assignment (#245). Null = default resolution against
+  /// `PaidStaffSchedule`/`PaidStaffScheduleOverride` applies; see the shared
+  /// `AssignmentCompensationKind` doc comment for the full rule.
+  compensationOverride        AssignmentCompensationKind?
   assignedById                String
   assignedBy                  User                    @relation("ScheduleAssignedBy", fields: [assignedById], references: [id])
   assignedAt                  DateTime                @default(now())
@@ -837,6 +854,59 @@ model AvailabilityResponse {
 
   @@unique([windowId, userId])
   @@index([windowId])
+}
+
+// ─── Paid staff schedule (#245) ─────────────────────────────────────────────────
+
+/// A paid staffer's recurring on-the-clock hours. Supersedes #223's blanket
+/// `User.isPaidStaff`-only gate for volunteer-hours generation: that flag
+/// still marks *who* is paid staff, this says *when* they are actually on
+/// the clock. A contract change is a new row — the old row's `effectiveTo`
+/// gets set rather than the row edited — so resolving a past assignment's
+/// on-clock status never rewrites itself under a later change.
+model PaidStaffSchedule {
+  id            String    @id @default(cuid())
+  userId        String
+  user          User      @relation("PaidStaffScheduleOwner", fields: [userId], references: [id], onDelete: Cascade)
+  /// `Date#getDay()` convention: 0 = Sunday … 6 = Saturday.
+  dayOfWeek     Int
+  /// Minutes from midnight the block starts, 0–1439.
+  startMinute   Int
+  /// Minutes from midnight it ends, 1–1440 (1440 = midnight).
+  endMinute     Int
+  effectiveFrom DateTime  @db.Date
+  /// Inclusive. Null = still in effect.
+  effectiveTo   DateTime? @db.Date
+  createdById   String
+  createdBy     User      @relation("PaidStaffScheduleCreatedBy", fields: [createdById], references: [id])
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([userId, dayOfWeek])
+}
+
+/// A one-off exception to the recurring pattern for a single date — a full
+/// day off, or custom hours replacing the pattern for that date alone.
+/// Independent of the staff absence calendar (#224): that records vacation
+/// and sick leave as a durable HR fact, this records an ad-hoc schedule
+/// shuffle. Where a row exists for a date it wins outright over every
+/// `PaidStaffSchedule` block for that date — see `isOnPaidClock` (shared).
+model PaidStaffScheduleOverride {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation("PaidStaffScheduleOverrideOwner", fields: [userId], references: [id], onDelete: Cascade)
+  date        DateTime @db.Date
+  isOff       Boolean  @default(false)
+  /// Required, and only meaningful, when `isOff` is false.
+  startMinute Int?
+  endMinute   Int?
+  notes       String?
+  createdById String
+  createdBy   User     @relation("PaidStaffScheduleOverrideCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+
+  /// One override per person per date — a correction edits the existing row.
+  @@unique([userId, date])
 }
 
 // ─── Volunteer hours ────────────────────────────────────────────────────────────

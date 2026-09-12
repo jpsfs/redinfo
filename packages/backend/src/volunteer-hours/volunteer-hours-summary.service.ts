@@ -25,13 +25,14 @@ export class VolunteerHoursSummaryService {
   async getSummary(from: string, to: string): Promise<VolunteerHoursSummaryResponse> {
     await this.volunteerHours.refreshGeneration();
 
+    // No blanket `isPaidStaff` exclusion: #245 resolves eligibility per
+    // assignment against the paid staffer's actual schedule, so any entry
+    // that exists here — a paid staffer's off-the-clock volunteering
+    // included — is legitimate and belongs in the totals.
     const rows = await this.prisma.volunteerHoursEntry.findMany({
-      // Paid staff (#223) are excluded consistently with the review queue,
-      // not just from generation — see `VolunteerHoursService.generateForShift`.
       where: {
         date: { gte: parseIsoDate(from), lte: parseIsoDate(to) },
         deletedAt: null,
-        user: { isPaidStaff: false },
       },
       include: { user: { select: { id: true, firstName: true, lastName: true } } },
     });

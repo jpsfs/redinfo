@@ -3,10 +3,12 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AdminContext, testDataProvider } from 'react-admin';
 import polyglotI18nProvider from 'ra-i18n-polyglot';
+import { AssignmentCompensationKind } from '@redinfo/shared';
 import { messages } from '../../i18n/i18nProvider';
 import { AssignPersonDialog, AssignTarget } from './AssignPersonDialog';
 import { apiFetch } from '../../api';
 import {
+  BRUNO_PERSON,
   CARLA_PERSON,
   EMERGENCY_ROLES,
   SCHEDULE_ID,
@@ -273,5 +275,71 @@ describe('AssignPersonDialog', () => {
   it('renders nothing until a slot is chosen', () => {
     renderDialog({ target: null });
     expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+  });
+
+  // #245 — schedule data alone cannot tell off-clock volunteering apart from
+  // off-clock paid overtime; this checkbox is the coordinator's call.
+  describe('paid staff compensation override (#245)', () => {
+    it('offers no such checkbox for an ordinary volunteer', async () => {
+      renderDialog();
+      await screen.findByText('Bruno Costa');
+      expect(screen.queryByText(/count as paid extra hours/i)).not.toBeInTheDocument();
+    });
+
+    it('offers the checkbox for a paid staff candidate, unchecked by default', async () => {
+      mockApiFetch.mockResolvedValue(
+        scheduleCandidates({
+          available: [
+            {
+              ...BRUNO_PERSON,
+              isPaidStaff: true,
+              availability: 'submitted',
+              submittedForShift: true,
+              alreadyOnShift: false,
+              currentRoleName: null,
+              dutyCount: 1,
+              conflictLabel: null,
+            },
+          ],
+        }),
+      );
+      renderDialog();
+
+      const checkbox = await screen.findByRole('checkbox', { name: /count as paid extra hours/i });
+      expect(checkbox).not.toBeChecked();
+    });
+
+    it('sends PAID_EXTRA when the checkbox is ticked before assigning', async () => {
+      mockApiFetch.mockResolvedValue(
+        scheduleCandidates({
+          available: [
+            {
+              ...BRUNO_PERSON,
+              isPaidStaff: true,
+              availability: 'submitted',
+              submittedForShift: true,
+              alreadyOnShift: false,
+              currentRoleName: null,
+              dutyCount: 1,
+              conflictLabel: null,
+            },
+          ],
+        }),
+      );
+      const user = userEvent.setup();
+      renderDialog();
+
+      await user.click(await screen.findByRole('checkbox', { name: /count as paid extra hours/i }));
+      await user.click(screen.getByRole('button', { name: 'Assign' }));
+
+      await waitFor(() =>
+        expect(mockApiFetch).toHaveBeenCalledWith(
+          `/schedules/${SCHEDULE_ID}/assignments`,
+          expect.objectContaining({
+            body: expect.objectContaining({ compensationOverride: AssignmentCompensationKind.PAID_EXTRA }),
+          }),
+        ),
+      );
+    });
   });
 });

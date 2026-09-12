@@ -3,6 +3,7 @@ import {
   Alert,
   Box,
   Button,
+  Checkbox,
   Chip,
   CircularProgress,
   Collapse,
@@ -11,6 +12,7 @@ import {
   DialogContent,
   DialogTitle,
   Divider,
+  FormControlLabel,
   Stack,
   TextField,
   Typography,
@@ -18,9 +20,11 @@ import {
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import ExpandLessIcon from '@mui/icons-material/ExpandLess';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
+import PaidIcon from '@mui/icons-material/Paid';
 import SwapHorizIcon from '@mui/icons-material/SwapHoriz';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import {
+  AssignmentCompensationKind,
   AvailabilityWindowRole,
   CertificationType,
   formatRoleCapacity,
@@ -74,12 +78,16 @@ const CandidateRow = ({
   person,
   role,
   override,
+  paidExtra,
+  onTogglePaidExtra,
   onAssign,
   busy,
 }: {
   person: ScheduleCandidate;
   role: AvailabilityWindowRole | null;
   override: boolean;
+  paidExtra: boolean;
+  onTogglePaidExtra: () => void;
   onAssign: () => void;
   busy: boolean;
 }) => {
@@ -131,6 +139,21 @@ const CandidateRow = ({
           <Typography variant="caption" color="text.secondary">
             {note}
           </Typography>
+        )}
+        {/*
+          Only meaningful for paid staff, and only when this assignment turns
+          out to be off the clock (#245) — schedule data alone cannot tell
+          apart off-clock volunteering from off-clock paid overtime, so this
+          is the coordinator's call, made once, here.
+        */}
+        {person.isPaidStaff && (
+          <FormControlLabel
+            sx={{ mt: 0.25, ml: 0 }}
+            control={
+              <Checkbox size="small" checked={paidExtra} onChange={onTogglePaidExtra} icon={<PaidIcon fontSize="small" />} checkedIcon={<PaidIcon fontSize="small" color="warning" />} />
+            }
+            label={<Typography variant="caption">{t('assignDialog.paidExtraLabel')}</Typography>}
+          />
         )}
       </Box>
       <Button
@@ -186,6 +209,16 @@ export const AssignPersonDialog = ({
   const [busy, setBusy] = useState(false);
   const [pendingOverride, setPendingOverride] = useState<ScheduleCandidate | null>(null);
   const [overrideReason, setOverrideReason] = useState('');
+  const [paidExtraIds, setPaidExtraIds] = useState<Set<string>>(new Set());
+
+  const togglePaidExtra = (personId: string) => {
+    setPaidExtraIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(personId)) next.delete(personId);
+      else next.add(personId);
+      return next;
+    });
+  };
 
   const load = useCallback(async () => {
     if (!target) return;
@@ -221,6 +254,7 @@ export const AssignPersonDialog = ({
     setCandidates(null);
     setPendingOverride(null);
     setOverrideReason('');
+    setPaidExtraIds(new Set());
     void load();
   }, [load]);
 
@@ -237,6 +271,9 @@ export const AssignPersonDialog = ({
           userId: person.id,
           ...(target.role ? { roleId: target.role.id } : {}),
           ...(reason ? { overrideReason: reason } : {}),
+          ...(paidExtraIds.has(person.id)
+            ? { compensationOverride: AssignmentCompensationKind.PAID_EXTRA }
+            : {}),
         },
       });
       setPendingOverride(null);
@@ -337,6 +374,8 @@ export const AssignPersonDialog = ({
                       person={person}
                       role={target.role}
                       override={false}
+                      paidExtra={paidExtraIds.has(person.id)}
+                      onTogglePaidExtra={() => togglePaidExtra(person.id)}
                       busy={busy}
                       onAssign={() => requestAssign(person)}
                     />
@@ -367,6 +406,8 @@ export const AssignPersonDialog = ({
                     person={person}
                     role={target.role}
                     override
+                    paidExtra={paidExtraIds.has(person.id)}
+                    onTogglePaidExtra={() => togglePaidExtra(person.id)}
                     busy={busy}
                     onAssign={() => requestAssign(person)}
                   />

@@ -11,6 +11,7 @@ import {
 import {
   Action,
   AdjustScheduleShiftResponse,
+  AssignmentCompensationKind,
   AvailabilityWindow,
   AvailabilityWindowCategory,
   AvailabilityWindowRole,
@@ -53,7 +54,7 @@ import { serializeWindow } from '../availability/availability-windows.service';
 import { toIsoDate } from '../utils/date.util';
 import {
   CERT_HELD_SELECT,
-  HeldCertificationRow,
+  PersonCertRow,
   computeIsDriver,
   today,
   toHeldCertifications,
@@ -77,7 +78,15 @@ const SCHEDULE_INCLUDE = {
 } as const;
 
 const ASSIGNMENT_INCLUDE = {
-  user: { select: { id: true, firstName: true, lastName: true, certifications: { select: CERT_HELD_SELECT } } },
+  user: {
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      isPaidStaff: true,
+      certifications: { select: CERT_HELD_SELECT },
+    },
+  },
   role: true,
   assignedBy: ACTOR_SELECT,
 } as const;
@@ -1229,11 +1238,15 @@ export function serializeAssignment(
     scheduleId: string;
     slot: number;
     userId: string;
-    user: { id: string; firstName: string; lastName: string; certifications: HeldCertificationRow[] };
+    user: PersonCertRow;
     roleId: string | null;
     role?: { name: string } | null;
     isOverride: boolean;
     certificationOverrideReason?: string | null;
+    // Template-literal, not the nominal shared enum — Prisma generates its own
+    // `$Enums.AssignmentCompensationKind` for query results, the same trick
+    // `HeldCertificationRow.type` uses (see that type's own doc comment).
+    compensationOverride?: `${AssignmentCompensationKind}` | null;
     assignedById: string;
     assignedBy?: { id: string; firstName: string; lastName: string } | null;
     assignedAt: Date;
@@ -1252,6 +1265,7 @@ export function serializeAssignment(
     roleName: row.role?.name ?? null,
     isOverride: row.isOverride,
     certificationOverrideReason: row.certificationOverrideReason ?? null,
+    compensationOverride: (row.compensationOverride as AssignmentCompensationKind | null | undefined) ?? null,
     // Derived, not stored: an override is something done *to* someone, so
     // a volunteer who put themselves forward must not read as one.
     selfAssigned: row.assignedById === row.userId,

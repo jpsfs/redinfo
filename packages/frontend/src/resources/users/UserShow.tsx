@@ -33,6 +33,7 @@ import { certificationLabel } from '../../i18n/labels';
 import { useT } from '../../i18n/useT';
 import { toIsoDate } from '../../utils/dates';
 import { CertificationDialog } from './CertificationDialog';
+import { PaidStaffSchedulePanel } from './PaidStaffSchedulePanel';
 
 const InfoRow = ({ label, value }: { label: string; value?: string | null }) => (
   <Box sx={{ display: 'flex', gap: 2, py: 0.75, borderBottom: '1px solid', borderColor: 'divider' }}>
@@ -411,6 +412,8 @@ export const UserShow = () => {
         </Paper>
 
         <CertificationsPanel />
+
+        <PaidStaffSchedulePanel />
 
         <Paper variant="outlined" sx={{ p: 2 }}>
           <Typography variant="subtitle2" sx={{ mb: 1 }}>

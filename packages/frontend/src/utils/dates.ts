@@ -101,6 +101,11 @@ export function weekdayLabels(t: Translate): string[] {
   return WEEKDAY_KEYS.map((key) => t(`date.weekday.${key}`));
 }
 
+/** One weekday abbreviation, `Date#getDay()`'s convention (0 = Sunday). */
+export function weekdayAbbreviation(t: Translate, dayOfWeek: number): string {
+  return t(`date.weekday.${WEEKDAY_KEYS[(dayOfWeek + 6) % 7]}`);
+}
+
 /**
  * January … December, for `EmergencyWindowDialog`'s month picker —
  * deliberately the untranslated canonical list, not `i18n/labels.ts`'s

@@ -32,6 +32,7 @@ import { SchedulesService } from '../src/schedules/schedules.service';
 import { ScheduleAssignmentsService } from '../src/schedules/schedule-assignments.service';
 import { ScheduleAutofillService } from '../src/schedules/schedule-autofill.service';
 import { VolunteerHoursService } from '../src/volunteer-hours/volunteer-hours.service';
+import { PaidStaffScheduleService } from '../src/paid-staff-schedule/paid-staff-schedule.service';
 import { EventReportsService } from '../src/event-reports/event-reports.service';
 import { EventReportNumbering } from '../src/event-reports/event-report-numbering';
 import { StockMovementsService } from '../src/inventory/stock-movements.service';
@@ -604,7 +605,19 @@ async function main() {
   const schedules = new SchedulesService(prisma, shiftSchedule);
   const assignments = new ScheduleAssignmentsService(prisma, schedules, shiftSchedule);
   const autofill = new ScheduleAutofillService(prisma, schedules);
-  const volunteerHours = new VolunteerHoursService(prisma, shiftSchedule);
+  const paidStaffSchedule = new PaidStaffScheduleService(prisma);
+  const volunteerHours = new VolunteerHoursService(prisma, shiftSchedule, paidStaffSchedule);
+
+  // #245 — Tiago's contracted hours, so a shift that falls inside them
+  // generates nothing while one outside them still credits him like any
+  // volunteer. Monday–Friday, office hours, open-ended.
+  for (let dayOfWeek = 1; dayOfWeek <= 5; dayOfWeek += 1) {
+    await paidStaffSchedule.addBlock(
+      tiago.id,
+      { dayOfWeek, startMinute: toMinuteOfDay(8), endMinute: toMinuteOfDay(16), effectiveFrom: '2020-01-01' },
+      admin.id,
+    );
+  }
 
   // How often each person declares themselves available, as "every `cycle`th
   // day, offset by `offset`" — enough to leave some shifts short-staffed (a

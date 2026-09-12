@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, NotFoundException } from '@nestjs/comm
 import { Prisma } from '@prisma/client';
 import {
   ApproveVolunteerHoursBatchResponse,
+  AssignmentCompensationKind,
   AvailabilityWindowCategory,
   CreateBulkVolunteerHoursRequest,
   CreateBulkVolunteerHoursResponse,
@@ -36,6 +37,7 @@ import {
 } from '@redinfo/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { ShiftScheduleService } from '../availability/shift-schedule.service';
+import { PaidStaffScheduleService } from '../paid-staff-schedule/paid-staff-schedule.service';
 import { shiftKey } from '../schedules/schedules.service';
 import { parseIsoDate, toIsoDate } from '../utils/date.util';
 import { shiftBoundaryToInstant } from '../utils/timezone.util';
@@ -81,6 +83,7 @@ export class VolunteerHoursService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly shiftSchedule: ShiftScheduleService,
+    private readonly paidStaffSchedule: PaidStaffScheduleService,
   ) {}
 
   // ── Self-service ──────────────────────────────────────────────────────────
@@ -259,6 +262,11 @@ export class VolunteerHoursService {
    * list. Counts are computed over the current status/range/search scope but
    * *ignoring* `flag`/`source`, so each filter chip can show how many
    * entries it would reveal without the query re-running per chip.
+   *
+   * No blanket `isPaidStaff` exclusion here: #245 replaced #223's blanket
+   * per-user gate with per-assignment resolution against the paid staffer's
+   * actual schedule, so a paid staffer volunteering off the clock has a
+   * perfectly legitimate entry to review, the same as anyone else's.
    */
   async getReviewQueue(query: ReviewVolunteerHoursQueryDto): Promise<VolunteerHoursReviewResponse> {
     await this.refreshGeneration();
@@ -274,9 +282,6 @@ export class VolunteerHoursService {
     const scopeWhere: Prisma.VolunteerHoursEntryWhereInput = {
       deletedAt: null,
       status,
-      // Paid staff (#223) never belong in the review queue, even if a
-      // manual/bulk entry was logged for one before or after the flag was set.
-      user: { isPaidStaff: false },
       ...(dateRange ? { date: dateRange } : {}),
       ...(search
         ? {
@@ -667,18 +672,8 @@ export class VolunteerHoursService {
       select: { assignmentId: true },
     });
     const alreadyGenerated = new Set(missing.map((m) => m.assignmentId));
-    // Paid staff (#223) still count towards `shiftMandatoryRolesFilled` below
-    // — the shift ran either way — but never get a volunteer-hours entry of
-    // their own.
-    const paidStaff = await this.prisma.user.findMany({
-      where: { id: { in: assignments.map((a) => a.userId) } },
-      select: { id: true, isPaidStaff: true },
-    });
-    const paidStaffIds = new Set(paidStaff.filter((u) => u.isPaidStaff).map((u) => u.id));
-    const toGenerate = assignments.filter(
-      (a) => !alreadyGenerated.has(a.id) && !paidStaffIds.has(a.userId),
-    );
-    if (toGenerate.length === 0) return;
+    const notYetGenerated = assignments.filter((a) => !alreadyGenerated.has(a.id));
+    if (notYetGenerated.length === 0) return;
 
     const schedule = await this.prisma.schedule.findUnique({
       where: { id: scheduleId },
@@ -711,6 +706,35 @@ export class VolunteerHoursService {
     // A shift the window's own grid no longer describes cannot be timed —
     // nothing to generate rather than inventing hours.
     if (!shift) return;
+
+    // Paid staff (#223) counted towards `shiftMandatoryRolesFilled` above —
+    // the shift ran either way — but #245 replaced the old blanket
+    // per-user gate with a per-assignment resolution against their actual
+    // schedule: on the clock generates nothing (already paid via salary);
+    // off the clock generates a volunteer-hours entry by default, same as
+    // any volunteer, unless the coordinator explicitly classified this one
+    // assignment `PAID_EXTRA`. A non-paid-staff assignment is unaffected by
+    // clock resolution, but `PAID_EXTRA` still suppresses it either way.
+    const paidStaff = await this.prisma.user.findMany({
+      where: { id: { in: notYetGenerated.map((a) => a.userId) } },
+      select: { id: true, isPaidStaff: true },
+    });
+    const paidStaffIds = new Set(paidStaff.filter((u) => u.isPaidStaff).map((u) => u.id));
+    const toGenerate: typeof notYetGenerated = [];
+    for (const assignment of notYetGenerated) {
+      if (assignment.compensationOverride === AssignmentCompensationKind.PAID_EXTRA) continue;
+      if (paidStaffIds.has(assignment.userId)) {
+        const onClock = await this.paidStaffSchedule.isOnClock(
+          assignment.userId,
+          date,
+          shift.startMinute,
+          shift.endMinute,
+        );
+        if (onClock) continue;
+      }
+      toGenerate.push(assignment);
+    }
+    if (toGenerate.length === 0) return;
 
     const baselineMinutes = shift.endMinute - shift.startMinute;
     const category = window.category as AvailabilityWindowCategory;

@@ -313,9 +313,19 @@ function buildPrisma({
   return prisma;
 }
 
-function makeService(prisma = buildPrisma(), pattern = PATTERN) {
+/**
+ * `onClockUserIds` stands in for `PaidStaffScheduleService.isOnClock` (#245)
+ * — a test lists the paid-staff ids that should be judged on the clock for
+ * whatever shift is in play; everyone else resolves off the clock.
+ */
+function makeService(prisma = buildPrisma(), pattern = PATTERN, onClockUserIds: string[] = []) {
   const shiftSchedule = { getPatternForWindow: jest.fn().mockResolvedValue(pattern) };
-  return { service: new VolunteerHoursService(prisma as never, shiftSchedule as never), prisma };
+  const paidStaffSchedule = { isOnClock: jest.fn(async (userId: string) => onClockUserIds.includes(userId)) };
+  return {
+    service: new VolunteerHoursService(prisma as never, shiftSchedule as never, paidStaffSchedule as never),
+    prisma,
+    paidStaffSchedule,
+  };
 }
 
 describe('generation', () => {
@@ -363,32 +373,90 @@ describe('generation', () => {
     expect(prisma.entryTable.create).toHaveBeenCalledTimes(2);
   });
 
-  // #223 — the trap Feature #219 named explicitly: reusing the rota engine
-  // unchanged for paid staff would silently credit them volunteer time.
-  it('generates nothing for a paid staff member, but still generates for a volunteer on the same shift', async () => {
-    const schedule = SCHEDULE({
-      window: WINDOW({ category: 'EMERGENCY', roles: [DRIVER_ROLE, MEMBER_ROLE] }),
+  // #223 / #245 — the trap Feature #219 named explicitly: reusing the rota
+  // engine unchanged for paid staff would silently credit them volunteer
+  // time. #245 refined the rule from a blanket per-user gate to a
+  // per-assignment resolution against the paid staffer's actual schedule.
+  describe('paid staff (#245)', () => {
+    const EMERGENCY_SCHEDULE = () =>
+      SCHEDULE({ window: WINDOW({ category: 'EMERGENCY', roles: [DRIVER_ROLE, MEMBER_ROLE] }) });
+
+    it('generates nothing for a paid staff member on the clock, but still generates for a volunteer on the same shift', async () => {
+      const schedule = EMERGENCY_SCHEDULE();
+      const assignments = [
+        ASSIGNMENT({ id: 'a-paid', userId: 'u-paid', roleId: DRIVER_ROLE.id }),
+        ASSIGNMENT({ id: 'a-volunteer', userId: 'u-volunteer', roleId: MEMBER_ROLE.id }),
+      ];
+      const { service, prisma } = makeService(
+        buildPrisma({
+          schedule,
+          assignments,
+          activeUserIds: ['u-paid', 'u-volunteer'],
+          paidStaffUserIds: ['u-paid'],
+        }),
+        PATTERN,
+        ['u-paid'], // on the clock for this shift
+      );
+
+      const { entries: paidEntries } = await service.getMyHours('u-paid');
+      const { entries: volunteerEntries } = await service.getMyHours('u-volunteer');
+
+      expect(paidEntries).toHaveLength(0);
+      expect(volunteerEntries).toHaveLength(1);
+      expect(prisma.entryTable.create).toHaveBeenCalledTimes(1);
+      expect(prisma.entryTable.rows[0]).toMatchObject({ userId: 'u-volunteer' });
     });
-    const assignments = [
-      ASSIGNMENT({ id: 'a-paid', userId: 'u-paid', roleId: DRIVER_ROLE.id }),
-      ASSIGNMENT({ id: 'a-volunteer', userId: 'u-volunteer', roleId: MEMBER_ROLE.id }),
-    ];
-    const { service, prisma } = makeService(
-      buildPrisma({
-        schedule,
-        assignments,
-        activeUserIds: ['u-paid', 'u-volunteer'],
-        paidStaffUserIds: ['u-paid'],
-      }),
-    );
 
-    const { entries: paidEntries } = await service.getMyHours('u-paid');
-    const { entries: volunteerEntries } = await service.getMyHours('u-volunteer');
+    it('generates a volunteer-hours entry for a paid staff member off the clock, same as any volunteer', async () => {
+      const schedule = EMERGENCY_SCHEDULE();
+      const assignments = [ASSIGNMENT({ id: 'a-paid', userId: 'u-paid', roleId: DRIVER_ROLE.id })];
+      const { service, prisma, paidStaffSchedule } = makeService(
+        buildPrisma({
+          schedule,
+          assignments,
+          activeUserIds: ['u-paid'],
+          paidStaffUserIds: ['u-paid'],
+        }),
+        PATTERN,
+        [], // nobody on the clock for this shift
+      );
 
-    expect(paidEntries).toHaveLength(0);
-    expect(volunteerEntries).toHaveLength(1);
-    expect(prisma.entryTable.create).toHaveBeenCalledTimes(1);
-    expect(prisma.entryTable.rows[0]).toMatchObject({ userId: 'u-volunteer' });
+      const { entries } = await service.getMyHours('u-paid');
+
+      expect(entries).toHaveLength(1);
+      expect(prisma.entryTable.create).toHaveBeenCalledTimes(1);
+      expect(paidStaffSchedule.isOnClock).toHaveBeenCalledWith('u-paid', '2026-10-01', 1200, 1440);
+    });
+
+    it('suppresses generation for an off-clock assignment explicitly classified PAID_EXTRA', async () => {
+      const schedule = EMERGENCY_SCHEDULE();
+      const assignments = [
+        ASSIGNMENT({ id: 'a-paid', userId: 'u-paid', roleId: DRIVER_ROLE.id, compensationOverride: 'PAID_EXTRA' }),
+      ];
+      const { service, prisma } = makeService(
+        buildPrisma({ schedule, assignments, activeUserIds: ['u-paid'], paidStaffUserIds: ['u-paid'] }),
+        PATTERN,
+        [],
+      );
+
+      const { entries } = await service.getMyHours('u-paid');
+
+      expect(entries).toHaveLength(0);
+      expect(prisma.entryTable.create).not.toHaveBeenCalled();
+    });
+
+    it('PAID_EXTRA suppresses generation for a non-paid-staff assignment too', async () => {
+      const schedule = EMERGENCY_SCHEDULE();
+      const assignments = [
+        ASSIGNMENT({ id: 'a-vol', userId: 'u-volunteer', roleId: DRIVER_ROLE.id, compensationOverride: 'PAID_EXTRA' }),
+      ];
+      const { service, prisma } = makeService(buildPrisma({ schedule, assignments }));
+
+      const { entries } = await service.getMyHours('u-volunteer');
+
+      expect(entries).toHaveLength(0);
+      expect(prisma.entryTable.create).not.toHaveBeenCalled();
+    });
   });
 
   it('credits and flags RAN_OVER from a submitted report that ran past the shift end', async () => {
@@ -866,7 +934,7 @@ describe('getReviewQueue', () => {
     expect(scheduledOnly.data).toHaveLength(1);
   });
 
-  it('excludes paid staff (#223) even for a manually logged entry, consistently with generation', async () => {
+  it('includes a paid staff member’s manually logged entry (#245 — no blanket isPaidStaff exclusion)', async () => {
     const { service } = makeService(
       buildPrisma({ assignments: [], paidStaffUserIds: ['u-paid'] }),
     );
@@ -883,7 +951,7 @@ describe('getReviewQueue', () => {
 
     const result = await service.getReviewQueue({});
 
-    expect(result.data.map((e) => e.userId)).toEqual(['u-volunteer']);
+    expect(result.data.map((e) => e.userId).sort()).toEqual(['u-paid', 'u-volunteer']);
   });
 
   it('search matches the description', async () => {

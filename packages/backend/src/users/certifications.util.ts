@@ -51,11 +51,13 @@ export function computeIsActiveEmergencyOperational(
   return sharedIsActiveEmergencyOperational(toHeldCertifications(rows), asOf);
 }
 
-/** A Prisma row carrying id/firstName/lastName plus held certifications. */
+/** A Prisma row carrying id/firstName/lastName/isPaidStaff plus held certifications. */
 export interface PersonCertRow {
   id: string;
   firstName: string;
   lastName: string;
+  /** Paid staff rather than a volunteer (#223) — see `SchedulePerson.isPaidStaff`. */
+  isPaidStaff: boolean;
   certifications: HeldCertificationRow[];
 }
 
@@ -66,6 +68,7 @@ export function toSchedulePerson(row: PersonCertRow, asOf: string = today()): Sc
     firstName: row.firstName,
     lastName: row.lastName,
     isDriver: computeIsDriver(row.certifications, asOf),
+    isPaidStaff: row.isPaidStaff,
     certifications: toHeldCertifications(row.certifications),
   };
 }

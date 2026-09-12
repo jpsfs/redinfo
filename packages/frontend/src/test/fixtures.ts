@@ -283,6 +283,7 @@ const person = (from: AvailabilityMatrixPerson): SchedulePerson => ({
   firstName: from.firstName,
   lastName: from.lastName,
   isDriver: from.isDriver,
+  isPaidStaff: false,
   certifications: from.isDriver ? [{ type: CertificationType.DRIVER, validUntil: null }] : [],
 });
 

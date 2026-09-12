@@ -36,11 +36,11 @@ const renderDialog = () =>
     </AdminContext>,
   );
 
-// #223 — a paid staff member never accrues volunteer-hours credit, so
-// offering one in this picker would just produce an entry that vanishes
-// from every screen that reads it back (review queue, summary).
-describe('BulkHoursDialog — paid staff exclusion (#223)', () => {
-  it('excludes a paid staff member from the volunteer picker, but keeps a volunteer', async () => {
+// #245 — a paid staffer can still volunteer off the clock, so the picker
+// must not hide them by a blanket isPaidStaff rule (that would just be
+// #223's superseded assumption re-appearing in the UI).
+describe('BulkHoursDialog — volunteer picker (#245)', () => {
+  it('offers a paid staff member alongside a volunteer, not just the volunteer', async () => {
     mockApiFetch.mockResolvedValue({
       data: [
         person({ id: 'u-paid', firstName: 'Paula', lastName: 'Paid', isPaidStaff: true }),
@@ -52,6 +52,6 @@ describe('BulkHoursDialog — paid staff exclusion (#223)', () => {
     renderDialog();
 
     await waitFor(() => expect(screen.getByText('Vera Volunteer')).toBeInTheDocument());
-    expect(screen.queryByText('Paula Paid')).not.toBeInTheDocument();
+    expect(screen.getByText('Paula Paid')).toBeInTheDocument();
   });
 });

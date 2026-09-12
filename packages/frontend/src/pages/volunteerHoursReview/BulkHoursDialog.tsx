@@ -89,12 +89,12 @@ export const BulkHoursDialog = ({ open, onClose, onSuccess }: BulkHoursDialogPro
     setLoadError(null);
 
     setVolunteers(null);
+    // No paid-staff exclusion here: #245 resolves volunteer-vs-paid per
+    // assignment against the paid staffer's actual schedule, not by a
+    // blanket per-person rule, so a paid staffer volunteering off the clock
+    // is as legitimate a pick here as anyone else.
     apiFetch<{ data: User[]; total: number }>('/users?isActive=true&perPage=500')
-      // Paid staff (#223) never accrue volunteer-hours credit, so a
-      // bulk-logged entry for one would just vanish from every screen that
-      // reads it back — excluded here rather than let a coordinator hit that
-      // surprise after saving.
-      .then((result) => setVolunteers(result.data.filter((person) => !person.isPaidStaff)))
+      .then((result) => setVolunteers(result.data))
       .catch((e) => setLoadError(e instanceof Error ? e.message : t('bulkHours.loadVolunteersFailed')));
   }, [open, t]);
 
