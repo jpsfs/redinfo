@@ -16,6 +16,7 @@ import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import { useIntlLocale } from '../../i18n/useIntlLocale';
 import { useT } from '../../i18n/useT';
+import { VehicleCapacityChip } from './VehicleCapacityChip';
 
 const DAYS_WARN = 30;
 
@@ -118,6 +119,7 @@ export const VehicleList = () => {
         <VehicleTypeField />
         <TextField source="manufacturer" emptyText="—" />
         <TextField source="model" emptyText="—" />
+        <VehicleCapacityChip />
         <DateAlertField source="insuranceRenewalDate" />
         <DateAlertField source="nextImtInspectionDate" />
         <DateField source="createdAt" showTime />

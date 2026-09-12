@@ -624,6 +624,15 @@ export const PT_LICENSE_PLATE_REGEX =
  */
 export const normalizeLicensePlate = (plate: string): string => plate.toUpperCase().replace(/[^A-Z0-9]/g, '');
 
+/**
+ * Upper bounds for `Vehicle`'s physical-configuration fields (#221) — sanity
+ * caps on manual entry, not a real-world fleet limit. Shared so the frontend
+ * form and the backend DTO enforce the same numbers.
+ */
+export const MAX_VEHICLE_SEATED_CAPACITY = 20;
+export const MAX_VEHICLE_WHEELCHAIR_POSITIONS = 4;
+export const MAX_VEHICLE_STRETCHER_POSITIONS = 4;
+
 export interface MaintenanceEntry {
   id: string;
   vehicleId: string;
@@ -647,6 +656,12 @@ export interface Vehicle {
   manufacturer?: string | null;
   model?: string | null;
   notes?: string | null;
+  /** Seats for ambulatory passengers. */
+  seatedCapacity: number;
+  /** 0, 1 or 2 depending on the vehicle — a hard constraint on which patients can share a trip. */
+  wheelchairPositions: number;
+  stretcherPositions: number;
+  hasRampOrLift: boolean;
   isDeleted: boolean;
   createdAt: string;
   updatedAt: string;

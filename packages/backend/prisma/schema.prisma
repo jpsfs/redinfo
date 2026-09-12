@@ -328,6 +328,10 @@ model Vehicle {
   manufacturer          String?
   model                 String?
   notes                 String?
+  seatedCapacity        Int         @default(0)
+  wheelchairPositions   Int         @default(0)
+  stretcherPositions    Int         @default(0)
+  hasRampOrLift         Boolean     @default(false)
   isDeleted             Boolean     @default(false)
   createdAt             DateTime    @default(now())
   updatedAt             DateTime    @updatedAt

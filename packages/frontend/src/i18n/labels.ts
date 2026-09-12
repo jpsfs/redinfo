@@ -714,6 +714,21 @@ const MESSAGES = {
   'resources.vehicles.fields.createdAt': { pt: 'Criado', en: 'Created' },
   'resources.vehicles.fields.updatedAt': { pt: 'Última atualização', en: 'Last Updated' },
 
+  // ── Vehicle physical configuration (#221) ──
+  'resources.vehicles.fields.seatedCapacity': { pt: 'Lugares sentados', en: 'Seated Capacity' },
+  'resources.vehicles.fields.wheelchairPositions': {
+    pt: 'Lugares para cadeira de rodas',
+    en: 'Wheelchair Positions',
+  },
+  'resources.vehicles.fields.stretcherPositions': {
+    pt: 'Lugares para maca',
+    en: 'Stretcher Positions',
+  },
+  'resources.vehicles.fields.hasRampOrLift': { pt: 'Rampa ou elevador', en: 'Ramp or Lift' },
+  'vehicleForm.configurationHeading': { pt: 'Configuração', en: 'Configuration' },
+  'vehicleCapacity.seats': { pt: '%{count} lugares', en: '%{count} seats' },
+  'vehicleCapacity.ramp': { pt: 'rampa', en: 'ramp' },
+
   'vehicleForm.licensePlateInvalid': {
     pt: 'Tem de ser uma matrícula portuguesa válida: AA-99-99, 99-99-AA, 99-AA-99 ou AA-99-AA',
     en: 'Must be a valid Portuguese plate: AA-99-99, 99-99-AA, 99-AA-99 or AA-99-AA',

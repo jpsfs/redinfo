@@ -4,9 +4,17 @@ import {
   TextInput,
   SelectInput,
   DateInput,
+  NumberInput,
+  BooleanInput,
   required,
   regex,
 } from 'react-admin';
+import { Divider, Typography } from '@mui/material';
+import {
+  MAX_VEHICLE_SEATED_CAPACITY,
+  MAX_VEHICLE_WHEELCHAIR_POSITIONS,
+  MAX_VEHICLE_STRETCHER_POSITIONS,
+} from '@redinfo/shared';
 import { useT } from '../../i18n/useT';
 
 const PT_LICENSE_PLATE_REGEX =
@@ -41,6 +49,31 @@ export const VehicleCreate = () => {
         <TextInput source="manufacturer" fullWidth />
         <TextInput source="model" fullWidth />
         <TextInput source="notes" multiline rows={3} fullWidth />
+
+        <Divider sx={{ width: '100%', my: 2 }} />
+        <Typography variant="subtitle2">{t('vehicleForm.configurationHeading')}</Typography>
+        <NumberInput
+          source="seatedCapacity"
+          min={0}
+          max={MAX_VEHICLE_SEATED_CAPACITY}
+          defaultValue={0}
+          fullWidth
+        />
+        <NumberInput
+          source="wheelchairPositions"
+          min={0}
+          max={MAX_VEHICLE_WHEELCHAIR_POSITIONS}
+          defaultValue={0}
+          fullWidth
+        />
+        <NumberInput
+          source="stretcherPositions"
+          min={0}
+          max={MAX_VEHICLE_STRETCHER_POSITIONS}
+          defaultValue={0}
+          fullWidth
+        />
+        <BooleanInput source="hasRampOrLift" defaultValue={false} />
       </SimpleForm>
     </Create>
   );

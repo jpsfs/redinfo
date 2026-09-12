@@ -23,6 +23,7 @@ import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import { useIntlLocale } from '../../i18n/useIntlLocale';
 import { useT } from '../../i18n/useT';
 import { VehicleInventorySection } from '../inventory';
+import { VehicleCapacityChip } from './VehicleCapacityChip';
 
 const DAYS_WARN = 30;
 
@@ -135,6 +136,7 @@ export const VehicleShow = () => {
         <TextField source="numeroCauda" />
         <TextField source="manufacturer" emptyText="—" />
         <TextField source="model" emptyText="—" />
+        <VehicleCapacityChip />
         <StatusDateField source="insuranceRenewalDate" />
         <StatusDateField source="nextImtInspectionDate" />
         <TextField source="notes" emptyText="—" />

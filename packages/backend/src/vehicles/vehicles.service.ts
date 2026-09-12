@@ -116,6 +116,14 @@ export class VehiclesService {
         ...(dto.manufacturer !== undefined && { manufacturer: dto.manufacturer }),
         ...(dto.model !== undefined && { model: dto.model }),
         ...(dto.notes !== undefined && { notes: dto.notes }),
+        ...(dto.seatedCapacity !== undefined && { seatedCapacity: dto.seatedCapacity }),
+        ...(dto.wheelchairPositions !== undefined && {
+          wheelchairPositions: dto.wheelchairPositions,
+        }),
+        ...(dto.stretcherPositions !== undefined && {
+          stretcherPositions: dto.stretcherPositions,
+        }),
+        ...(dto.hasRampOrLift !== undefined && { hasRampOrLift: dto.hasRampOrLift }),
       },
     });
   }

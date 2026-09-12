@@ -81,6 +81,58 @@ describe('VehiclesService', () => {
       const dto = makeVehicleDto();
       await expect(service.create(dto)).rejects.toThrow(ConflictException);
     });
+
+    it('round-trips the physical-configuration fields (#221)', async () => {
+      const dto = {
+        ...makeVehicleDto(),
+        seatedCapacity: 4,
+        wheelchairPositions: 2,
+        stretcherPositions: 1,
+        hasRampOrLift: true,
+      };
+      const result = await service.create(dto);
+      expect(result).toMatchObject({
+        seatedCapacity: 4,
+        wheelchairPositions: 2,
+        stretcherPositions: 1,
+        hasRampOrLift: true,
+      });
+    });
+  });
+
+  // ── update ──────────────────────────────────────────────────────────────────
+
+  describe('update — physical configuration (#221)', () => {
+    it('persists a change to the capacity fields', async () => {
+      prisma.vehicle.findFirst.mockResolvedValue({ id: 'v1', isDeleted: false });
+      await service.update('v1', {
+        seatedCapacity: 6,
+        wheelchairPositions: 1,
+        stretcherPositions: 2,
+        hasRampOrLift: false,
+      });
+      expect(prisma.vehicle.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'v1' },
+          data: expect.objectContaining({
+            seatedCapacity: 6,
+            wheelchairPositions: 1,
+            stretcherPositions: 2,
+            hasRampOrLift: false,
+          }),
+        }),
+      );
+    });
+
+    it('leaves the capacity fields untouched when omitted', async () => {
+      prisma.vehicle.findFirst.mockResolvedValue({ id: 'v1', isDeleted: false });
+      await service.update('v1', { manufacturer: 'Toyota' });
+      const [call] = prisma.vehicle.update.mock.calls;
+      expect(call[0].data).not.toHaveProperty('seatedCapacity');
+      expect(call[0].data).not.toHaveProperty('wheelchairPositions');
+      expect(call[0].data).not.toHaveProperty('stretcherPositions');
+      expect(call[0].data).not.toHaveProperty('hasRampOrLift');
+    });
   });
 
   // ── findOne ─────────────────────────────────────────────────────────────────

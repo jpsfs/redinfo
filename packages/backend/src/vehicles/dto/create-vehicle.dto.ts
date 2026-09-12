@@ -4,10 +4,20 @@ import {
   IsDateString,
   IsOptional,
   IsNotEmpty,
+  IsInt,
+  IsBoolean,
+  Min,
+  Max,
   Matches,
 } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { VehicleType, PT_LICENSE_PLATE_REGEX } from '@redinfo/shared';
+import {
+  VehicleType,
+  PT_LICENSE_PLATE_REGEX,
+  MAX_VEHICLE_SEATED_CAPACITY,
+  MAX_VEHICLE_WHEELCHAIR_POSITIONS,
+  MAX_VEHICLE_STRETCHER_POSITIONS,
+} from '@redinfo/shared';
 
 export class CreateVehicleDto {
   @ApiProperty({
@@ -52,4 +62,38 @@ export class CreateVehicleDto {
   @IsOptional()
   @IsString()
   notes?: string;
+
+  @ApiPropertyOptional({
+    example: 4,
+    description: 'Seats for ambulatory passengers',
+    default: 0,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(MAX_VEHICLE_SEATED_CAPACITY)
+  seatedCapacity?: number;
+
+  @ApiPropertyOptional({
+    example: 1,
+    description: '0, 1 or 2 depending on the vehicle',
+    default: 0,
+  })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(MAX_VEHICLE_WHEELCHAIR_POSITIONS)
+  wheelchairPositions?: number;
+
+  @ApiPropertyOptional({ example: 1, default: 0 })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(MAX_VEHICLE_STRETCHER_POSITIONS)
+  stretcherPositions?: number;
+
+  @ApiPropertyOptional({ default: false })
+  @IsOptional()
+  @IsBoolean()
+  hasRampOrLift?: boolean;
 }
