@@ -15,10 +15,13 @@ import {
   TextInput,
   TopToolbar,
   required,
+  useListContext,
   useRecordContext,
 } from 'react-admin';
-import { Alert, Chip } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
+import { Alert, Box, Chip, CircularProgress, Paper, Stack, Typography } from '@mui/material';
 import { Facility } from '@redinfo/shared';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { useT } from '../../i18n/useT';
 
 /**
@@ -38,12 +41,17 @@ const ListActions = () => {
   );
 };
 
-/** "40.1976, -8.4392", or a note that the municipality centre is standing in. */
-const CoordinatesField = () => {
+/** "40.1976, -8.4392", or a note that the municipality centre is standing in.
+ * Takes the coordinates directly rather than reading `useRecordContext`, so
+ * it renders the same inside a `Datagrid` row and a plain `FacilityCard`. */
+const Coordinates = ({
+  latitude,
+  longitude,
+}: {
+  latitude: number | null | undefined;
+  longitude: number | null | undefined;
+}) => {
   const t = useT();
-  const record = useRecordContext<Facility>();
-  if (!record) return null;
-  const { latitude, longitude } = record;
   // Both or neither, by construction — but read as a pair anyway, so a
   // half-filled row from an older record cannot render "40.1976, undefined".
   if (
@@ -63,66 +71,143 @@ const CoordinatesField = () => {
   );
 };
 
+const CoordinatesField = () => {
+  const record = useRecordContext<Facility>();
+  if (!record) return null;
+  return <Coordinates latitude={record.latitude} longitude={record.longitude} />;
+};
+
 /** A yes/no flag rendered as a chip, so the two uses read at a glance. */
 const FlagChip = ({ on, label }: { on: boolean; label: string }) => (
   <Chip size="small" variant={on ? 'filled' : 'outlined'} color={on ? 'primary' : 'default'} label={label} />
 );
 
+/** One facility, as a stacked card — the mobile replacement for a row of the
+ * desktop `Datagrid`, in the same shape as `PersonCard` on `/users`. */
+const FacilityCard = ({ facility, onOpen }: { facility: Facility; onOpen: () => void }) => {
+  const t = useT();
+  return (
+    <Paper variant="outlined" onClick={onOpen} sx={{ p: 2, cursor: 'pointer' }}>
+      <Stack spacing={0.75}>
+        <Stack direction="row" spacing={1} alignItems="center" justifyContent="space-between">
+          <Typography sx={{ fontWeight: 700 }}>{facility.name}</Typography>
+          <Chip
+            size="small"
+            variant="outlined"
+            color={facility.isActive ? 'success' : 'default'}
+            label={facility.isActive ? t('facilityList.active') : t('facilityList.retired')}
+          />
+        </Stack>
+
+        <Typography variant="body2" color="text.secondary">
+          {facility.municipality
+            ? `${facility.municipality.name} · ${facility.municipality.district}`
+            : '—'}
+        </Typography>
+
+        <Coordinates latitude={facility.latitude} longitude={facility.longitude} />
+
+        <Stack direction="row" spacing={0.5} flexWrap="wrap" useFlexGap>
+          {facility.isEmergencyDestination && (
+            <FlagChip on label={t('resources.facilities.fields.isEmergencyDestination')} />
+          )}
+          {facility.isTransportDestination && (
+            <FlagChip on label={t('resources.facilities.fields.isTransportDestination')} />
+          )}
+        </Stack>
+      </Stack>
+    </Paper>
+  );
+};
+
+/** Stacked cards instead of a table — the mobile replacement for `Datagrid`. */
+const MobileFacilityList = () => {
+  const { data, isLoading } = useListContext<Facility>();
+  const navigate = useNavigate();
+
+  if (isLoading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+        <CircularProgress size={24} />
+      </Box>
+    );
+  }
+
+  return (
+    <Stack spacing={1.5}>
+      {(data ?? []).map((facility) => (
+        <FacilityCard key={facility.id} facility={facility} onOpen={() => navigate(`/facilities/${facility.id}`)} />
+      ))}
+    </Stack>
+  );
+};
+
 export const FacilityList = () => {
   const t = useT();
+  const isMobile = useIsMobile();
   return (
     <List
       actions={<ListActions />}
       perPage={50}
       sort={{ field: 'name', order: 'ASC' }}
       empty={false}
+      component="div"
     >
-      <>
+      {/* `component="div"` drops `<List>`'s own default `Card` wrapper — only
+          the table itself keeps a card, via the `Paper` below, matching the
+          pattern on `/users`. */}
+      <Box sx={{ pt: 2 }}>
         <Alert severity="info" sx={{ mb: 2 }}>
           {t('facilityList.helpText')}
         </Alert>
-        <Datagrid rowClick="edit" bulkActionButtons={false}>
-          <TextField source="name" />
-          <FunctionField
-            label={t('facilityList.colMunicipality')}
-            render={(record: Facility) => record.municipality?.name ?? '—'}
-          />
-          <FunctionField
-            label={t('facilityList.colDistrict')}
-            render={(record: Facility) => record.municipality?.district ?? '—'}
-          />
-          <FunctionField label={t('facilityList.colCoordinates')} render={() => <CoordinatesField />} />
-          <FunctionField
-            label={t('resources.facilities.fields.isEmergencyDestination')}
-            render={(record: Facility) => (
-              <FlagChip
-                on={record.isEmergencyDestination}
+        {isMobile ? (
+          <MobileFacilityList />
+        ) : (
+          <Paper variant="outlined">
+            <Datagrid rowClick="edit" bulkActionButtons={false}>
+              <TextField source="name" />
+              <FunctionField
+                label={t('facilityList.colMunicipality')}
+                render={(record: Facility) => record.municipality?.name ?? '—'}
+              />
+              <FunctionField
+                label={t('facilityList.colDistrict')}
+                render={(record: Facility) => record.municipality?.district ?? '—'}
+              />
+              <FunctionField label={t('facilityList.colCoordinates')} render={() => <CoordinatesField />} />
+              <FunctionField
                 label={t('resources.facilities.fields.isEmergencyDestination')}
+                render={(record: Facility) => (
+                  <FlagChip
+                    on={record.isEmergencyDestination}
+                    label={t('resources.facilities.fields.isEmergencyDestination')}
+                  />
+                )}
               />
-            )}
-          />
-          <FunctionField
-            label={t('resources.facilities.fields.isTransportDestination')}
-            render={(record: Facility) => (
-              <FlagChip
-                on={record.isTransportDestination}
+              <FunctionField
                 label={t('resources.facilities.fields.isTransportDestination')}
+                render={(record: Facility) => (
+                  <FlagChip
+                    on={record.isTransportDestination}
+                    label={t('resources.facilities.fields.isTransportDestination')}
+                  />
+                )}
               />
-            )}
-          />
-          <FunctionField
-            source="isActive"
-            render={(record: Facility) => (
-              <Chip
-                size="small"
-                variant="outlined"
-                color={record.isActive ? 'success' : 'default'}
-                label={record.isActive ? t('facilityList.active') : t('facilityList.retired')}
+              <FunctionField
+                source="isActive"
+                render={(record: Facility) => (
+                  <Chip
+                    size="small"
+                    variant="outlined"
+                    color={record.isActive ? 'success' : 'default'}
+                    label={record.isActive ? t('facilityList.active') : t('facilityList.retired')}
+                  />
+                )}
               />
-            )}
-          />
-        </Datagrid>
-      </>
+            </Datagrid>
+          </Paper>
+        )}
+      </Box>
     </List>
   );
 };

@@ -5,6 +5,7 @@ import polyglotI18nProvider from 'ra-i18n-polyglot';
 import { MemoryRouter } from 'react-router-dom';
 import { Facility } from '@redinfo/shared';
 import { messages } from '../../i18n/i18nProvider';
+import { stubMobileMatchMedia } from '../../test/renderMobile';
 import { FacilityList } from './index';
 
 // This is a desk/configuration screen, exercised here in English — the
@@ -117,5 +118,28 @@ describe('the facility list', () => {
   it('offers a way to add one', async () => {
     renderList([facility()]);
     expect(await screen.findByText(/add facility/i)).toBeInTheDocument();
+  });
+});
+
+// ── Mobile layout ────────────────────────────────────────────────────────────
+//
+// Same data, stacked cards instead of a table — the pattern already used on
+// `/users` and `/vehicles` for a screen that's read from a phone in the field.
+
+describe('the facility list on a phone', () => {
+  it('shows stacked cards instead of a table', async () => {
+    stubMobileMatchMedia();
+    renderList([facility()]);
+
+    await screen.findByText('CHUC — Hospital Geral');
+    expect(screen.queryByRole('table')).not.toBeInTheDocument();
+    expect(screen.getByText('Active')).toBeInTheDocument();
+  });
+
+  it('still shows the coordinates fallback on a card', async () => {
+    stubMobileMatchMedia();
+    renderList([facility()]);
+
+    expect(await screen.findByText('municipality centre')).toBeInTheDocument();
   });
 });
