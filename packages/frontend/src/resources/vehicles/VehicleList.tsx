@@ -9,29 +9,20 @@ import {
   SelectInput,
   SearchInput,
   FunctionField,
+  useListContext,
 } from 'react-admin';
-import { Chip, Tooltip } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
+import { Box, Chip, CircularProgress, Paper, Stack, Tooltip } from '@mui/material';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
+import { Vehicle } from '@redinfo/shared';
+import { useIsMobile } from '../../hooks/useIsMobile';
 import { useIntlLocale } from '../../i18n/useIntlLocale';
 import { useT } from '../../i18n/useT';
 import { VehicleCapacityChip } from './VehicleCapacityChip';
-
-const DAYS_WARN = 30;
-
-function isExpiringSoon(dateStr: string | null | undefined): boolean {
-  if (!dateStr) return false;
-  const target = new Date(dateStr);
-  const now = new Date();
-  const diffMs = target.getTime() - now.getTime();
-  return diffMs >= 0 && diffMs <= DAYS_WARN * 24 * 60 * 60 * 1000;
-}
-
-function isOverdue(dateStr: string | null | undefined): boolean {
-  if (!dateStr) return false;
-  return new Date(dateStr) < new Date();
-}
+import { VehicleCard } from './VehicleCard';
+import { isExpiringSoon, isOverdue } from './vehicleDateStatus';
 
 const ListActions = () => (
   <TopToolbar>
@@ -97,8 +88,31 @@ const VehicleTypeField = () => {
   );
 };
 
+/** Stacked cards instead of a table — the mobile replacement for `Datagrid`. */
+const MobileVehicleList = () => {
+  const { data, isLoading } = useListContext<Vehicle>();
+  const navigate = useNavigate();
+
+  if (isLoading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+        <CircularProgress size={24} />
+      </Box>
+    );
+  }
+
+  return (
+    <Stack spacing={1.5}>
+      {(data ?? []).map((vehicle) => (
+        <VehicleCard key={vehicle.id} vehicle={vehicle} onOpen={() => navigate(`/vehicles/${vehicle.id}/show`)} />
+      ))}
+    </Stack>
+  );
+};
+
 export const VehicleList = () => {
   const t = useT();
+  const isMobile = useIsMobile();
   const vehicleFilters = [
     <SearchInput source="q" alwaysOn key="q" />,
     <SelectInput
@@ -112,18 +126,34 @@ export const VehicleList = () => {
   ];
 
   return (
-    <List filters={vehicleFilters} actions={<ListActions />} sort={{ field: 'createdAt', order: 'DESC' }}>
-      <Datagrid rowClick="show" bulkActionButtons={false}>
-        <TextField source="licensePlate" />
-        <TextField source="numeroCauda" />
-        <VehicleTypeField />
-        <TextField source="manufacturer" emptyText="—" />
-        <TextField source="model" emptyText="—" />
-        <VehicleCapacityChip />
-        <DateAlertField source="insuranceRenewalDate" />
-        <DateAlertField source="nextImtInspectionDate" />
-        <DateField source="createdAt" showTime />
-      </Datagrid>
+    <List
+      filters={vehicleFilters}
+      actions={<ListActions />}
+      sort={{ field: 'createdAt', order: 'DESC' }}
+      component="div"
+    >
+      {/* `component="div"` drops `<List>`'s own default `Card` wrapper — only
+          the table itself keeps a card, via the `Paper` below, matching the
+          pattern on `/users` and `/facilities`. */}
+      <Box sx={{ pt: 2 }}>
+        {isMobile ? (
+          <MobileVehicleList />
+        ) : (
+          <Paper variant="outlined">
+            <Datagrid rowClick="show" bulkActionButtons={false}>
+              <TextField source="licensePlate" />
+              <TextField source="numeroCauda" />
+              <VehicleTypeField />
+              <TextField source="manufacturer" emptyText="—" />
+              <TextField source="model" emptyText="—" />
+              <VehicleCapacityChip />
+              <DateAlertField source="insuranceRenewalDate" />
+              <DateAlertField source="nextImtInspectionDate" />
+              <DateField source="createdAt" showTime />
+            </Datagrid>
+          </Paper>
+        )}
+      </Box>
     </List>
   );
 };
