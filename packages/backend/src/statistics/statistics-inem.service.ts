@@ -7,6 +7,7 @@ import {
   StatisticsQuery,
 } from '@redinfo/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { InemService } from '../inem/inem.service';
 import { addIsoDays, parseIsoDate } from '../utils/date.util';
 import { diffMinutes, resolveStatisticsRange } from './statistics.util';
 
@@ -26,7 +27,10 @@ interface UnitAccumulator {
  */
 @Injectable()
 export class StatisticsInemService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly inem: InemService,
+  ) {}
 
   async getStatistics(query: StatisticsQuery): Promise<INEMStatistics> {
     const { from, to } = resolveStatisticsRange(query.from, query.to);
@@ -67,6 +71,7 @@ export class StatisticsInemService {
       }
     }
 
+    const reasonLabels = this.inem.getInopReasonLabels();
     const vehicleIds = [...byUnit.values()].map((u) => u.vehicleId).filter((id): id is string => id !== null);
     const vehicles = vehicleIds.length
       ? await this.prisma.vehicle.findMany({
@@ -78,7 +83,7 @@ export class StatisticsInemService {
 
     const units: StatisticsInemUnit[] = [...byUnit.values()]
       .map((acc) => {
-        const downtimeByReason = sortedReasonMinutes(acc.downtimeByReason);
+        const downtimeByReason = sortedReasonMinutes(acc.downtimeByReason, reasonLabels);
         return {
           unitId: acc.unitId,
           vehicle: acc.vehicleId ? (vehicleById.get(acc.vehicleId) ?? null) : null,
@@ -95,7 +100,7 @@ export class StatisticsInemService {
         globalByReason.set(r.inopCode, (globalByReason.get(r.inopCode) ?? 0) + r.minutes);
       }
     }
-    const downtimeByReason = sortedReasonMinutes(globalByReason);
+    const downtimeByReason = sortedReasonMinutes(globalByReason, reasonLabels);
 
     return {
       from,
@@ -107,9 +112,12 @@ export class StatisticsInemService {
   }
 }
 
-function sortedReasonMinutes(byReason: Map<string, number>): StatisticsInemReasonMinutes[] {
+function sortedReasonMinutes(
+  byReason: Map<string, number>,
+  labels: Record<string, string>,
+): StatisticsInemReasonMinutes[] {
   return [...byReason.entries()]
-    .map(([inopCode, minutes]) => ({ inopCode, minutes }))
+    .map(([inopCode, minutes]) => ({ inopCode, label: labels[inopCode] ?? inopCode, minutes }))
     .sort((a, b) => b.minutes - a.minutes);
 }
 

@@ -140,14 +140,14 @@ const INEM: INEMStatistics = {
   from: '2025-09-01',
   to: '2026-08-28',
   totalDowntimeMinutes: 300,
-  downtimeByReason: [{ inopCode: 'TEPH_Falta', minutes: 300 }],
+  downtimeByReason: [{ inopCode: 'TEPH_Falta', label: 'Sem Tripulação', minutes: 300 }],
   units: [
     {
       unitId: 'CVCAMPO1',
       vehicle: { id: 'v-1', licensePlate: 'AA-11-BB', numeroCauda: 'ABT 01' },
       availableMinutes: 1200,
       totalDowntimeMinutes: 300,
-      downtimeByReason: [{ inopCode: 'TEPH_Falta', minutes: 300 }],
+      downtimeByReason: [{ inopCode: 'TEPH_Falta', label: 'Sem Tripulação', minutes: 300 }],
     },
   ],
 };

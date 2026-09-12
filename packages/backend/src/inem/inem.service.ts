@@ -53,9 +53,19 @@ export class InemService {
     return {
       sessionStatus: toSharedSessionStatus(sessionOverview.status),
       sessionLastError: sessionOverview.lastError,
-      inopReasons: this.session.getCachedInopReasons() ?? INEM_INOP_REASONS,
+      inopReasons: this.getInopReasonLabels(),
       units: units.map(toUnitShape),
     };
+  }
+
+  /**
+   * Code → display label, for whoever needs to render an `inopCode` outside
+   * this module (e.g. `StatisticsInemService`) — the last live `GET
+   * /api/INOP` capture, falling back to the compile-time table. See
+   * `INEM_INOP_REASONS`'s doc comment for why that fallback can be stale.
+   */
+  getInopReasonLabels(): Record<string, string> {
+    return this.session.getCachedInopReasons() ?? INEM_INOP_REASONS;
   }
 
   async setUnitStatus(actor: { id: string }, unitId: string, inopCode: string): Promise<void> {

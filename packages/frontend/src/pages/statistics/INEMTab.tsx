@@ -47,6 +47,11 @@ export const INEMTab = ({ filters }: { filters: StatisticsFilterState }) => {
 
   const topReason = data.downtimeByReason[0];
   const maxUnitDowntime = Math.max(1, ...data.units.map((u) => u.totalDowntimeMinutes));
+  // How much of the time these units could have been active was actually lost to downtime —
+  // "available" here means confirmed available (`INEMUnitStatusPeriod`), not merely untracked.
+  const totalAvailableMinutes = data.units.reduce((sum, u) => sum + u.availableMinutes, 0);
+  const totalTrackedMinutes = totalAvailableMinutes + data.totalDowntimeMinutes;
+  const downtimeRatePct = totalTrackedMinutes > 0 ? Math.round((data.totalDowntimeMinutes / totalTrackedMinutes) * 100) : 0;
 
   return (
     <StatisticsGrid>
@@ -60,21 +65,29 @@ export const INEMTab = ({ filters }: { filters: StatisticsFilterState }) => {
         />
       </GridItem>
 
-      <GridItem span={4} mobileSpan={1}>
+      <GridItem span={3} mobileSpan={1}>
         <StatTile
           label={t('statistics.inem.topReason')}
-          value={topReason ? inemReasonLabel(t, topReason.inopCode, topReason.inopCode) : '—'}
+          value={topReason ? inemReasonLabel(t, topReason.inopCode, topReason.label) : '—'}
           delta={topReason ? `${fmt(toHours(topReason.minutes), locale, 1)} h` : undefined}
         />
       </GridItem>
-      <GridItem span={4} mobileSpan={1}>
+      <GridItem span={3} mobileSpan={1}>
         <StatTile label={t('statistics.inem.affectedUnits')} value={fmt(data.units.length, locale)} />
       </GridItem>
-      <GridItem span={4} mobileSpan={2}>
+      <GridItem span={3} mobileSpan={1}>
         <StatTile
           label={t('statistics.inem.averagePerUnit')}
           value={data.units.length > 0 ? fmt(toHours(data.totalDowntimeMinutes) / data.units.length, locale, 1) : '0'}
           unit="h"
+        />
+      </GridItem>
+      <GridItem span={3} mobileSpan={1}>
+        <StatTile
+          label={t('statistics.inem.downtimeRate')}
+          value={fmt(downtimeRatePct, locale)}
+          unit="%"
+          delta={t('statistics.inem.downtimeRateDescription')}
         />
       </GridItem>
 
@@ -96,7 +109,7 @@ export const INEMTab = ({ filters }: { filters: StatisticsFilterState }) => {
               <ChartLegend
                 items={data.downtimeByReason.map((row, i) => ({
                   key: row.inopCode,
-                  label: inemReasonLabel(t, row.inopCode, row.inopCode),
+                  label: inemReasonLabel(t, row.inopCode, row.label),
                   color: colorSequentialScale[i % colorSequentialScale.length],
                   value: `${fmt(toHours(row.minutes), locale, 1)} h`,
                 }))}
@@ -106,7 +119,7 @@ export const INEMTab = ({ filters }: { filters: StatisticsFilterState }) => {
           <TableTwin
             headers={[t('statistics.inem.byReasonTitle'), t('statistics.inem.hoursColumn'), '%']}
             rows={data.downtimeByReason.map((row) => [
-              inemReasonLabel(t, row.inopCode, row.inopCode),
+              inemReasonLabel(t, row.inopCode, row.label),
               fmt(toHours(row.minutes), locale, 1),
               data.totalDowntimeMinutes > 0 ? `${Math.round((row.minutes / data.totalDowntimeMinutes) * 100)}%` : '0%',
             ])}
@@ -127,31 +140,38 @@ export const INEMTab = ({ filters }: { filters: StatisticsFilterState }) => {
                   <TableRow>
                     <TableCell>{t('statistics.inem.vehicleColumn')}</TableCell>
                     <TableCell align="right">{t('statistics.inem.hoursColumn')}</TableCell>
+                    <TableCell align="right">%</TableCell>
                     <TableCell sx={{ width: '25%' }} />
                     <TableCell>{t('statistics.inem.topReason')}</TableCell>
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {data.units.map((unit) => (
-                    <TableRow key={unit.unitId}>
-                      <TableCell>{unit.vehicle ? `${unit.vehicle.licensePlate} – ${unit.vehicle.numeroCauda}` : unit.unitId}</TableCell>
-                      <TableCell align="right">{fmt(toHours(unit.totalDowntimeMinutes), locale, 1)} h</TableCell>
-                      <TableCell>
-                        <Box sx={{ height: 8, bgcolor: 'action.hover', borderRadius: 1, overflow: 'hidden' }}>
-                          <Box
-                            sx={{
-                              width: `${Math.round((unit.totalDowntimeMinutes / maxUnitDowntime) * 100)}%`,
-                              height: '100%',
-                              bgcolor: colorChartSingleSeries,
-                            }}
-                          />
-                        </Box>
-                      </TableCell>
-                      <TableCell sx={{ color: 'text.secondary' }}>
-                        {unit.downtimeByReason[0] ? inemReasonLabel(t, unit.downtimeByReason[0].inopCode, unit.downtimeByReason[0].inopCode) : '—'}
-                      </TableCell>
-                    </TableRow>
-                  ))}
+                  {data.units.map((unit) => {
+                    const unitTrackedMinutes = unit.availableMinutes + unit.totalDowntimeMinutes;
+                    const unitDowntimePct =
+                      unitTrackedMinutes > 0 ? Math.round((unit.totalDowntimeMinutes / unitTrackedMinutes) * 100) : 0;
+                    return (
+                      <TableRow key={unit.unitId}>
+                        <TableCell>{unit.vehicle ? `${unit.vehicle.licensePlate} – ${unit.vehicle.numeroCauda}` : unit.unitId}</TableCell>
+                        <TableCell align="right">{fmt(toHours(unit.totalDowntimeMinutes), locale, 1)} h</TableCell>
+                        <TableCell align="right">{unitDowntimePct}%</TableCell>
+                        <TableCell>
+                          <Box sx={{ height: 8, bgcolor: 'action.hover', borderRadius: 1, overflow: 'hidden' }}>
+                            <Box
+                              sx={{
+                                width: `${Math.round((unit.totalDowntimeMinutes / maxUnitDowntime) * 100)}%`,
+                                height: '100%',
+                                bgcolor: colorChartSingleSeries,
+                              }}
+                            />
+                          </Box>
+                        </TableCell>
+                        <TableCell sx={{ color: 'text.secondary' }}>
+                          {unit.downtimeByReason[0] ? inemReasonLabel(t, unit.downtimeByReason[0].inopCode, unit.downtimeByReason[0].label) : '—'}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </TableContainer>

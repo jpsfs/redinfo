@@ -1,3 +1,4 @@
+import { INEM_INOP_REASONS } from '@redinfo/shared';
 import { StatisticsInemService } from './statistics-inem.service';
 
 const PERIOD = (overrides: Record<string, unknown> = {}) => ({
@@ -9,12 +10,17 @@ const PERIOD = (overrides: Record<string, unknown> = {}) => ({
   ...overrides,
 });
 
-function makeService(periods: Record<string, unknown>[], vehicles: Record<string, unknown>[] = []) {
+function makeService(
+  periods: Record<string, unknown>[],
+  vehicles: Record<string, unknown>[] = [],
+  reasonLabels: Record<string, string> = INEM_INOP_REASONS,
+) {
   const prisma = {
     iNEMUnitStatusPeriod: { findMany: jest.fn().mockResolvedValue(periods) },
     vehicle: { findMany: jest.fn().mockResolvedValue(vehicles) },
   };
-  return { service: new StatisticsInemService(prisma as never), prisma };
+  const inem = { getInopReasonLabels: jest.fn().mockReturnValue(reasonLabels) };
+  return { service: new StatisticsInemService(prisma as never, inem as never), prisma, inem };
 }
 
 const RANGE = { from: '2026-06-01', to: '2026-06-30' };
@@ -32,11 +38,31 @@ describe('StatisticsInemService.getStatistics', () => {
         unitId: 'CVCAMPO1',
         availableMinutes: 60,
         totalDowntimeMinutes: 120,
-        downtimeByReason: [{ inopCode: 'TEPH_Falta', minutes: 120 }],
+        downtimeByReason: [{ inopCode: 'TEPH_Falta', label: 'Sem Tripulação', minutes: 120 }],
       }),
     ]);
     expect(stats.totalDowntimeMinutes).toBe(120);
-    expect(stats.downtimeByReason).toEqual([{ inopCode: 'TEPH_Falta', minutes: 120 }]);
+    expect(stats.downtimeByReason).toEqual([{ inopCode: 'TEPH_Falta', label: 'Sem Tripulação', minutes: 120 }]);
+  });
+
+  it('resolves each reason code to its display label, falling back to the code itself when unmapped', async () => {
+    const { service } = makeService(
+      [PERIOD({ inopCode: '04', startedAt: new Date('2026-06-01T00:00:00Z'), endedAt: new Date('2026-06-01T01:00:00Z') })],
+      [],
+      { ...INEM_INOP_REASONS, '04': 'Sem combustível' },
+    );
+    const stats = await service.getStatistics(RANGE);
+
+    expect(stats.downtimeByReason).toEqual([{ inopCode: '04', label: 'Sem combustível', minutes: 60 }]);
+  });
+
+  it('falls back to the bare code as its own label when the resolver has no entry for it', async () => {
+    const { service } = makeService([
+      PERIOD({ inopCode: '99', startedAt: new Date('2026-06-01T00:00:00Z'), endedAt: new Date('2026-06-01T01:00:00Z') }),
+    ]);
+    const stats = await service.getStatistics(RANGE);
+
+    expect(stats.downtimeByReason).toEqual([{ inopCode: '99', label: '99', minutes: 60 }]);
   });
 
   it('clips a period that started before "from" to the range boundary', async () => {
@@ -88,8 +114,8 @@ describe('StatisticsInemService.getStatistics', () => {
     expect(stats.units.map((u) => u.unitId)).toEqual(['U1', 'U2']);
     expect(stats.units[0].downtimeByReason.map((r) => r.inopCode)).toEqual(['TEPH_Falta', 'Alimentacao']);
     expect(stats.downtimeByReason).toEqual([
-      { inopCode: 'TEPH_Falta', minutes: 135 },
-      { inopCode: 'Alimentacao', minutes: 30 },
+      { inopCode: 'TEPH_Falta', label: 'Sem Tripulação', minutes: 135 },
+      { inopCode: 'Alimentacao', label: 'Alimentação', minutes: 30 },
     ]);
   });
 

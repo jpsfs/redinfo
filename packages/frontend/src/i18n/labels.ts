@@ -2133,6 +2133,11 @@ const MESSAGES = {
   'statistics.inem.topReason': { pt: 'Motivo mais frequente', en: 'Most frequent reason' },
   'statistics.inem.affectedUnits': { pt: 'Viaturas afetadas', en: 'Affected vehicles' },
   'statistics.inem.averagePerUnit': { pt: 'Média por viatura', en: 'Average per vehicle' },
+  'statistics.inem.downtimeRate': { pt: 'Taxa de indisponibilidade', en: 'Downtime rate' },
+  'statistics.inem.downtimeRateDescription': {
+    pt: 'do tempo em que as viaturas poderiam ter estado ativas',
+    en: 'of the time these vehicles could have been active',
+  },
   'statistics.inem.byReasonTitle': { pt: 'Motivos de indisponibilidade', en: 'Downtime reasons' },
   'statistics.inem.byReasonSubtitle': {
     pt: 'Tempo total indisponível, por motivo.',

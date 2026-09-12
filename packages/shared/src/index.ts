@@ -5997,6 +5997,13 @@ export interface FleetStatistics {
 export interface StatisticsInemReasonMinutes {
   /** `INEM_AVAILABLE_INOP_CODE` is never included here — this is downtime only. */
   inopCode: string;
+  /**
+   * `inopCode`'s display label, resolved the same way `INEMStatusOverview.inopReasons`
+   * is — the last live `GET /api/INOP` capture, falling back to the compile-time
+   * `INEM_INOP_REASONS` table. Equal to `inopCode` itself when neither source has an
+   * entry for it (e.g. a numeric code INEM hasn't been observed to explain yet).
+   */
+  label: string;
   minutes: number;
 }
 

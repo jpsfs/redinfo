@@ -4,6 +4,7 @@ import {
   EventReportInput,
   EventReportType,
   Gender,
+  INEM_INOP_REASONS,
   UserRole,
   VictimDestinationKind,
   VolunteerHoursSource,
@@ -11,6 +12,7 @@ import {
   foldForSearch,
 } from '@redinfo/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { InemService } from '../inem/inem.service';
 import { ShiftScheduleService } from '../availability/shift-schedule.service';
 import { HolidaysService } from '../availability/holidays.service';
 import { EventReportsService } from '../event-reports/event-reports.service';
@@ -65,7 +67,8 @@ describeIntegration('Statistics module (integration)', () => {
     people = new StatisticsPeopleService(prisma, noopVolunteerHours);
     activity = new StatisticsActivityService(prisma);
     fleet = new StatisticsFleetService(prisma);
-    inem = new StatisticsInemService(prisma);
+    const noopInemService = { getInopReasonLabels: () => INEM_INOP_REASONS } as unknown as InemService;
+    inem = new StatisticsInemService(prisma, noopInemService);
 
     const makeUser = async (local: string) =>
       prisma.user.create({
@@ -216,7 +219,7 @@ describeIntegration('Statistics module (integration)', () => {
     const unitStats = stats.units.find((u) => u.unitId === `IT-${RUN}`);
     expect(unitStats?.vehicle?.id).toBe(vehicle.id);
     expect(unitStats?.totalDowntimeMinutes).toBe(90);
-    expect(unitStats?.downtimeByReason).toEqual([{ inopCode: 'TEPH_Falta', minutes: 90 }]);
+    expect(unitStats?.downtimeByReason).toEqual([{ inopCode: 'TEPH_Falta', label: 'Sem Tripulação', minutes: 90 }]);
     expect(unitStats?.availableMinutes).toBe(60);
     expect(stats.downtimeByReason.some((r) => r.inopCode === 'TEPH_Falta')).toBe(true);
   });
