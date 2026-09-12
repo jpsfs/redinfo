@@ -87,13 +87,25 @@ describeIntegration('Volunteer hours module (integration)', () => {
   let ana: { id: string };
   let bruno: { id: string };
   let carla: { id: string };
+  let dario: { id: string };
   let coordinator: { id: string };
 
   const createdWindowIds: string[] = [];
 
-  async function createUser(firstName: string, lastName: string, role: UserRole) {
+  async function createUser(
+    firstName: string,
+    lastName: string,
+    role: UserRole,
+    isPaidStaff = false,
+  ) {
     return prisma.user.create({
-      data: { email: email(`${firstName}.${lastName}`.toLowerCase()), firstName, lastName, roles: [role] },
+      data: {
+        email: email(`${firstName}.${lastName}`.toLowerCase()),
+        firstName,
+        lastName,
+        roles: [role],
+        isPaidStaff,
+      },
       select: { id: true },
     });
   }
@@ -139,16 +151,18 @@ describeIntegration('Volunteer hours module (integration)', () => {
     volunteerHours = new VolunteerHoursService(prisma, shiftSchedule);
     summary = new VolunteerHoursSummaryService(prisma, volunteerHours);
 
-    [ana, bruno, carla, coordinator] = await Promise.all([
+    [ana, bruno, carla, dario, coordinator] = await Promise.all([
       createUser('Ana', 'Silva', UserRole.EMERGENCY_OPERATIONAL),
       createUser('Bruno', 'Costa', UserRole.EMERGENCY_OPERATIONAL),
       createUser('Carla', 'Ferreira', UserRole.EMERGENCY_OPERATIONAL),
+      // #223 — paid staff, gates volunteer-hours generation.
+      createUser('Dario', 'Pereira', UserRole.EMERGENCY_OPERATIONAL, true),
       createUser('Maria', 'Santos', UserRole.EMERGENCY_COORDINATOR),
     ]);
   });
 
   function volunteerIds(): string[] {
-    return [ana, bruno, carla, coordinator].map((u) => u?.id).filter(Boolean) as string[];
+    return [ana, bruno, carla, dario, coordinator].map((u) => u?.id).filter(Boolean) as string[];
   }
 
   /**
@@ -247,6 +261,40 @@ describeIntegration('Volunteer hours module (integration)', () => {
 
     const { entries } = await volunteerHours.getMyHours(ana.id);
     expect(entries).toHaveLength(0);
+  });
+
+  // #223 — the trap Feature #219 named explicitly: reusing the rota engine
+  // unchanged for paid staff would silently credit them volunteer time.
+  it('integration: a paid staff member on a shift generates nothing, a volunteer on the same shift still does', async () => {
+    const window = await openWindow();
+    const schedule = await schedules.create({ windowId: window.id }, coordinator.id);
+
+    await assignments.assign(
+      schedule.id,
+      { date: DAY_ONE, slot: 1, userId: ana.id, roleId: roleId(window, 'Driver') },
+      coordinator.id,
+    );
+    await assignments.assign(
+      schedule.id,
+      { date: DAY_ONE, slot: 1, userId: bruno.id, roleId: roleId(window, 'Team Leader') },
+      coordinator.id,
+    );
+    await assignments.assign(
+      schedule.id,
+      { date: DAY_ONE, slot: 1, userId: dario.id, roleId: roleId(window, 'Team Member') },
+      coordinator.id,
+    );
+    await schedules.publish(schedule.id, coordinator.id);
+
+    const [anaHours, darioHours] = await Promise.all([
+      volunteerHours.getMyHours(ana.id),
+      volunteerHours.getMyHours(dario.id),
+    ]);
+    expect(anaHours.entries).toHaveLength(1);
+    expect(darioHours.entries).toHaveLength(0);
+
+    const { data: pending } = await volunteerHours.getReviewQueue({});
+    expect(pending.some((e) => e.userId === dario.id)).toBe(false);
   });
 
   it('integration: a coordinator reviews the queue and corrects an entry', async () => {

@@ -274,6 +274,9 @@ export class VolunteerHoursService {
     const scopeWhere: Prisma.VolunteerHoursEntryWhereInput = {
       deletedAt: null,
       status,
+      // Paid staff (#223) never belong in the review queue, even if a
+      // manual/bulk entry was logged for one before or after the flag was set.
+      user: { isPaidStaff: false },
       ...(dateRange ? { date: dateRange } : {}),
       ...(search
         ? {
@@ -664,7 +667,17 @@ export class VolunteerHoursService {
       select: { assignmentId: true },
     });
     const alreadyGenerated = new Set(missing.map((m) => m.assignmentId));
-    const toGenerate = assignments.filter((a) => !alreadyGenerated.has(a.id));
+    // Paid staff (#223) still count towards `shiftMandatoryRolesFilled` below
+    // — the shift ran either way — but never get a volunteer-hours entry of
+    // their own.
+    const paidStaff = await this.prisma.user.findMany({
+      where: { id: { in: assignments.map((a) => a.userId) } },
+      select: { id: true, isPaidStaff: true },
+    });
+    const paidStaffIds = new Set(paidStaff.filter((u) => u.isPaidStaff).map((u) => u.id));
+    const toGenerate = assignments.filter(
+      (a) => !alreadyGenerated.has(a.id) && !paidStaffIds.has(a.userId),
+    );
     if (toGenerate.length === 0) return;
 
     const schedule = await this.prisma.schedule.findUnique({

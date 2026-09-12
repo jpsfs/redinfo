@@ -274,6 +274,14 @@ export interface User {
   provider: AuthProvider;
   isActive: boolean;
   /**
+   * Paid staff rather than a volunteer (#223). Distinct from every role
+   * above — a transport driver can be paid or volunteer regardless of what
+   * they're permitted to do — and from `isActive`: paid staff still sign in
+   * and work shifts, they just never accrue volunteer-hours credit for them.
+   * Defaults false so no existing account changes behaviour.
+   */
+  isPaidStaff: boolean;
+  /**
    * Certified driver. Computed from holding a valid `DRIVER` certification —
    * there is no `isDriver` column; see the `── Certifications ──` section.
    */

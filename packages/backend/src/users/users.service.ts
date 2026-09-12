@@ -80,6 +80,7 @@ const ACCOUNT_AUDITED_FIELDS = [
   'roles',
   'provider',
   'isActive',
+  'isPaidStaff',
   'phone',
   'birthDate',
   'joinedOn',
@@ -114,6 +115,7 @@ export const PERSON_SELECT = {
   roles: true,
   provider: true,
   isActive: true,
+  isPaidStaff: true,
   createdAt: true,
   updatedAt: true,
   phone: true,
@@ -161,6 +163,7 @@ interface PersonRow {
   roles: `${UserRole}`[];
   provider: `${AuthProvider}`;
   isActive: boolean;
+  isPaidStaff: boolean;
   createdAt: Date;
   updatedAt: Date;
   phone: string | null;
@@ -198,6 +201,7 @@ export function serializePerson(row: PersonRow, asOf: string = today()): SharedU
     roles: row.roles as SharedUserRole[],
     provider: row.provider as SharedAuthProvider,
     isActive: row.isActive,
+    isPaidStaff: row.isPaidStaff,
     isDriver: holdsCertification(held, CertificationType.DRIVER, asOf),
     isActiveEmergencyOperational:
       holdsCertification(held, CertificationType.TAT, asOf) ||
@@ -412,6 +416,7 @@ export class UsersService {
           roles: normalizeRoles(dto.roles ?? DEFAULT_USER_ROLES) as never[],
           provider,
           isActive: dto.isActive ?? true,
+          isPaidStaff: dto.isPaidStaff ?? false,
           phone: dto.phone,
           birthDate: dto.birthDate ? parseIsoDate(dto.birthDate) : undefined,
           joinedOn: dto.joinedOn ? parseIsoDate(dto.joinedOn) : undefined,
@@ -507,6 +512,7 @@ export class UsersService {
           ...(passwordHash !== undefined && { passwordHash }),
           // Booleans need an explicit undefined check — `false` must persist.
           ...(dto.isActive !== undefined && { isActive: dto.isActive }),
+          ...(dto.isPaidStaff !== undefined && { isPaidStaff: dto.isPaidStaff }),
           ...(dto.phone !== undefined && { phone: dto.phone }),
           ...(dto.birthDate !== undefined && { birthDate: dto.birthDate ? parseIsoDate(dto.birthDate) : null }),
           ...(dto.joinedOn !== undefined && { joinedOn: dto.joinedOn ? parseIsoDate(dto.joinedOn) : null }),

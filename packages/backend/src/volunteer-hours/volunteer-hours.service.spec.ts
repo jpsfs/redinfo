@@ -66,10 +66,20 @@ type EntryWhere = Record<string, unknown> & {
   flags?: { isEmpty?: boolean; has?: string };
   date?: Date | { lt?: Date; gte?: Date; lte?: Date };
   description?: { contains?: string };
+  user?: { isPaidStaff?: boolean };
   OR?: Array<Record<string, unknown>>;
 };
 
-function matchesWhere(row: Record<string, unknown>, where: EntryWhere): boolean {
+/**
+ * `paidStaffUserIds` stands in for the `isPaidStaff` join the real query does
+ * via `user: { isPaidStaff: false }` — this flat double has no relation to
+ * join, so the caller passes the same id list it gave `buildPrisma`.
+ */
+function matchesWhere(row: Record<string, unknown>, where: EntryWhere, paidStaffUserIds: string[] = []): boolean {
+  if (where.user?.isPaidStaff !== undefined) {
+    const rowIsPaidStaff = paidStaffUserIds.includes(row.userId as string);
+    if (rowIsPaidStaff !== where.user.isPaidStaff) return false;
+  }
   if (where.userId && row.userId !== where.userId) return false;
   if (where.status && row.status !== where.status) return false;
   if (where.source && row.source !== where.source) return false;
@@ -120,12 +130,12 @@ function matchesWhere(row: Record<string, unknown>, where: EntryWhere): boolean 
  * multi-step read-then-write awkward to assert on otherwise. Extended (#redesign)
  * with `count`/`aggregate`/ordering support for `getReviewQueue`.
  */
-function buildEntryTable() {
+function buildEntryTable(paidStaffUserIds: string[] = []) {
   const rows: Array<Record<string, unknown>> = [];
   let nextId = 1;
 
   function filtered(where?: Record<string, unknown>) {
-    return rows.filter((row) => matchesWhere(row, (where ?? {}) as EntryWhere));
+    return rows.filter((row) => matchesWhere(row, (where ?? {}) as EntryWhere, paidStaffUserIds));
   }
 
   function sorted(rowsIn: Array<Record<string, unknown>>, orderBy?: unknown) {
@@ -241,8 +251,9 @@ function buildPrisma({
   overrides = [] as Array<Record<string, unknown>>,
   eventReports = [] as Array<Record<string, unknown>>,
   activeUserIds = ['u-ana', 'u-bruno', 'u-carla'] as string[],
+  paidStaffUserIds = [] as string[],
 } = {}) {
-  const entryTable = buildEntryTable();
+  const entryTable = buildEntryTable(paidStaffUserIds);
 
   const scheduleAssignmentFindMany = jest.fn(async (args: { where: Record<string, unknown> }) => {
     const { where } = args;
@@ -275,9 +286,13 @@ function buildPrisma({
     },
     user: {
       // Simulates `isActive: true` filtering — a test can shrink
-      // `activeUserIds` to model an unknown or deactivated volunteer.
+      // `activeUserIds` to model an unknown or deactivated volunteer. Also
+      // reports `isPaidStaff` (#223), for `generateForShift`'s paid-staff
+      // gate — a test can list ids in `paidStaffUserIds` to model one.
       findMany: jest.fn(async ({ where }: { where: { id: { in: string[] } } }) =>
-        where.id.in.filter((id) => activeUserIds.includes(id)).map((id) => ({ id })),
+        where.id.in
+          .filter((id) => activeUserIds.includes(id))
+          .map((id) => ({ id, isPaidStaff: paidStaffUserIds.includes(id) })),
       ),
     },
     volunteerHoursEntry: entryTable,
@@ -346,6 +361,34 @@ describe('generation', () => {
     await service.getMyHours('u-driver');
 
     expect(prisma.entryTable.create).toHaveBeenCalledTimes(2);
+  });
+
+  // #223 — the trap Feature #219 named explicitly: reusing the rota engine
+  // unchanged for paid staff would silently credit them volunteer time.
+  it('generates nothing for a paid staff member, but still generates for a volunteer on the same shift', async () => {
+    const schedule = SCHEDULE({
+      window: WINDOW({ category: 'EMERGENCY', roles: [DRIVER_ROLE, MEMBER_ROLE] }),
+    });
+    const assignments = [
+      ASSIGNMENT({ id: 'a-paid', userId: 'u-paid', roleId: DRIVER_ROLE.id }),
+      ASSIGNMENT({ id: 'a-volunteer', userId: 'u-volunteer', roleId: MEMBER_ROLE.id }),
+    ];
+    const { service, prisma } = makeService(
+      buildPrisma({
+        schedule,
+        assignments,
+        activeUserIds: ['u-paid', 'u-volunteer'],
+        paidStaffUserIds: ['u-paid'],
+      }),
+    );
+
+    const { entries: paidEntries } = await service.getMyHours('u-paid');
+    const { entries: volunteerEntries } = await service.getMyHours('u-volunteer');
+
+    expect(paidEntries).toHaveLength(0);
+    expect(volunteerEntries).toHaveLength(1);
+    expect(prisma.entryTable.create).toHaveBeenCalledTimes(1);
+    expect(prisma.entryTable.rows[0]).toMatchObject({ userId: 'u-volunteer' });
   });
 
   it('credits and flags RAN_OVER from a submitted report that ran past the shift end', async () => {
@@ -821,6 +864,26 @@ describe('getReviewQueue', () => {
     const scheduledOnly = await service.getReviewQueue({ source: VolunteerHoursSource.SCHEDULED });
     expect(scheduledOnly.data.every((e) => e.source === VolunteerHoursSource.SCHEDULED)).toBe(true);
     expect(scheduledOnly.data).toHaveLength(1);
+  });
+
+  it('excludes paid staff (#223) even for a manually logged entry, consistently with generation', async () => {
+    const { service } = makeService(
+      buildPrisma({ assignments: [], paidStaffUserIds: ['u-paid'] }),
+    );
+    await service.createManualEntry('u-paid', {
+      activityType: VolunteerActivityType.MEETING,
+      date: '2026-10-05',
+      minutes: 60,
+    });
+    await service.createManualEntry('u-volunteer', {
+      activityType: VolunteerActivityType.MEETING,
+      date: '2026-10-05',
+      minutes: 60,
+    });
+
+    const result = await service.getReviewQueue({});
+
+    expect(result.data.map((e) => e.userId)).toEqual(['u-volunteer']);
   });
 
   it('search matches the description', async () => {

@@ -26,7 +26,13 @@ export class VolunteerHoursSummaryService {
     await this.volunteerHours.refreshGeneration();
 
     const rows = await this.prisma.volunteerHoursEntry.findMany({
-      where: { date: { gte: parseIsoDate(from), lte: parseIsoDate(to) }, deletedAt: null },
+      // Paid staff (#223) are excluded consistently with the review queue,
+      // not just from generation — see `VolunteerHoursService.generateForShift`.
+      where: {
+        date: { gte: parseIsoDate(from), lte: parseIsoDate(to) },
+        deletedAt: null,
+        user: { isPaidStaff: false },
+      },
       include: { user: { select: { id: true, firstName: true, lastName: true } } },
     });
 

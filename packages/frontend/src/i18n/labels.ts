@@ -564,6 +564,7 @@ const MESSAGES = {
   'resources.users.fields.roles': { pt: 'Funções', en: 'Roles' },
   'resources.users.fields.password': { pt: 'Palavra-passe', en: 'Password' },
   'resources.users.fields.isActive': { pt: 'Ativo', en: 'Active' },
+  'resources.users.fields.isPaidStaff': { pt: 'Funcionário remunerado', en: 'Paid staff' },
   'resources.users.fields.readiness': { pt: 'Operacionalidade', en: 'Readiness' },
   'resources.users.fields.certification': { pt: 'Tem certificação', en: 'Holds certification' },
   'resources.users.fields.certificationStatus': {
@@ -619,6 +620,10 @@ const MESSAGES = {
   'userForm.fullNameHint': {
     pt: 'Só para uso administrativo (seguros, certificados). O nome próprio e o apelido continuam a ser usados em todo o lado.',
     en: 'For administrative use only (insurance, certificates). First and last name keep being used everywhere else.',
+  },
+  'userForm.isPaidStaffHint': {
+    pt: 'Não acumula horas de voluntariado pelos turnos que faz.',
+    en: 'Does not accrue volunteer-hours credit for shifts worked.',
   },
 
   'personnelList.nameColumn': { pt: 'Nome', en: 'Name' },

@@ -58,6 +58,10 @@ model User {
   provider     AuthProvider @default(LOCAL)
   providerId   String?
   isActive     Boolean      @default(true)
+  /// Paid staff rather than a volunteer (#223). Gates volunteer-hours
+  /// generation: a paid shift never produces a `VolunteerHoursEntry`. Default
+  /// false so no existing user changes behaviour.
+  isPaidStaff  Boolean      @default(false)
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 

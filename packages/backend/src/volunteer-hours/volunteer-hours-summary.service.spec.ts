@@ -39,6 +39,16 @@ describe('getSummary', () => {
     );
   });
 
+  // #223: paid staff must not appear in this aggregate, consistently with
+  // generation — not just via the generation gate producing no rows for them.
+  it('excludes paid staff from the query', async () => {
+    const { service, prisma } = makeService([]);
+    await service.getSummary('2026-10-01', '2026-10-31');
+    expect(prisma.volunteerHoursEntry.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expect.objectContaining({ user: { isPaidStaff: false } }) }),
+    );
+  });
+
   it('splits approved and pending minutes per volunteer', async () => {
     const { service } = makeService([
       ENTRY({ status: 'APPROVED', minutes: 240 }),

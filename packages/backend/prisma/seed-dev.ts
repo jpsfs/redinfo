@@ -104,6 +104,8 @@ interface UserFixture {
   lastName: string;
   roles: UserRole[];
   isActive?: boolean;
+  /** #223 — paid staff rather than a volunteer. Defaults false, like the column. */
+  isPaidStaff?: boolean;
   phone: string;
   birthDate: string;
   joinedOn: string;
@@ -256,6 +258,9 @@ async function main() {
       firstName: 'Tiago',
       lastName: 'Correia',
       roles: [UserRole.EMERGENCY_OPERATIONAL],
+      // #223 — the delegation's one paid driver, for manual QA of the
+      // paid-staff/volunteer-hours gate.
+      isPaidStaff: true,
       phone: '+351 916 789 012',
       birthDate: '1993-09-09',
       joinedOn: '2017-06-10',
@@ -425,6 +430,7 @@ async function main() {
         passwordHash,
         roles: fixture.roles,
         isActive: fixture.isActive ?? true,
+        isPaidStaff: fixture.isPaidStaff ?? false,
         phone: fixture.phone,
         birthDate: parseIsoDate(fixture.birthDate),
         joinedOn: parseIsoDate(fixture.joinedOn),

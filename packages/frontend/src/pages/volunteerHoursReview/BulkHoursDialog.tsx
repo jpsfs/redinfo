@@ -90,7 +90,11 @@ export const BulkHoursDialog = ({ open, onClose, onSuccess }: BulkHoursDialogPro
 
     setVolunteers(null);
     apiFetch<{ data: User[]; total: number }>('/users?isActive=true&perPage=500')
-      .then((result) => setVolunteers(result.data))
+      // Paid staff (#223) never accrue volunteer-hours credit, so a
+      // bulk-logged entry for one would just vanish from every screen that
+      // reads it back — excluded here rather than let a coordinator hit that
+      // surprise after saving.
+      .then((result) => setVolunteers(result.data.filter((person) => !person.isPaidStaff)))
       .catch((e) => setLoadError(e instanceof Error ? e.message : t('bulkHours.loadVolunteersFailed')));
   }, [open, t]);
 
