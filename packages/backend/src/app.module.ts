@@ -5,6 +5,7 @@ import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { HealthModule } from './health/health.module';
 import { VehiclesModule } from './vehicles/vehicles.module';
+import { VehicleOccupancyModule } from './vehicle-occupancy/vehicle-occupancy.module';
 import { InventoryModule } from './inventory/inventory.module';
 import { AvailabilityModule } from './availability/availability.module';
 import { SchedulesModule } from './schedules/schedules.module';
@@ -31,6 +32,7 @@ import { McpModule } from './mcp/mcp.module';
     UsersModule,
     HealthModule,
     VehiclesModule,
+    VehicleOccupancyModule,
     InventoryModule,
     AvailabilityModule,
     SchedulesModule,

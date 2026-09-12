@@ -668,6 +668,46 @@ export interface Vehicle {
   maintenanceEntries?: MaintenanceEntry[];
 }
 
+// ─── Vehicle occupancy ──────────────────────────────────────────────────────────
+
+/**
+ * Where a `VehicleOccupancy` interval came from (#222). The fleet is one
+ * pool — transport vehicles cover non-emergency events and emergency
+ * ambulances can cover everything — so occupancy is tracked once, outside
+ * every transport-specific module, and this is the single answer to "is
+ * vehicle X free at time Y?" for the whole platform.
+ */
+export enum VehicleOccupancySource {
+  SCHEDULE_SHIFT = 'SCHEDULE_SHIFT',
+  TRANSPORT_TRIP = 'TRANSPORT_TRIP',
+  MAINTENANCE = 'MAINTENANCE',
+  SUPPORT_EVENT = 'SUPPORT_EVENT',
+}
+
+/**
+ * One interval during which a named vehicle is committed, whatever the
+ * source. Written through from its source row — never maintained by hand —
+ * so `(source, sourceId)` always points back to the record that created it.
+ */
+export interface VehicleOccupancy {
+  id: string;
+  vehicleId: string;
+  startsAt: string;
+  endsAt: string;
+  source: VehicleOccupancySource;
+  sourceId: string;
+  /**
+   * Set when this booking was made despite overlapping another interval for
+   * the same vehicle. Conflicts are warnings a planner can override, never a
+   * hard block — mirrors `ScheduleAssignment.isOverride` /
+   * `certificationOverrideReason`.
+   */
+  overrideReason?: string | null;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 // ─── Inventory ─────────────────────────────────────────────────────────────────
 
 export enum InventoryItemType {

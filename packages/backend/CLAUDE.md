@@ -15,7 +15,8 @@ NestJS + Prisma. Read `../shared/CLAUDE.md` first if the feature touches shared 
 
 Current modules: `auth`, `availability`, `event-reports`, `facilities`, `geography`, `health`,
 `inem`, `inventory`, `live-runs`, `notices`, `notifications`, `schedules`, `statistics`, `storage`,
-`users`, `vehicles`, `volunteer-hours`, `prisma`. New modules are wired into `src/app.module.ts`.
+`users`, `vehicles`, `vehicle-occupancy`, `volunteer-hours`, `prisma`. New modules are wired into
+`src/app.module.ts`.
 Bootstrap (global `ValidationPipe`, global `ApiErrorFilter`, port 3000) is in `src/main.ts`.
 
 `notifications` is the generic delivery framework (channels, pg-boss queue, org/user
@@ -68,6 +69,10 @@ grep -n "^model \|^enum " packages/backend/prisma/schema.prisma  # regenerate th
 Model index by domain (names only — grep for fields/relations):
 - **Identity**: `User`, `UserCertification`, `UserProfileAudit`, `RefreshToken`
 - **Fleet**: `Vehicle`, `MaintenanceEntry`
+- **Vehicle occupancy** (#222): `VehicleOccupancy` — forward commitment of a named vehicle
+  across the whole platform (schedule shifts, transport trips, maintenance, support events),
+  deliberately outside the transport-specific modules since the fleet is one pool. Written
+  through from its source row; `MaintenanceEntry` write-through lives in `vehicles.service.ts`
 - **Inventory**: `MaterialItem`, `MaterialItemBarcode`, `InventoryTemplate`, `InventoryTemplateItem`, `VehicleInventoryItem`, `VehicleInventoryAudit`, `StockMovement`
 - **Availability**: `Holiday`, `AvailabilityWindow`, `AvailabilityWindowShift`, `AvailabilityWindowRole`, `AvailabilitySubmission`, `AvailabilityResponse`
 - **Schedules**: `Schedule`, `ScheduleAssignment`, `ScheduleShiftOverride`

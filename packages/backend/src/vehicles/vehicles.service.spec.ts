@@ -45,15 +45,24 @@ function buildPrismaStub(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function buildVehicleOccupancyStub() {
+  return {
+    syncForSource: jest.fn().mockResolvedValue(undefined),
+    removeForSource: jest.fn().mockResolvedValue(undefined),
+  };
+}
+
 // ── VehiclesService unit tests ─────────────────────────────────────────────────
 
 describe('VehiclesService', () => {
   let service: VehiclesService;
   let prisma: ReturnType<typeof buildPrismaStub>;
+  let vehicleOccupancy: ReturnType<typeof buildVehicleOccupancyStub>;
 
   beforeEach(() => {
     prisma = buildPrismaStub();
-    service = new VehiclesService(prisma as never);
+    vehicleOccupancy = buildVehicleOccupancyStub();
+    service = new VehiclesService(prisma as never, vehicleOccupancy as never);
   });
 
   // ── create ──────────────────────────────────────────────────────────────────
@@ -190,6 +199,22 @@ describe('VehiclesService', () => {
       expect(result.vehicleId).toBe('v1');
     });
 
+    it('syncs a VehicleOccupancy interval for the whole day (#222)', async () => {
+      prisma.vehicle.findFirst.mockResolvedValue({ id: 'v1', isDeleted: false });
+      await service.createEntry({
+        vehicleId: 'v1',
+        date: '2025-03-01',
+        description: 'Oil change',
+        serviceProvider: 'Garagem Silva',
+        cost: 150,
+      });
+      expect(vehicleOccupancy.syncForSource).toHaveBeenCalledWith(
+        'MAINTENANCE',
+        'me1',
+        expect.objectContaining({ vehicleId: 'v1' }),
+      );
+    });
+
     it('throws NotFoundException when vehicle does not exist', async () => {
       prisma.vehicle.findFirst.mockResolvedValue(null);
       await expect(
@@ -209,6 +234,12 @@ describe('VehiclesService', () => {
       prisma.maintenanceEntry.findUnique.mockResolvedValue({ id: 'me1' });
       await service.removeEntry('me1');
       expect(prisma.maintenanceEntry.delete).toHaveBeenCalledWith({ where: { id: 'me1' } });
+    });
+
+    it('removes the matching VehicleOccupancy interval (#222)', async () => {
+      prisma.maintenanceEntry.findUnique.mockResolvedValue({ id: 'me1' });
+      await service.removeEntry('me1');
+      expect(vehicleOccupancy.removeForSource).toHaveBeenCalledWith('MAINTENANCE', 'me1');
     });
 
     it('throws NotFoundException when entry does not exist', async () => {

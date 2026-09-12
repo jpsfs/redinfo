@@ -343,6 +343,7 @@ model Vehicle {
   eventReportMaterials  EventReportMaterial[]
   liveRuns              LiveRun[]
   inemUnits             INEMUnit[]
+  occupancies           VehicleOccupancy[]
 
   @@index([vehicleType])
   @@index([isDeleted])
@@ -352,6 +353,8 @@ model MaintenanceEntry {
   id              String   @id @default(cuid())
   vehicleId       String
   vehicle         Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  /// Only a calendar date, no times. Written through to `VehicleOccupancy`
+  /// (source `MAINTENANCE`) as the whole working day — midnight to midnight.
   date            DateTime @db.Date
   description     String
   serviceProvider String
@@ -362,6 +365,40 @@ model MaintenanceEntry {
   updatedAt       DateTime @updatedAt
 
   @@index([vehicleId])
+}
+
+/// Where a `VehicleOccupancy` interval came from (#222).
+enum VehicleOccupancySource {
+  SCHEDULE_SHIFT
+  TRANSPORT_TRIP
+  MAINTENANCE
+  SUPPORT_EVENT
+}
+
+/// One interval during which a named vehicle is committed, whatever the
+/// source (#222) — the single answer to "is vehicle X free at time Y?" for
+/// the whole platform. Deliberately outside every transport-specific
+/// module: the fleet is one pool, so this can't live inside `transports`.
+/// Written through from its source row — never maintained by hand.
+model VehicleOccupancy {
+  id        String                 @id @default(cuid())
+  vehicleId String
+  vehicle   Vehicle                @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  startsAt  DateTime
+  endsAt    DateTime
+  source    VehicleOccupancySource
+  sourceId  String
+  /// Set when this booking was made despite overlapping another interval
+  /// for the same vehicle. Conflicts are warnings a planner can override,
+  /// never a hard block — mirrors `ScheduleAssignment.isOverride` /
+  /// `certificationOverrideReason`.
+  overrideReason String?
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([vehicleId, startsAt, endsAt])
+  @@index([source, sourceId])
 }
 
 // ─── Inventory ────────────────────────────────────────────────────────────────

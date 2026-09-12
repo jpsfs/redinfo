@@ -33,6 +33,7 @@ Don't ask for a list of all exports — grep them.
 | Auth | Auth-related shapes |
 | API Helpers | Generic request/response helpers |
 | Vehicles | Vehicle types and shapes |
+| Vehicle occupancy | `VehicleOccupancySource`, `VehicleOccupancy` — forward commitment of a named vehicle across the whole platform, whatever the source (#222) |
 | Inventory | Inventory templates and items |
 | Availability | Windows, shifts, submissions, responses |
 | Window roles | Roles within an availability window |
