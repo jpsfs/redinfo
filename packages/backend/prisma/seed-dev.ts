@@ -488,6 +488,12 @@ async function main() {
       template: emergencyTemplate,
       shortfallItem: 'Oxygen Cylinder',
       unchecked: 'Pulse Oximeter' as string | null,
+      // Standard SIB layout: driver + one crew seat, one stretcher, no
+      // wheelchair position or ramp — a plain emergency ambulance.
+      seatedCapacity: 2,
+      wheelchairPositions: 0,
+      stretcherPositions: 1,
+      hasRampOrLift: false,
     },
     {
       key: 'ambulance2',
@@ -503,6 +509,12 @@ async function main() {
       template: emergencyTemplate,
       shortfallItem: 'Bandages (assorted)',
       unchecked: null as string | null,
+      // Same class of vehicle, deliberately identical configuration — the
+      // chip shouldn't need per-unit variation to be legible.
+      seatedCapacity: 2,
+      wheelchairPositions: 0,
+      stretcherPositions: 1,
+      hasRampOrLift: false,
     },
     {
       key: 'transport1',
@@ -517,6 +529,13 @@ async function main() {
       template: transportTemplate,
       shortfallItem: 'Disposable Blanket',
       unchecked: null as string | null,
+      // Transport layout instead: more ambulatory seats, a wheelchair
+      // position and a ramp, no stretcher — exercises the other half of the
+      // chip's badge combinations against the emergency pair above.
+      seatedCapacity: 6,
+      wheelchairPositions: 1,
+      stretcherPositions: 0,
+      hasRampOrLift: true,
     },
   ];
 
@@ -533,6 +552,10 @@ async function main() {
         notes: fixture.notes,
         insuranceRenewalDate: parseIsoDate(fixture.insuranceRenewalDate),
         nextImtInspectionDate: parseIsoDate(fixture.nextImtInspectionDate),
+        seatedCapacity: fixture.seatedCapacity,
+        wheelchairPositions: fixture.wheelchairPositions,
+        stretcherPositions: fixture.stretcherPositions,
+        hasRampOrLift: fixture.hasRampOrLift,
       },
     });
     vehicles[fixture.key] = vehicle;
