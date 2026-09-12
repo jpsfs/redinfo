@@ -1,5 +1,6 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import {
+  AssignmentCompensationKind,
   AvailabilityWindowCategory,
   AvailabilityWindowStatus,
   CertificationType,
@@ -227,6 +228,39 @@ describe('ScheduleAssignmentsService.assign', () => {
     expect(prisma.scheduleAssignment.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: expect.objectContaining({ isOverride: true }) }),
     );
+  });
+
+  // A colleague's paid-vs-volunteer status is a coordinator's business, not
+  // the rota's — see the privacy fix in `schedules.service.ts`
+  // (`canSeeCompensation`). `compensationOverride` must be *absent*, not
+  // `null`, when the caller may not see it: `null` already means "no override
+  // was made", a real answer this viewer is not owed.
+  it('omits compensationOverride from the response when the caller cannot see it', async () => {
+    const prisma = buildPrismaStub();
+    const { service } = makeService(prisma);
+
+    const result = await service.assign(
+      's1',
+      dto({ compensationOverride: AssignmentCompensationKind.PAID_EXTRA }),
+      'u-coord',
+      false,
+    );
+
+    expect(result).not.toHaveProperty('compensationOverride');
+  });
+
+  it('includes compensationOverride in the response when the caller may see it', async () => {
+    const prisma = buildPrismaStub();
+    const { service } = makeService(prisma);
+
+    const result = await service.assign(
+      's1',
+      dto({ compensationOverride: AssignmentCompensationKind.PAID_EXTRA }),
+      'u-coord',
+      true,
+    );
+
+    expect(result).toHaveProperty('compensationOverride', AssignmentCompensationKind.PAID_EXTRA);
   });
 
   // AC: every requirement is overridable, the driver post included, but never

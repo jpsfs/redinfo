@@ -1,6 +1,7 @@
 import { PrismaClient } from '@prisma/client';
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import {
+  AssignmentCompensationKind,
   AvailabilityWindowCategory,
   ScheduleStatus,
   toMinuteOfDay,
@@ -746,6 +747,42 @@ describeIntegration('Schedules module (integration)', () => {
     expect(await schedules.findAll(anaUser, 1, 25, { windowId: window.id })).toMatchObject({
       total: 1,
     });
+  });
+
+  // A colleague's paid-vs-volunteer status is a coordinator's business, not
+  // the rota's — the board is deliberately ungated for a published schedule,
+  // but `compensationOverride` is not part of what gets posted.
+  it('integration: hides compensationOverride from a member without MANAGE_SCHEDULES, shows it to a coordinator', async () => {
+    const window = await openWindow();
+    const schedule = await schedules.create({ windowId: window.id }, coordinator.id);
+    await assignments.assign(
+      schedule.id,
+      {
+        date: START,
+        slot: 1,
+        userId: ana.id,
+        roleId: roleId(window, 'Driver'),
+        compensationOverride: AssignmentCompensationKind.PAID_EXTRA,
+      },
+      coordinator.id,
+      true,
+    );
+    await schedules.publish(schedule.id, coordinator.id);
+
+    const findAnasAssignment = (board: Awaited<ReturnType<typeof schedules.getBoard>>) =>
+      board.days
+        .flatMap((day) => day.shifts)
+        .flatMap((shift) => shift.assignments)
+        .find((assignment) => assignment.userId === ana.id);
+
+    const coordinatorBoard = await schedules.getBoard(schedule.id, coordinatorUser);
+    expect(findAnasAssignment(coordinatorBoard)).toHaveProperty(
+      'compensationOverride',
+      AssignmentCompensationKind.PAID_EXTRA,
+    );
+
+    const memberBoard = await schedules.getBoard(schedule.id, anaUser);
+    expect(findAnasAssignment(memberBoard)).not.toHaveProperty('compensationOverride');
   });
 
   it('integration: a member adds themselves to an open place on a published rota', async () => {

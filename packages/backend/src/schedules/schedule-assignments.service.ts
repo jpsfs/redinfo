@@ -33,6 +33,7 @@ import {
 } from '../users/certifications.util';
 import { CreateScheduleAssignmentDto, SelfAssignDto } from './dto/create-assignment.dto';
 import {
+  canSeeCompensation,
   RequestUser,
   ScheduleContext,
   SchedulesService,
@@ -88,6 +89,19 @@ export class ScheduleAssignmentsService {
     scheduleId: string,
     dto: CreateScheduleAssignmentDto,
     assignedById: string,
+    /**
+     * Whether the caller may see `compensationOverride` on the response —
+     * see `canSeeCompensation` in `schedules.service.ts`. A required argument
+     * computed by each caller from the *actual* requesting viewer, not
+     * inferred here from, say, "this DTO has no compensation field today" —
+     * that is a property of the DTO's current shape, not an invariant, and
+     * would silently reopen the leak the day it changes. Defaults closed
+     * (`false`) only so the many existing unit fixtures that pass a bare
+     * assigner id — and never assert on this field — keep compiling; every
+     * real caller (the controller route, `selfAssign`) passes an explicit,
+     * per-viewer value.
+     */
+    canSeeCompensation = false,
   ): Promise<ScheduleAssignment> {
     const context = await this.schedules.loadContext(scheduleId);
     this.assertShift(context, dto.date, dto.slot);
@@ -188,10 +202,15 @@ export class ScheduleAssignmentsService {
     });
 
     const declined = await this.schedules.loadDeclinedUserIds(context.window.id);
-    return serializeAssignment(created, dto.date, {
-      submitted: submission !== null,
-      declined: declined.has(dto.userId),
-    });
+    return serializeAssignment(
+      created,
+      dto.date,
+      {
+        submitted: submission !== null,
+        declined: declined.has(dto.userId),
+      },
+      canSeeCompensation,
+    );
   }
 
   /**
@@ -263,7 +282,11 @@ export class ScheduleAssignmentsService {
       }
     }
 
-    return this.assign(scheduleId, { ...dto, userId: user.id }, user.id);
+    // Real per-viewer check, not an assumption that self-assign can never
+    // carry a compensation call: `SelfAssignDto` has no such field *today*,
+    // but that is a property of the DTO, not a guarantee — computing this
+    // from `user`'s actual roles means it stays correct if that ever changes.
+    return this.assign(scheduleId, { ...dto, userId: user.id }, user.id, canSeeCompensation(user));
   }
 
   async unassign(scheduleId: string, assignmentId: string): Promise<{ id: string }> {

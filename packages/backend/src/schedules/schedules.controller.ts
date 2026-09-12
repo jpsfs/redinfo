@@ -21,7 +21,7 @@ import { RolesGuard } from '../auth/guards/roles.guard';
 import { Actions } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuditInterceptor } from '../auth/interceptors/audit.interceptor';
-import { RequestUser, SchedulesService } from './schedules.service';
+import { canSeeCompensation, RequestUser, SchedulesService } from './schedules.service';
 import { ScheduleAssignmentsService } from './schedule-assignments.service';
 import { ScheduleAutofillService } from './schedule-autofill.service';
 import { AdjustShiftDto } from './dto/adjust-shift.dto';
@@ -175,9 +175,12 @@ export class SchedulesController {
   assign(
     @Param('id') id: string,
     @Body() dto: CreateScheduleAssignmentDto,
-    @CurrentUser() user: { id: string },
+    @CurrentUser() user: RequestUser,
   ) {
-    return this.assignments.assign(id, dto, user.id);
+    // The route is already gated on `Action.MANAGE_SCHEDULES`, but the value
+    // is still computed from the real viewer rather than hardcoded — see
+    // `canSeeCompensation`.
+    return this.assignments.assign(id, dto, user.id, canSeeCompensation(user));
   }
 
   @Delete(':id/assignments/:assignmentId')

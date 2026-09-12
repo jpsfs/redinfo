@@ -131,6 +131,19 @@ export interface RequestUser {
 const canSeeDrafts = (user: RequestUser) =>
   hasPermission(user.roles, Action.VIEW_SCHEDULES);
 
+/**
+ * Whether this viewer may see who on a shift is paid vs. volunteering.
+ *
+ * A published rota is posted to the whole platform (see `assertVisible`), but
+ * `ScheduleAssignment.compensationOverride` is not part of that posting — it
+ * is a coordinator's call about one person's pay, and every colleague on the
+ * same shift can otherwise see it. Exported so `ScheduleAssignmentsService`
+ * (the assign/self-assign paths) can compute the same answer rather than
+ * guessing at it.
+ */
+export const canSeeCompensation = (user: RequestUser) =>
+  hasPermission(user.roles, Action.MANAGE_SCHEDULES);
+
 @Injectable()
 export class SchedulesService {
   constructor(
@@ -393,10 +406,15 @@ export class SchedulesService {
       const key = shiftKey(date, assignment.slot);
       const bucket = byShift.get(key) ?? [];
       bucket.push(
-        serializeAssignment(assignment, date, {
-          submitted: submissions.has(submissionKey(assignment.userId, date, assignment.slot)),
-          declined: declined.has(assignment.userId),
-        }),
+        serializeAssignment(
+          assignment,
+          date,
+          {
+            submitted: submissions.has(submissionKey(assignment.userId, date, assignment.slot)),
+            declined: declined.has(assignment.userId),
+          },
+          canSeeCompensation(user),
+        ),
       );
       byShift.set(key, bucket);
     }
@@ -670,10 +688,21 @@ export class SchedulesService {
       this.loadDeclinedUserIds(context.window.id),
     ]);
     const onShift = assignments.map((assignment) =>
-      serializeAssignment(assignment, date, {
-        submitted: submissions.has(submissionKey(assignment.userId, date, slot)),
-        declined: declined.has(assignment.userId),
-      }),
+      serializeAssignment(
+        assignment,
+        date,
+        {
+          submitted: submissions.has(submissionKey(assignment.userId, date, slot)),
+          declined: declined.has(assignment.userId),
+        },
+        // Both callers of `readAdjustedShift` — `adjustShift` and
+        // `resetShift` — sit behind routes gated `Action.MANAGE_SCHEDULES`
+        // (see `schedules.controller.ts`), and this method is private, so
+        // there is no path here for an unprivileged viewer. Explicit `true`
+        // rather than threading a `RequestUser` through for a value that can
+        // only ever be true.
+        true,
+      ),
     );
 
     return {
@@ -1253,6 +1282,13 @@ export function serializeAssignment(
   },
   date: string,
   availability: { submitted: boolean; declined: boolean },
+  /**
+   * Whether this viewer may see `compensationOverride` — see
+   * `canSeeCompensation`. Deliberately a required, explicit argument rather
+   * than inferred from a role or guard here: the caller is the one who knows
+   * who is asking.
+   */
+  canSeeCompensation: boolean,
 ): ScheduleAssignment {
   return {
     id: row.id,
@@ -1265,7 +1301,14 @@ export function serializeAssignment(
     roleName: row.role?.name ?? null,
     isOverride: row.isOverride,
     certificationOverrideReason: row.certificationOverrideReason ?? null,
-    compensationOverride: (row.compensationOverride as AssignmentCompensationKind | null | undefined) ?? null,
+    // Omitted entirely when redacted, never `null` — `null` already means
+    // "no explicit call was made", a real answer this viewer is not owed.
+    ...(canSeeCompensation
+      ? {
+          compensationOverride:
+            (row.compensationOverride as AssignmentCompensationKind | null | undefined) ?? null,
+        }
+      : {}),
     // Derived, not stored: an override is something done *to* someone, so
     // a volunteer who put themselves forward must not read as one.
     selfAssigned: row.assignedById === row.userId,

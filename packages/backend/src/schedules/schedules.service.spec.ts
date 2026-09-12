@@ -1,5 +1,10 @@
 import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
-import { CertificationType, ScheduleStatus, UserRole } from '@redinfo/shared';
+import {
+  AssignmentCompensationKind,
+  CertificationType,
+  ScheduleStatus,
+  UserRole,
+} from '@redinfo/shared';
 import { SchedulesService } from './schedules.service';
 
 // ── The schedule itself (ADO #161) ─────────────────────────────────────────────
@@ -339,6 +344,41 @@ describe('SchedulesService.getBoard', () => {
     expect(board.days[0].shifts[0].assignments).toHaveLength(1);
     expect(board.days[0].shifts[0].driverCount).toBe(1);
     expect(board.roles.map((role) => role.name)).toEqual(['Driver', 'Team Member']);
+  });
+
+  // A colleague's paid-vs-volunteer status is a coordinator's business, not
+  // the rota's: `GET /schedules/:id/board` is deliberately ungated (the rota
+  // itself is posted, not confidential), but `compensationOverride` is not
+  // part of that posting.
+  it('hides compensationOverride from a viewer without MANAGE_SCHEDULES', async () => {
+    const { service, prisma } = makeService();
+    // A volunteer may only read a published schedule at all.
+    prisma.schedule.findUnique.mockResolvedValue(
+      scheduleRow({ status: ScheduleStatus.PUBLISHED }),
+    );
+    prisma.scheduleAssignment.findMany.mockResolvedValue([
+      assignmentRow({ compensationOverride: AssignmentCompensationKind.PAID_EXTRA }),
+    ]);
+
+    const board = await service.getBoard('s1', VOLUNTEER);
+
+    // Absent, not `null` — `null` already means "no override was made", a
+    // real answer this viewer is not owed.
+    expect(board.days[0].shifts[0].assignments[0]).not.toHaveProperty('compensationOverride');
+  });
+
+  it('shows compensationOverride to a coordinator', async () => {
+    const { service, prisma } = makeService();
+    prisma.scheduleAssignment.findMany.mockResolvedValue([
+      assignmentRow({ compensationOverride: AssignmentCompensationKind.PAID_EXTRA }),
+    ]);
+
+    const board = await service.getBoard('s1', COORDINATOR);
+
+    expect(board.days[0].shifts[0].assignments[0]).toHaveProperty(
+      'compensationOverride',
+      AssignmentCompensationKind.PAID_EXTRA,
+    );
   });
 
   it('flags the roles and drivers a shift is short of', async () => {
