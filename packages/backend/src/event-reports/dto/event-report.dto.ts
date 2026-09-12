@@ -133,7 +133,7 @@ export class EventReportVictimDto {
   @ApiPropertyOptional({ nullable: true })
   @IsOptional()
   @IsString()
-  destinationHospitalId?: string | null;
+  destinationFacilityId?: string | null;
 
   @ApiPropertyOptional({
     nullable: true,
@@ -153,7 +153,7 @@ export class EventReportInemSupportUnitDto {
   @ApiProperty({ description: 'The base the unit was dispatched from.' })
   @IsString()
   @IsNotEmpty()
-  hospitalId: string;
+  facilityId: string;
 }
 
 /**

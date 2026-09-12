@@ -434,6 +434,6 @@ export const LIVE_RUN_BOARD_ENTRY: LiveRunBoardEntry = {
   hospitalArrivalAt: null,
   availableAt: null,
   destinationKind: null,
-  destinationHospital: null,
+  destinationFacility: null,
   updatedAt: '2026-10-03T14:05:00.000Z',
 };

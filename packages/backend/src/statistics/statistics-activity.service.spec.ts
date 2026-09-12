@@ -90,9 +90,9 @@ describe('StatisticsActivityService.getStatistics', () => {
         victims: [
           {
             destinationKind: 'HOSPITAL',
-            destinationHospital: { id: 'h-1', name: 'Hospital de Braga', municipality: { name: 'Braga' } },
+            destinationFacility: { id: 'h-1', name: 'Hospital de Braga', municipality: { name: 'Braga' } },
           },
-          { destinationKind: 'TREATED_ON_SCENE', destinationHospital: null },
+          { destinationKind: 'TREATED_ON_SCENE', destinationFacility: null },
         ],
       }),
     ]);
@@ -111,8 +111,8 @@ describe('StatisticsActivityService.getStatistics', () => {
 
   it('groups INEM support units by unit type and base hospital', async () => {
     const { service } = makeService([
-      REPORT({ inemSupportUnits: [{ unitType: 'VMER', hospital: { name: 'Hospital de Braga' } }] }),
-      REPORT({ inemSupportUnits: [{ unitType: 'VMER', hospital: { name: 'Hospital de Braga' } }] }),
+      REPORT({ inemSupportUnits: [{ unitType: 'VMER', facility: { name: 'Hospital de Braga' } }] }),
+      REPORT({ inemSupportUnits: [{ unitType: 'VMER', facility: { name: 'Hospital de Braga' } }] }),
     ]);
     const stats = await service.getStatistics({ from: '2026-06-01', to: '2026-06-30' });
     expect(stats.inemUnits).toEqual([{ unitType: 'VMER', hospitalName: 'Hospital de Braga', count: 2 }]);

@@ -23,7 +23,7 @@ test loudly, so you'll know immediately if you missed one. Use `useT()` inside c
 ## Resource anatomy (react-admin)
 
 `src/resources/<name>/` — one dir per CRUD resource (`availability`, `eventReports`,
-`hospitals`, `inventory`, `liveRuns`, `schedules`, `users`, `vehicles`), each with an
+`facilities`, `inventory`, `liveRuns`, `schedules`, `users`, `vehicles`), each with an
 `index.ts` barrel and `XList.tsx` / `XCreate.tsx` / `XEdit.tsx` / `XShow.tsx` (+ dialogs as
 needed). `src/schedules/` on the backend pairs with `resources/schedules/` here — together
 they're the richest exemplar; copy their shape.

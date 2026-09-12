@@ -46,11 +46,11 @@ export const EVENT_REPORT_INCLUDE = {
     orderBy: { position: 'asc' },
   },
   victims: {
-    include: { destinationHospital: { select: { id: true, name: true } } },
+    include: { destinationFacility: { select: { id: true, name: true } } },
     orderBy: { position: 'asc' },
   },
   inemSupportUnits: {
-    include: { hospital: { select: { id: true, name: true } } },
+    include: { facility: { select: { id: true, name: true } } },
     orderBy: { position: 'asc' },
   },
   materials: {
@@ -148,8 +148,8 @@ function serializeVictim(row: EventReportRow['victims'][number]): EventReportVic
     gender: row.gender as Gender,
     age: row.age,
     destinationKind: row.destinationKind as VictimDestinationKind,
-    destinationHospitalId: row.destinationHospitalId,
-    destinationHospital: row.destinationHospital,
+    destinationFacilityId: row.destinationFacilityId,
+    destinationFacility: row.destinationFacility,
     hospitalEpisodeNumber: row.hospitalEpisodeNumber,
   };
 }
@@ -161,8 +161,8 @@ function serializeInemSupportUnit(
     id: row.id,
     position: row.position,
     unitType: row.unitType as InemSupportUnitType,
-    hospitalId: row.hospitalId,
-    hospital: row.hospital,
+    facilityId: row.facilityId,
+    facility: row.facility,
   };
 }
 
@@ -307,11 +307,11 @@ export function reportRowToInput(row: EventReportRow): EventReportInput {
       gender: victim.gender,
       age: victim.age,
       destinationKind: victim.destinationKind,
-      destinationHospitalId: victim.destinationHospitalId ?? null,
+      destinationFacilityId: victim.destinationFacilityId ?? null,
     })),
     inemSupportUnits: report.inemSupportUnits.map((unit) => ({
       unitType: unit.unitType,
-      hospitalId: unit.hospitalId,
+      facilityId: unit.facilityId,
     })),
     materials: report.materials.map((material) => ({
       materialItemId: material.materialItemId,

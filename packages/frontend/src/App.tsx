@@ -45,7 +45,7 @@ import {
   EventReportShow,
   EventReportEdit,
 } from './resources/eventReports';
-import { HospitalList, HospitalCreate, HospitalEdit } from './resources/hospitals';
+import { FacilityList, FacilityCreate, FacilityEdit } from './resources/facilities';
 import { LiveEntryPage, LiveRunGate, LiveRunPage } from './resources/liveRuns';
 import { MyAvailabilityPage } from './pages/MyAvailabilityPage';
 import { MyDutiesPage } from './pages/MyDutiesPage';
@@ -264,11 +264,11 @@ export default function App() {
       />
 
       <Resource
-        name="hospitals"
+        name="facilities"
         icon={LocalHospitalIcon}
-        list={HospitalList}
-        create={HospitalCreate}
-        edit={HospitalEdit}
+        list={FacilityList}
+        create={FacilityCreate}
+        edit={FacilityEdit}
       />
 
       {/* Read-only reference data, reached only by the pickers that need it —

@@ -214,8 +214,8 @@ export const NAV_SECTIONS: NavSection[] = [
     label: 'nav.configuration',
     entries: [
       {
-        to: '/hospitals',
-        label: 'nav.hospitals',
+        to: '/facilities',
+        label: 'nav.facilities',
         icon: <LocalHospitalIcon />,
         requires: [Action.MANAGE_HOSPITALS],
       },

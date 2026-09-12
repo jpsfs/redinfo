@@ -19,7 +19,7 @@ import SearchIcon from '@mui/icons-material/Search';
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import {
   EventReportType,
-  HospitalWithDistance,
+  FacilityWithDistance,
   Locality,
   VictimDestinationKind,
   foldForSearch,
@@ -32,7 +32,7 @@ import { useT } from '../../i18n/useT';
 
 export interface DestinationChoice {
   destinationKind: VictimDestinationKind;
-  destinationHospitalId: string | null;
+  destinationFacilityId: string | null;
   /** For display only — the caller already has the id it needs to send. */
   hospitalName?: string;
 }
@@ -76,7 +76,7 @@ export const HospitalPicker = ({
 }) => {
   const t = useT();
   const isMobile = useIsMobile();
-  const [hospitals, setHospitals] = useState<HospitalWithDistance[] | null>(null);
+  const [hospitals, setHospitals] = useState<FacilityWithDistance[] | null>(null);
   const [query, setQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
   const noTransportDestinations = useMemo(
@@ -89,10 +89,10 @@ export const HospitalPicker = ({
     let cancelled = false;
 
     const path = locality?.id
-      ? `/hospitals/picker?localityId=${encodeURIComponent(locality.id)}`
-      : '/hospitals/picker';
+      ? `/facilities/emergency?localityId=${encodeURIComponent(locality.id)}`
+      : '/facilities/emergency';
 
-    apiFetch<HospitalWithDistance[]>(path)
+    apiFetch<FacilityWithDistance[]>(path)
       .then((found) => {
         if (!cancelled) setHospitals(found);
       })
@@ -156,7 +156,7 @@ export const HospitalPicker = ({
               onClick={() =>
                 onPick({
                   destinationKind: VictimDestinationKind.HOSPITAL,
-                  destinationHospitalId: hospital.id,
+                  destinationFacilityId: hospital.id,
                   hospitalName: hospital.name,
                 })
               }
@@ -215,7 +215,7 @@ export const HospitalPicker = ({
                   variant="outlined"
                   color="secondary"
                   onClick={() =>
-                    onPick({ destinationKind: kind, destinationHospitalId: null })
+                    onPick({ destinationKind: kind, destinationFacilityId: null })
                   }
                   sx={{ minHeight: 52 }}
                 >

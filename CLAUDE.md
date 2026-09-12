@@ -21,8 +21,8 @@ need, then `Read` with `offset`/`limit` around it**, rather than reading the who
 
 - **Backend** (`packages/backend/src/<feature>/`): `<feature>.{module,controller,service}.ts`,
   extra services as `<feature>-<concern>.service.ts`, DTOs at `dto/<verb>-<noun>.dto.ts`,
-  specs colocated. Modules: `auth`, `availability`, `event-reports`, `geography`, `health`,
-  `hospitals`, `inventory`, `live-runs`, `schedules`, `storage`, `users`, `vehicles`, `prisma`.
+  specs colocated. Modules: `auth`, `availability`, `event-reports`, `facilities`, `geography`,
+  `health`, `inventory`, `live-runs`, `schedules`, `storage`, `users`, `vehicles`, `prisma`.
   Wiring: `src/app.module.ts`. Bootstrap: `src/main.ts`. Details: `packages/backend/CLAUDE.md`.
 - **Frontend** (`packages/frontend/src/`): `resources/<name>/` = react-admin CRUD screens,
   `pages/` = standalone screens, `components/` = shared UI, `layout/` = shell/nav/theme,

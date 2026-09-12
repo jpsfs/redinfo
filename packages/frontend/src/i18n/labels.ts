@@ -520,7 +520,7 @@ const MESSAGES = {
   'nav.inventoryTemplates': { pt: 'Modelos de inventário', en: 'Inventory Templates' },
   'nav.materialItems': { pt: 'Catálogo de materiais', en: 'Material Catalogue' },
   'nav.inemStatus': { pt: 'Estado INEM', en: 'INEM Status' },
-  'nav.hospitals': { pt: 'Hospitais', en: 'Hospitals' },
+  'nav.facilities': { pt: 'Unidades de Saúde', en: 'Health Facilities' },
   'nav.holidays': { pt: 'Feriados', en: 'Holidays' },
   'nav.myProfile': { pt: 'O meu perfil', en: 'My Profile' },
   'nav.myNotices': { pt: 'Avisos', en: 'Notices' },
@@ -551,7 +551,7 @@ const MESSAGES = {
   },
   'resources.schedules.name': { pt: 'Escalas', en: 'Schedules' },
   'resources.event-reports.name': { pt: 'Relatórios', en: 'Reports' },
-  'resources.hospitals.name': { pt: 'Hospitais', en: 'Hospitals' },
+  'resources.facilities.name': { pt: 'Unidades de Saúde', en: 'Health Facilities' },
   'resources.municipalities.name': { pt: 'Concelhos', en: 'Municipalities' },
   'resources.localities.name': { pt: 'Localidades', en: 'Localities' },
   'resources.holidays.name': { pt: 'Feriados', en: 'Holidays' },
@@ -2293,32 +2293,54 @@ const MESSAGES = {
     en: 'No emergency is being run right now.',
   },
 
-  // ── Hospitals (#180 phase 3) ──
-  'resources.hospitals.fields.name': { pt: 'Hospital', en: 'Hospital' },
-  'resources.hospitals.fields.municipalityId': { pt: 'Concelho', en: 'Municipality' },
-  'resources.hospitals.fields.isActive': { pt: 'Estado', en: 'Status' },
-  'hospitalList.addHospital': { pt: 'Adicionar hospital', en: 'Add hospital' },
-  'hospitalList.colMunicipality': { pt: 'Concelho', en: 'Municipality' },
-  'hospitalList.colDistrict': { pt: 'Distrito', en: 'District' },
-  'hospitalList.colCoordinates': { pt: 'Coordenadas', en: 'Coordinates' },
-  'hospitalList.municipalityCentreFallback': { pt: 'centro do concelho', en: 'municipality centre' },
-  'hospitalList.active': { pt: 'Ativo', en: 'Active' },
-  'hospitalList.retired': { pt: 'Retirado', en: 'Retired' },
-  'hospitalList.retiredHiddenFromNewReports': {
+  // ── Facilities (#180 phase 3, split into emergency/transport destinations #220) ──
+  'resources.facilities.fields.name': { pt: 'Nome', en: 'Name' },
+  'resources.facilities.fields.municipalityId': { pt: 'Concelho', en: 'Municipality' },
+  'resources.facilities.fields.isActive': { pt: 'Estado', en: 'Status' },
+  'resources.facilities.fields.isEmergencyDestination': {
+    pt: 'Destino de emergência',
+    en: 'Emergency destination',
+  },
+  'resources.facilities.fields.isTransportDestination': {
+    pt: 'Destino de transporte',
+    en: 'Transport destination',
+  },
+  'facilityList.addFacility': { pt: 'Adicionar unidade', en: 'Add facility' },
+  'facilityList.colMunicipality': { pt: 'Concelho', en: 'Municipality' },
+  'facilityList.colDistrict': { pt: 'Distrito', en: 'District' },
+  'facilityList.colCoordinates': { pt: 'Coordenadas', en: 'Coordinates' },
+  'facilityList.municipalityCentreFallback': { pt: 'centro do concelho', en: 'municipality centre' },
+  'facilityList.active': { pt: 'Ativo', en: 'Active' },
+  'facilityList.retired': { pt: 'Retirado', en: 'Retired' },
+  'facilityList.retiredHiddenFromNewReports': {
     pt: 'Retirado — oculto em novos relatórios',
     en: 'Retired — hidden from new reports',
   },
-  'hospitalList.helpText': {
-    pt: 'Esta lista preenche o campo "transportado para" num relatório. As coordenadas ordenam os hospitais por distância à localidade do relatório — um hospital sem coordenadas usa como aproximação o centro do seu concelho, por isso a ordenação funciona sempre e preenchê-las só a torna mais precisa. Retirar um hospital remove-o dos novos relatórios sem alterar os já entregues.',
-    en: 'This list fills the "taken to" field on a report. Coordinates order the ' +
-      'hospitals by distance from the report\'s locality — a hospital without them ' +
-      'falls back to the centre of its municipality, so the ordering always works ' +
-      'and filling them in only sharpens it. Retiring a hospital removes it from ' +
-      'new reports without changing the ones already filed.',
+  'facilityList.helpText': {
+    pt: 'Esta lista alimenta duas listas independentes: os destinos de emergência (para onde uma vítima é transportada) e os destinos de transporte. Uma unidade pode ser as duas coisas, uma delas, ou nenhuma até ser assinalada — mas tem de ter pelo menos uma assinalada para poder ser guardada. As coordenadas ordenam os destinos de emergência por distância à localidade do relatório — uma unidade sem coordenadas usa como aproximação o centro do seu concelho. Um destino de transporte tem sempre de ter coordenadas próprias, porque um transporte agendado precisa da porta certa, não do centro do concelho. Retirar uma unidade remove-a das novas listas sem alterar os relatórios já entregues.',
+    en: 'This list feeds two independent lists: emergency destinations (where a ' +
+      'victim is taken) and transport destinations. A facility can be either, both, ' +
+      'or neither until flagged — but it needs at least one flag to be saved. ' +
+      'Coordinates order emergency destinations by distance from the report\'s ' +
+      'locality — a facility without them falls back to the centre of its ' +
+      'municipality. A transport destination always needs its own coordinates: a ' +
+      'scheduled transport needs the actual door, not the municipality centre. ' +
+      'Retiring a facility removes it from new lists without changing reports ' +
+      'already filed.',
   },
-  'hospitalList.nameField': { pt: 'Nome do hospital', en: 'Hospital name' },
-  'hospitalList.latitude': { pt: 'Latitude (opcional)', en: 'Latitude (optional)' },
-  'hospitalList.longitude': { pt: 'Longitude (opcional)', en: 'Longitude (optional)' },
+  'facilityList.nameField': { pt: 'Nome', en: 'Name' },
+  'facilityList.addressLine': { pt: 'Morada (opcional)', en: 'Address (optional)' },
+  'facilityList.postalCode': { pt: 'Código postal (opcional)', en: 'Postal code (optional)' },
+  'facilityList.latitude': { pt: 'Latitude (opcional)', en: 'Latitude (optional)' },
+  'facilityList.longitude': { pt: 'Longitude (opcional)', en: 'Longitude (optional)' },
+  'facilityList.isEmergencyDestination': {
+    pt: 'Destino de emergência (para onde uma vítima pode ser transportada)',
+    en: 'Emergency destination (where a victim may be taken)',
+  },
+  'facilityList.isTransportDestination': {
+    pt: 'Destino de transporte (precisa de coordenadas próprias)',
+    en: 'Transport destination (needs its own coordinates)',
+  },
 
   // ── Rich text editor (#180 phase 3) — shared by crew and coordinator forms ──
   'richText.bold': { pt: 'Negrito', en: 'Bold' },

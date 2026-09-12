@@ -59,7 +59,7 @@ export function serializeLocality(row: LocalityRow): Locality {
  * the seed found one for it, else its municipality's centroid. A município
  * can be tens of kilometres across, so that centroid is a fallback, never
  * the first choice — the same "own point, else the area's" rule
- * `Hospital.latitude/longitude` uses. `null` only when neither is known,
+ * `Facility.latitude/longitude` uses. `null` only when neither is known,
  * which the seed guarantees never happens for a municipality but can't
  * guarantee for every freguesia in it.
  */

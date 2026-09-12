@@ -14,7 +14,7 @@ export function victimSummary(t: Translate, report: EventReport): string {
   if (report.victims.length === 1) {
     const [victim] = report.victims;
     const where =
-      victim.destinationHospital?.name ?? destinationLabel(t, victim.destinationKind);
+      victim.destinationFacility?.name ?? destinationLabel(t, victim.destinationKind);
     return `1 · ${where}`;
   }
   const transported = transportedVictimCount(report.victims);

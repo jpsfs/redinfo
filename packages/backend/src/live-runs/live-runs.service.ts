@@ -370,8 +370,8 @@ export class LiveRunsService {
 
       const legs = await this.routes.routeForRun(settings, {
         occurrence,
-        hospital: row.destinationHospital
-          ? { label: row.destinationHospital.name, address: row.destinationHospital.name }
+        hospital: row.destinationFacility
+          ? { label: row.destinationFacility.name, address: row.destinationFacility.name }
           : null,
       });
       if (!legs || legs.length === 0) return report;
@@ -503,7 +503,7 @@ export class LiveRunsService {
       availableAt: toDate(input.availableAt),
 
       destinationKind: (input.destinationKind ?? null) as never,
-      destinationHospitalId: input.destinationHospitalId || null,
+      destinationFacilityId: input.destinationFacilityId || null,
       hospitalEpisodeNumber: input.hospitalEpisodeNumber?.trim() || null,
 
       capture: (input.capture ?? Prisma.DbNull) as never,
@@ -532,8 +532,8 @@ export class LiveRunsService {
         ? this.prisma.locality.count({ where: { id: input.localityId } })
         : 1,
       input.vehicleId ? this.prisma.vehicle.count({ where: { id: input.vehicleId } }) : 1,
-      input.destinationHospitalId
-        ? this.prisma.hospital.count({ where: { id: input.destinationHospitalId } })
+      input.destinationFacilityId
+        ? this.prisma.facility.count({ where: { id: input.destinationFacilityId } })
         : 1,
       input.shift?.scheduleId
         ? this.prisma.schedule.count({ where: { id: input.shift.scheduleId } })
@@ -589,7 +589,7 @@ export class LiveRunsService {
       hospitalArrivalAt: run.hospitalArrivalAt ?? null,
       availableAt: run.availableAt ?? null,
       destinationKind: run.destinationKind ?? null,
-      destinationHospitalId: run.destinationHospitalId ?? null,
+      destinationFacilityId: run.destinationFacilityId ?? null,
       hospitalEpisodeNumber: run.hospitalEpisodeNumber ?? null,
       identity: run.identity ?? null,
       capture: run.capture ?? null,

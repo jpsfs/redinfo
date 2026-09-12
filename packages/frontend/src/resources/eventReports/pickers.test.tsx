@@ -253,14 +253,14 @@ describe('the hospital picker', () => {
     open();
     await waitFor(() =>
       expect(mockApiFetch).toHaveBeenCalledWith(
-        `/hospitals/picker?localityId=${TAVEIRO.id}`,
+        `/facilities/emergency?localityId=${TAVEIRO.id}`,
       ),
     );
   });
 
   it('asks for a plain list when no locality has been chosen yet', async () => {
     open(null);
-    await waitFor(() => expect(mockApiFetch).toHaveBeenCalledWith('/hospitals/picker'));
+    await waitFor(() => expect(mockApiFetch).toHaveBeenCalledWith('/facilities/emergency'));
   });
 
   it('shows the distance, in the order the API gave them', async () => {
@@ -288,7 +288,7 @@ describe('the hospital picker', () => {
 
     expect(onPick).toHaveBeenCalledWith({
       destinationKind: VictimDestinationKind.HOSPITAL,
-      destinationHospitalId: 'near',
+      destinationFacilityId: 'near',
       hospitalName: 'CHUC — Hospital Geral',
     });
   });
@@ -323,7 +323,7 @@ describe('the hospital picker', () => {
 
     expect(onPick).toHaveBeenCalledWith({
       destinationKind: VictimDestinationKind.REFUSED_TRANSPORT,
-      destinationHospitalId: null,
+      destinationFacilityId: null,
     });
   });
 

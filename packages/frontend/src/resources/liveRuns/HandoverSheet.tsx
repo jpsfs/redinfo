@@ -104,8 +104,8 @@ export const HandoverSheet = ({
 
   const { run } = form;
   const identity = run.identity ?? null;
-  const destinationHospital = run.destinationHospitalId
-    ? lookups.hospitalsById[run.destinationHospitalId]
+  const destinationFacility = run.destinationFacilityId
+    ? lookups.hospitalsById[run.destinationFacilityId]
     : undefined;
 
   const assessments = form.assessments;
@@ -180,7 +180,7 @@ export const HandoverSheet = ({
                 />
                 <SmallFact
                   label={t('field.destination')}
-                  value={destinationHospital?.name ?? '—'}
+                  value={destinationFacility?.name ?? '—'}
                 />
               </Stack>
 

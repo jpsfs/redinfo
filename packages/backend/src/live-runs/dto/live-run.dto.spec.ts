@@ -37,7 +37,7 @@ describe('SyncLiveRunDto', () => {
     hospitalArrivalAt: null,
     availableAt: null,
     destinationKind: null,
-    destinationHospitalId: null,
+    destinationFacilityId: null,
     identity: { victimHomeLocalityId: null },
     capture: { notes: null, assessments: [], supportActions: [] },
     closedAt: null,

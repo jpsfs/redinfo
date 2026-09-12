@@ -3030,26 +3030,39 @@ export function distanceInKm(
   return 2 * EARTH_RADIUS_KM * Math.asin(Math.min(1, Math.sqrt(a)));
 }
 
-// ─── Hospitals ────────────────────────────────────────────────────────────────
+// ─── Facilities ───────────────────────────────────────────────────────────────
 
-export interface Hospital {
+/**
+ * A place a crew can name in a report or a transport: a hospital, clinic or
+ * private medical facility. `isEmergencyDestination` and
+ * `isTransportDestination` are independent capability flags, not a type enum
+ * — a hospital with an emergency room is routinely both. Default-deny: a new
+ * row starts with both false until someone opts it in to a list.
+ */
+export interface Facility {
   id: string;
   name: string;
   municipalityId: string;
   municipality?: Municipality;
+  /** Street address, for transport destinations where a centroid isn't good enough. */
+  addressLine?: string | null;
+  postalCode?: string | null;
   /**
-   * The hospital's own position when someone filled it in. Null falls back to
-   * the municipality centroid, so distance ordering always works.
+   * The facility's own position when someone filled it in. Null falls back to
+   * the municipality centroid for emergency ranking — a transport destination
+   * must have its own coordinates, see `validateFacility`.
    */
   latitude?: number | null;
   longitude?: number | null;
+  isEmergencyDestination: boolean;
+  isTransportDestination: boolean;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
 }
 
-/** A hospital in the picker, with how far it is from the report's locality. */
-export interface HospitalWithDistance extends Hospital {
+/** A facility in the picker, with how far it is from the report's locality. */
+export interface FacilityWithDistance extends Facility {
   /**
    * Kilometres from the report's locality, or null when no locality was given
    * — the picker then falls back to alphabetical order.
@@ -3057,34 +3070,38 @@ export interface HospitalWithDistance extends Hospital {
   distanceKm: number | null;
   /**
    * True when `distanceKm` was measured from the municipality centroid rather
-   * than the hospital's own coordinates, so the UI can say so instead of
+   * than the facility's own coordinates, so the UI can say so instead of
    * implying a precision it does not have.
    */
   approximate: boolean;
 }
 
-export const MAX_HOSPITAL_NAME_LENGTH = 160;
+export const MAX_FACILITY_NAME_LENGTH = 160;
 
-export interface HospitalInput {
+export interface FacilityInput {
   name: string;
   municipalityId: string;
+  addressLine?: string | null;
+  postalCode?: string | null;
   latitude?: number | null;
   longitude?: number | null;
+  isEmergencyDestination?: boolean;
+  isTransportDestination?: boolean;
   isActive?: boolean;
 }
 
 /**
- * Whether a hospital record is coherent — same "message or null" shape as
+ * Whether a facility record is coherent — same "message or null" shape as
  * every other validator here, so the form blocks Save with the wording the API
  * would reject the payload with.
  */
-export function validateHospital(input: HospitalInput): string | null {
+export function validateFacility(input: FacilityInput): string | null {
   const name = input.name?.trim() ?? '';
-  if (!name) return 'A hospital needs a name.';
-  if (name.length > MAX_HOSPITAL_NAME_LENGTH) {
-    return `A hospital name may be at most ${MAX_HOSPITAL_NAME_LENGTH} characters (got ${name.length}).`;
+  if (!name) return 'A facility needs a name.';
+  if (name.length > MAX_FACILITY_NAME_LENGTH) {
+    return `A facility name may be at most ${MAX_FACILITY_NAME_LENGTH} characters (got ${name.length}).`;
   }
-  if (!input.municipalityId) return 'Choose the municipality the hospital is in.';
+  if (!input.municipalityId) return 'Choose the municipality the facility is in.';
 
   // Both or neither: half a coordinate locates nothing.
   const hasLatitude = input.latitude !== null && input.latitude !== undefined;
@@ -3100,24 +3117,36 @@ export function validateHospital(input: HospitalInput): string | null {
       return 'Longitude must be between -180 and 180.';
     }
   }
+
+  // Default-deny needs an explicit opt-in: a facility neither list can ever
+  // surface is not manageable through either picker once saved.
+  if (!input.isEmergencyDestination && !input.isTransportDestination) {
+    return 'Flag the facility as an emergency destination, a transport destination, or both.';
+  }
+  // A municipality centroid can be kilometres from the actual door — fine for
+  // emergency ranking, not for sending a crew to a scheduled transport.
+  if (input.isTransportDestination && !hasLatitude) {
+    return 'A transport destination needs its own latitude and longitude.';
+  }
   return null;
 }
 
 /**
- * Hospitals in the order the picker offers them: nearest first when the report
- * has a locality, alphabetical otherwise, with un-locatable entries last.
+ * Facilities in the order the picker offers them: nearest first when the
+ * report has a locality, alphabetical otherwise, with un-locatable entries
+ * last.
  *
  * Shared because both the API (which sorts) and the tests (which assert the
  * order) must agree on what "nearest first" means, including the ties.
  */
-export function sortHospitalsForPicker(
-  hospitals: HospitalWithDistance[],
-): HospitalWithDistance[] {
-  return [...hospitals].sort((a, b) => {
+export function sortFacilitiesForPicker(
+  facilities: FacilityWithDistance[],
+): FacilityWithDistance[] {
+  return [...facilities].sort((a, b) => {
     if (a.distanceKm === null && b.distanceKm === null) {
       return a.name.localeCompare(b.name, 'pt-PT');
     }
-    // A hospital nobody can measure sorts after every one that can be.
+    // A facility nobody can measure sorts after every one that can be.
     if (a.distanceKm === null) return 1;
     if (b.distanceKm === null) return -1;
     if (a.distanceKm !== b.distanceKm) return a.distanceKm - b.distanceKm;
@@ -3508,8 +3537,8 @@ export interface EventReportVictim {
   gender: Gender;
   age: number;
   destinationKind: VictimDestinationKind;
-  destinationHospitalId?: string | null;
-  destinationHospital?: Pick<Hospital, 'id' | 'name'> | null;
+  destinationFacilityId?: string | null;
+  destinationFacility?: Pick<Facility, 'id' | 'name'> | null;
   /**
    * The "número de episódio de urgência" the ER issues on admission, written
    * down by the crew. Set only when `destinationKind` is HOSPITAL, and only
@@ -3526,8 +3555,8 @@ export interface EventReportInemSupportUnit {
   id: string;
   position: number;
   unitType: InemSupportUnitType;
-  hospitalId: string;
-  hospital?: Pick<Hospital, 'id' | 'name'> | null;
+  facilityId: string;
+  facility?: Pick<Facility, 'id' | 'name'> | null;
 }
 
 /**
@@ -3920,7 +3949,7 @@ export interface EventReportVictimInput {
    */
   destinationKind?: VictimDestinationKind;
   /** Required when `destinationKind` is HOSPITAL, refused otherwise. */
-  destinationHospitalId?: string | null;
+  destinationFacilityId?: string | null;
   /**
    * The "número de episódio de urgência" the ER issues on admission, written
    * down by the crew. Set only when `destinationKind` is HOSPITAL, and only
@@ -3932,7 +3961,7 @@ export interface EventReportVictimInput {
 export interface EventReportInemSupportUnitInput {
   unitType: InemSupportUnitType;
   /** Required at the time the entry is added — there is no half-built entry. */
-  hospitalId: string;
+  facilityId: string;
 }
 
 /**
@@ -4698,7 +4727,7 @@ function validateVictims(
 export function validateVictimDestination(
   victim: Pick<
     EventReportVictimInput,
-    'destinationKind' | 'destinationHospitalId' | 'hospitalEpisodeNumber'
+    'destinationKind' | 'destinationFacilityId' | 'hospitalEpisodeNumber'
   >,
   rules: EventReportTypeRules,
 ): EventReportProblem | null {
@@ -4708,14 +4737,14 @@ export function validateVictimDestination(
       'Choose where the victim was taken, or why they were not transported.',
     );
   }
-  const hospitalId = victim.destinationHospitalId ?? null;
-  if (victim.destinationKind === VictimDestinationKind.HOSPITAL && !hospitalId) {
+  const facilityId = victim.destinationFacilityId ?? null;
+  if (victim.destinationKind === VictimDestinationKind.HOSPITAL && !facilityId) {
     return problem(
       'DESTINATION_HOSPITAL_REQUIRED',
       'Choose which hospital the victim was taken to.',
     );
   }
-  if (victim.destinationKind !== VictimDestinationKind.HOSPITAL && hospitalId) {
+  if (victim.destinationKind !== VictimDestinationKind.HOSPITAL && facilityId) {
     return problem(
       'DESTINATION_HOSPITAL_NOT_ALLOWED',
       'A victim who was not transported cannot have a hospital.',
@@ -4764,7 +4793,7 @@ export function validateInemSupportUnits(
     if (!INEM_SUPPORT_UNIT_TYPES.includes(unit.unitType)) {
       return problem('INEM_UNIT_INVALID_TYPE', 'Every INEM support unit needs a valid type.');
     }
-    if (!unit.hospitalId) {
+    if (!unit.facilityId) {
       return problem(
         'INEM_UNIT_HOSPITAL_REQUIRED',
         'Choose which hospital the INEM support unit came from.',
@@ -5144,7 +5173,7 @@ export interface LiveRunInput {
   availableAt?: string | null;
 
   destinationKind?: VictimDestinationKind | null;
-  destinationHospitalId?: string | null;
+  destinationFacilityId?: string | null;
   /**
    * The "número de episódio de urgência" the ER issues on admission, written
    * down by the crew at the hospital.
@@ -5168,7 +5197,7 @@ export interface LiveRunCrewMember {
 export interface LiveRun extends Omit<LiveRunInput, 'crew'> {
   crew: LiveRunCrewMember[];
   locality?: Locality | null;
-  destinationHospital?: Pick<Hospital, 'id' | 'name'> | null;
+  destinationFacility?: Pick<Facility, 'id' | 'name'> | null;
   /** Set once the run has been closed into a draft report. */
   reportId?: string | null;
   /** When the identity blob was destroyed. Distinguishes "gone" from "never had". */
@@ -5293,13 +5322,13 @@ export function validateLiveRun(input: LiveRunInput): EventReportProblem | null 
     const destinationProblem = validateVictimDestination(
       {
         destinationKind: input.destinationKind as VictimDestinationKind,
-        destinationHospitalId: input.destinationHospitalId ?? null,
+        destinationFacilityId: input.destinationFacilityId ?? null,
         hospitalEpisodeNumber: input.hospitalEpisodeNumber ?? null,
       },
       EVENT_REPORT_TYPE_RULES[EventReportType.EMERGENCY],
     );
     if (destinationProblem) return destinationProblem;
-  } else if (input.destinationHospitalId) {
+  } else if (input.destinationFacilityId) {
     return problem(
       'DESTINATION_HOSPITAL_NOT_ALLOWED',
       'A hospital without an outcome is not a destination.',
@@ -5552,9 +5581,9 @@ export function liveRunToEventReportInput(
             ).includes(run.destinationKind)
               ? (run.destinationKind as VictimDestinationKind)
               : VictimDestinationKind.CANCELLED,
-            destinationHospitalId:
+            destinationFacilityId:
               run.destinationKind === VictimDestinationKind.HOSPITAL
-                ? run.destinationHospitalId ?? null
+                ? run.destinationFacilityId ?? null
                 : null,
             hospitalEpisodeNumber: run.hospitalEpisodeNumber ?? null,
           },
@@ -5660,7 +5689,7 @@ export interface LiveRunBoardEntry {
   hospitalArrivalAt?: string | null;
   availableAt?: string | null;
   destinationKind?: VictimDestinationKind | null;
-  destinationHospital?: Pick<Hospital, 'id' | 'name'> | null;
+  destinationFacility?: Pick<Facility, 'id' | 'name'> | null;
   updatedAt: string;
 }
 

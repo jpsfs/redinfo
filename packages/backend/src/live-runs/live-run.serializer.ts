@@ -23,7 +23,7 @@ const PERSON_SELECT = { select: { id: true, firstName: true, lastName: true } } 
  */
 export const LIVE_RUN_INCLUDE = {
   locality: { include: { municipality: true } },
-  destinationHospital: { select: { id: true, name: true } },
+  destinationFacility: { select: { id: true, name: true } },
   crew: {
     include: { user: PERSON_SELECT },
     orderBy: { position: 'asc' },
@@ -58,7 +58,7 @@ export const LIVE_RUN_BOARD_SELECT = {
   destinationKind: true,
   updatedAt: true,
   locality: { select: { id: true, name: true } },
-  destinationHospital: { select: { id: true, name: true } },
+  destinationFacility: { select: { id: true, name: true } },
   crew: {
     select: { userId: true, roleName: true, position: true, user: PERSON_SELECT },
     orderBy: { position: 'asc' },
@@ -138,8 +138,8 @@ export function serializeLiveRun(row: LiveRunRow, opened: OpenedIdentity = {}): 
     availableAt: iso(row.availableAt),
 
     destinationKind: (row.destinationKind as VictimDestinationKind | null) ?? null,
-    destinationHospitalId: row.destinationHospitalId,
-    destinationHospital: row.destinationHospital,
+    destinationFacilityId: row.destinationFacilityId,
+    destinationFacility: row.destinationFacility,
     hospitalEpisodeNumber: row.hospitalEpisodeNumber,
 
     capture: (row.capture as LiveRunCapture | null) ?? null,
@@ -176,7 +176,7 @@ export function serializeLiveRunBoardEntry(row: LiveRunBoardRow): LiveRunBoardEn
     hospitalArrivalAt: iso(row.hospitalArrivalAt),
     availableAt: iso(row.availableAt),
     destinationKind: (row.destinationKind as VictimDestinationKind | null) ?? null,
-    destinationHospital: row.destinationHospital,
+    destinationFacility: row.destinationFacility,
     updatedAt: row.updatedAt.toISOString(),
   };
 }

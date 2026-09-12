@@ -191,8 +191,8 @@ export const LiveRunPage = () => {
    * occurrence, and precise when the hospital has its own coordinates rather
    * than only a municipality.
    */
-  const hospital = form.run.destinationHospitalId
-    ? lookups.hospitalsById[form.run.destinationHospitalId]
+  const hospital = form.run.destinationFacilityId
+    ? lookups.hospitalsById[form.run.destinationFacilityId]
     : null;
   const hospitalNavigateHref = useMemo(
     () =>

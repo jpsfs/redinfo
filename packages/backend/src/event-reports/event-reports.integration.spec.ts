@@ -25,7 +25,7 @@ import { HolidaysService } from '../availability/holidays.service';
 import { ShiftScheduleService } from '../availability/shift-schedule.service';
 import { GeographyService } from '../geography/geography.service';
 import { DelegationSettingsService } from '../live-runs/delegation-settings.service';
-import { HospitalsService } from '../hospitals/hospitals.service';
+import { FacilitiesService } from '../facilities/facilities.service';
 import { EventReportsService, RequestUser } from './event-reports.service';
 import { EventReportNumbering } from './event-report-numbering';
 import { EventReportCrewService } from './event-report-crew.service';
@@ -58,7 +58,7 @@ describeIntegration('Event reports (integration)', () => {
 
   let reports: EventReportsService;
   let crewService: EventReportCrewService;
-  let hospitals: HospitalsService;
+  let hospitals: FacilitiesService;
   let geography: GeographyService;
   let attachments: EventReportAttachmentsService;
   let attachmentRoot: string;
@@ -108,7 +108,7 @@ describeIntegration('Event reports (integration)', () => {
         gender: Gender.FEMALE,
         age: 67,
         destinationKind: VictimDestinationKind.HOSPITAL,
-        destinationHospitalId: nearHospital.id,
+        destinationFacilityId: nearHospital.id,
       },
     ],
     ...overrides,
@@ -125,7 +125,7 @@ describeIntegration('Event reports (integration)', () => {
     const holidays = new HolidaysService(prisma);
     const shiftSchedule = new ShiftScheduleService(holidays, prisma);
     geography = new GeographyService(prisma, new DelegationSettingsService(prisma));
-    hospitals = new HospitalsService(prisma, geography);
+    hospitals = new FacilitiesService(prisma, geography);
     reports = new EventReportsService(
       prisma,
       shiftSchedule,
@@ -203,11 +203,19 @@ describeIntegration('Event reports (integration)', () => {
       },
     });
 
-    nearHospital = await prisma.hospital.create({
-      data: { name: `Hospital Near ${RUN}`, municipalityId: nearMunicipality.id },
+    nearHospital = await prisma.facility.create({
+      data: {
+        name: `Hospital Near ${RUN}`,
+        municipalityId: nearMunicipality.id,
+        isEmergencyDestination: true,
+      },
     });
-    farHospital = await prisma.hospital.create({
-      data: { name: `Hospital Far ${RUN}`, municipalityId: farMunicipality.id },
+    farHospital = await prisma.facility.create({
+      data: {
+        name: `Hospital Far ${RUN}`,
+        municipalityId: farMunicipality.id,
+        isEmergencyDestination: true,
+      },
     });
 
     const makeVehicle = (suffix: string) =>
@@ -242,7 +250,7 @@ describeIntegration('Event reports (integration)', () => {
     await prisma.availabilityWindow.deleteMany({
       where: { name: { contains: RUN } },
     });
-    await prisma.hospital.deleteMany({ where: { name: { contains: RUN } } });
+    await prisma.facility.deleteMany({ where: { name: { contains: RUN } } });
     // Localities cascade from their municipality.
     await prisma.municipality.deleteMany({ where: { district: `District ${RUN}` } });
     // Vehicles cascade their `StockMovement` rows — after this, nothing
@@ -531,7 +539,7 @@ describeIntegration('Event reports (integration)', () => {
             gender: Gender.MALE,
             age: 40,
             destinationKind: VictimDestinationKind.HOSPITAL,
-            destinationHospitalId: null,
+            destinationFacilityId: null,
           },
         }),
       ).rejects.toThrow(/EventReportVictim_destination_pairing/);
@@ -548,7 +556,7 @@ describeIntegration('Event reports (integration)', () => {
             gender: Gender.MALE,
             age: 40,
             destinationKind: VictimDestinationKind.REFUSED_TRANSPORT,
-            destinationHospitalId: nearHospital.id,
+            destinationFacilityId: nearHospital.id,
           },
         }),
       ).rejects.toThrow(/EventReportVictim_destination_pairing/);
@@ -565,7 +573,7 @@ describeIntegration('Event reports (integration)', () => {
             gender: Gender.MALE,
             age: 40,
             destinationKind: VictimDestinationKind.REFUSED_TRANSPORT,
-            destinationHospitalId: null,
+            destinationFacilityId: null,
             hospitalEpisodeNumber: '12345',
           },
         }),
@@ -627,14 +635,18 @@ describeIntegration('Event reports (integration)', () => {
     });
 
     it('keeps a hospital from being deleted out from under an INEM support unit', async () => {
-      const base = await prisma.hospital.create({
-        data: { name: `Hospital Base ${RUN}`, municipalityId: nearMunicipality.id },
+      const base = await prisma.facility.create({
+        data: {
+          name: `Hospital Base ${RUN}`,
+          municipalityId: nearMunicipality.id,
+          isEmergencyDestination: true,
+        },
       });
       await file({
-        inemSupportUnits: [{ unitType: InemSupportUnitType.VMER, hospitalId: base.id }],
+        inemSupportUnits: [{ unitType: InemSupportUnitType.VMER, facilityId: base.id }],
       });
 
-      await expect(prisma.hospital.delete({ where: { id: base.id } })).rejects.toThrow();
+      await expect(prisma.facility.delete({ where: { id: base.id } })).rejects.toThrow();
     });
   });
 
@@ -666,7 +678,7 @@ describeIntegration('Event reports (integration)', () => {
       expect(read.availableAt).toBeNull();
       expect(read.crew.map((member) => member.roleName)).toEqual(['Driver', 'Team Leader']);
       expect(read.locality?.municipality?.name).toBe(`Near ${RUN}`);
-      expect(read.victims[0].destinationHospital?.name).toBe(`Hospital Near ${RUN}`);
+      expect(read.victims[0].destinationFacility?.name).toBe(`Hospital Near ${RUN}`);
       expect(read.vehicles[0].vehicle?.id).toBe(vehicleA.id);
     });
 
@@ -704,7 +716,7 @@ describeIntegration('Event reports (integration)', () => {
             gender: Gender.FEMALE,
             age: 67,
             destinationKind: VictimDestinationKind.HOSPITAL,
-            destinationHospitalId: nearHospital.id,
+            destinationFacilityId: nearHospital.id,
           },
           {
             gender: Gender.MALE,
@@ -725,8 +737,8 @@ describeIntegration('Event reports (integration)', () => {
 
       const read = await reports.findOne(report.id, coordinatorUser);
       expect(read.victims).toHaveLength(3);
-      expect(read.victims[0].destinationHospitalId).toBe(nearHospital.id);
-      expect(read.victims[1].destinationHospitalId).toBeNull();
+      expect(read.victims[0].destinationFacilityId).toBe(nearHospital.id);
+      expect(read.victims[1].destinationFacilityId).toBeNull();
       expect(read.vehicles.map((entry) => entry.kilometres)).toEqual([51, 36]);
     });
 
@@ -763,9 +775,9 @@ describeIntegration('Event reports (integration)', () => {
     it('records several INEM support units, in order, with their base hospital', async () => {
       const report = await file({
         inemSupportUnits: [
-          { unitType: InemSupportUnitType.VMER, hospitalId: nearHospital.id },
-          { unitType: InemSupportUnitType.VMER, hospitalId: farHospital.id },
-          { unitType: InemSupportUnitType.SIV, hospitalId: nearHospital.id },
+          { unitType: InemSupportUnitType.VMER, facilityId: nearHospital.id },
+          { unitType: InemSupportUnitType.VMER, facilityId: farHospital.id },
+          { unitType: InemSupportUnitType.SIV, facilityId: nearHospital.id },
         ],
       });
 
@@ -776,13 +788,13 @@ describeIntegration('Event reports (integration)', () => {
         InemSupportUnitType.VMER,
         InemSupportUnitType.SIV,
       ]);
-      expect(read.inemSupportUnits[1].hospital?.name).toBe(`Hospital Far ${RUN}`);
+      expect(read.inemSupportUnits[1].facility?.name).toBe(`Hospital Far ${RUN}`);
 
       // Editing it down replaces the set wholesale, same as crew/vehicles/victims.
       const updated = await reports.update(
         report.id,
         input({
-          inemSupportUnits: [{ unitType: InemSupportUnitType.UMIP, hospitalId: nearHospital.id }],
+          inemSupportUnits: [{ unitType: InemSupportUnitType.UMIP, facilityId: nearHospital.id }],
         }),
         coordinatorUser,
       );
@@ -795,7 +807,7 @@ describeIntegration('Event reports (integration)', () => {
         file({
           inemSupportUnits: Array.from({ length: 4 }, () => ({
             unitType: InemSupportUnitType.VMER,
-            hospitalId: nearHospital.id,
+            facilityId: nearHospital.id,
           })),
         }),
       ).rejects.toThrow(/at most 3 VMER/);
@@ -806,7 +818,7 @@ describeIntegration('Event reports (integration)', () => {
         file({
           type: EventReportType.LOCAL_SUPPORT,
           externalReference: null,
-          inemSupportUnits: [{ unitType: InemSupportUnitType.SIV, hospitalId: nearHospital.id }],
+          inemSupportUnits: [{ unitType: InemSupportUnitType.SIV, facilityId: nearHospital.id }],
         }),
       ).rejects.toThrow(BadRequestException);
     });
@@ -977,7 +989,7 @@ describeIntegration('Event reports (integration)', () => {
 
   describe('hospital picker', () => {
     it('offers the nearest hospital to the report’s locality first', async () => {
-      const list = await hospitals.findForPicker(taveiro.id);
+      const list = await hospitals.findEmergencyDestinations(taveiro.id);
       const ours = list.filter((entry) =>
         [nearHospital.id, farHospital.id].includes(entry.id),
       );
@@ -987,7 +999,7 @@ describeIntegration('Event reports (integration)', () => {
     });
 
     it('measures from the municipality centroid, and says so', async () => {
-      const list = await hospitals.findForPicker(taveiro.id);
+      const list = await hospitals.findEmergencyDestinations(taveiro.id);
       const near = list.find((entry) => entry.id === nearHospital.id)!;
 
       expect(near.approximate).toBe(true);
@@ -997,7 +1009,7 @@ describeIntegration('Event reports (integration)', () => {
     it('sharpens the distance once the hospital has its own coordinates', async () => {
       await hospitals.update(nearHospital.id, { latitude: 40.1976, longitude: -8.4392 });
 
-      const list = await hospitals.findForPicker(taveiro.id);
+      const list = await hospitals.findEmergencyDestinations(taveiro.id);
       const near = list.find((entry) => entry.id === nearHospital.id)!;
 
       expect(near.approximate).toBe(false);
@@ -1014,27 +1026,27 @@ describeIntegration('Event reports (integration)', () => {
       const retired = await hospitals.remove(nearHospital.id);
       expect(retired.isActive).toBe(false);
 
-      const list = await hospitals.findForPicker(taveiro.id);
+      const list = await hospitals.findEmergencyDestinations(taveiro.id);
       expect(list.map((entry) => entry.id)).not.toContain(nearHospital.id);
 
       const read = await reports.findOne(report.id, coordinatorUser);
-      expect(read.victims[0].destinationHospital?.name).toBe(`Hospital Near ${RUN}`);
+      expect(read.victims[0].destinationFacility?.name).toBe(`Hospital Near ${RUN}`);
 
-      await prisma.hospital.update({
+      await prisma.facility.update({
         where: { id: nearHospital.id },
         data: { isActive: true },
       });
     });
 
     it('deletes a hospital no report has ever named', async () => {
-      const unused = await prisma.hospital.create({
-        data: { name: `Hospital Unused ${RUN}`, municipalityId: farMunicipality.id },
+      const unused = await prisma.facility.create({
+        data: { name: `Hospital Unused ${RUN}`, municipalityId: farMunicipality.id, isEmergencyDestination: true },
       });
 
       await hospitals.remove(unused.id);
 
       await expect(
-        prisma.hospital.count({ where: { id: unused.id } }),
+        prisma.facility.count({ where: { id: unused.id } }),
       ).resolves.toBe(0);
     });
   });

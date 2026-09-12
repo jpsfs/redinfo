@@ -173,10 +173,10 @@ describe('retypeDraft', () => {
         gender: Gender.FEMALE,
         age: 67,
         destinationKind: VictimDestinationKind.HOSPITAL,
-        destinationHospitalId: 'hosp-1',
+        destinationFacilityId: 'hosp-1',
       },
     ],
-    inemSupportUnits: [{ unitType: InemSupportUnitType.VMER, hospitalId: 'hosp-1' }],
+    inemSupportUnits: [{ unitType: InemSupportUnitType.VMER, facilityId: 'hosp-1' }],
   };
 
   it('drops the chronology when the new type has none', () => {
@@ -323,7 +323,7 @@ describe('draftFromReport', () => {
           gender: Gender.FEMALE,
           age: 67,
           destinationKind: VictimDestinationKind.HOSPITAL,
-          destinationHospitalId: 'hosp-1',
+          destinationFacilityId: 'hosp-1',
         },
       ],
       inemSupportUnits: [],
@@ -362,7 +362,7 @@ describe('draftFromReport', () => {
           gender: Gender.FEMALE,
           age: 67,
           destinationKind: VictimDestinationKind.HOSPITAL,
-          destinationHospitalId: 'hosp-1',
+          destinationFacilityId: 'hosp-1',
         },
       ],
       inemSupportUnits: [],
@@ -440,8 +440,8 @@ describe('draftFromReport', () => {
           id: 'ius1',
           position: 0,
           unitType: InemSupportUnitType.VMER,
-          hospitalId: 'hosp-1',
-          hospital: { id: 'hosp-1', name: 'Hospital Central' },
+          facilityId: 'hosp-1',
+          facility: { id: 'hosp-1', name: 'Hospital Central' },
         },
       ],
       attachments: [],
@@ -453,7 +453,7 @@ describe('draftFromReport', () => {
     // The unit's own id, position and resolved hospital name are the server's
     // business, not the form's — sending them back would be sending a primary key.
     expect(draftFromReport(report).inemSupportUnits).toEqual([
-      { unitType: InemSupportUnitType.VMER, hospitalId: 'hosp-1' },
+      { unitType: InemSupportUnitType.VMER, facilityId: 'hosp-1' },
     ]);
   });
 

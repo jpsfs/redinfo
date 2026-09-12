@@ -138,7 +138,7 @@ export const LiveRunBoard = ({ emptyState }: LiveRunBoardProps = {}) => {
                   )}
                   {run.destinationKind && (
                     <Typography variant="caption" color="text.secondary">
-                      {run.destinationHospital?.name ?? destinationLabel(t, run.destinationKind)}
+                      {run.destinationFacility?.name ?? destinationLabel(t, run.destinationKind)}
                     </Typography>
                   )}
                   {run.crew.length > 0 && (

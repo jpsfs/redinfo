@@ -829,7 +829,7 @@ const VictimEditor = ({
         onPick={(choice: DestinationChoice) => {
           onChange({
             destinationKind: choice.destinationKind,
-            destinationHospitalId: choice.destinationHospitalId,
+            destinationFacilityId: choice.destinationFacilityId,
           });
           setPickerOpen(false);
         }}
@@ -853,7 +853,7 @@ const blankVictim = (type: EventReportType): EventReportInput['victims'][number]
   destinationKind: eventReportRules(type).allowsTreatedOnScene
     ? VictimDestinationKind.TREATED_ON_SCENE
     : undefined,
-  destinationHospitalId: null,
+  destinationFacilityId: null,
 });
 
 export const VictimsSection = ({ draft, patch, lookups }: SectionProps) => {
@@ -886,7 +886,7 @@ export const VictimsSection = ({ draft, patch, lookups }: SectionProps) => {
             victim={victim}
             locality={lookups.locality}
             type={draft.type}
-            hospitalName={hospitalName(victim.destinationHospitalId)}
+            hospitalName={hospitalName(victim.destinationFacilityId)}
             externalReference={draft.externalReference}
             onChange={(changes) => setVictim(0, changes)}
           />
@@ -926,7 +926,7 @@ export const VictimsSection = ({ draft, patch, lookups }: SectionProps) => {
           victim={victim}
           locality={lookups.locality}
           type={draft.type}
-          hospitalName={hospitalName(victim.destinationHospitalId)}
+          hospitalName={hospitalName(victim.destinationFacilityId)}
           externalReference={draft.externalReference}
           onChange={(changes) => setVictim(index, changes)}
           onRemove={() =>
@@ -994,7 +994,7 @@ export const InemSupportSection = ({ draft, patch, lookups }: SectionProps) => {
           <Stack direction="row" spacing={1.5} alignItems="center">
             <Chip label={inemUnitLabel(t, unit.unitType)} sx={{ fontWeight: 700 }} />
             <Typography sx={{ flex: 1 }}>
-              {lookups.hospitalsById[unit.hospitalId]?.name ?? unit.hospitalId}
+              {lookups.hospitalsById[unit.facilityId]?.name ?? unit.facilityId}
             </Typography>
             <IconButton
               onClick={() =>
@@ -1037,10 +1037,10 @@ export const InemSupportSection = ({ draft, patch, lookups }: SectionProps) => {
         hospitalsOnly
         onClose={() => setPendingType(null)}
         onPick={(choice: DestinationChoice) => {
-          const hospitalId = choice.destinationHospitalId;
+          const hospitalId = choice.destinationFacilityId;
           if (pendingType && hospitalId) {
             patch({
-              inemSupportUnits: [...inemSupportUnits, { unitType: pendingType, hospitalId }],
+              inemSupportUnits: [...inemSupportUnits, { unitType: pendingType, facilityId: hospitalId }],
             });
           }
           setPendingType(null);
@@ -1342,7 +1342,7 @@ export const ReviewSection = ({
                   victim.destinationKind == null
                     ? t('hint.chooseDestination')
                     : victim.destinationKind === VictimDestinationKind.HOSPITAL
-                      ? lookups.hospitalsById[victim.destinationHospitalId ?? '']?.name ??
+                      ? lookups.hospitalsById[victim.destinationFacilityId ?? '']?.name ??
                         destinationLabel(t, victim.destinationKind)
                       : destinationLabel(t, victim.destinationKind);
                 return `${genderLabel(t, victim.gender)}, ${victim.age} → ${where}`;
@@ -1361,7 +1361,7 @@ export const ReviewSection = ({
                     .map(
                       (unit) =>
                         `${inemUnitLabel(t, unit.unitType)} · ${
-                          lookups.hospitalsById[unit.hospitalId]?.name ?? unit.hospitalId
+                          lookups.hospitalsById[unit.facilityId]?.name ?? unit.facilityId
                         }`,
                     )
                     .join(' | '),

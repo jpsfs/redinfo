@@ -538,7 +538,7 @@ export class EventReportsService {
    */
   private async assertReferencesExist(input: EventReportInput): Promise<void> {
     const materials = input.materials ?? [];
-    const [locality, vehicles, users, hospitals, materialItems] = await Promise.all([
+    const [locality, vehicles, users, facilities, materialItems] = await Promise.all([
       this.prisma.locality.count({ where: { id: input.localityId } }),
       input.vehicles.length
         ? this.prisma.vehicle.findMany({
@@ -552,7 +552,7 @@ export class EventReportsService {
             select: { id: true },
           })
         : Promise.resolve([]),
-      this.hospitalIdsIn(input),
+      this.facilityIdsIn(input),
       materials.length
         ? this.prisma.materialItem.findMany({
             where: { id: { in: materials.map((material) => material.materialItemId) } },
@@ -571,8 +571,8 @@ export class EventReportsService {
       throw new BadRequestException('One of the people on this crew no longer exists.');
     }
 
-    const wantedHospitals = this.wantedHospitalIds(input);
-    if (hospitals.length !== wantedHospitals.size) {
+    const wantedFacilities = this.wantedFacilityIds(input);
+    if (facilities.length !== wantedFacilities.size) {
       throw new BadRequestException('One of the hospitals on this report no longer exists.');
     }
 
@@ -591,23 +591,23 @@ export class EventReportsService {
     }
   }
 
-  private hospitalIdsIn(input: EventReportInput) {
-    const ids = [...this.wantedHospitalIds(input)];
+  private facilityIdsIn(input: EventReportInput) {
+    const ids = [...this.wantedFacilityIds(input)];
     if (ids.length === 0) return Promise.resolve([] as Array<{ id: string }>);
-    return this.prisma.hospital.findMany({ where: { id: { in: ids } }, select: { id: true } });
+    return this.prisma.facility.findMany({ where: { id: { in: ids } }, select: { id: true } });
   }
 
   /**
-   * Every hospital the payload names — a victim's destination or a support
-   * unit's base — so both places that check hospitals against the database
+   * Every facility the payload names — a victim's destination or a support
+   * unit's base — so both places that check facilities against the database
    * agree on what "named" means.
    */
-  private wantedHospitalIds(input: EventReportInput): Set<string> {
+  private wantedFacilityIds(input: EventReportInput): Set<string> {
     return new Set([
       ...input.victims
-        .map((victim) => victim.destinationHospitalId)
+        .map((victim) => victim.destinationFacilityId)
         .filter((id): id is string => Boolean(id)),
-      ...(input.inemSupportUnits ?? []).map((unit) => unit.hospitalId).filter(Boolean),
+      ...(input.inemSupportUnits ?? []).map((unit) => unit.facilityId).filter(Boolean),
     ]);
   }
 
@@ -709,7 +709,7 @@ export class EventReportsService {
       gender: victim.gender as never,
       age: victim.age,
       destinationKind: victim.destinationKind as never,
-      destinationHospitalId: victim.destinationHospitalId ?? null,
+      destinationFacilityId: victim.destinationFacilityId ?? null,
       hospitalEpisodeNumber: victim.hospitalEpisodeNumber?.trim() || null,
     }));
   }
@@ -721,7 +721,7 @@ export class EventReportsService {
     return (input.inemSupportUnits ?? []).map((unit, position) => ({
       position,
       unitType: unit.unitType as never,
-      hospitalId: unit.hospitalId,
+      facilityId: unit.facilityId,
     }));
   }
 

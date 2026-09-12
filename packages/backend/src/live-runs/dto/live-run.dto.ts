@@ -216,7 +216,7 @@ export class SyncLiveRunDto {
   @ApiPropertyOptional({ nullable: true })
   @IsOptional()
   @IsString()
-  destinationHospitalId?: string | null;
+  destinationFacilityId?: string | null;
 
   @ApiPropertyOptional({
     nullable: true,

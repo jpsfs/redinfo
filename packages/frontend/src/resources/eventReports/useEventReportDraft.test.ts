@@ -200,7 +200,7 @@ describe('what blocks a save and what merely warns', () => {
             gender: Gender.FEMALE,
             age: 67,
             destinationKind: VictimDestinationKind.HOSPITAL,
-            destinationHospitalId: 'hosp-1',
+            destinationFacilityId: 'hosp-1',
           },
         ],
       }),

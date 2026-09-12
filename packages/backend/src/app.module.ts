@@ -9,7 +9,7 @@ import { InventoryModule } from './inventory/inventory.module';
 import { AvailabilityModule } from './availability/availability.module';
 import { SchedulesModule } from './schedules/schedules.module';
 import { GeographyModule } from './geography/geography.module';
-import { HospitalsModule } from './hospitals/hospitals.module';
+import { FacilitiesModule } from './facilities/facilities.module';
 import { EventReportsModule } from './event-reports/event-reports.module';
 import { LiveRunsModule } from './live-runs/live-runs.module';
 import { VolunteerHoursModule } from './volunteer-hours/volunteer-hours.module';
@@ -35,7 +35,7 @@ import { McpModule } from './mcp/mcp.module';
     AvailabilityModule,
     SchedulesModule,
     GeographyModule,
-    HospitalsModule,
+    FacilitiesModule,
     EventReportsModule,
     LiveRunsModule,
     VolunteerHoursModule,

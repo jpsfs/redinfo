@@ -139,10 +139,9 @@ function respondWith(overrides: Record<string, unknown> = {}) {
     if (path.startsWith('/vehicles')) {
       return Promise.resolve({ data: (overrides.vehicles as unknown[]) ?? [AMBULANCE] });
     }
-    if (path.startsWith('/hospitals/picker')) {
+    if (path.startsWith('/facilities/emergency')) {
       return Promise.resolve((overrides.hospitals as unknown[]) ?? []);
     }
-    if (path.startsWith('/hospitals')) return Promise.resolve({ data: [] });
     if (path.startsWith('/localities/')) return Promise.resolve(TAVEIRO);
     return Promise.resolve(overrides.fallback ?? {});
   });
@@ -350,7 +349,7 @@ describe('the handoff into Maps', () => {
       sceneArrivalAt: '2026-08-22T20:26:00.000Z',
       sceneDepartureAt: '2026-08-22T20:40:00.000Z',
       destinationKind: VictimDestinationKind.HOSPITAL,
-      destinationHospitalId: HOSPITAL.id,
+      destinationFacilityId: HOSPITAL.id,
     });
     renderRun('transport');
 

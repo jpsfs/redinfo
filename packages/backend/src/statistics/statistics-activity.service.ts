@@ -46,13 +46,13 @@ export class StatisticsActivityService {
           victims: {
             select: {
               destinationKind: true,
-              destinationHospital: {
+              destinationFacility: {
                 select: { id: true, name: true, municipality: { select: { name: true } } },
               },
             },
           },
           inemSupportUnits: {
-            select: { unitType: true, hospital: { select: { name: true } } },
+            select: { unitType: true, facility: { select: { name: true } } },
           },
         },
       }),
@@ -113,22 +113,22 @@ export class StatisticsActivityService {
         victimsAssisted += 1;
         const destinationKind = victim.destinationKind as VictimDestinationKind;
         outcomeCounts.set(destinationKind, (outcomeCounts.get(destinationKind) ?? 0) + 1);
-        if (victim.destinationHospital) {
-          const hospital = hospitalCounts.get(victim.destinationHospital.id) ?? {
-            id: victim.destinationHospital.id,
-            name: victim.destinationHospital.name,
-            municipality: victim.destinationHospital.municipality.name,
+        if (victim.destinationFacility) {
+          const hospital = hospitalCounts.get(victim.destinationFacility.id) ?? {
+            id: victim.destinationFacility.id,
+            name: victim.destinationFacility.name,
+            municipality: victim.destinationFacility.municipality.name,
             count: 0,
           };
           hospital.count += 1;
-          hospitalCounts.set(victim.destinationHospital.id, hospital);
+          hospitalCounts.set(victim.destinationFacility.id, hospital);
         }
       }
 
       for (const unit of report.inemSupportUnits) {
         const unitType = unit.unitType as InemSupportUnitType;
-        const key = `${unitType}:${unit.hospital.name}`;
-        const entry = inemCounts.get(key) ?? { unitType, hospitalName: unit.hospital.name, count: 0 };
+        const key = `${unitType}:${unit.facility.name}`;
+        const entry = inemCounts.get(key) ?? { unitType, hospitalName: unit.facility.name, count: 0 };
         entry.count += 1;
         inemCounts.set(key, entry);
       }

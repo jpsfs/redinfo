@@ -19,29 +19,40 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Actions } from '../auth/decorators/roles.decorator';
 import { AuditInterceptor } from '../auth/interceptors/audit.interceptor';
-import { HospitalsService } from './hospitals.service';
-import { CreateHospitalDto } from './dto/create-hospital.dto';
-import { UpdateHospitalDto } from './dto/update-hospital.dto';
+import { FacilitiesService } from './facilities.service';
+import { CreateFacilityDto } from './dto/create-facility.dto';
+import { UpdateFacilityDto } from './dto/update-facility.dto';
 
-@ApiTags('Hospitals')
+@ApiTags('Facilities')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
 @UseInterceptors(AuditInterceptor)
-@Controller('hospitals')
-export class HospitalsController {
-  constructor(private readonly hospitals: HospitalsService) {}
+@Controller('facilities')
+export class FacilitiesController {
+  constructor(private readonly facilities: FacilitiesService) {}
 
   /**
-   * The picker list — active hospitals, nearest to `localityId` first.
+   * The emergency picker — active emergency destinations, nearest to
+   * `localityId` first.
    *
    * Ungated: anyone who can file a report has to be able to say where they
    * took someone, and this route hands back nothing a coordinator would
-   * withhold. Declared before `:id` so "picker" is never read as an id.
+   * withhold. Declared before `:id` so "emergency" is never read as an id.
    */
-  @Get('picker')
+  @Get('emergency')
   @ApiQuery({ name: 'localityId', required: false, type: String })
-  picker(@Query('localityId') localityId?: string) {
-    return this.hospitals.findForPicker(localityId);
+  emergency(@Query('localityId') localityId?: string) {
+    return this.facilities.findEmergencyDestinations(localityId);
+  }
+
+  /**
+   * The transport picker — active transport destinations, nearest to
+   * `localityId` first. Same ungating rationale as `emergency` above.
+   */
+  @Get('transport')
+  @ApiQuery({ name: 'localityId', required: false, type: String })
+  transport(@Query('localityId') localityId?: string) {
+    return this.facilities.findTransportDestinations(localityId);
   }
 
   @Get()
@@ -49,40 +60,40 @@ export class HospitalsController {
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'perPage', required: false, type: Number })
   @ApiQuery({ name: 'includeInactive', required: false, type: Boolean })
-  findAll(
+  findManaged(
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('perPage', new DefaultValuePipe(100), ParseIntPipe) perPage: number,
     @Query('includeInactive', new DefaultValuePipe(true), ParseBoolPipe)
     includeInactive: boolean,
   ) {
-    return this.hospitals.findAll(page, perPage, includeInactive);
+    return this.facilities.findManaged(page, perPage, includeInactive);
   }
 
   @Get(':id')
   @Actions(Action.MANAGE_HOSPITALS)
   findOne(@Param('id') id: string) {
-    return this.hospitals.findOne(id);
+    return this.facilities.findOne(id);
   }
 
   @Post()
   @Actions(Action.MANAGE_HOSPITALS)
-  create(@Body() dto: CreateHospitalDto) {
-    return this.hospitals.create(dto);
+  create(@Body() dto: CreateFacilityDto) {
+    return this.facilities.create(dto);
   }
 
   @Patch(':id')
   @Actions(Action.MANAGE_HOSPITALS)
-  update(@Param('id') id: string, @Body() dto: UpdateHospitalDto) {
-    return this.hospitals.update(id, dto);
+  update(@Param('id') id: string, @Body() dto: UpdateFacilityDto) {
+    return this.facilities.update(id, dto);
   }
 
   /**
-   * Retires the hospital. Only actually deletes the row when no report has
-   * ever named it — see `HospitalsService.remove`.
+   * Retires the facility. Only actually deletes the row when no report has
+   * ever named it — see `FacilitiesService.remove`.
    */
   @Delete(':id')
   @Actions(Action.MANAGE_HOSPITALS)
   remove(@Param('id') id: string) {
-    return this.hospitals.remove(id);
+    return this.facilities.remove(id);
   }
 }

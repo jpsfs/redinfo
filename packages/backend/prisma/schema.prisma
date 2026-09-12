@@ -945,8 +945,8 @@ model VolunteerHoursEntry {
 /// administrative map is not ours to change.
 ///
 /// The coordinate lives here rather than on `Locality` because its only job is
-/// ordering hospitals by distance from where an event happened. Hospitals are
-/// tens of kilometres apart and a municipality is a few across, so one
+/// ordering facilities by distance from where an event happened. Facilities
+/// are tens of kilometres apart and a municipality is a few across, so one
 /// coordinate per municipality is precise enough for that ordering — and keeps
 /// 3,259 freguesias from each carrying a number nothing reads.
 model Municipality {
@@ -965,7 +965,7 @@ model Municipality {
   longitude Float
 
   localities Locality[]
-  hospitals  Hospital[]
+  facilities Facility[]
 
   @@unique([name, district])
   @@index([district])
@@ -986,7 +986,7 @@ model Locality {
 
   /// The freguesia's own position, when the seed's source (Wikidata) has one
   /// for it — most do. Null falls back to the municipality centroid, the same
-  /// "own point, else the area's" pattern `Hospital.latitude/longitude` uses,
+  /// "own point, else the area's" pattern `Facility.latitude/longitude` uses,
   /// because a município can be tens of kilometres across and its centroid is
   /// a poor stand-in for any one freguesia inside it.
   latitude  Float?
@@ -1001,23 +1001,43 @@ model Locality {
   @@index([municipalityId])
 }
 
-// ─── Hospitals ────────────────────────────────────────────────────────────────
+// ─── Facilities ─────────────────────────────────────────────────────────────
 
-/// Somewhere a victim can be taken. Coordinator-managed, the same way holidays
-/// are: seeded with a starting set, then maintained in the app.
-model Hospital {
+/// A hospital, clinic or private medical facility — somewhere a victim can be
+/// taken or a scheduled transport can be sent to. Coordinator-managed, the
+/// same way holidays are: seeded with a starting set, then maintained in the
+/// app.
+///
+/// `isEmergencyDestination` and `isTransportDestination` are independent
+/// capability flags, not a type enum: a hospital with an emergency room is
+/// routinely both, a private physiotherapy clinic is transport-only, and the
+/// two lists must never mix — a crew choosing where to take a casualty must
+/// never see a clinic that isn't equipped for one. Default-deny: both flags
+/// start false, so a new row is invisible to every picker until someone
+/// explicitly opts it in to at least one.
+model Facility {
   id             String       @id @default(cuid())
   name           String
   municipalityId String
   municipality   Municipality @relation(fields: [municipalityId], references: [id], onDelete: Restrict)
 
-  /// The hospital's own position, when someone has bothered to fill it in.
-  /// Null falls back to the municipality centroid, so distance ordering always
-  /// works and filling these in only sharpens it.
+  /// Street address. Only meaningful for a transport destination — an
+  /// emergency destination is picked and reasoned about by name and distance.
+  addressLine String?
+  postalCode  String?
+
+  /// The facility's own position, when someone has bothered to fill it in.
+  /// Null falls back to the municipality centroid, which is only acceptable
+  /// for emergency distance ranking — a centroid can be kilometres from the
+  /// actual door, so a transport destination is required to carry its own
+  /// coordinates (enforced in the service, see `validateFacility` in shared).
   latitude  Float?
   longitude Float?
 
-  /// Retired rather than deleted: reports already filed against a hospital
+  isEmergencyDestination Boolean @default(false)
+  isTransportDestination Boolean @default(false)
+
+  /// Retired rather than deleted: reports already filed against a facility
   /// must keep naming it. False hides it from new pickers only.
   isActive Boolean @default(true)
 
@@ -1031,6 +1051,8 @@ model Hospital {
   @@unique([name, municipalityId])
   @@index([isActive])
   @@index([municipalityId])
+  @@index([isEmergencyDestination])
+  @@index([isTransportDestination])
 }
 
 // ─── Event Reports ────────────────────────────────────────────────────────────
@@ -1399,8 +1421,8 @@ model EventReportVictim {
   destinationKind       VictimDestinationKind
   /// Set exactly when `destinationKind` is HOSPITAL — a CHECK constraint in
   /// the migration enforces both directions.
-  destinationHospitalId String?
-  destinationHospital   Hospital?             @relation(fields: [destinationHospitalId], references: [id], onDelete: Restrict)
+  destinationFacilityId String?
+  destinationFacility   Facility?             @relation(fields: [destinationFacilityId], references: [id], onDelete: Restrict)
   /// The "número de episódio de urgência" the ER issues on admission, written
   /// down by the crew. Only allowed alongside a HOSPITAL destination — see
   /// `EventReportVictim_episode_requires_hospital`.
@@ -1408,7 +1430,7 @@ model EventReportVictim {
 
   @@unique([reportId, position])
   @@index([reportId])
-  @@index([destinationHospitalId])
+  @@index([destinationFacilityId])
   @@index([destinationKind])
 }
 
@@ -1421,7 +1443,7 @@ model EventReportVictim {
 /// constraint: the cap is an aggregate over sibling rows and "emergency only"
 /// would need this row to know its parent's `type`, so both stay in
 /// `validateInemSupportUnits` (shared), same call as `EventReportAssessment`'s
-/// range checks. `hospitalId` being required and FK'd is the one rule the
+/// range checks. `facilityId` being required and FK'd is the one rule the
 /// schema *can* express.
 model EventReportInemSupportUnit {
   id       String      @id @default(cuid())
@@ -1431,10 +1453,10 @@ model EventReportInemSupportUnit {
   unitType InemSupportUnitType
 
   /// The base the unit was dispatched from — not a destination. Restrict, not
-  /// Cascade: a hospital is retired via `isActive`, never deleted, so a filed
+  /// Cascade: a facility is retired via `isActive`, never deleted, so a filed
   /// report never loses the name of it.
-  hospitalId String
-  hospital   Hospital @relation(fields: [hospitalId], references: [id], onDelete: Restrict)
+  facilityId String
+  facility   Facility @relation(fields: [facilityId], references: [id], onDelete: Restrict)
 
   /// Display order within the report, 0-based. Not unique per `(reportId,
   /// unitType)` — two VMER from different bases on the same report is exactly
@@ -1443,7 +1465,7 @@ model EventReportInemSupportUnit {
 
   @@unique([reportId, position])
   @@index([reportId])
-  @@index([hospitalId])
+  @@index([facilityId])
   @@index([unitType])
 }
 
@@ -1549,8 +1571,8 @@ model LiveRun {
   availableAt       DateTime?
 
   destinationKind       VictimDestinationKind?
-  destinationHospitalId String?
-  destinationHospital   Hospital?              @relation(fields: [destinationHospitalId], references: [id], onDelete: Restrict)
+  destinationFacilityId String?
+  destinationFacility   Facility?              @relation(fields: [destinationFacilityId], references: [id], onDelete: Restrict)
   /// The "número de episódio de urgência" the ER issues on admission, written
   /// down by the crew at the hospital.
   hospitalEpisodeNumber String?

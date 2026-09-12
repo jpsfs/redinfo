@@ -94,7 +94,7 @@ export class ReportsRunsToolsProvider implements McpToolProvider {
               gender: z.nativeEnum(Gender),
               age: z.number().int().min(0).max(130),
               destinationKind: z.nativeEnum(VictimDestinationKind),
-              destinationHospitalId: z.string().optional(),
+              destinationFacilityId: z.string().optional(),
             }),
           ),
         },

@@ -407,7 +407,7 @@ export const EventReportShow = () => {
                   <Stack direction="row" spacing={0.75} alignItems="center">
                     <LocalHospitalIcon fontSize="small" sx={{ color: 'text.disabled' }} />
                     <Typography variant="body2" color="text.secondary">
-                      {victim.destinationHospital?.name ??
+                      {victim.destinationFacility?.name ??
                         destinationLabel(t, victim.destinationKind)}
                     </Typography>
                   </Stack>
@@ -442,7 +442,7 @@ export const EventReportShow = () => {
                     <Stack direction="row" spacing={0.75} alignItems="center" sx={{ flex: 1 }}>
                       <LocalHospitalIcon fontSize="small" sx={{ color: 'text.disabled' }} />
                       <Typography variant="body2" color="text.secondary">
-                        {unit.hospital?.name ?? unit.hospitalId}
+                        {unit.facility?.name ?? unit.facilityId}
                       </Typography>
                     </Stack>
                   </Stack>

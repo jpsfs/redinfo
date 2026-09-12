@@ -55,7 +55,7 @@ const run = (overrides: Partial<LiveRunInput> = {}): LiveRunInput => ({
   hospitalArrivalAt: '2026-08-22T21:14:00.000Z',
   availableAt: '2026-08-22T21:39:00.000Z',
   destinationKind: VictimDestinationKind.HOSPITAL,
-  destinationHospitalId: 'hosp-chuc',
+  destinationFacilityId: 'hosp-chuc',
   capture: { notes: 'Consciente e orientada.' },
   ...overrides,
 });
@@ -156,14 +156,14 @@ describe('validateLiveRun', () => {
 
   it('refuses a hospital with no outcome, and an outcome with the wrong hospital', () => {
     expect(
-      codeOf(validateLiveRun(run({ destinationKind: null, destinationHospitalId: 'hosp-chuc' }))),
+      codeOf(validateLiveRun(run({ destinationKind: null, destinationFacilityId: 'hosp-chuc' }))),
     ).toBe('DESTINATION_HOSPITAL_NOT_ALLOWED');
     expect(
       codeOf(
         validateLiveRun(
           run({
             destinationKind: VictimDestinationKind.TREATED_ON_SCENE,
-            destinationHospitalId: 'hosp-chuc',
+            destinationFacilityId: 'hosp-chuc',
           }),
         ),
       ),
@@ -176,7 +176,7 @@ describe('validateLiveRun', () => {
         validateLiveRun(
           run({
             destinationKind: VictimDestinationKind.TREATED_ON_SCENE,
-            destinationHospitalId: null,
+            destinationFacilityId: null,
           }),
         ),
       ),
@@ -189,7 +189,7 @@ describe('validateLiveRun', () => {
         validateLiveRun(
           run({
             destinationKind: VictimDestinationKind.CANCELLED,
-            destinationHospitalId: null,
+            destinationFacilityId: null,
             hospitalEpisodeNumber: '12345',
           }),
         ),
@@ -269,7 +269,7 @@ describe('what stops a run closing', () => {
       victimGender: null,
       victimAge: null,
       destinationKind: null,
-      destinationHospitalId: null,
+      destinationFacilityId: null,
       vehicleId: null,
       crew: [],
       capture: null,
@@ -301,7 +301,7 @@ describe('the stamps closing writes for itself', () => {
       hospitalArrivalAt: null,
       availableAt: null,
       destinationKind: VictimDestinationKind.REFUSED_TRANSPORT,
-      destinationHospitalId: null,
+      destinationFacilityId: null,
     });
 
     const stamps = liveRunClosingStamps(standDown, NOW);
@@ -343,7 +343,7 @@ describe('liveRunToEventReportInput', () => {
     ]) {
       const subject = run({
         destinationKind: kind,
-        destinationHospitalId: kind === VictimDestinationKind.HOSPITAL ? 'hosp-chuc' : null,
+        destinationFacilityId: kind === VictimDestinationKind.HOSPITAL ? 'hosp-chuc' : null,
       });
       const input = liveRunToEventReportInput(subject);
       expect(input.type).toBe(EventReportType.EMERGENCY);
@@ -370,7 +370,7 @@ describe('liveRunToEventReportInput', () => {
     // draft's own edit page instead.
     const subject = run({
       destinationKind: VictimDestinationKind.TREATED_ON_SCENE,
-      destinationHospitalId: null,
+      destinationFacilityId: null,
     });
     const input = liveRunToEventReportInput(subject);
     expect(input.victims[0].destinationKind).toBe(VictimDestinationKind.CANCELLED);
@@ -457,7 +457,7 @@ describe('liveRunToEventReportInput', () => {
 
   it('produces no victim at all for a run that never had one', () => {
     const input = liveRunToEventReportInput(
-      run({ victimGender: null, victimAge: null, destinationKind: null, destinationHospitalId: null }),
+      run({ victimGender: null, victimAge: null, destinationKind: null, destinationFacilityId: null }),
     );
     expect(input.victims).toEqual([]);
     expect(validateEventReport(input)).toBeNull();

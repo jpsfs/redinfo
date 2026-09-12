@@ -88,7 +88,7 @@ async function locality(name: string, municipalityName: string) {
 }
 
 async function hospital(name: string) {
-  return prisma.hospital.findFirstOrThrow({ where: { name } });
+  return prisma.facility.findFirstOrThrow({ where: { name } });
 }
 
 interface CertGrant {
@@ -802,10 +802,10 @@ async function main() {
           gender: Gender.MALE,
           age: 47,
           destinationKind: VictimDestinationKind.HOSPITAL,
-          destinationHospitalId: hospitalBraga.id,
+          destinationFacilityId: hospitalBraga.id,
         },
       ],
-      inemSupportUnits: [{ unitType: InemSupportUnitType.VMER, hospitalId: hospitalBraga.id }],
+      inemSupportUnits: [{ unitType: InemSupportUnitType.VMER, facilityId: hospitalBraga.id }],
     },
     mariana.id,
     { submit: true, actor: mariana },

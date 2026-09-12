@@ -11,7 +11,7 @@ import {
   EventReportInput,
   EventReportType,
   Gender,
-  HospitalWithDistance,
+  FacilityWithDistance,
   InemSupportUnitType,
   InventoryItemType,
   MAX_ATTACHMENT_BYTES,
@@ -39,12 +39,12 @@ import {
   implausibleVitals,
   noTransportDestinationsFor,
   parseEventReportCode,
-  sortHospitalsForPicker,
+  sortFacilitiesForPicker,
   totalKilometres,
   transportedVictimCount,
   validateAttachment,
   validateEventReport,
-  validateHospital,
+  validateFacility,
   validateOccurrenceTimes,
   validateVictimDestination,
 } from '@redinfo/shared';
@@ -84,7 +84,7 @@ const emergency = (overrides: Partial<EventReportInput> = {}): EventReportInput 
       gender: Gender.FEMALE,
       age: 67,
       destinationKind: VictimDestinationKind.HOSPITAL,
-      destinationHospitalId: 'hosp-chuc',
+      destinationFacilityId: 'hosp-chuc',
     },
   ],
   ...overrides,
@@ -208,7 +208,7 @@ describe('INEM support units', () => {
   it('accepts up to 3 of the same unit type', () => {
     const units = Array.from({ length: MAX_INEM_SUPPORT_UNITS_PER_TYPE }, (_, i) => ({
       unitType: VMER,
-      hospitalId: `hosp-${i}`,
+      facilityId: `hosp-${i}`,
     }));
     expect(validateEventReport(emergency({ inemSupportUnits: units }))).toBeNull();
   });
@@ -216,7 +216,7 @@ describe('INEM support units', () => {
   it('refuses a fourth entry of the same unit type', () => {
     const units = Array.from({ length: MAX_INEM_SUPPORT_UNITS_PER_TYPE + 1 }, (_, i) => ({
       unitType: VMER,
-      hospitalId: `hosp-${i}`,
+      facilityId: `hosp-${i}`,
     }));
     expect(codeOf(validateEventReport(emergency({ inemSupportUnits: units })))).toBe(
       'TOO_MANY_INEM_UNITS',
@@ -227,7 +227,7 @@ describe('INEM support units', () => {
     const units = [VMER, SIV, UMIP].flatMap((unitType) =>
       Array.from({ length: MAX_INEM_SUPPORT_UNITS_PER_TYPE }, (_, i) => ({
         unitType,
-        hospitalId: `hosp-${unitType}-${i}`,
+        facilityId: `hosp-${unitType}-${i}`,
       })),
     );
     expect(validateEventReport(emergency({ inemSupportUnits: units }))).toBeNull();
@@ -237,7 +237,7 @@ describe('INEM support units', () => {
     expect(
       codeOf(
         validateEventReport(
-          emergency({ inemSupportUnits: [{ unitType: VMER, hospitalId: '' }] }),
+          emergency({ inemSupportUnits: [{ unitType: VMER, facilityId: '' }] }),
         ),
       ),
     ).toBe('INEM_UNIT_HOSPITAL_REQUIRED');
@@ -247,7 +247,7 @@ describe('INEM support units', () => {
     expect(
       codeOf(
         validateEventReport(
-          support({ inemSupportUnits: [{ unitType: SIV, hospitalId: 'hosp-1' }] }),
+          support({ inemSupportUnits: [{ unitType: SIV, facilityId: 'hosp-1' }] }),
         ),
       ),
     ).toBe('INEM_UNITS_NOT_FOR_TYPE');
@@ -534,7 +534,7 @@ describe('validateEventReport', () => {
               gender: Gender.FEMALE,
               age: 67,
               destinationKind: VictimDestinationKind.HOSPITAL,
-              destinationHospitalId: 'hosp-chuc',
+              destinationFacilityId: 'hosp-chuc',
             },
             {
               gender: Gender.MALE,
@@ -696,7 +696,7 @@ describe('validateEventReport', () => {
                   gender: Gender.FEMALE,
                   age: 67,
                   destinationKind: VictimDestinationKind.HOSPITAL,
-                  destinationHospitalId: 'hosp-chuc',
+                  destinationFacilityId: 'hosp-chuc',
                   hospitalEpisodeNumber: '12345',
                 },
               ],
@@ -712,7 +712,7 @@ describe('validateEventReport', () => {
           validateVictimDestination(
             {
               destinationKind: VictimDestinationKind.REFUSED_TRANSPORT,
-              destinationHospitalId: null,
+              destinationFacilityId: null,
               hospitalEpisodeNumber: '12345',
             },
             EVENT_REPORT_TYPE_RULES[EMERGENCY],
@@ -731,7 +731,7 @@ describe('validateEventReport', () => {
                   gender: Gender.MALE,
                   age: 40,
                   destinationKind: VictimDestinationKind.HOSPITAL,
-                  destinationHospitalId: 'hosp-chuc',
+                  destinationFacilityId: 'hosp-chuc',
                   hospitalEpisodeNumber: '12345',
                 },
               ],
@@ -752,7 +752,7 @@ describe('validateEventReport', () => {
                   gender: Gender.MALE,
                   age: 40,
                   destinationKind: VictimDestinationKind.HOSPITAL,
-                  destinationHospitalId: 'hosp-chuc',
+                  destinationFacilityId: 'hosp-chuc',
                   hospitalEpisodeNumber: '12345',
                 },
               ],
@@ -772,7 +772,7 @@ describe('validateEventReport', () => {
                   gender: Gender.FEMALE,
                   age: 67,
                   destinationKind: VictimDestinationKind.HOSPITAL,
-                  destinationHospitalId: 'hosp-chuc',
+                  destinationFacilityId: 'hosp-chuc',
                   hospitalEpisodeNumber: 'x'.repeat(MAX_HOSPITAL_EPISODE_NUMBER_LENGTH + 1),
                 },
               ],
@@ -897,7 +897,7 @@ describe('validateVictimDestination', () => {
     expect(
       codeOf(
         validateVictimDestination(
-          { destinationKind: VictimDestinationKind.HOSPITAL, destinationHospitalId: null },
+          { destinationKind: VictimDestinationKind.HOSPITAL, destinationFacilityId: null },
           emergencyRules,
         ),
       ),
@@ -914,7 +914,7 @@ describe('validateVictimDestination', () => {
       expect(
         codeOf(
           validateVictimDestination(
-            { destinationKind, destinationHospitalId: 'hosp-chuc' },
+            { destinationKind, destinationFacilityId: 'hosp-chuc' },
             supportRules,
           ),
         ),
@@ -925,7 +925,7 @@ describe('validateVictimDestination', () => {
   it('accepts each coherent pairing', () => {
     expect(
       validateVictimDestination(
-        { destinationKind: VictimDestinationKind.HOSPITAL, destinationHospitalId: 'hosp-chuc' },
+        { destinationKind: VictimDestinationKind.HOSPITAL, destinationFacilityId: 'hosp-chuc' },
         emergencyRules,
       ),
     ).toBeNull();
@@ -1158,16 +1158,18 @@ describe('distanceInKm', () => {
   });
 });
 
-describe('sortHospitalsForPicker', () => {
+describe('sortFacilitiesForPicker', () => {
   const hospital = (
     name: string,
     distanceKm: number | null,
-  ): HospitalWithDistance => ({
+  ): FacilityWithDistance => ({
     id: name,
     name,
     municipalityId: 'mun',
     latitude: null,
     longitude: null,
+    isEmergencyDestination: true,
+    isTransportDestination: false,
     isActive: true,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
@@ -1176,7 +1178,7 @@ describe('sortHospitalsForPicker', () => {
   });
 
   it('puts the nearest first', () => {
-    const sorted = sortHospitalsForPicker([
+    const sorted = sortFacilitiesForPicker([
       hospital('Far', 62),
       hospital('Near', 6),
       hospital('Middle', 38),
@@ -1185,7 +1187,7 @@ describe('sortHospitalsForPicker', () => {
   });
 
   it('breaks ties by name, in Portuguese collation', () => {
-    const sorted = sortHospitalsForPicker([
+    const sorted = sortFacilitiesForPicker([
       hospital('Óbidos', 9),
       hospital('Aveiro', 9),
       hospital('Coimbra', 9),
@@ -1194,7 +1196,7 @@ describe('sortHospitalsForPicker', () => {
   });
 
   it('sorts hospitals nobody can measure last', () => {
-    const sorted = sortHospitalsForPicker([
+    const sorted = sortFacilitiesForPicker([
       hospital('Unlocatable', null),
       hospital('Far', 62),
       hospital('Near', 6),
@@ -1203,7 +1205,7 @@ describe('sortHospitalsForPicker', () => {
   });
 
   it('falls back to alphabetical when nothing has a distance', () => {
-    const sorted = sortHospitalsForPicker([
+    const sorted = sortFacilitiesForPicker([
       hospital('Zamora', null),
       hospital('Aveiro', null),
     ]);
@@ -1212,35 +1214,69 @@ describe('sortHospitalsForPicker', () => {
 
   it('does not mutate its argument', () => {
     const input = [hospital('Far', 62), hospital('Near', 6)];
-    sortHospitalsForPicker(input);
+    sortFacilitiesForPicker(input);
     expect(input.map((entry) => entry.name)).toEqual(['Far', 'Near']);
   });
 });
 
-describe('validateHospital', () => {
-  const base = { name: 'CHUC — Hospital Geral', municipalityId: 'mun-coimbra' };
+describe('validateFacility', () => {
+  const base = {
+    name: 'CHUC — Hospital Geral',
+    municipalityId: 'mun-coimbra',
+    isEmergencyDestination: true,
+  };
 
-  it('accepts a hospital with no coordinates', () => {
-    expect(validateHospital(base)).toBeNull();
+  it('accepts a facility with no coordinates', () => {
+    expect(validateFacility(base)).toBeNull();
   });
 
-  it('accepts a hospital with both coordinates', () => {
-    expect(validateHospital({ ...base, latitude: 40.19, longitude: -8.43 })).toBeNull();
+  it('accepts a facility with both coordinates', () => {
+    expect(validateFacility({ ...base, latitude: 40.19, longitude: -8.43 })).toBeNull();
   });
 
   it('refuses half a coordinate, in either direction', () => {
-    expect(validateHospital({ ...base, latitude: 40.19 })).toMatch(/both/i);
-    expect(validateHospital({ ...base, longitude: -8.43 })).toMatch(/both/i);
+    expect(validateFacility({ ...base, latitude: 40.19 })).toMatch(/both/i);
+    expect(validateFacility({ ...base, longitude: -8.43 })).toMatch(/both/i);
   });
 
   it('refuses coordinates off the globe', () => {
-    expect(validateHospital({ ...base, latitude: 91, longitude: 0 })).toMatch(/latitude/i);
-    expect(validateHospital({ ...base, latitude: 0, longitude: 181 })).toMatch(/longitude/i);
+    expect(validateFacility({ ...base, latitude: 91, longitude: 0 })).toMatch(/latitude/i);
+    expect(validateFacility({ ...base, latitude: 0, longitude: 181 })).toMatch(/longitude/i);
   });
 
   it('needs a name and a municipality', () => {
-    expect(validateHospital({ ...base, name: '  ' })).toMatch(/name/i);
-    expect(validateHospital({ ...base, municipalityId: '' })).toMatch(/municipality/i);
+    expect(validateFacility({ ...base, name: '  ' })).toMatch(/name/i);
+    expect(validateFacility({ ...base, municipalityId: '' })).toMatch(/municipality/i);
+  });
+
+  it('refuses a facility flagged as neither an emergency nor a transport destination', () => {
+    expect(
+      validateFacility({ ...base, isEmergencyDestination: false }),
+    ).toMatch(/emergency|transport/i);
+  });
+
+  it('accepts a facility flagged only as a transport destination, with its own coordinates', () => {
+    expect(
+      validateFacility({
+        name: base.name,
+        municipalityId: base.municipalityId,
+        isEmergencyDestination: false,
+        isTransportDestination: true,
+        latitude: 40.19,
+        longitude: -8.43,
+      }),
+    ).toBeNull();
+  });
+
+  it('refuses a transport destination with no coordinates of its own', () => {
+    expect(
+      validateFacility({
+        name: base.name,
+        municipalityId: base.municipalityId,
+        isEmergencyDestination: false,
+        isTransportDestination: true,
+      }),
+    ).toMatch(/transport/i);
   });
 });
 

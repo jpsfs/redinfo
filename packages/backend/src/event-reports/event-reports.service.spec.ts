@@ -100,7 +100,7 @@ const input = (overrides: Partial<EventReportInput> = {}): EventReportInput => (
       gender: Gender.FEMALE,
       age: 67,
       destinationKind: VictimDestinationKind.HOSPITAL,
-      destinationHospitalId: 'hosp-1',
+      destinationFacilityId: 'hosp-1',
     },
   ],
   ...overrides,
@@ -146,7 +146,7 @@ function makePrisma(overrides: Record<string, unknown> = {}) {
     locality: { count: jest.fn(() => Promise.resolve(1)) },
     vehicle: { findMany: jest.fn(() => Promise.resolve([{ id: 'veh-1' }])) },
     user: { findMany: jest.fn(() => Promise.resolve([{ id: 'user-tiago' }])) },
-    hospital: { findMany: jest.fn(() => Promise.resolve([{ id: 'hosp-1' }])) },
+    facility: { findMany: jest.fn(() => Promise.resolve([{ id: 'hosp-1' }])) },
     materialItem: { findMany: jest.fn(() => Promise.resolve([{ id: 'item-gauze' }])) },
     schedule: { count: jest.fn(() => Promise.resolve(1)) },
     liveRun: { updateMany: jest.fn(() => Promise.resolve({ count: 0 })) },
@@ -400,7 +400,7 @@ describe('changing a report', () => {
 
     await service.update(
       'rep-1',
-      input({ inemSupportUnits: [{ unitType: InemSupportUnitType.VMER, hospitalId: 'hosp-1' }] }),
+      input({ inemSupportUnits: [{ unitType: InemSupportUnitType.VMER, facilityId: 'hosp-1' }] }),
       COORDINATOR,
     );
 
@@ -411,7 +411,7 @@ describe('changing a report', () => {
       expect.objectContaining({
         data: expect.objectContaining({
           inemSupportUnits: {
-            create: [{ position: 0, unitType: InemSupportUnitType.VMER, hospitalId: 'hosp-1' }],
+            create: [{ position: 0, unitType: InemSupportUnitType.VMER, facilityId: 'hosp-1' }],
           },
         }),
       }),
@@ -431,7 +431,7 @@ describe('changing a report', () => {
         input({
           type: EventReportType.LOCAL_SUPPORT,
           externalReference: null,
-          inemSupportUnits: [{ unitType: InemSupportUnitType.SIV, hospitalId: 'hosp-1' }],
+          inemSupportUnits: [{ unitType: InemSupportUnitType.SIV, facilityId: 'hosp-1' }],
         }),
         COORDINATOR,
       ),
@@ -441,14 +441,14 @@ describe('changing a report', () => {
   it('refuses a payload naming a hospital that does not exist', async () => {
     const prisma = makePrisma();
     prisma.eventReport.findUnique = jest.fn(() => Promise.resolve(row())) as never;
-    prisma.hospital.findMany = jest.fn(() => Promise.resolve([])) as never;
+    prisma.facility.findMany = jest.fn(() => Promise.resolve([])) as never;
     const { service } = makeService(prisma);
 
     await expect(
       service.update(
         'rep-1',
         input({
-          inemSupportUnits: [{ unitType: InemSupportUnitType.VMER, hospitalId: 'hosp-ghost' }],
+          inemSupportUnits: [{ unitType: InemSupportUnitType.VMER, facilityId: 'hosp-ghost' }],
         }),
         COORDINATOR,
       ),
@@ -842,7 +842,7 @@ describe('filing a report', () => {
       [{ locality: { count: jest.fn(() => Promise.resolve(0)) } }, /locality/i],
       [{ vehicle: { findMany: jest.fn(() => Promise.resolve([])) } }, /vehicles/i],
       [{ user: { findMany: jest.fn(() => Promise.resolve([])) } }, /crew/i],
-      [{ hospital: { findMany: jest.fn(() => Promise.resolve([])) } }, /hospitals/i],
+      [{ facility: { findMany: jest.fn(() => Promise.resolve([])) } }, /hospitals/i],
     ];
 
     for (const [override, message] of cases) {

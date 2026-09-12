@@ -69,7 +69,7 @@ const ReportCard = ({
           <Typography variant="body2">
             {report.victims.length}{' '}
             {report.victims.length === 1
-              ? report.victims[0].destinationHospital?.name ??
+              ? report.victims[0].destinationFacility?.name ??
                 destinationLabel(t, report.victims[0].destinationKind)
               : ''}
           </Typography>

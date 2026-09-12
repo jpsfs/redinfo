@@ -40,7 +40,7 @@ beforeEach(() => {
       return Promise.resolve({ suggested: null, recent: [] });
     }
     if (path.startsWith('/vehicles')) return Promise.resolve({ data: [] });
-    if (path.startsWith('/hospitals/picker')) return Promise.resolve([]);
+    if (path.startsWith('/facilities/emergency')) return Promise.resolve([]);
     return Promise.resolve({});
   });
 });

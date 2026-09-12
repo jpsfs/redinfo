@@ -38,8 +38,8 @@ Don't ask for a list of all exports — grep them.
 | Window roles | Roles within an availability window |
 | Schedules | Schedule, assignment, shift-override shapes and rules |
 | Volunteer hours | `VolunteerHoursEntry`, exception detection, auto-approval rules |
-| Geography | Municipality, locality, hospital location shapes |
-| Hospitals | Hospital shapes |
+| Geography | Municipality, locality location shapes |
+| Facilities | `Facility` shapes — hospitals, clinics, private medical facilities; independent `isEmergencyDestination`/`isTransportDestination` flags, `validateFacility` (#220) |
 | Event Reports | Top-level event report shapes |
 | Event report shapes | Sub-shapes for event reports |
 | The clinical record | Clinical/assessment record shapes |

@@ -3,7 +3,7 @@ import {
   CrewSuggestionResponse,
   EventReportInput,
   EventReportType,
-  HospitalWithDistance,
+  FacilityWithDistance,
   Locality,
   MaterialItem,
   SchedulePerson,
@@ -16,7 +16,7 @@ export interface ReportLookups {
   candidates: SchedulePerson[];
   vehicles: Vehicle[];
   /** Every active hospital, keyed by id, for showing a name next to a victim. */
-  hospitalsById: Record<string, HospitalWithDistance>;
+  hospitalsById: Record<string, FacilityWithDistance>;
   /** The report's locality, resolved for display. */
   locality: Locality | null;
   /** The shift to pre-fill from, and the recent ones to switch to. */
@@ -68,7 +68,7 @@ export function useReportLookups(
         apiFetch<{ data: Vehicle[] }>('/vehicles?perPage=200')
           .then((result) => result.data)
           .catch(() => []),
-        apiFetch<HospitalWithDistance[]>('/hospitals/picker').catch(() => []),
+        apiFetch<FacilityWithDistance[]>('/facilities/emergency').catch(() => []),
       ]);
 
       if (cancelled) return;

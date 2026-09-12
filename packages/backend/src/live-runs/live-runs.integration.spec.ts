@@ -184,8 +184,8 @@ describeIntegration('Live runs (integration)', () => {
         municipalityId: municipality.id,
       },
     });
-    hospital = await prisma.hospital.create({
-      data: { name: `Hospital ${RUN}`, municipalityId: municipality.id },
+    hospital = await prisma.facility.create({
+      data: { name: `Hospital ${RUN}`, municipalityId: municipality.id, isEmergencyDestination: true },
     });
     vehicle = await prisma.vehicle.create({
       data: {
@@ -213,7 +213,7 @@ describeIntegration('Live runs (integration)', () => {
       await prisma.materialItem.deleteMany({ where: { id: { in: createdMaterialItemIds } } });
     }
     await prisma.vehicle.deleteMany({ where: { id: vehicle?.id } });
-    await prisma.hospital.deleteMany({ where: { name: { contains: RUN } } });
+    await prisma.facility.deleteMany({ where: { name: { contains: RUN } } });
     await prisma.municipality.deleteMany({ where: { district: `District ${RUN}` } });
     await prisma.user.deleteMany({
       where: {
@@ -605,7 +605,7 @@ describeIntegration('Live runs (integration)', () => {
         sceneDepartureAt: '2024-08-22T20:48:00.000Z',
         hospitalArrivalAt: '2024-08-22T21:14:00.000Z',
         destinationKind: VictimDestinationKind.HOSPITAL,
-        destinationHospitalId: hospital.id,
+        destinationFacilityId: hospital.id,
       });
       await runs.sync(input, tiagoUser);
 
@@ -614,7 +614,7 @@ describeIntegration('Live runs (integration)', () => {
 
       expect(report.victims[0]).toMatchObject({
         destinationKind: VictimDestinationKind.HOSPITAL,
-        destinationHospitalId: hospital.id,
+        destinationFacilityId: hospital.id,
       });
     });
 

@@ -214,10 +214,16 @@ export async function seedGeography(prisma: PrismaClient): Promise<void> {
 
   console.log(`🗺  Geography: ${municipalitiesWritten} municipalities, ${localitiesWritten} localities`);
 
-  await seedHospitals(prisma);
+  await seedFacilities(prisma);
 }
 
-async function seedHospitals(prisma: PrismaClient): Promise<void> {
+/**
+ * Every fixture here is a hospital — the table's only use until #220 split
+ * off transport destinations — so each one seeds as an emergency destination.
+ * `isTransportDestination` stays at its default (false): opting a facility in
+ * to the transport list is a coordinator decision, not a seed default.
+ */
+async function seedFacilities(prisma: PrismaClient): Promise<void> {
   let created = 0;
   let skipped = 0;
 
@@ -233,15 +239,15 @@ async function seedHospitals(prisma: PrismaClient): Promise<void> {
       continue;
     }
 
-    const existing = await prisma.hospital.findFirst({
+    const existing = await prisma.facility.findFirst({
       where: { name: fixture.name, municipalityId: municipality.id },
     });
     // Left alone if it is already there: a coordinator may have added
     // coordinates or deactivated it, and the seed has no business undoing that.
     if (existing) continue;
 
-    await prisma.hospital.create({
-      data: { name: fixture.name, municipalityId: municipality.id },
+    await prisma.facility.create({
+      data: { name: fixture.name, municipalityId: municipality.id, isEmergencyDestination: true },
     });
     created += 1;
   }

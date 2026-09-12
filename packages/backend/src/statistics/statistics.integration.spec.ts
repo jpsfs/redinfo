@@ -28,7 +28,7 @@ import { StatisticsInemService } from './statistics-inem.service';
  * Integration coverage for the `/statistics/*` aggregations, against a real
  * Postgres. What only a real database proves — and every unit spec in this
  * module (mocked Prisma) cannot: the joins through `Locality`→`Municipality`
- * and `EventReportVictim`→`Hospital` resolve, the raw field names match the
+ * and `EventReportVictim→Facility` resolve, the raw field names match the
  * schema, and the three services agree on the one report this suite files.
  */
 const describeIntegration = process.env.DATABASE_URL ? describe : describe.skip;
@@ -89,8 +89,8 @@ describeIntegration('Statistics module (integration)', () => {
     locality = await prisma.locality.create({
       data: { name: 'Taveiro', searchName: foldForSearch('Taveiro'), municipalityId: municipality.id },
     });
-    hospital = await prisma.hospital.create({
-      data: { name: `Hospital ${RUN}`, municipalityId: municipality.id },
+    hospital = await prisma.facility.create({
+      data: { name: `Hospital ${RUN}`, municipalityId: municipality.id, isEmergencyDestination: true },
     });
     vehicle = await prisma.vehicle.create({
       data: {
@@ -123,7 +123,7 @@ describeIntegration('Statistics module (integration)', () => {
           gender: Gender.FEMALE,
           age: 40,
           destinationKind: VictimDestinationKind.HOSPITAL,
-          destinationHospitalId: hospital.id,
+          destinationFacilityId: hospital.id,
         },
       ],
     };
@@ -180,7 +180,7 @@ describeIntegration('Statistics module (integration)', () => {
     if (createdReportIds.length) {
       await prisma.eventReport.deleteMany({ where: { id: { in: createdReportIds } } });
     }
-    await prisma.hospital.deleteMany({ where: { name: { contains: RUN } } });
+    await prisma.facility.deleteMany({ where: { name: { contains: RUN } } });
     await prisma.vehicle.deleteMany({ where: { id: vehicle.id } });
     await prisma.municipality.deleteMany({ where: { district: `District ${RUN}` } });
     await prisma.user.deleteMany({ where: { email: { contains: RUN } } });
@@ -196,7 +196,7 @@ describeIntegration('Statistics module (integration)', () => {
     expect(stats.viewer.hours).toBe(1.5);
   });
 
-  it('resolves the report through Locality → Municipality and Victim → Hospital', async () => {
+  it('resolves the report through Locality → Municipality and Victim → Facility', async () => {
     const stats = await activity.getStatistics({ from: FROM, to: TO });
     expect(stats.totalEvents).toBeGreaterThanOrEqual(1);
     expect(stats.eventsByLocality.some((l) => l.id === locality.id)).toBe(true);

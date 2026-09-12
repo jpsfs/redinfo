@@ -131,7 +131,7 @@ function respondWith(overrides: Record<string, unknown> = {}) {
     if (path.startsWith('/vehicles')) {
       return Promise.resolve({ data: overrides.vehicles ?? [AMBULANCE, AMBULANCE_2] });
     }
-    if (path.startsWith('/hospitals/picker')) return Promise.resolve([CHUC]);
+    if (path.startsWith('/facilities/emergency')) return Promise.resolve([CHUC]);
     if (path.startsWith('/localities/')) return Promise.resolve(TAVEIRO);
     if (path.startsWith('/localities')) return Promise.resolve([TAVEIRO]);
     if (path.startsWith('/material-items?frequent=true')) {
@@ -516,7 +516,7 @@ describe('the victim step', () => {
             gender: Gender.FEMALE,
             age: 67,
             destinationKind: VictimDestinationKind.HOSPITAL,
-            destinationHospitalId: CHUC.id,
+            destinationFacilityId: CHUC.id,
           },
         ],
       },
@@ -558,7 +558,7 @@ describe('the victim step', () => {
             gender: Gender.FEMALE,
             age: 67,
             destinationKind: VictimDestinationKind.HOSPITAL,
-            destinationHospitalId: CHUC.id,
+            destinationFacilityId: CHUC.id,
           },
         ],
       },
@@ -605,7 +605,7 @@ describe('the victim step', () => {
             gender: Gender.FEMALE,
             age: 67,
             destinationKind: VictimDestinationKind.HOSPITAL,
-            destinationHospitalId: CHUC.id,
+            destinationFacilityId: CHUC.id,
           },
         ],
       },
@@ -631,7 +631,7 @@ describe('the victim step', () => {
             gender: Gender.FEMALE,
             age: 67,
             destinationKind: VictimDestinationKind.HOSPITAL,
-            destinationHospitalId: CHUC.id,
+            destinationFacilityId: CHUC.id,
           },
         ],
       },

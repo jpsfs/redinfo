@@ -571,14 +571,14 @@ export const TransportScreen = ({ form, lookups, locality }: LiveScreenProps) =>
   const [open, setOpen] = useState(false);
   const { run } = form;
 
-  const hospitalName = run.destinationHospitalId
-    ? lookups.hospitalsById[run.destinationHospitalId]?.name
+  const hospitalName = run.destinationFacilityId
+    ? lookups.hospitalsById[run.destinationFacilityId]?.name
     : undefined;
 
   const choose = (choice: DestinationChoice) => {
     form.patch({
       destinationKind: choice.destinationKind,
-      destinationHospitalId: choice.destinationHospitalId,
+      destinationFacilityId: choice.destinationFacilityId,
     });
     setOpen(false);
   };

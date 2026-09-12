@@ -233,11 +233,11 @@ export function draftFromReport(report: EventReport): EventReportInput {
       gender: victim.gender,
       age: victim.age,
       destinationKind: victim.destinationKind,
-      destinationHospitalId: victim.destinationHospitalId ?? null,
+      destinationFacilityId: victim.destinationFacilityId ?? null,
     })),
     inemSupportUnits: report.inemSupportUnits.map((unit) => ({
       unitType: unit.unitType,
-      hospitalId: unit.hospitalId,
+      facilityId: unit.facilityId,
     })),
     // The clinical record travels with the report. Leaving it out here would
     // mean opening a report from a live run and saving it threw away every vital

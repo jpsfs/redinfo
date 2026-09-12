@@ -123,7 +123,7 @@ describe('RedInfoMenu', () => {
       '/material-items',
       // The crew on shift is who actually knows a unit is out of service (#216).
       '/inem-status',
-      '/hospitals',
+      '/facilities',
       '/holidays',
       '/notification-config',
     ]);
@@ -152,7 +152,7 @@ describe('RedInfoMenu', () => {
       '/inventory-templates',
       '/material-items',
       '/inem-status',
-      '/hospitals',
+      '/facilities',
       '/holidays',
       '/notification-config',
     ]);
