@@ -7548,6 +7548,74 @@ export function validateTransportRequest(input: TransportRequestInput): string |
   return null;
 }
 
+/**
+ * The only sensible correspondence between what a referral asks for
+ * (`TransportRequestVehicleType`, the requester's own vocabulary) and what
+ * the fleet actually is (`VehicleType`, its physical configuration). `OUTRO`
+ * names nothing physical, so it maps to `null` — the feasibility panel
+ * (#229) leaves that case for the coordinator to judge by eye rather than
+ * guessing.
+ */
+export function mapTransportRequestVehicleType(type: TransportRequestVehicleType): VehicleType | null {
+  switch (type) {
+    case TransportRequestVehicleType.AMBULANCIA:
+      return VehicleType.EMERGENCY;
+    case TransportRequestVehicleType.TRANSPORTE:
+      return VehicleType.TRANSPORT;
+    default:
+      return null;
+  }
+}
+
+/** One absence overlapping the appointment date, with the name the
+ * feasibility panel (#229) actually renders — `StaffAbsence` itself only
+ * carries `userId`. */
+export interface TransportRequestAbsentStaff {
+  userId: string;
+  userName: string;
+  kind: StaffAbsenceKind;
+  /** ISO dates — the absence's own range, not clipped to the appointment date. */
+  startDate: string;
+  endDate: string;
+}
+
+/** One vehicle already committed for the appointment date — the feasibility
+ * panel's "who/what already has it" answer, not just that it's busy. */
+export interface TransportRequestCommittedVehicle {
+  vehicleId: string;
+  licensePlate: string;
+  numeroCauda: string;
+  vehicleType: VehicleType;
+  startsAt: string;
+  endsAt: string;
+  source: VehicleOccupancySource;
+  sourceId: string;
+}
+
+/** The vehicles left over for the appointment date, grouped by their
+ * physical type — the feasibility panel's "free ones by type". */
+export interface TransportRequestFreeVehicleGroup {
+  vehicleType: VehicleType;
+  vehicles: Array<{ id: string; licensePlate: string; numeroCauda: string }>;
+}
+
+/**
+ * What the decision page (#229) needs to answer "are we actually free that
+ * day?" for one referral's appointment date, pre-joined so the page never
+ * cross-references the roster, the absence calendar and the vehicle
+ * occupancy table itself. `requestedVehicleTypeFree` is `null` exactly when
+ * `mapTransportRequestVehicleType` is — see its doc comment.
+ */
+export interface TransportRequestFeasibility {
+  /** ISO date, `YYYY-MM-DD` — the referral's `appointmentAt`, day part only. */
+  date: string;
+  roster: TodayRosterMember[];
+  absentStaff: TransportRequestAbsentStaff[];
+  committedVehicles: TransportRequestCommittedVehicle[];
+  freeVehiclesByType: TransportRequestFreeVehicleGroup[];
+  requestedVehicleTypeFree: boolean | null;
+}
+
 // ─── API error codes (#180 phase 4) ───────────────────────────────────────────
 //
 // A machine code for the business-rule failures that are genuinely worth a

@@ -46,7 +46,9 @@ const decisionColor = (decision: TransportRequestDecision): 'default' | 'success
   return 'default';
 };
 
-const DecisionChip = ({ decision }: { decision: TransportRequestDecision }) => {
+/** Exported for the decision page (#229), which needs the same chip against
+ * a referral it fetched itself rather than a `Datagrid`/card record. */
+export const DecisionChip = ({ decision }: { decision: TransportRequestDecision }) => {
   const t = useT();
   return (
     <Chip

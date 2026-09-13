@@ -1,12 +1,18 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import {
+  StaffAbsenceKind,
   TransportRequestDecision,
   TransportRequestOccurrenceType,
   TransportRequestVehicleType,
+  VehicleOccupancySource,
+  VehicleType,
+  mapTransportRequestVehicleType,
 } from '@redinfo/shared';
 import { TransportRequestsService } from './transport-requests.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { FacilitiesService } from '../facilities/facilities.service';
+import { StaffAbsencesService } from '../staff-absences/staff-absences.service';
+import { VehicleOccupancyService } from '../vehicle-occupancy/vehicle-occupancy.service';
 
 // ── Referral intake (#228) ──────────────────────────────────────────────────
 //
@@ -105,7 +111,12 @@ const validInput = () => ({
   destinationFacilityId: 'fac-1',
 });
 
-function makeService(prismaOverrides: Record<string, unknown> = {}, facilitiesOverrides: Record<string, unknown> = {}) {
+function makeService(
+  prismaOverrides: Record<string, unknown> = {},
+  facilitiesOverrides: Record<string, unknown> = {},
+  staffAbsencesOverrides: Record<string, unknown> = {},
+  vehicleOccupancyOverrides: Record<string, unknown> = {},
+) {
   const prisma = {
     transportRequest: {
       findMany: jest.fn(() => Promise.resolve([])),
@@ -128,6 +139,9 @@ function makeService(prismaOverrides: Record<string, unknown> = {}, facilitiesOv
     agreement: { findUnique: jest.fn(() => Promise.resolve(AGREEMENT)) },
     patient: { count: jest.fn(() => Promise.resolve(1)) },
     facility: { count: jest.fn(() => Promise.resolve(1)) },
+    scheduleAssignment: { findMany: jest.fn(() => Promise.resolve([])) },
+    vehicle: { findMany: jest.fn(() => Promise.resolve([])) },
+    user: { findMany: jest.fn(() => Promise.resolve([])) },
     $transaction: jest.fn((arg: unknown) => Promise.all(arg as Promise<unknown>[])),
     ...prismaOverrides,
   } as unknown as PrismaService;
@@ -139,7 +153,23 @@ function makeService(prismaOverrides: Record<string, unknown> = {}, facilitiesOv
     ...facilitiesOverrides,
   } as unknown as FacilitiesService;
 
-  return { service: new TransportRequestsService(prisma, facilities), prisma, facilities };
+  const staffAbsences = {
+    findOverlapping: jest.fn(() => Promise.resolve([])),
+    ...staffAbsencesOverrides,
+  } as unknown as StaffAbsencesService;
+
+  const vehicleOccupancy = {
+    findInRange: jest.fn(() => Promise.resolve([])),
+    ...vehicleOccupancyOverrides,
+  } as unknown as VehicleOccupancyService;
+
+  return {
+    service: new TransportRequestsService(prisma, facilities, staffAbsences, vehicleOccupancy),
+    prisma,
+    facilities,
+    staffAbsences,
+    vehicleOccupancy,
+  };
 }
 
 describe('creating a referral', () => {
@@ -311,5 +341,172 @@ describe('editing a referral', () => {
     });
 
     await expect(service.update('tr-1', { batchReference: 'New ref' })).rejects.toThrow(ConflictException);
+  });
+});
+
+describe('the undispatched section (awaitingExternalRegistration)', () => {
+  it('overrides decision with ACCEPTED + externallyRegisteredAt null, ordered by decidedAt', async () => {
+    const { service, prisma } = makeService({
+      transportRequest: {
+        findMany: jest.fn(() => Promise.resolve([transportRequest({ decision: TransportRequestDecision.ACCEPTED })])),
+        count: jest.fn(() => Promise.resolve(1)),
+      },
+    });
+
+    await service.findManaged(1, 50, TransportRequestDecision.PENDING, true);
+
+    expect(prisma.transportRequest.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { decision: TransportRequestDecision.ACCEPTED, externallyRegisteredAt: null },
+        orderBy: { decidedAt: 'asc' },
+      }),
+    );
+  });
+});
+
+describe('marking external registration', () => {
+  it('stamps externallyRegisteredAt on an accepted referral', async () => {
+    const { service, prisma } = makeService({
+      transportRequest: {
+        findUnique: jest.fn(() => Promise.resolve(transportRequest({ decision: TransportRequestDecision.ACCEPTED }))),
+        update: jest.fn((args: { data: Record<string, unknown> }) =>
+          Promise.resolve(
+            transportRequest({ decision: TransportRequestDecision.ACCEPTED, ...args.data } as never),
+          ),
+        ),
+      },
+    });
+
+    await service.registerExternally('tr-1');
+
+    expect(prisma.transportRequest.update).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ externallyRegisteredAt: expect.any(Date) }) }),
+    );
+  });
+
+  it('refuses a referral that was never accepted', async () => {
+    const { service } = makeService();
+
+    await expect(service.registerExternally('tr-1')).rejects.toThrow(ConflictException);
+  });
+
+  it('refuses a referral already marked as externally registered', async () => {
+    const { service } = makeService({
+      transportRequest: {
+        findUnique: jest.fn(() =>
+          Promise.resolve(
+            transportRequest({ decision: TransportRequestDecision.ACCEPTED, externallyRegisteredAt: new Date() }),
+          ),
+        ),
+      },
+    });
+
+    await expect(service.registerExternally('tr-1')).rejects.toThrow(ConflictException);
+  });
+
+  it('404s on an unknown id', async () => {
+    const { service } = makeService({ transportRequest: { findUnique: jest.fn(() => Promise.resolve(null)) } });
+
+    await expect(service.registerExternally('missing')).rejects.toThrow(NotFoundException);
+  });
+});
+
+describe('the feasibility snapshot (#229)', () => {
+  const vehicleFree = {
+    id: 'veh-free',
+    licensePlate: 'AA-00-BB',
+    numeroCauda: '01',
+    vehicleType: VehicleType.TRANSPORT,
+    isDeleted: false,
+  };
+  const vehicleCommitted = {
+    id: 'veh-busy',
+    licensePlate: 'CC-11-DD',
+    numeroCauda: '02',
+    vehicleType: VehicleType.TRANSPORT,
+    isDeleted: false,
+  };
+
+  it('joins the roster, absences and vehicle occupancy for the appointment date', async () => {
+    const { service } = makeService(
+      {
+        vehicle: { findMany: jest.fn(() => Promise.resolve([vehicleFree, vehicleCommitted])) },
+        user: { findMany: jest.fn(() => Promise.resolve([{ id: 'u-2', firstName: 'Bruno', lastName: 'Costa' }])) },
+        scheduleAssignment: {
+          findMany: jest.fn(() =>
+            Promise.resolve([
+              { user: { id: 'u-1', firstName: 'Ana', lastName: 'Silva' }, role: { name: 'Driver', order: 0 } },
+            ]),
+          ),
+        },
+      },
+      {},
+      {
+        findOverlapping: jest.fn(() =>
+          Promise.resolve([
+            { id: 'abs-1', userId: 'u-2', kind: StaffAbsenceKind.VACATION, startDate: '2026-09-12', endDate: '2026-09-14' },
+          ]),
+        ),
+      },
+      {
+        findInRange: jest.fn(() =>
+          Promise.resolve([
+            {
+              id: 'occ-1',
+              vehicleId: vehicleCommitted.id,
+              startsAt: new Date('2026-09-12T08:00:00.000Z'),
+              endsAt: new Date('2026-09-12T12:00:00.000Z'),
+              source: VehicleOccupancySource.SCHEDULE_SHIFT,
+              sourceId: 'sched-1',
+            },
+          ]),
+        ),
+      },
+    );
+
+    const feasibility = await service.getFeasibility('tr-1');
+
+    expect(feasibility.date).toBe('2026-09-12');
+    expect(feasibility.roster).toEqual([
+      { userId: 'u-1', firstName: 'Ana', lastName: 'Silva', roleName: 'Driver' },
+    ]);
+    expect(feasibility.absentStaff).toEqual([
+      { userId: 'u-2', userName: 'Bruno Costa', kind: StaffAbsenceKind.VACATION, startDate: '2026-09-12', endDate: '2026-09-14' },
+    ]);
+    expect(feasibility.committedVehicles).toEqual([
+      expect.objectContaining({ vehicleId: vehicleCommitted.id, source: VehicleOccupancySource.SCHEDULE_SHIFT }),
+    ]);
+    const transportGroup = feasibility.freeVehiclesByType.find((g) => g.vehicleType === VehicleType.TRANSPORT)!;
+    expect(transportGroup.vehicles.map((v) => v.id)).toEqual([vehicleFree.id]);
+    // requestedVehicleType on the default fixture is TRANSPORTE → TRANSPORT, and it's free.
+    expect(feasibility.requestedVehicleTypeFree).toBe(true);
+  });
+
+  it('is null when the requested vehicle type has no physical counterpart (OUTRO)', async () => {
+    const { service } = makeService({
+      transportRequest: {
+        findUnique: jest.fn(() =>
+          Promise.resolve(transportRequest({ requestedVehicleType: TransportRequestVehicleType.OUTRO })),
+        ),
+      },
+    });
+
+    const feasibility = await service.getFeasibility('tr-1');
+
+    expect(feasibility.requestedVehicleTypeFree).toBeNull();
+  });
+
+  it('404s on an unknown id', async () => {
+    const { service } = makeService({ transportRequest: { findUnique: jest.fn(() => Promise.resolve(null)) } });
+
+    await expect(service.getFeasibility('missing')).rejects.toThrow(NotFoundException);
+  });
+});
+
+describe('mapTransportRequestVehicleType', () => {
+  it('maps the referral vocabulary onto the fleet\'s physical types, OUTRO onto neither', () => {
+    expect(mapTransportRequestVehicleType(TransportRequestVehicleType.AMBULANCIA)).toBe(VehicleType.EMERGENCY);
+    expect(mapTransportRequestVehicleType(TransportRequestVehicleType.TRANSPORTE)).toBe(VehicleType.TRANSPORT);
+    expect(mapTransportRequestVehicleType(TransportRequestVehicleType.OUTRO)).toBeNull();
   });
 });

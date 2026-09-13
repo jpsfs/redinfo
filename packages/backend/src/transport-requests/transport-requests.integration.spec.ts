@@ -2,15 +2,20 @@ import { PrismaClient } from '@prisma/client';
 import { ConflictException } from '@nestjs/common';
 import {
   PatientMobility,
+  StaffAbsenceKind,
   TransportRequestDecision,
   TransportRequestOccurrenceType,
   TransportRequestVehicleType,
   UserRole,
+  VehicleOccupancySource,
+  VehicleType,
 } from '@redinfo/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { FacilitiesService } from '../facilities/facilities.service';
 import { GeographyService } from '../geography/geography.service';
 import { DelegationSettingsService } from '../live-runs/delegation-settings.service';
+import { StaffAbsencesService } from '../staff-absences/staff-absences.service';
+import { VehicleOccupancyService } from '../vehicle-occupancy/vehicle-occupancy.service';
 import { TransportRequestsService } from './transport-requests.service';
 
 /**
@@ -35,7 +40,9 @@ describeIntegration('TransportRequestsService (integration)', () => {
     prisma,
     new GeographyService(prisma, new DelegationSettingsService(prisma)),
   );
-  const transportRequests = new TransportRequestsService(prisma, facilities);
+  const staffAbsences = new StaffAbsencesService(prisma);
+  const vehicleOccupancy = new VehicleOccupancyService(prisma);
+  const transportRequests = new TransportRequestsService(prisma, facilities, staffAbsences, vehicleOccupancy);
 
   let coordinator: { id: string };
   let municipality: { id: string };
@@ -45,6 +52,8 @@ describeIntegration('TransportRequestsService (integration)', () => {
 
   const createdRequestIds: string[] = [];
   const createdFacilityIds: string[] = [];
+  const createdAbsenceIds: string[] = [];
+  const createdVehicleIds: string[] = [];
 
   const track = <T extends { id: string }>(row: T): T => {
     createdRequestIds.push(row.id);
@@ -107,6 +116,8 @@ describeIntegration('TransportRequestsService (integration)', () => {
     await prisma.transportRequest.deleteMany({ where: { id: { in: createdRequestIds } } });
     await prisma.patient.delete({ where: { id: patient.id } });
     await prisma.facility.deleteMany({ where: { id: { in: createdFacilityIds } } });
+    await prisma.staffAbsence.deleteMany({ where: { id: { in: createdAbsenceIds } } });
+    await prisma.vehicle.deleteMany({ where: { id: { in: createdVehicleIds } } });
     await prisma.organisation.deleteMany({ where: { id: { in: [requester.id, payer.id] } } });
     await prisma.municipality.deleteMany({ where: { district: `District ${RUN}` } });
     await prisma.user.delete({ where: { id: coordinator.id } });
@@ -261,5 +272,104 @@ describeIntegration('TransportRequestsService (integration)', () => {
 
     const row = await prisma.transportRequest.findUnique({ where: { id: created.id } });
     expect(row?.externallyRegisteredAt).toBeNull();
+  });
+
+  it('integration: registering externally requires an accepted referral, and is a one-way stamp', async () => {
+    const facility = await facilities.findOrCreateTransportDestination(`Hosp D ${RUN}`, municipality.id);
+    createdFacilityIds.push(facility.id);
+    const created = track(
+      await transportRequests.create(
+        { ...workedExample(), externalServiceNumber: `EXTREG-${RUN}`, destinationFacilityId: facility.id },
+        { id: coordinator.id },
+      ),
+    );
+
+    await expect(transportRequests.registerExternally(created.id)).rejects.toBeInstanceOf(ConflictException);
+
+    await transportRequests.decide(created.id, { decision: TransportRequestDecision.ACCEPTED }, { id: coordinator.id });
+    const registered = await transportRequests.registerExternally(created.id);
+    expect(registered.externallyRegisteredAt).toBeTruthy();
+
+    await expect(transportRequests.registerExternally(created.id)).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('integration: the feasibility snapshot joins the real roster, absences and vehicle occupancy for the appointment date', async () => {
+    const facility = await facilities.findOrCreateTransportDestination(`Hosp E ${RUN}`, municipality.id);
+    createdFacilityIds.push(facility.id);
+
+    const absentUser = await prisma.user.create({
+      data: {
+        email: email('absent'),
+        firstName: 'Ausente',
+        lastName: 'Teste',
+        roles: [UserRole.TRANSPORT_COORDINATOR],
+        isActive: true,
+      },
+    });
+
+    const absence = await prisma.staffAbsence.create({
+      data: {
+        userId: absentUser.id,
+        kind: StaffAbsenceKind.VACATION as never,
+        startDate: new Date('2026-09-12T00:00:00.000Z'),
+        endDate: new Date('2026-09-12T00:00:00.000Z'),
+        createdById: coordinator.id,
+      },
+    });
+    createdAbsenceIds.push(absence.id);
+
+    const freeVehicle = await prisma.vehicle.create({
+      data: {
+        licensePlate: `FR-${RUN}`,
+        numeroCauda: `FR-${RUN}`,
+        vehicleType: VehicleType.TRANSPORT as never,
+        insuranceRenewalDate: new Date('2027-01-01T00:00:00.000Z'),
+        nextImtInspectionDate: new Date('2027-01-01T00:00:00.000Z'),
+      },
+    });
+    const committedVehicle = await prisma.vehicle.create({
+      data: {
+        licensePlate: `CM-${RUN}`,
+        numeroCauda: `CM-${RUN}`,
+        vehicleType: VehicleType.TRANSPORT as never,
+        insuranceRenewalDate: new Date('2027-01-01T00:00:00.000Z'),
+        nextImtInspectionDate: new Date('2027-01-01T00:00:00.000Z'),
+      },
+    });
+    createdVehicleIds.push(freeVehicle.id, committedVehicle.id);
+    await prisma.vehicleOccupancy.create({
+      data: {
+        vehicleId: committedVehicle.id,
+        startsAt: new Date('2026-09-12T08:00:00.000Z'),
+        endsAt: new Date('2026-09-12T12:00:00.000Z'),
+        source: VehicleOccupancySource.SCHEDULE_SHIFT as never,
+        sourceId: 'sched-fixture',
+      },
+    });
+
+    const created = track(
+      await transportRequests.create(
+        {
+          ...workedExample(),
+          externalServiceNumber: `FEAS-${RUN}`,
+          appointmentAt: '2026-09-12T09:00:00.000Z',
+          requestedVehicleType: TransportRequestVehicleType.TRANSPORTE,
+          destinationFacilityId: facility.id,
+        },
+        { id: coordinator.id },
+      ),
+    );
+
+    const feasibility = await transportRequests.getFeasibility(created.id);
+    expect(feasibility.date).toBe('2026-09-12');
+    expect(feasibility.absentStaff.some((a) => a.userId === absentUser.id)).toBe(true);
+    expect(feasibility.committedVehicles.some((v) => v.vehicleId === committedVehicle.id)).toBe(true);
+    const transportGroup = feasibility.freeVehiclesByType.find((g) => g.vehicleType === VehicleType.TRANSPORT)!;
+    expect(transportGroup.vehicles.some((v) => v.id === freeVehicle.id)).toBe(true);
+    expect(transportGroup.vehicles.some((v) => v.id === committedVehicle.id)).toBe(false);
+    expect(feasibility.requestedVehicleTypeFree).toBe(true);
+
+    await prisma.vehicleOccupancy.deleteMany({ where: { vehicleId: { in: [freeVehicle.id, committedVehicle.id] } } });
+    await prisma.user.delete({ where: { id: absentUser.id } });
   });
 });

@@ -26,6 +26,7 @@ import SmartToyIcon from '@mui/icons-material/SmartToy';
 import BusinessIcon from '@mui/icons-material/Business';
 import HandshakeIcon from '@mui/icons-material/Handshake';
 import AssignmentIcon from '@mui/icons-material/Assignment';
+import RuleIcon from '@mui/icons-material/Rule';
 import { Action } from '@redinfo/shared';
 import { MessageKey } from '../i18n/labels';
 
@@ -178,8 +179,8 @@ export const NAV_SECTIONS: NavSection[] = [
     // group and its position exist, screens added one by one as their
     // stories land. Patients (#226) is the first; Organisations and
     // Agreements (#227) are reference data, not a daily screen; Pedidos
-    // (#228) is referral intake — Planeamento and Atendimento still follow
-    // with their own `requires`.
+    // (#228) is referral intake; Decidir (#229) is the accept/reject
+    // decision page — Planeamento still follows with its own `requires`.
     label: 'nav.transports',
     entries: [
       {
@@ -204,6 +205,12 @@ export const NAV_SECTIONS: NavSection[] = [
         to: '/transport-requests',
         label: 'nav.transportRequests',
         icon: <AssignmentIcon />,
+        requires: [Action.MANAGE_TRANSPORT_REQUESTS],
+      },
+      {
+        to: '/transport-referrals',
+        label: 'nav.transportReferrals',
+        icon: <RuleIcon />,
         requires: [Action.MANAGE_TRANSPORT_REQUESTS],
       },
     ],

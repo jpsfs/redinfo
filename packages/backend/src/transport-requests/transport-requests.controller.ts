@@ -42,18 +42,33 @@ export class TransportRequestsController {
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'perPage', required: false, type: Number })
   @ApiQuery({ name: 'decision', required: false, enum: TransportRequestDecision })
+  @ApiQuery({
+    name: 'awaitingExternalRegistration',
+    required: false,
+    type: Boolean,
+    description: 'Accepted but not yet marked registado na plataforma externa. Overrides `decision`.',
+  })
   findManaged(
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
     @Query('perPage', new DefaultValuePipe(50), ParseIntPipe) perPage: number,
     @Query('decision') decision?: TransportRequestDecision,
+    @Query('awaitingExternalRegistration') awaitingExternalRegistration?: string,
   ) {
-    return this.transportRequests.findManaged(page, perPage, decision);
+    return this.transportRequests.findManaged(page, perPage, decision, awaitingExternalRegistration === 'true');
   }
 
   @Get(':id')
   @Actions(Action.MANAGE_TRANSPORT_REQUESTS)
   findOne(@Param('id') id: string) {
     return this.transportRequests.findOne(id);
+  }
+
+  /** The decision page's (#229) roster/absences/vehicle-occupancy snapshot
+   * for this referral's appointment date — see `TransportRequestsService.getFeasibility`. */
+  @Get(':id/feasibility')
+  @Actions(Action.MANAGE_TRANSPORT_REQUESTS)
+  getFeasibility(@Param('id') id: string) {
+    return this.transportRequests.getFeasibility(id);
   }
 
   @Post()
@@ -77,6 +92,13 @@ export class TransportRequestsController {
     @CurrentUser() user: RequestUser,
   ) {
     return this.transportRequests.decide(id, dto, user);
+  }
+
+  /** Stamps `externallyRegisteredAt` — see `TransportRequestsService.registerExternally`. */
+  @Post(':id/register-external')
+  @Actions(Action.MANAGE_TRANSPORT_REQUESTS)
+  registerExternally(@Param('id') id: string) {
+    return this.transportRequests.registerExternally(id);
   }
 
   @Delete(':id')

@@ -152,6 +152,7 @@ describe('RedInfoMenu', () => {
       '/organisations',
       '/agreements',
       '/transport-requests',
+      '/transport-referrals',
       '/users',
       '/staff-absences',
       '/vehicles',

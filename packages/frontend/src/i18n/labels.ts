@@ -527,6 +527,7 @@ const MESSAGES = {
   'nav.organisations': { pt: 'Organizações', en: 'Organisations' },
   'nav.agreements': { pt: 'Acordos', en: 'Agreements' },
   'nav.transportRequests': { pt: 'Pedidos', en: 'Referrals' },
+  'nav.transportReferrals': { pt: 'Decidir', en: 'Decide' },
   'nav.holidays': { pt: 'Feriados', en: 'Holidays' },
   'nav.myProfile': { pt: 'O meu perfil', en: 'My Profile' },
   'nav.myNotices': { pt: 'Avisos', en: 'Notices' },
@@ -2722,6 +2723,81 @@ const MESSAGES = {
   'transportRequestList.overdue': { pt: 'Atrasado', en: 'Overdue' },
   'transportRequestList.minutesRemaining': { pt: '%{minutes} min restantes', en: '%{minutes} min left' },
   'transportRequestList.overdueByMinutes': { pt: 'Atrasado %{minutes} min', en: 'Overdue by %{minutes} min' },
+
+  // ── Referral decision page (#229) — accept/reject against the roster and
+  // free vehicles, and the "registado na plataforma externa" follow-up ──
+  'transportReferrals.pageTitle': { pt: 'Decidir pedidos', en: 'Decide referrals' },
+  'transportReferrals.queueTitle': { pt: 'Por decidir', en: 'Awaiting decision' },
+  'transportReferrals.queueEmpty': { pt: 'Sem pedidos por decidir.', en: 'No referrals awaiting decision.' },
+  'transportReferrals.undispatchedTitle': {
+    pt: 'Aceites, por registar na plataforma externa',
+    en: 'Accepted, not yet registered externally',
+  },
+  'transportReferrals.undispatchedEmpty': {
+    pt: 'Tudo registado na plataforma externa.',
+    en: 'Everything is registered externally.',
+  },
+  'transportReferrals.undispatchedHelp': {
+    pt: 'Aceite aqui, mas ninguém confirmou ainda ter clicado em Aceitar na plataforma do requisitante — sem isso, o transporte pode não aparecer do lado deles.',
+    en: "Accepted here, but nobody has confirmed clicking Accept on the requester's own platform yet — without that, the transport may not show up on their end.",
+  },
+  'transportReferrals.selectPrompt': {
+    pt: 'Escolha um pedido na lista para ver os detalhes e decidir.',
+    en: 'Choose a referral from the list to see its details and decide.',
+  },
+  'transportReferrals.loadFailed': { pt: 'Não foi possível carregar os pedidos.', en: 'Could not load the referrals.' },
+  'transportReferrals.feasibilityFailed': {
+    pt: 'Não foi possível carregar a disponibilidade.',
+    en: 'Could not load availability.',
+  },
+  'transportReferrals.feasibilityTitle': { pt: 'Disponibilidade a %{date}', en: 'Availability on %{date}' },
+  'transportReferrals.rosterTitle': { pt: 'Escala', en: 'Roster' },
+  'transportReferrals.rosterEmpty': { pt: 'Ninguém escalado nesse dia.', en: 'Nobody rostered that day.' },
+  'transportReferrals.absencesTitle': { pt: 'Ausências', en: 'Absences' },
+  'transportReferrals.absencesEmpty': { pt: 'Sem ausências registadas nesse dia.', en: 'No absences on file for that day.' },
+  'transportReferrals.committedVehiclesTitle': { pt: 'Viaturas já comprometidas', en: 'Vehicles already committed' },
+  'transportReferrals.committedVehiclesEmpty': { pt: 'Nenhuma viatura comprometida.', en: 'No vehicle committed.' },
+  'transportReferrals.freeVehiclesTitle': { pt: 'Viaturas livres', en: 'Free vehicles' },
+  'transportReferrals.requestedTypeAvailable': {
+    pt: 'O tipo de viatura pedido tem disponibilidade.',
+    en: 'The requested vehicle type has availability.',
+  },
+  'transportReferrals.requestedTypeUnavailable': {
+    pt: 'Sem viaturas livres do tipo pedido.',
+    en: 'No free vehicles of the requested type.',
+  },
+  'transportReferrals.requestedTypeUnknown': {
+    pt: '"Outro" não corresponde a um tipo de viatura da frota — avalie à vista.',
+    en: '"Other" has no fleet counterpart — judge this one by eye.',
+  },
+  'transportReferrals.acceptButton': { pt: 'Aceitar', en: 'Accept' },
+  'transportReferrals.rejectButton': { pt: 'Rejeitar', en: 'Reject' },
+  'transportReferrals.rejectDialogTitle': { pt: 'Rejeitar pedido', en: 'Reject referral' },
+  'transportReferrals.rejectReasonLabel': { pt: 'Motivo', en: 'Reason' },
+  'transportReferrals.rejectConfirm': { pt: 'Confirmar rejeição', en: 'Confirm rejection' },
+  'transportReferrals.cancel': { pt: 'Cancelar', en: 'Cancel' },
+  'transportReferrals.acceptFailed': { pt: 'Não foi possível aceitar o pedido.', en: 'Could not accept the referral.' },
+  'transportReferrals.rejectFailed': { pt: 'Não foi possível rejeitar o pedido.', en: 'Could not reject the referral.' },
+  'transportReferrals.accepted': { pt: 'Pedido aceite.', en: 'Referral accepted.' },
+  'transportReferrals.rejected': { pt: 'Pedido rejeitado.', en: 'Referral rejected.' },
+  'transportReferrals.registerExternalButton': {
+    pt: 'Marcar registado na plataforma externa',
+    en: 'Mark registered on external platform',
+  },
+  'transportReferrals.registerExternalFailed': {
+    pt: 'Não foi possível marcar o registo externo.',
+    en: 'Could not mark the external registration.',
+  },
+  'transportReferrals.registeredExternally': {
+    pt: 'Registo externo confirmado.',
+    en: 'External registration confirmed.',
+  },
+  'transportReferrals.decidedBy': { pt: 'Decidido por %{name} a %{date}', en: 'Decided by %{name} on %{date}' },
+  'transportReferrals.rejectionReasonLabel': { pt: 'Motivo da rejeição', en: 'Rejection reason' },
+  'transportReferrals.externallyRegisteredAt': {
+    pt: 'Registado na plataforma externa a %{date}',
+    en: 'Registered on the external platform on %{date}',
+  },
 
   // ── Rich text editor (#180 phase 3) — shared by crew and coordinator forms ──
   'richText.bold': { pt: 'Negrito', en: 'Bold' },

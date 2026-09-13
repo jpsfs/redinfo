@@ -1,8 +1,24 @@
 import { BadRequestException, ConflictException, Injectable, NotFoundException } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
-import { TransportRequest, TransportRequestDecision, validateTransportRequest } from '@redinfo/shared';
+import { Prisma, ScheduleStatus } from '@prisma/client';
+import {
+  TodayRosterMember,
+  TransportRequest,
+  TransportRequestAbsentStaff,
+  TransportRequestCommittedVehicle,
+  TransportRequestDecision,
+  TransportRequestFeasibility,
+  TransportRequestFreeVehicleGroup,
+  TransportRequestVehicleType,
+  VehicleOccupancySource,
+  VehicleType,
+  mapTransportRequestVehicleType,
+  validateTransportRequest,
+} from '@redinfo/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { FacilitiesService } from '../facilities/facilities.service';
+import { StaffAbsencesService } from '../staff-absences/staff-absences.service';
+import { VehicleOccupancyService } from '../vehicle-occupancy/vehicle-occupancy.service';
+import { addIsoDays, parseIsoDate, toIsoDate } from '../utils/date.util';
 import { CreateTransportRequestDto } from './dto/create-transport-request.dto';
 import { UpdateTransportRequestDto } from './dto/update-transport-request.dto';
 import { DecideTransportRequestDto } from './dto/decide-transport-request.dto';
@@ -61,13 +77,36 @@ export class TransportRequestsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly facilities: FacilitiesService,
+    private readonly staffAbsences: StaffAbsencesService,
+    private readonly vehicleOccupancy: VehicleOccupancyService,
   ) {}
 
-  async findManaged(page = 1, perPage = 50, decision?: TransportRequestDecision): Promise<TransportRequestPage> {
+  /**
+   * `awaitingExternalRegistration` is the decision page's (#229) second,
+   * persistent section — accepted but never clicked through on the
+   * requester's own platform — and overrides `decision`: there is only one
+   * sensible reading of "awaiting external registration" (`ACCEPTED` with no
+   * `externallyRegisteredAt`), so a caller passing both gets that, not a
+   * silent AND of two filters that could disagree.
+   */
+  async findManaged(
+    page = 1,
+    perPage = 50,
+    decision?: TransportRequestDecision,
+    awaitingExternalRegistration?: boolean,
+  ): Promise<TransportRequestPage> {
     const skip = (page - 1) * perPage;
-    const where = decision ? { decision } : {};
-    // The ageing order the decision page (#229) needs: soonest deadline first.
-    const orderBy = { responseDueAt: 'asc' } as const;
+    const where = awaitingExternalRegistration
+      ? { decision: TransportRequestDecision.ACCEPTED, externallyRegisteredAt: null }
+      : decision
+        ? { decision }
+        : {};
+    // The ageing order the decision page (#229) needs: soonest deadline
+    // first for the queue; oldest-accepted-first for the undispatched
+    // section, since `responseDueAt` has usually already passed by then.
+    const orderBy = awaitingExternalRegistration
+      ? ({ decidedAt: 'asc' } as const)
+      : ({ responseDueAt: 'asc' } as const);
     const now = new Date();
 
     const [rows, total] = await this.prisma.$transaction([
@@ -255,6 +294,138 @@ export class TransportRequestsService {
       include: TRANSPORT_REQUEST_INCLUDE,
     });
     return serializeTransportRequest(updated as TransportRequestRow);
+  }
+
+  /**
+   * Stamps `externallyRegisteredAt` — the separate, explicit "registado na
+   * plataforma externa" control (#229). Deliberately its own action, never
+   * folded into `decide`: accepting in redinfo and registering on the
+   * requester's own platform are different facts, made at different times
+   * by whoever actually did the clicking there.
+   */
+  async registerExternally(id: string): Promise<TransportRequest> {
+    const current = await this.prisma.transportRequest.findUnique({ where: { id } });
+    if (!current) throw new NotFoundException(`Transport request ${id} not found`);
+    if (current.decision !== TransportRequestDecision.ACCEPTED) {
+      throw new ConflictException('Only an accepted referral can be marked as externally registered.');
+    }
+    if (current.externallyRegisteredAt) {
+      throw new ConflictException('This referral is already marked as externally registered.');
+    }
+
+    const updated = await this.prisma.transportRequest.update({
+      where: { id },
+      data: { externallyRegisteredAt: new Date() },
+      include: TRANSPORT_REQUEST_INCLUDE,
+    });
+    return serializeTransportRequest(updated as TransportRequestRow);
+  }
+
+  /**
+   * The decision page's (#229) "are we actually free that day?" answer for
+   * one referral's appointment date: the published roster, who's on file as
+   * absent, and vehicle occupancy — committed and free, by type. Roster
+   * comes straight from `Schedule`/`ScheduleAssignment` (no need for
+   * `SchedulesService`'s full shift/window reconstruction, just who's on
+   * the day); absences and vehicle occupancy go through their own services
+   * rather than their tables, per those modules' own boundary.
+   */
+  async getFeasibility(id: string): Promise<TransportRequestFeasibility> {
+    const request = await this.prisma.transportRequest.findUnique({ where: { id } });
+    if (!request) throw new NotFoundException(`Transport request ${id} not found`);
+
+    const date = toIsoDate(request.appointmentAt);
+    const dayStart = parseIsoDate(date);
+    const dayEnd = parseIsoDate(addIsoDays(date, 1));
+
+    const [assignments, absences, occupancies, vehicles] = await Promise.all([
+      this.prisma.scheduleAssignment.findMany({
+        where: { date: dayStart, schedule: { status: ScheduleStatus.PUBLISHED } },
+        include: {
+          user: { select: { id: true, firstName: true, lastName: true } },
+          role: true,
+        },
+        orderBy: [{ slot: 'asc' }],
+      }),
+      this.staffAbsences.findOverlapping(date, date),
+      this.vehicleOccupancy.findInRange(dayStart, dayEnd),
+      this.prisma.vehicle.findMany({ where: { isDeleted: false } }),
+    ]);
+
+    const roster: TodayRosterMember[] = [...assignments]
+      .sort(
+        (a, b) =>
+          (a.role?.order ?? Number.MAX_SAFE_INTEGER) - (b.role?.order ?? Number.MAX_SAFE_INTEGER) ||
+          a.user.firstName.localeCompare(b.user.firstName) ||
+          a.user.lastName.localeCompare(b.user.lastName),
+      )
+      .map((row) => ({
+        userId: row.user.id,
+        firstName: row.user.firstName,
+        lastName: row.user.lastName,
+        roleName: row.role?.name ?? null,
+      }));
+
+    const absentUserIds = [...new Set(absences.map((absence) => absence.userId))];
+    const absentUsers = absentUserIds.length
+      ? await this.prisma.user.findMany({
+          where: { id: { in: absentUserIds } },
+          select: { id: true, firstName: true, lastName: true },
+        })
+      : [];
+    const nameByUserId = new Map(absentUsers.map((user) => [user.id, `${user.firstName} ${user.lastName}`]));
+    const absentStaff: TransportRequestAbsentStaff[] = absences.map((absence) => ({
+      userId: absence.userId,
+      userName: nameByUserId.get(absence.userId) ?? absence.userId,
+      kind: absence.kind,
+      startDate: absence.startDate,
+      endDate: absence.endDate,
+    }));
+
+    const vehicleById = new Map(vehicles.map((vehicle) => [vehicle.id, vehicle]));
+    const committedVehicles: TransportRequestCommittedVehicle[] = [];
+    for (const occupancy of occupancies) {
+      const vehicle = vehicleById.get(occupancy.vehicleId);
+      // Not among the active fleet fetched above — deleted after the
+      // booking was made. Nothing useful to show for it here.
+      if (!vehicle) continue;
+      committedVehicles.push({
+        vehicleId: vehicle.id,
+        licensePlate: vehicle.licensePlate,
+        numeroCauda: vehicle.numeroCauda,
+        vehicleType: vehicle.vehicleType as VehicleType,
+        startsAt: occupancy.startsAt.toISOString(),
+        endsAt: occupancy.endsAt.toISOString(),
+        source: occupancy.source as VehicleOccupancySource,
+        sourceId: occupancy.sourceId,
+      });
+    }
+
+    const committedVehicleIds = new Set(occupancies.map((occupancy) => occupancy.vehicleId));
+    const freeVehicles = vehicles.filter((vehicle) => !committedVehicleIds.has(vehicle.id));
+    const freeVehiclesByType: TransportRequestFreeVehicleGroup[] = Object.values(VehicleType).map(
+      (vehicleType) => ({
+        vehicleType,
+        vehicles: freeVehicles
+          .filter((vehicle) => vehicle.vehicleType === vehicleType)
+          .map((vehicle) => ({ id: vehicle.id, licensePlate: vehicle.licensePlate, numeroCauda: vehicle.numeroCauda })),
+      }),
+    );
+
+    const mappedType = mapTransportRequestVehicleType(request.requestedVehicleType as TransportRequestVehicleType);
+    const requestedVehicleTypeFree =
+      mappedType === null
+        ? null
+        : (freeVehiclesByType.find((group) => group.vehicleType === mappedType)?.vehicles.length ?? 0) > 0;
+
+    return {
+      date,
+      roster,
+      absentStaff,
+      committedVehicles,
+      freeVehiclesByType,
+      requestedVehicleTypeFree,
+    };
   }
 
   async remove(id: string): Promise<TransportRequest> {

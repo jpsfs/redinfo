@@ -48,8 +48,19 @@ since a referral's destination is routinely not yet in the transport destination
 `TRANSPORT_COORDINATOR` does not hold `MANAGE_HOSPITALS`. A decision (`decide`) is terminal —
 `update` refuses a request already accepted/rejected — and accepting one never sets
 `externallyRegisteredAt`, which only the requester's own platform can. Gated by
-`MANAGE_TRANSPORT_REQUESTS`; #229 builds the actual decision page against `findManaged`'s
-`responseDueAt`-ordered ageing query and `decide`.
+`MANAGE_TRANSPORT_REQUESTS`.
+
+The decision page (#229) adds three things to the same module: `findManaged`'s
+`awaitingExternalRegistration` flag (overrides `decision` — accepted, `externallyRegisteredAt`
+still null, ordered oldest-accepted-first, feeding the queue's persistent second section);
+`getFeasibility` (`GET :id/feasibility`, the roster/absences/vehicle-occupancy snapshot for the
+referral's appointment date — roster is a plain `ScheduleAssignment` query, not
+`SchedulesService`, to avoid pulling in its whole window/shift dependency graph for a "who's on
+this day" list; absences and vehicle occupancy go through `StaffAbsencesService`/
+`VehicleOccupancyService` rather than their tables); and `registerExternally` (`POST
+:id/register-external`, stamps `externallyRegisteredAt` — a separate action from `decide`, since
+accepting in redinfo and registering on the requester's own platform are different facts made
+at different times).
 
 ## Controller pattern
 
