@@ -2932,6 +2932,15 @@ export interface StaffAbsence {
   startDate: string;
   /** ISO date, inclusive. */
   endDate: string;
+  /**
+   * Partial-day absence, e.g. a medical appointment — the rare case, never
+   * the default, and only for `OTHER_PAID_LEAVE` (vacation and sick leave
+   * are always whole days). `HH:mm`, 24h. Both set together or neither; only
+   * valid when `startDate === endDate` (see `isValidStaffAbsenceTimeRange`)
+   * — a partial day can't span a date range.
+   */
+  startTime?: string | null;
+  endTime?: string | null;
   notes?: string | null;
   createdById: string;
   createdAt: string;
@@ -2943,6 +2952,8 @@ export interface CreateStaffAbsenceRequest {
   kind: StaffAbsenceKind;
   startDate: string;
   endDate: string;
+  startTime?: string | null;
+  endTime?: string | null;
   notes?: string | null;
 }
 
@@ -2951,12 +2962,35 @@ export interface UpdateStaffAbsenceRequest {
   kind: StaffAbsenceKind;
   startDate: string;
   endDate: string;
+  startTime?: string | null;
+  endTime?: string | null;
   notes?: string | null;
 }
 
 /** `endDate` before `startDate` is never valid, inclusive range or not. */
 export function isValidStaffAbsenceRange(startDate: string, endDate: string): boolean {
   return endDate >= startDate;
+}
+
+/**
+ * A partial-day absence (a medical appointment, say) is the rare case, opted
+ * into by setting both times — never just one, never on a multi-day range
+ * (since "partial" only means something for a single day), and only for
+ * `OTHER_PAID_LEAVE`: vacation and sick leave are always whole days. Full-day
+ * (the default) is neither time set.
+ */
+export function isValidStaffAbsenceTimeRange(
+  kind: StaffAbsenceKind,
+  startDate: string,
+  endDate: string,
+  startTime?: string | null,
+  endTime?: string | null,
+): boolean {
+  if (!startTime && !endTime) return true;
+  if (!startTime || !endTime) return false;
+  if (kind !== StaffAbsenceKind.OTHER_PAID_LEAVE) return false;
+  if (startDate !== endDate) return false;
+  return endTime > startTime;
 }
 
 /** Two inclusive date ranges sharing any day at all. */

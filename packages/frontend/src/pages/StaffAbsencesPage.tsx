@@ -79,6 +79,10 @@ const kindLabel = (t: (key: string) => string, kind: StaffAbsenceKind) => {
   }
 };
 
+/** `" (09:00–11:00)"` for the rare partial-day absence, otherwise nothing — full day needs no suffix. */
+const timeSuffix = (absence: Pick<StaffAbsence, 'startTime' | 'endTime'>) =>
+  absence.startTime && absence.endTime ? ` (${absence.startTime}–${absence.endTime})` : '';
+
 const Legend = () => {
   const t = useT();
   return (
@@ -245,7 +249,7 @@ const DesktopGrid = ({
                   return absence ? (
                     <Tooltip
                       key={date}
-                      title={`${kindLabel(t, absence.kind)}${absence.notes ? ` — ${absence.notes}` : ''}`}
+                      title={`${kindLabel(t, absence.kind)}${timeSuffix(absence)}${absence.notes ? ` — ${absence.notes}` : ''}`}
                     >
                       {cell}
                     </Tooltip>
@@ -306,7 +310,7 @@ const MobileList = ({
                       key={absence.id}
                       size="small"
                       onClick={() => onEdit(person, absence)}
-                      label={`${kindLabel(t, absence.kind)} · ${formatDateRange(t, absence.startDate, absence.endDate)}`}
+                      label={`${kindLabel(t, absence.kind)}${timeSuffix(absence)} · ${formatDateRange(t, absence.startDate, absence.endDate)}`}
                       sx={{
                         backgroundColor: KIND_STYLE[absence.kind].bg,
                         color: KIND_STYLE[absence.kind].fg,

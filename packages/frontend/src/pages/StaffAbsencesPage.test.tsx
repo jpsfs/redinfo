@@ -36,6 +36,20 @@ const ABSENCE = {
   updatedAt: '2026-09-01T00:00:00.000Z',
 };
 
+const PARTIAL_ABSENCE = {
+  id: 'abs-2',
+  userId: BRUNO.id,
+  kind: StaffAbsenceKind.OTHER_PAID_LEAVE,
+  startDate: '2026-10-12',
+  endDate: '2026-10-12',
+  startTime: '09:00',
+  endTime: '11:00',
+  notes: 'Blood donation',
+  createdById: 'u-coord',
+  createdAt: '2026-09-01T00:00:00.000Z',
+  updatedAt: '2026-09-01T00:00:00.000Z',
+};
+
 /** October 2026: the 3rd is a Saturday, the 5th a made-up named holiday. */
 const OCT_CALENDAR = [
   { date: '2026-10-03', isWeekend: true, isHoliday: false, holidayName: null, shifts: [] },
@@ -107,6 +121,16 @@ describe('StaffAbsencesPage', () => {
     const cell = screen.getByTestId(`absence-cell-${ANA.id}-2026-10-06`);
     await userEvent.hover(cell);
     expect(await screen.findByText(/Vacation.*Beach week/)).toBeInTheDocument();
+  });
+
+  it('shows the time range in the tooltip for a partial-day absence', async () => {
+    stubApi({ absences: [ABSENCE, PARTIAL_ABSENCE] });
+    renderPage();
+    await screen.findByText('Bruno Costa');
+
+    const cell = screen.getByTestId(`absence-cell-${BRUNO.id}-2026-10-12`);
+    await userEvent.hover(cell);
+    expect(await screen.findByText(/09:00–11:00.*Blood donation/)).toBeInTheDocument();
   });
 
   it('flags a named holiday in the header', async () => {
@@ -250,6 +274,14 @@ describe('StaffAbsencesPage', () => {
       await user.click(screen.getByRole('button', { name: /Vacation/ }));
 
       expect(await screen.findByText('Edit absence')).toBeInTheDocument();
+    });
+
+    it("shows a partial-day absence's chip with its time range", async () => {
+      stubApi({ absences: [ABSENCE, PARTIAL_ABSENCE] });
+      renderPage();
+      await screen.findByText('Bruno Costa');
+
+      expect(screen.getByRole('button', { name: /09:00–11:00/ })).toBeInTheDocument();
     });
   });
 });

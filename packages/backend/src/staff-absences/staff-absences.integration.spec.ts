@@ -131,4 +131,48 @@ describeIntegration('StaffAbsencesService (integration)', () => {
     });
     expect(moved.startDate).toBe('2026-11-04');
   });
+
+  it('integration: a partial-day absence round-trips its times through Postgres', async () => {
+    const created = await staffAbsences.create(
+      {
+        userId: tiago.id,
+        kind: StaffAbsenceKind.OTHER_PAID_LEAVE,
+        startDate: '2026-12-01',
+        endDate: '2026-12-01',
+        startTime: '09:00',
+        endTime: '11:00',
+      },
+      coordinator.id,
+    );
+    expect(created.startTime).toBe('09:00');
+    expect(created.endTime).toBe('11:00');
+
+    await expect(
+      staffAbsences.create(
+        {
+          userId: tiago.id,
+          kind: StaffAbsenceKind.OTHER_PAID_LEAVE,
+          startDate: '2026-12-05',
+          endDate: '2026-12-06',
+          startTime: '09:00',
+          endTime: '11:00',
+        },
+        coordinator.id,
+      ),
+    ).rejects.toThrow('single-day range');
+
+    await expect(
+      staffAbsences.create(
+        {
+          userId: tiago.id,
+          kind: StaffAbsenceKind.VACATION,
+          startDate: '2026-12-08',
+          endDate: '2026-12-08',
+          startTime: '09:00',
+          endTime: '11:00',
+        },
+        coordinator.id,
+      ),
+    ).rejects.toThrow('only valid for other paid leave');
+  });
 });

@@ -140,6 +140,134 @@ describe('StaffAbsenceDialog', () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 
+  describe('partial-day times (rare, other paid leave only — full day is the default)', () => {
+    const pickOtherPaidLeave = async (user: ReturnType<typeof userEvent.setup>) => {
+      await user.click(screen.getByLabelText('Kind'));
+      await user.click(await screen.findByRole('option', { name: 'Other paid leave' }));
+    };
+
+    it('offers no partial-day option at all for vacation, the default kind', () => {
+      renderDialog({ startDate: '2026-10-10', endDate: '2026-10-10' });
+      expect(screen.queryByLabelText(/Partial day/)).not.toBeInTheDocument();
+    });
+
+    it('offers no partial-day option for sick leave either', async () => {
+      const user = userEvent.setup();
+      renderDialog({ startDate: '2026-10-10', endDate: '2026-10-10' });
+      await user.click(screen.getByLabelText('Kind'));
+      await user.click(await screen.findByRole('option', { name: 'Sick leave' }));
+      expect(screen.queryByLabelText(/Partial day/)).not.toBeInTheDocument();
+    });
+
+    it('offers the checkbox once other paid leave is picked, for a single-day range', async () => {
+      const user = userEvent.setup();
+      renderDialog({ startDate: '2026-10-10', endDate: '2026-10-10' });
+      await pickOtherPaidLeave(user);
+      expect(screen.getByLabelText(/Partial day/)).not.toBeChecked();
+      expect(screen.queryByLabelText('Start time')).not.toBeInTheDocument();
+    });
+
+    it('disables the checkbox for a multi-day range even on other paid leave', async () => {
+      const user = userEvent.setup();
+      renderDialog({ startDate: '2026-10-10', endDate: '2026-10-12' });
+      await pickOtherPaidLeave(user);
+      expect(screen.getByLabelText(/Partial day/)).toBeDisabled();
+    });
+
+    it('checking it reveals start/end time fields and sends them on save', async () => {
+      const user = userEvent.setup();
+      renderDialog({ startDate: '2026-10-10', endDate: '2026-10-10' });
+      await pickOtherPaidLeave(user);
+
+      await user.click(screen.getByLabelText(/Partial day/));
+      await user.clear(screen.getByLabelText('Start time'));
+      await user.type(screen.getByLabelText('Start time'), '09:00');
+      await user.clear(screen.getByLabelText('End time'));
+      await user.type(screen.getByLabelText('End time'), '11:00');
+      await user.click(screen.getByRole('button', { name: /^save$/i }));
+
+      await waitFor(() =>
+        expect(mockApiFetch).toHaveBeenCalledWith(
+          '/staff-absences',
+          expect.objectContaining({
+            body: expect.objectContaining({ startTime: '09:00', endTime: '11:00' }),
+          }),
+        ),
+      );
+    });
+
+    it('unchecking after checking omits the times again', async () => {
+      const user = userEvent.setup();
+      renderDialog({ startDate: '2026-10-10', endDate: '2026-10-10' });
+      await pickOtherPaidLeave(user);
+
+      await user.click(screen.getByLabelText(/Partial day/));
+      await user.click(screen.getByLabelText(/Partial day/));
+      await user.click(screen.getByRole('button', { name: /^save$/i }));
+
+      await waitFor(() =>
+        expect(mockApiFetch).toHaveBeenCalledWith(
+          '/staff-absences',
+          expect.objectContaining({
+            body: expect.not.objectContaining({ startTime: expect.anything() }),
+          }),
+        ),
+      );
+    });
+
+    it('disables Save when the end time is not after the start time', async () => {
+      const user = userEvent.setup();
+      renderDialog({ startDate: '2026-10-10', endDate: '2026-10-10' });
+      await pickOtherPaidLeave(user);
+
+      await user.click(screen.getByLabelText(/Partial day/));
+      await user.clear(screen.getByLabelText('Start time'));
+      await user.type(screen.getByLabelText('Start time'), '11:00');
+      await user.clear(screen.getByLabelText('End time'));
+      await user.type(screen.getByLabelText('End time'), '09:00');
+
+      expect(screen.getByRole('button', { name: /^save$/i })).toBeDisabled();
+    });
+
+    it('switching away from other paid leave hides and clears a checked partial day', async () => {
+      const user = userEvent.setup();
+      renderDialog({ startDate: '2026-10-10', endDate: '2026-10-10' });
+      await pickOtherPaidLeave(user);
+      await user.click(screen.getByLabelText(/Partial day/));
+      expect(screen.getByLabelText('Start time')).toBeInTheDocument();
+
+      await user.click(screen.getByLabelText('Kind'));
+      await user.click(await screen.findByRole('option', { name: 'Vacation' }));
+
+      expect(screen.queryByLabelText(/Partial day/)).not.toBeInTheDocument();
+      await user.click(screen.getByRole('button', { name: /^save$/i }));
+      await waitFor(() =>
+        expect(mockApiFetch).toHaveBeenCalledWith(
+          '/staff-absences',
+          expect.objectContaining({ body: expect.not.objectContaining({ startTime: expect.anything() }) }),
+        ),
+      );
+    });
+
+    it('prefills the checkbox and times when editing an existing partial-day absence', () => {
+      renderDialog({
+        existing: {
+          ...EXISTING,
+          kind: StaffAbsenceKind.OTHER_PAID_LEAVE,
+          startDate: '2026-10-06',
+          endDate: '2026-10-06',
+          startTime: '09:00',
+          endTime: '11:00',
+        },
+        startDate: '2026-10-06',
+        endDate: '2026-10-06',
+      });
+      expect(screen.getByLabelText(/Partial day/)).toBeChecked();
+      expect(screen.getByLabelText('Start time')).toHaveValue('09:00');
+      expect(screen.getByLabelText('End time')).toHaveValue('11:00');
+    });
+  });
+
   describe('without a preset person (the page-level "Add absence" button)', () => {
     it('shows a picker defaulting to the first person on the roster', () => {
       renderDialog({ person: undefined });

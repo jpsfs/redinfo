@@ -2,16 +2,18 @@ import { useEffect, useState } from 'react';
 import { useNotify } from 'react-admin';
 import {
   Button,
+  Checkbox,
   Dialog,
   DialogActions,
   DialogContent,
   DialogTitle,
+  FormControlLabel,
   MenuItem,
   Stack,
   TextField,
   Typography,
 } from '@mui/material';
-import { StaffAbsence, StaffAbsenceKind } from '@redinfo/shared';
+import { isValidStaffAbsenceTimeRange, StaffAbsence, StaffAbsenceKind } from '@redinfo/shared';
 import { apiFetch, ApiError } from '../api';
 import { apiErrorLabel } from '../i18n/labels';
 import { useT } from '../i18n/useT';
@@ -42,7 +44,10 @@ export interface StaffAbsenceDialogPerson {
  * the page-level "Add absence" button (`person` absent — a picker over
  * `people` decides who it's for). `startDate`/`endDate` are always re-editable
  * here regardless of how the dialog was opened, since a grid selection only
- * proposes a range.
+ * proposes a range. Full day is the default; a partial day (a medical
+ * appointment, say) is opted into with the checkbox, only offered for other
+ * paid leave on a single-day range — vacation and sick leave are always
+ * whole days.
  */
 export const StaffAbsenceDialog = ({
   open,
@@ -71,6 +76,9 @@ export const StaffAbsenceDialog = ({
   const [kind, setKind] = useState<StaffAbsenceKind>(StaffAbsenceKind.VACATION);
   const [startDate, setStartDate] = useState(initialStartDate);
   const [endDate, setEndDate] = useState(initialEndDate);
+  const [partialDay, setPartialDay] = useState(false);
+  const [startTime, setStartTime] = useState('09:00');
+  const [endTime, setEndTime] = useState('10:00');
   const [notes, setNotes] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -80,6 +88,9 @@ export const StaffAbsenceDialog = ({
     setKind(existing?.kind ?? StaffAbsenceKind.VACATION);
     setStartDate(existing?.startDate ?? initialStartDate);
     setEndDate(existing?.endDate ?? initialEndDate);
+    setPartialDay(!!(existing?.startTime && existing?.endTime));
+    setStartTime(existing?.startTime ?? '09:00');
+    setEndTime(existing?.endTime ?? '10:00');
     setNotes(existing?.notes ?? '');
     // `people`/`person` intentionally excluded: they identify *who* opened the
     // dialog for, which never changes while it's open, so re-running this
@@ -87,19 +98,49 @@ export const StaffAbsenceDialog = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, existing, initialStartDate, initialEndDate]);
 
+  // A partial day only means something for a single date, and only for other
+  // paid leave (vacation/sick leave are always whole days) — clearing it
+  // lives in these change handlers, not a `useEffect` keyed on
+  // startDate/endDate/kind: that effect would also fire on the initial
+  // mount, before the load effect above's own `setPartialDay(true)` for an
+  // existing partial-day absence has actually landed (both run against the
+  // same stale first-render `kind`/dates), silently clobbering it back to
+  // `false` right after it was set.
+  const changeKind = (value: StaffAbsenceKind) => {
+    setKind(value);
+    if (value !== StaffAbsenceKind.OTHER_PAID_LEAVE) setPartialDay(false);
+  };
+  const changeStartDate = (value: string) => {
+    setStartDate(value);
+    if (value !== endDate) setPartialDay(false);
+  };
+  const changeEndDate = (value: string) => {
+    setEndDate(value);
+    if (value !== startDate) setPartialDay(false);
+  };
+
+  const timesValid = isValidStaffAbsenceTimeRange(
+    kind,
+    startDate,
+    endDate,
+    partialDay ? startTime : undefined,
+    partialDay ? endTime : undefined,
+  );
+
   const handleSave = async () => {
-    if (!personId) return;
+    if (!personId || !timesValid) return;
     setSaving(true);
     try {
+      const times = partialDay ? { startTime, endTime } : { startTime: undefined, endTime: undefined };
       if (existing) {
         await apiFetch(`/staff-absences/${existing.id}`, {
           method: 'PATCH',
-          body: { kind, startDate, endDate, notes: notes || undefined },
+          body: { kind, startDate, endDate, ...times, notes: notes || undefined },
         });
       } else {
         await apiFetch('/staff-absences', {
           method: 'POST',
-          body: { userId: personId, kind, startDate, endDate, notes: notes || undefined },
+          body: { userId: personId, kind, startDate, endDate, ...times, notes: notes || undefined },
         });
       }
       notify(t('staffAbsences.saved'), { type: 'success' });
@@ -162,7 +203,7 @@ export const StaffAbsenceDialog = ({
             size="small"
             label={t('staffAbsences.kindLabel')}
             value={kind}
-            onChange={(e) => setKind(e.target.value as StaffAbsenceKind)}
+            onChange={(e) => changeKind(e.target.value as StaffAbsenceKind)}
           >
             {Object.values(StaffAbsenceKind).map((value) => (
               <MenuItem key={value} value={value}>
@@ -175,7 +216,7 @@ export const StaffAbsenceDialog = ({
             size="small"
             label={t('staffAbsences.startDateLabel')}
             value={startDate}
-            onChange={(e) => setStartDate(e.target.value)}
+            onChange={(e) => changeStartDate(e.target.value)}
             InputLabelProps={{ shrink: true }}
           />
           <TextField
@@ -183,9 +224,52 @@ export const StaffAbsenceDialog = ({
             size="small"
             label={t('staffAbsences.endDateLabel')}
             value={endDate}
-            onChange={(e) => setEndDate(e.target.value)}
+            onChange={(e) => changeEndDate(e.target.value)}
             InputLabelProps={{ shrink: true }}
           />
+          {kind === StaffAbsenceKind.OTHER_PAID_LEAVE && (
+            <>
+              <div>
+                <FormControlLabel
+                  control={
+                    <Checkbox
+                      checked={partialDay}
+                      disabled={startDate !== endDate}
+                      onChange={(e) => setPartialDay(e.target.checked)}
+                    />
+                  }
+                  label={t('staffAbsences.partialDayLabel')}
+                />
+                <Typography variant="caption" color="text.secondary" display="block">
+                  {t('staffAbsences.partialDayHint')}
+                </Typography>
+              </div>
+              {partialDay && (
+                <Stack direction="row" spacing={2}>
+                  <TextField
+                    type="time"
+                    size="small"
+                    fullWidth
+                    label={t('staffAbsences.startTimeLabel')}
+                    value={startTime}
+                    onChange={(e) => setStartTime(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    error={!timesValid}
+                  />
+                  <TextField
+                    type="time"
+                    size="small"
+                    fullWidth
+                    label={t('staffAbsences.endTimeLabel')}
+                    value={endTime}
+                    onChange={(e) => setEndTime(e.target.value)}
+                    InputLabelProps={{ shrink: true }}
+                    error={!timesValid}
+                  />
+                </Stack>
+              )}
+            </>
+          )}
           <TextField
             multiline
             minRows={2}
@@ -206,7 +290,7 @@ export const StaffAbsenceDialog = ({
           <Button disabled={saving} onClick={onClose}>
             {t('action.cancel')}
           </Button>
-          <Button variant="contained" disabled={saving || !personId} onClick={() => void handleSave()}>
+          <Button variant="contained" disabled={saving || !personId || !timesValid} onClick={() => void handleSave()}>
             {t('staffAbsences.save')}
           </Button>
         </Stack>

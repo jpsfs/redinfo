@@ -3,6 +3,7 @@ import {
   Action,
   hasPermission,
   isValidStaffAbsenceRange,
+  isValidStaffAbsenceTimeRange,
   StaffAbsence,
   StaffAbsenceKind,
   staffAbsenceRangesOverlap,
@@ -25,6 +26,8 @@ type AbsenceRow = {
   kind: string;
   startDate: Date;
   endDate: Date;
+  startTime: string | null;
+  endTime: string | null;
   notes: string | null;
   createdById: string;
   createdAt: Date;
@@ -37,6 +40,8 @@ const toAbsence = (row: AbsenceRow): StaffAbsence => ({
   kind: row.kind as StaffAbsenceKind,
   startDate: toIsoDate(row.startDate),
   endDate: toIsoDate(row.endDate),
+  startTime: row.startTime,
+  endTime: row.endTime,
   notes: row.notes,
   createdById: row.createdById,
   createdAt: row.createdAt.toISOString(),
@@ -111,6 +116,11 @@ export class StaffAbsencesService {
     if (!isValidStaffAbsenceRange(dto.startDate, dto.endDate)) {
       throw new BadRequestException('An absence cannot end before it starts.');
     }
+    if (!isValidStaffAbsenceTimeRange(dto.kind, dto.startDate, dto.endDate, dto.startTime, dto.endTime)) {
+      throw new BadRequestException(
+        'A partial day is only valid for other paid leave, needs both a start and end time, on a single-day range, with the end after the start.',
+      );
+    }
     const existing = await this.prisma.staffAbsence.findMany({ where: { userId: dto.userId } });
     const overlap = existing.find((row) =>
       staffAbsenceRangesOverlap(dto.startDate, dto.endDate, toIsoDate(row.startDate), toIsoDate(row.endDate)),
@@ -127,6 +137,8 @@ export class StaffAbsencesService {
         kind: dto.kind,
         startDate: parseIsoDate(dto.startDate),
         endDate: parseIsoDate(dto.endDate),
+        startTime: dto.startTime ?? null,
+        endTime: dto.endTime ?? null,
         notes: dto.notes ?? null,
         createdById,
       },
@@ -142,6 +154,11 @@ export class StaffAbsencesService {
     }
     if (!isValidStaffAbsenceRange(dto.startDate, dto.endDate)) {
       throw new BadRequestException('An absence cannot end before it starts.');
+    }
+    if (!isValidStaffAbsenceTimeRange(dto.kind, dto.startDate, dto.endDate, dto.startTime, dto.endTime)) {
+      throw new BadRequestException(
+        'A partial day is only valid for other paid leave, needs both a start and end time, on a single-day range, with the end after the start.',
+      );
     }
     const existing = await this.prisma.staffAbsence.findMany({
       where: { userId: row.userId, id: { not: id } },
@@ -161,6 +178,8 @@ export class StaffAbsencesService {
         kind: dto.kind,
         startDate: parseIsoDate(dto.startDate),
         endDate: parseIsoDate(dto.endDate),
+        startTime: dto.startTime ?? null,
+        endTime: dto.endTime ?? null,
         notes: dto.notes ?? null,
       },
     });

@@ -1024,6 +1024,9 @@ enum StaffAbsenceKind {
 /// so the roster and (later) the trip planner can warn a coordinator before
 /// assigning them, never block it. The range is inclusive; overlapping ranges
 /// for the same person are rejected at the service layer, not here.
+/// `startTime`/`endTime` ("HH:mm") make it a partial day — a medical
+/// appointment, say — the rare case, opted into by setting both; the default
+/// is neither set (a full day).
 model StaffAbsence {
   id          String           @id @default(cuid())
   userId      String
@@ -1031,6 +1034,8 @@ model StaffAbsence {
   kind        StaffAbsenceKind
   startDate   DateTime         @db.Date
   endDate     DateTime         @db.Date
+  startTime   String?
+  endTime     String?
   notes       String?
   createdById String
   createdBy   User             @relation("StaffAbsenceCreatedBy", fields: [createdById], references: [id])

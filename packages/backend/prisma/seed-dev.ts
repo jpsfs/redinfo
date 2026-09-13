@@ -795,11 +795,14 @@ async function main() {
       kind: StaffAbsenceKind.OTHER_PAID_LEAVE,
       startDate: `${nextMonth.year}-${pad2(nextMonth.month)}-20`,
       endDate: `${nextMonth.year}-${pad2(nextMonth.month)}-20`,
+      // Partial day — the rare case: a couple of hours off, not the whole day.
+      startTime: '09:00',
+      endTime: '11:00',
       notes: 'Doação de sangue.',
     },
     mariana.id,
   );
-  console.log('✅ Staff absences recorded (vacation, sick leave, other paid leave).');
+  console.log('✅ Staff absences recorded (vacation, sick leave, other paid leave, one partial day).');
 
   // Materialises SCHEDULED volunteer-hours entries for every past, published
   // assignment above, and auto-approves whichever are already past the

@@ -43,7 +43,15 @@ function buildPrismaStub(overrides: Record<string, unknown> = {}) {
 }
 
 const dto = (
-  overrides: Partial<{ userId: string; kind: StaffAbsenceKind; startDate: string; endDate: string; notes?: string }> = {},
+  overrides: Partial<{
+    userId: string;
+    kind: StaffAbsenceKind;
+    startDate: string;
+    endDate: string;
+    startTime?: string;
+    endTime?: string;
+    notes?: string;
+  }> = {},
 ) => ({
   userId: USER_ID,
   kind: StaffAbsenceKind.VACATION,
@@ -103,6 +111,84 @@ describe('StaffAbsencesService', () => {
         }),
       );
     });
+
+    describe('partial-day times (rare, other paid leave only — full day is the default)', () => {
+      it('rejects a start time without an end time', async () => {
+        await expect(
+          service.create(
+            dto({
+              kind: StaffAbsenceKind.OTHER_PAID_LEAVE,
+              startDate: '2026-08-01',
+              endDate: '2026-08-01',
+              startTime: '09:00',
+            }),
+            CREATED_BY,
+          ),
+        ).rejects.toBeInstanceOf(BadRequestException);
+        expect(prisma.staffAbsence.create).not.toHaveBeenCalled();
+      });
+
+      it('rejects times spanning more than one day', async () => {
+        await expect(
+          service.create(
+            dto({ kind: StaffAbsenceKind.OTHER_PAID_LEAVE, startTime: '09:00', endTime: '11:00' }),
+            CREATED_BY,
+          ),
+        ).rejects.toBeInstanceOf(BadRequestException);
+        expect(prisma.staffAbsence.create).not.toHaveBeenCalled();
+      });
+
+      it('rejects an end time at or before the start time', async () => {
+        await expect(
+          service.create(
+            dto({
+              kind: StaffAbsenceKind.OTHER_PAID_LEAVE,
+              startDate: '2026-08-01',
+              endDate: '2026-08-01',
+              startTime: '11:00',
+              endTime: '09:00',
+            }),
+            CREATED_BY,
+          ),
+        ).rejects.toBeInstanceOf(BadRequestException);
+      });
+
+      it.each([StaffAbsenceKind.VACATION, StaffAbsenceKind.SICK_LEAVE])(
+        'rejects times on %s — only other paid leave may be partial',
+        async (kind) => {
+          await expect(
+            service.create(
+              dto({ kind, startDate: '2026-08-01', endDate: '2026-08-01', startTime: '09:00', endTime: '11:00' }),
+              CREATED_BY,
+            ),
+          ).rejects.toBeInstanceOf(BadRequestException);
+          expect(prisma.staffAbsence.create).not.toHaveBeenCalled();
+        },
+      );
+
+      it('accepts a well-formed partial day on other paid leave and persists both times', async () => {
+        await service.create(
+          dto({
+            kind: StaffAbsenceKind.OTHER_PAID_LEAVE,
+            startDate: '2026-08-01',
+            endDate: '2026-08-01',
+            startTime: '09:00',
+            endTime: '11:00',
+          }),
+          CREATED_BY,
+        );
+        expect(prisma.staffAbsence.create).toHaveBeenCalledWith(
+          expect.objectContaining({ data: expect.objectContaining({ startTime: '09:00', endTime: '11:00' }) }),
+        );
+      });
+
+      it('defaults to a full day — neither time set', async () => {
+        await service.create(dto(), CREATED_BY);
+        expect(prisma.staffAbsence.create).toHaveBeenCalledWith(
+          expect.objectContaining({ data: expect.objectContaining({ startTime: null, endTime: null }) }),
+        );
+      });
+    });
   });
 
   describe('update', () => {
@@ -153,6 +239,63 @@ describe('StaffAbsencesService', () => {
       ).resolves.toBeDefined();
       expect(prisma.staffAbsence.findMany).toHaveBeenCalledWith({
         where: { userId: USER_ID, id: { not: 'sa1' } },
+      });
+    });
+
+    describe('partial-day times (other paid leave only)', () => {
+      beforeEach(() => {
+        prisma.staffAbsence.findUnique.mockResolvedValue({
+          id: 'sa1',
+          userId: USER_ID,
+          startDate: new Date('2026-08-01'),
+          endDate: new Date('2026-08-14'),
+        });
+      });
+
+      it('rejects times spanning more than one day', async () => {
+        await expect(
+          service.update('sa1', {
+            kind: StaffAbsenceKind.OTHER_PAID_LEAVE,
+            startDate: '2026-08-01',
+            endDate: '2026-08-02',
+            startTime: '09:00',
+            endTime: '11:00',
+          }),
+        ).rejects.toBeInstanceOf(BadRequestException);
+        expect(prisma.staffAbsence.update).not.toHaveBeenCalled();
+      });
+
+      it('rejects times on vacation — only other paid leave may be partial', async () => {
+        await expect(
+          service.update('sa1', {
+            kind: StaffAbsenceKind.VACATION,
+            startDate: '2026-08-01',
+            endDate: '2026-08-01',
+            startTime: '09:00',
+            endTime: '11:00',
+          }),
+        ).rejects.toBeInstanceOf(BadRequestException);
+        expect(prisma.staffAbsence.update).not.toHaveBeenCalled();
+      });
+
+      it('clears both times when neither is sent, going back to a full day', async () => {
+        await service.update('sa1', { kind: StaffAbsenceKind.VACATION, startDate: '2026-08-01', endDate: '2026-08-01' });
+        expect(prisma.staffAbsence.update).toHaveBeenCalledWith(
+          expect.objectContaining({ data: expect.objectContaining({ startTime: null, endTime: null }) }),
+        );
+      });
+
+      it('accepts a well-formed partial day', async () => {
+        await service.update('sa1', {
+          kind: StaffAbsenceKind.OTHER_PAID_LEAVE,
+          startDate: '2026-08-01',
+          endDate: '2026-08-01',
+          startTime: '09:00',
+          endTime: '11:00',
+        });
+        expect(prisma.staffAbsence.update).toHaveBeenCalledWith(
+          expect.objectContaining({ data: expect.objectContaining({ startTime: '09:00', endTime: '11:00' }) }),
+        );
       });
     });
   });

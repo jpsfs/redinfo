@@ -758,6 +758,13 @@ const MESSAGES = {
   'staffAbsences.kindLabel': { pt: 'Tipo', en: 'Kind' },
   'staffAbsences.startDateLabel': { pt: 'Início', en: 'Start' },
   'staffAbsences.endDateLabel': { pt: 'Fim', en: 'End' },
+  'staffAbsences.partialDayLabel': { pt: 'Ausência parcial (com horário)', en: 'Partial day (set specific times)' },
+  'staffAbsences.partialDayHint': {
+    pt: 'Raro — por omissão a ausência é o dia inteiro. Só disponível para outra ausência paga, num único dia.',
+    en: 'Rare — absences default to the whole day. Only available for other paid leave, on a single day.',
+  },
+  'staffAbsences.startTimeLabel': { pt: 'Hora de início', en: 'Start time' },
+  'staffAbsences.endTimeLabel': { pt: 'Hora de fim', en: 'End time' },
   'staffAbsences.notesLabel': { pt: 'Notas', en: 'Notes' },
   'staffAbsences.save': { pt: 'Guardar', en: 'Save' },
   'staffAbsences.saved': { pt: 'Ausência guardada', en: 'Absence saved' },
