@@ -348,36 +348,36 @@ describe('SchedulesService.getBoard', () => {
 
   // A colleague's paid-vs-volunteer status is a coordinator's business, not
   // the rota's: `GET /schedules/:id/board` is deliberately ungated (the rota
-  // itself is posted, not confidential), but `compensationOverride` is not
-  // part of that posting.
-  it('hides compensationOverride from a viewer without MANAGE_SCHEDULES', async () => {
+  // itself is posted, not confidential), but `compensation` is not part of
+  // that posting (D5) — gated on `MANAGE_COMPENSATION`, not `MANAGE_SCHEDULES`.
+  it('hides compensation from a viewer without MANAGE_COMPENSATION', async () => {
     const { service, prisma } = makeService();
     // A volunteer may only read a published schedule at all.
     prisma.schedule.findUnique.mockResolvedValue(
       scheduleRow({ status: ScheduleStatus.PUBLISHED }),
     );
     prisma.scheduleAssignment.findMany.mockResolvedValue([
-      assignmentRow({ compensationOverride: AssignmentCompensationKind.PAID_EXTRA }),
+      assignmentRow({ compensation: AssignmentCompensationKind.PAID }),
     ]);
 
     const board = await service.getBoard('s1', VOLUNTEER);
 
-    // Absent, not `null` — `null` already means "no override was made", a
-    // real answer this viewer is not owed.
-    expect(board.days[0].shifts[0].assignments[0]).not.toHaveProperty('compensationOverride');
+    // Absent, not `null` — `null` would still be a real answer this viewer
+    // is not owed.
+    expect(board.days[0].shifts[0].assignments[0]).not.toHaveProperty('compensation');
   });
 
-  it('shows compensationOverride to a coordinator', async () => {
+  it('shows compensation to a coordinator (EMERGENCY_COORDINATOR holds MANAGE_COMPENSATION)', async () => {
     const { service, prisma } = makeService();
     prisma.scheduleAssignment.findMany.mockResolvedValue([
-      assignmentRow({ compensationOverride: AssignmentCompensationKind.PAID_EXTRA }),
+      assignmentRow({ compensation: AssignmentCompensationKind.PAID }),
     ]);
 
     const board = await service.getBoard('s1', COORDINATOR);
 
     expect(board.days[0].shifts[0].assignments[0]).toHaveProperty(
-      'compensationOverride',
-      AssignmentCompensationKind.PAID_EXTRA,
+      'compensation',
+      AssignmentCompensationKind.PAID,
     );
   });
 

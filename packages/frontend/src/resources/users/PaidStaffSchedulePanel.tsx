@@ -19,6 +19,8 @@ import AddIcon from '@mui/icons-material/Add';
 import DeleteOutlineIcon from '@mui/icons-material/DeleteOutline';
 import {
   Action,
+  EmploymentContract,
+  EmploymentContractsResponse,
   formatTimeOfDay,
   hasPermission,
   PaidStaffScheduleBlock,
@@ -35,21 +37,38 @@ import { TimeRangeField } from '../../components/TimeRangeField';
 
 const today = () => new Date().toISOString().slice(0, 10);
 
+/** The contract currently in effect, or the most recently started one otherwise. */
+const defaultContract = (contracts: EmploymentContract[]): EmploymentContract | null =>
+  contracts.find((contract) => !contract.endDate) ?? contracts[0] ?? null;
+
 /**
  * A paid staffer's on-the-clock hours (#245) — replaces #223's blanket
- * `isPaidStaff`-only gate for volunteer-hours generation. Shown only for a
- * paid-staff record, and only to a viewer who can `MANAGE_PERSONNEL`: this
- * page has no self-service reading path (that would be
- * `GET /paid-staff-schedule/me`, not built here), so there is nothing to show
- * anyone else.
+ * `isPaidStaff`-only gate for volunteer-hours generation. Only shown to a
+ * viewer who can `MANAGE_PERSONNEL`: this page has no self-service reading
+ * path (that would be `GET /paid-staff-schedule/me`, not built here), so
+ * there is nothing to show anyone else.
+ *
+ * Gated on the person having at least one `EmploymentContract` (Stage 1 of
+ * the paid-staff rework, replacing #223's timeless `User.isPaidStaff`).
+ * Blocks/overrides are nested under whichever contract is selected — there is
+ * no `contractId` on the wire shape (`PaidStaffScheduleBlock`), but contracts
+ * for one person never overlap (`EmploymentContractsService.create` rejects
+ * it) and a block's `effectiveFrom` is validated against its own contract's
+ * dates at creation, so filtering by date range is exact, not a heuristic.
+ *
+ * `refreshToken` lets the sibling contracts panel (`EmploymentContractsPanel`)
+ * ask this one to re-fetch after adding or ending a contract, without the two
+ * sharing state directly.
  */
-export const PaidStaffSchedulePanel = () => {
+export const PaidStaffSchedulePanel = ({ refreshToken = 0 }: { refreshToken?: number }) => {
   const t = useT();
   const record = useRecordContext<User>();
   const { permissions } = usePermissions<UserRole[]>();
   const notify = useNotify();
   const canManage = Boolean(permissions && hasPermission(permissions, Action.MANAGE_PERSONNEL));
 
+  const [contracts, setContracts] = useState<EmploymentContract[] | null>(null);
+  const [selectedContractId, setSelectedContractId] = useState<string | null>(null);
   const [schedule, setSchedule] = useState<PaidStaffScheduleResponse | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -69,10 +88,30 @@ export const PaidStaffSchedulePanel = () => {
   const [saving, setSaving] = useState(false);
 
   const userId = record?.id;
-  // Nothing to fetch, and nothing this viewer is entitled to see, unless
-  // both hold — checked up front so an ordinary volunteer's own record (or
-  // any record shown to a non-manager) never issues this request at all.
-  const applicable = Boolean(userId && record?.isPaidStaff && canManage);
+  const eligibleViewer = Boolean(userId && canManage);
+
+  const loadContracts = useCallback(async () => {
+    if (!userId || !eligibleViewer) return;
+    try {
+      const response = await apiFetch<EmploymentContractsResponse>(`/employment-contracts/${userId}`);
+      const fetchedContracts = response?.contracts ?? [];
+      setContracts(fetchedContracts);
+      setSelectedContractId((current) =>
+        current && fetchedContracts.some((contract) => contract.id === current)
+          ? current
+          : (defaultContract(fetchedContracts)?.id ?? null),
+      );
+    } catch (e) {
+      setLoadError(e instanceof ApiError ? apiErrorLabel(t, e) : t('userShow.paidStaffScheduleLoadFailed'));
+    }
+  }, [userId, eligibleViewer, t]);
+
+  useEffect(() => {
+    void loadContracts();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadContracts, refreshToken]);
+
+  const applicable = eligibleViewer && (contracts?.length ?? 0) > 0 && Boolean(selectedContractId);
 
   const load = useCallback(async () => {
     if (!userId || !applicable) return;
@@ -89,12 +128,21 @@ export const PaidStaffSchedulePanel = () => {
 
   if (!applicable) return null;
 
+  const selectedContract = contracts?.find((contract) => contract.id === selectedContractId) ?? null;
+  const withinSelectedContract = (date: string) =>
+    !selectedContract ||
+    (selectedContract.startDate <= date && (!selectedContract.endDate || date <= selectedContract.endDate));
+  const visibleBlocks = (schedule?.blocks ?? []).filter((block) => withinSelectedContract(block.effectiveFrom));
+  const visibleOverrides = (schedule?.overrides ?? []).filter((override) => withinSelectedContract(override.date));
+
   const submitBlock = async () => {
+    if (!selectedContractId) return;
     setSaving(true);
     try {
       await apiFetch(`/paid-staff-schedule/${userId}/blocks`, {
         method: 'POST',
         body: {
+          contractId: selectedContractId,
           dayOfWeek: blockDayOfWeek,
           startMinute: blockStart,
           endMinute: blockEnd,
@@ -175,6 +223,23 @@ export const PaidStaffSchedulePanel = () => {
         </Alert>
       )}
 
+      {(contracts?.length ?? 0) > 1 && (
+        <TextField
+          select
+          size="small"
+          label={t('userShow.contractSelectorLabel')}
+          value={selectedContractId ?? ''}
+          onChange={(e) => setSelectedContractId(e.target.value)}
+          sx={{ mb: 2, minWidth: 260 }}
+        >
+          {contracts!.map((contract) => (
+            <MenuItem key={contract.id} value={contract.id}>
+              {contract.startDate} – {contract.endDate ?? t('userShow.contractStillActive')}
+            </MenuItem>
+          ))}
+        </TextField>
+      )}
+
       <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
         <Typography variant="subtitle2">{t('userShow.scheduleBlocksHeading')}</Typography>
         <Button size="small" startIcon={<AddIcon />} onClick={() => setAddingBlock((value) => !value)}>
@@ -182,14 +247,14 @@ export const PaidStaffSchedulePanel = () => {
         </Button>
       </Stack>
 
-      {(schedule?.blocks.length ?? 0) === 0 && !addingBlock && (
+      {visibleBlocks.length === 0 && !addingBlock && (
         <Typography variant="body2" color="text.secondary">
           {t('userShow.noScheduleBlocks')}
         </Typography>
       )}
 
       <Stack spacing={1} sx={{ mb: 1.5 }}>
-        {schedule?.blocks.map((block) => (
+        {visibleBlocks.map((block) => (
           <Stack
             key={block.id}
             direction="row"
@@ -265,14 +330,14 @@ export const PaidStaffSchedulePanel = () => {
         </Button>
       </Stack>
 
-      {(schedule?.overrides.length ?? 0) === 0 && !addingOverride && (
+      {visibleOverrides.length === 0 && !addingOverride && (
         <Typography variant="body2" color="text.secondary">
           {t('userShow.noScheduleOverrides')}
         </Typography>
       )}
 
       <Stack spacing={1}>
-        {schedule?.overrides.map((override) => (
+        {visibleOverrides.map((override) => (
           <Stack
             key={override.id}
             direction="row"

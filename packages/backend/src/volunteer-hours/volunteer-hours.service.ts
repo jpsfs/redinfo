@@ -27,7 +27,9 @@ import {
   canDeleteOwnVolunteerHours,
   canReopenVolunteerHours,
   detectShiftExceptions,
+  generatesVolunteerHours,
   isEligibleForAutoApproval,
+  isEligibleForScheduledGeneration,
   isSweepApprovable,
   proposeScheduledHours,
   shiftMandatoryRolesFilled,
@@ -35,9 +37,9 @@ import {
   validateManualVolunteerHours,
   validateVolunteerHoursEdit,
 } from '@redinfo/shared';
+import { ApiBadRequestException } from '../common/api-error.exception';
 import { PrismaService } from '../prisma/prisma.service';
 import { ShiftScheduleService } from '../availability/shift-schedule.service';
-import { PaidStaffScheduleService } from '../paid-staff-schedule/paid-staff-schedule.service';
 import { shiftKey } from '../schedules/schedules.service';
 import { parseIsoDate, toIsoDate } from '../utils/date.util';
 import { shiftBoundaryToInstant } from '../utils/timezone.util';
@@ -83,7 +85,6 @@ export class VolunteerHoursService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly shiftSchedule: ShiftScheduleService,
-    private readonly paidStaffSchedule: PaidStaffScheduleService,
   ) {}
 
   // ── Self-service ──────────────────────────────────────────────────────────
@@ -263,10 +264,10 @@ export class VolunteerHoursService {
    * *ignoring* `flag`/`source`, so each filter chip can show how many
    * entries it would reveal without the query re-running per chip.
    *
-   * No blanket `isPaidStaff` exclusion here: #245 replaced #223's blanket
-   * per-user gate with per-assignment resolution against the paid staffer's
-   * actual schedule, so a paid staffer volunteering off the clock has a
-   * perfectly legitimate entry to review, the same as anyone else's.
+   * No blanket paid-staff exclusion here: compensation is resolved per
+   * assignment (`AssignmentCompensationKind`), not per person, so someone
+   * with an `EmploymentContract` who volunteered off their contract's clock
+   * has a perfectly legitimate entry to review, the same as anyone else's.
    */
   async getReviewQueue(query: ReviewVolunteerHoursQueryDto): Promise<VolunteerHoursReviewResponse> {
     await this.refreshGeneration();
@@ -527,6 +528,102 @@ export class VolunteerHoursService {
   }
 
   /**
+   * Called from `ScheduleAssignmentsService.setCompensation` whenever a
+   * coordinator reclassifies one assignment — never the public
+   * `dismiss()`/`restore()` pair, which this deliberately bypasses:
+   * `restore` throws when the entry is not deleted, `dismiss` throws when it
+   * already is, and neither carries the `deletedBySystem` distinction this
+   * needs. `VolunteerHoursEntry.assignmentId` is `@unique` and
+   * `ensureGenerated` does not filter `deletedAt` (see its own doc comment),
+   * so the reverse direction here always un-deletes the *same* row rather
+   * than risking a second one.
+   *
+   * The seven transitions (Stage 1 of the paid-staff rework):
+   *
+   * | direction        | entry state                    | behaviour |
+   * |------------------|---------------------------------|-----------|
+   * | → SALARY/PAID    | live                            | soft-delete, `deletedBySystem = true` |
+   * | → SALARY/PAID    | already deleted                | no-op — never overwrite a coordinator's own dismissal |
+   * | → SALARY/PAID    | no entry                        | no-op; generation already skips it |
+   * | → VOLUNTEER      | deleted, `deletedBySystem`      | un-delete as PENDING, `reopenedAt` stamped |
+   * | → VOLUNTEER      | deleted manually                | must not resurrect |
+   * | → VOLUNTEER      | no entry                        | no-op; lazy generation picks it up |
+   * | (either)         | shift date before the scheduled-generation cutover | refuse the call outright |
+   *
+   * The cutover refusal is checked first, ahead of the table, because it
+   * applies in *both* directions: a legacy roster's hours are already
+   * captured by a migrated `MANUAL`+`APPROVED` entry with no `assignmentId`
+   * (see `isEligibleForScheduledGeneration`'s own doc comment) — there is
+   * nothing here for either direction to reconcile, and silently doing
+   * nothing would read as success.
+   */
+  async reconcileEntryForCompensation(params: {
+    assignmentId: string;
+    /** ISO date, the shift's own date — not "today". */
+    date: string;
+    newCompensation: AssignmentCompensationKind;
+    actorId: string;
+    /** Required when voiding an APPROVED entry; stamped into `deletionReason`. */
+    voidReason?: string;
+  }): Promise<void> {
+    const { assignmentId, date, newCompensation, actorId, voidReason } = params;
+
+    if (!isEligibleForScheduledGeneration(date)) {
+      throw new ApiBadRequestException(
+        'COMPENSATION_RECLASSIFY_PRE_CUTOVER',
+        `${date} predates scheduled volunteer-hours generation (from ` +
+          `${VOLUNTEER_HOURS_SCHEDULED_GENERATION_START_DATE}) — there is no generated entry for ` +
+          'this shift to reconcile in either direction.',
+      );
+    }
+
+    const existing = await this.prisma.volunteerHoursEntry.findUnique({ where: { assignmentId } });
+
+    if (!generatesVolunteerHours(newCompensation)) {
+      // → SALARY/PAID
+      if (!existing || existing.deletedAt) return;
+      if (existing.status === VolunteerHoursStatus.APPROVED && !voidReason?.trim()) {
+        throw new BadRequestException('Voiding an approved entry needs a reason.');
+      }
+      await this.prisma.volunteerHoursEntry.update({
+        where: { id: existing.id },
+        data: {
+          deletedAt: new Date(),
+          deletedById: actorId,
+          deletedBySystem: true,
+          deletionReason: voidReason?.trim() || `Reclassified to ${newCompensation} — no longer volunteering.`,
+        },
+      });
+      return;
+    }
+
+    // → VOLUNTEER
+    if (!existing) return; // lazy generation picks it up (we already know date is on/after cutover)
+    if (!existing.deletedAt) return; // already live — nothing to reconcile
+    if (!existing.deletedBySystem) return; // dismissed by a coordinator — must not resurrect
+
+    await this.prisma.volunteerHoursEntry.update({
+      where: { id: existing.id },
+      data: {
+        deletedAt: null,
+        deletedById: null,
+        deletedBySystem: false,
+        deletionReason: null,
+        status: VolunteerHoursStatus.PENDING,
+        minutes: existing.proposedMinutes,
+        correctionReason: null,
+        approvedById: null,
+        approvedAt: null,
+        autoApproved: false,
+        // Suppresses auto-approval on the next sweep — see
+        // `isEligibleForAutoApproval`'s own doc comment.
+        reopenedAt: new Date(),
+        reopenedById: actorId,
+      },
+    });
+  }
+
+  /**
    * `DELETE /:id` — a volunteer deleting their own mistake. Mirrors
    * `updateMine`'s ownership guard exactly: the same 404 whether the entry is
    * missing or someone else's.
@@ -707,33 +804,16 @@ export class VolunteerHoursService {
     // nothing to generate rather than inventing hours.
     if (!shift) return;
 
-    // Paid staff (#223) counted towards `shiftMandatoryRolesFilled` above —
-    // the shift ran either way — but #245 replaced the old blanket
-    // per-user gate with a per-assignment resolution against their actual
-    // schedule: on the clock generates nothing (already paid via salary);
-    // off the clock generates a volunteer-hours entry by default, same as
-    // any volunteer, unless the coordinator explicitly classified this one
-    // assignment `PAID_EXTRA`. A non-paid-staff assignment is unaffected by
-    // clock resolution, but `PAID_EXTRA` still suppresses it either way.
-    const paidStaff = await this.prisma.user.findMany({
-      where: { id: { in: notYetGenerated.map((a) => a.userId) } },
-      select: { id: true, isPaidStaff: true },
-    });
-    const paidStaffIds = new Set(paidStaff.filter((u) => u.isPaidStaff).map((u) => u.id));
-    const toGenerate: typeof notYetGenerated = [];
-    for (const assignment of notYetGenerated) {
-      if (assignment.compensationOverride === AssignmentCompensationKind.PAID_EXTRA) continue;
-      if (paidStaffIds.has(assignment.userId)) {
-        const onClock = await this.paidStaffSchedule.isOnClock(
-          assignment.userId,
-          date,
-          shift.startMinute,
-          shift.endMinute,
-        );
-        if (onClock) continue;
-      }
-      toGenerate.push(assignment);
-    }
+    // A paid-staff or extra-paid assignment (#223/#245, reworked under the
+    // paid-staff rework's Stage 1) still counted towards
+    // `shiftMandatoryRolesFilled` above — the shift ran either way — but
+    // generates nothing here. `compensation` is resolved and stored once, at
+    // assignment write time (`ScheduleAssignmentsService`), never derived at
+    // read: no clock lookup belongs in this lazy-generation path at all, only
+    // a synchronous read of what was already decided.
+    const toGenerate = notYetGenerated.filter((assignment) =>
+      generatesVolunteerHours(assignment.compensation as AssignmentCompensationKind),
+    );
     if (toGenerate.length === 0) return;
 
     const baselineMinutes = shift.endMinute - shift.startMinute;

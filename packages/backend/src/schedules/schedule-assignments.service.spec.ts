@@ -126,6 +126,24 @@ function buildPrismaStub(overrides: Record<string, unknown> = {}) {
           }),
         ),
       delete: jest.fn().mockResolvedValue({ id: 'a1' }),
+      update: jest.fn().mockImplementation((args) =>
+        Promise.resolve({
+          id: args.where.id,
+          scheduleId: 's1',
+          date: new Date('2026-10-01T00:00:00.000Z'),
+          slot: 1,
+          userId: ANA.id,
+          roleId: DRIVER_ROLE.id,
+          isOverride: false,
+          certificationOverrideReason: null,
+          ...args.data,
+          user: ANA,
+          role: DRIVER_ROLE,
+          assignedBy: { id: 'u-coord', firstName: 'Ana', lastName: 'Ferreira' },
+          assignedById: 'u-coord',
+          assignedAt: new Date('2026-09-18T14:20:00.000Z'),
+        }),
+      ),
     },
     availabilitySubmission: {
       findFirst: jest.fn().mockResolvedValue(null),
@@ -151,18 +169,36 @@ const shiftScheduleStub = {
   }),
 };
 
+/** Nobody is on a contract's clock unless a test says otherwise. */
+function buildPaidStaffScheduleStub(onClock = false) {
+  return {
+    isOnClock: jest.fn().mockResolvedValue(onClock),
+    loadClockContext: jest.fn().mockResolvedValue(new Map()),
+  };
+}
+
+function buildVolunteerHoursStub() {
+  return { reconcileEntryForCompensation: jest.fn().mockResolvedValue(undefined) };
+}
+
 function makeService(
   prisma = buildPrismaStub(),
   schedules = buildSchedulesStub(),
+  paidStaffSchedule = buildPaidStaffScheduleStub(),
+  volunteerHours = buildVolunteerHoursStub(),
 ) {
   return {
     service: new ScheduleAssignmentsService(
       prisma as never,
       schedules as never,
       shiftScheduleStub as never,
+      paidStaffSchedule as never,
+      volunteerHours as never,
     ),
     prisma,
     schedules,
+    paidStaffSchedule,
+    volunteerHours,
   };
 }
 
@@ -232,35 +268,81 @@ describe('ScheduleAssignmentsService.assign', () => {
 
   // A colleague's paid-vs-volunteer status is a coordinator's business, not
   // the rota's — see the privacy fix in `schedules.service.ts`
-  // (`canSeeCompensation`). `compensationOverride` must be *absent*, not
-  // `null`, when the caller may not see it: `null` already means "no override
-  // was made", a real answer this viewer is not owed.
-  it('omits compensationOverride from the response when the caller cannot see it', async () => {
+  // (`canSeeCompensation`). `compensation` must be *absent*, not present as
+  // some placeholder, when the caller may not see it (D5).
+  it('omits compensation from the response when the caller cannot see it', async () => {
     const prisma = buildPrismaStub();
     const { service } = makeService(prisma);
 
     const result = await service.assign(
       's1',
-      dto({ compensationOverride: AssignmentCompensationKind.PAID_EXTRA }),
+      dto({ compensation: AssignmentCompensationKind.PAID }),
       'u-coord',
       false,
     );
 
-    expect(result).not.toHaveProperty('compensationOverride');
+    expect(result).not.toHaveProperty('compensation');
   });
 
-  it('includes compensationOverride in the response when the caller may see it', async () => {
+  it('includes compensation in the response when the caller may see it', async () => {
     const prisma = buildPrismaStub();
     const { service } = makeService(prisma);
 
     const result = await service.assign(
       's1',
-      dto({ compensationOverride: AssignmentCompensationKind.PAID_EXTRA }),
+      dto({ compensation: AssignmentCompensationKind.PAID }),
       'u-coord',
       true,
     );
 
-    expect(result).toHaveProperty('compensationOverride', AssignmentCompensationKind.PAID_EXTRA);
+    expect(result).toHaveProperty('compensation', AssignmentCompensationKind.PAID);
+  });
+
+  it('defaults to VOLUNTEER off the clock with no explicit call', async () => {
+    const { service } = makeService(buildPrismaStub(), buildSchedulesStub(), buildPaidStaffScheduleStub(false));
+
+    const result = await service.assign('s1', dto(), 'u-coord', true);
+
+    expect(result.compensation).toBe(AssignmentCompensationKind.VOLUNTEER);
+  });
+
+  it('D2: resolves SALARY on the contract clock, even overriding an explicit PAID call', async () => {
+    const { service } = makeService(buildPrismaStub(), buildSchedulesStub(), buildPaidStaffScheduleStub(true));
+
+    const result = await service.assign(
+      's1',
+      dto({ compensation: AssignmentCompensationKind.PAID }),
+      'u-coord',
+      true,
+    );
+
+    expect(result.compensation).toBe(AssignmentCompensationKind.SALARY);
+  });
+
+  it('refuses an explicit SALARY call — it is resolved, never chosen', async () => {
+    const { service } = makeService();
+    await expect(
+      service.assign('s1', dto({ compensation: AssignmentCompensationKind.SALARY }), 'u-coord'),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('only stamps compensationSetById/At when an explicit call was made', async () => {
+    const prisma = buildPrismaStub();
+    const { service } = makeService(prisma);
+
+    await service.assign('s1', dto(), 'u-coord');
+    expect(prisma.scheduleAssignment.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.not.objectContaining({ compensationSetById: expect.anything() }),
+      }),
+    );
+
+    await service.assign('s1', dto({ compensation: AssignmentCompensationKind.PAID }), 'u-coord');
+    expect(prisma.scheduleAssignment.create).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ compensationSetById: 'u-coord' }),
+      }),
+    );
   });
 
   // AC: every requirement is overridable, the driver post included, but never
@@ -760,6 +842,155 @@ describe('ScheduleAssignmentsService.unassign', () => {
 
     await expect(service.unassign('s1', 'a1')).rejects.toBeInstanceOf(NotFoundException);
     expect(prisma.scheduleAssignment.delete).not.toHaveBeenCalled();
+  });
+});
+
+describe('ScheduleAssignmentsService.setCompensation', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  const assignmentRow = (overrides: Record<string, unknown> = {}) => ({
+    id: 'a1',
+    scheduleId: 's1',
+    date: new Date('2026-10-01T00:00:00.000Z'),
+    slot: 1,
+    userId: ANA.id,
+    roleId: DRIVER_ROLE.id,
+    isOverride: false,
+    certificationOverrideReason: null,
+    compensation: 'VOLUNTEER',
+    assignedById: 'u-coord',
+    assignedAt: new Date('2026-09-18T14:20:00.000Z'),
+    user: ANA,
+    role: DRIVER_ROLE,
+    assignedBy: { id: 'u-coord', firstName: 'Ana', lastName: 'Ferreira' },
+    ...overrides,
+  });
+
+  it('404s when an assignment does not belong to this shift', async () => {
+    const prisma = buildPrismaStub();
+    prisma.scheduleAssignment.findMany.mockResolvedValue([]);
+    const { service } = makeService(prisma);
+
+    await expect(
+      service.setCompensation(
+        's1',
+        '2026-10-01',
+        1,
+        { assignments: [{ assignmentId: 'a1', compensation: AssignmentCompensationKind.PAID }] },
+        'u-coord',
+      ),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('refuses an explicit SALARY entry', async () => {
+    const prisma = buildPrismaStub();
+    prisma.scheduleAssignment.findMany.mockResolvedValue([assignmentRow()]);
+    const { service } = makeService(prisma);
+
+    await expect(
+      service.setCompensation(
+        's1',
+        '2026-10-01',
+        1,
+        { assignments: [{ assignmentId: 'a1', compensation: AssignmentCompensationKind.SALARY }] },
+        'u-coord',
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.scheduleAssignment.update).not.toHaveBeenCalled();
+  });
+
+  it("D2: rejects reclassifying someone who is on their contract's clock for this shift", async () => {
+    const prisma = buildPrismaStub();
+    prisma.scheduleAssignment.findMany.mockResolvedValue([assignmentRow()]);
+    const paidStaffSchedule = buildPaidStaffScheduleStub();
+    paidStaffSchedule.loadClockContext.mockResolvedValue(
+      new Map([
+        [
+          ANA.id,
+          {
+            contracts: [{ startDate: '2020-01-01', endDate: null }],
+            blocks: [{ id: 'b1', userId: ANA.id, dayOfWeek: 4, startMinute: 0, endMinute: 1440, effectiveFrom: '2020-01-01', effectiveTo: null }],
+            overrides: [],
+          },
+        ],
+      ]),
+    );
+    const { service } = makeService(prisma, buildSchedulesStub(), paidStaffSchedule);
+
+    await expect(
+      service.setCompensation(
+        's1',
+        '2026-10-01',
+        1,
+        { assignments: [{ assignmentId: 'a1', compensation: AssignmentCompensationKind.PAID }] },
+        'u-coord',
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.scheduleAssignment.update).not.toHaveBeenCalled();
+  });
+
+  it('classifies an off-clock assignee PAID and reconciles the volunteer-hours entry', async () => {
+    const prisma = buildPrismaStub();
+    prisma.scheduleAssignment.findMany.mockResolvedValue([assignmentRow()]);
+    const { service, volunteerHours } = makeService(prisma);
+
+    const result = await service.setCompensation(
+      's1',
+      '2026-10-01',
+      1,
+      { assignments: [{ assignmentId: 'a1', compensation: AssignmentCompensationKind.PAID }] },
+      'u-coord',
+    );
+
+    expect(prisma.scheduleAssignment.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'a1' },
+        data: expect.objectContaining({ compensation: AssignmentCompensationKind.PAID, compensationSetById: 'u-coord' }),
+      }),
+    );
+    expect(volunteerHours.reconcileEntryForCompensation).toHaveBeenCalledWith(
+      expect.objectContaining({ assignmentId: 'a1', newCompensation: AssignmentCompensationKind.PAID, actorId: 'u-coord' }),
+    );
+    expect(result[0]).toHaveProperty('compensation', AssignmentCompensationKind.PAID);
+  });
+
+  it('validates every entry before writing any of them — a batch veto leaves nothing half-applied', async () => {
+    const prisma = buildPrismaStub();
+    prisma.scheduleAssignment.findMany.mockResolvedValue([
+      assignmentRow({ id: 'a1', userId: ANA.id }),
+      assignmentRow({ id: 'a2', userId: JOANA.id }),
+    ]);
+    const paidStaffSchedule = buildPaidStaffScheduleStub();
+    paidStaffSchedule.loadClockContext.mockResolvedValue(
+      new Map([
+        [ANA.id, { contracts: [], blocks: [], overrides: [] }],
+        [
+          JOANA.id,
+          {
+            contracts: [{ startDate: '2020-01-01', endDate: null }],
+            blocks: [{ id: 'b1', userId: JOANA.id, dayOfWeek: 4, startMinute: 0, endMinute: 1440, effectiveFrom: '2020-01-01', effectiveTo: null }],
+            overrides: [],
+          },
+        ],
+      ]),
+    );
+    const { service } = makeService(prisma, buildSchedulesStub(), paidStaffSchedule);
+
+    await expect(
+      service.setCompensation(
+        's1',
+        '2026-10-01',
+        1,
+        {
+          assignments: [
+            { assignmentId: 'a1', compensation: AssignmentCompensationKind.PAID },
+            { assignmentId: 'a2', compensation: AssignmentCompensationKind.PAID },
+          ],
+        },
+        'u-coord',
+      ),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(prisma.scheduleAssignment.update).not.toHaveBeenCalled();
   });
 });
 

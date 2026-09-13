@@ -33,6 +33,7 @@ import { certificationLabel } from '../../i18n/labels';
 import { useT } from '../../i18n/useT';
 import { toIsoDate } from '../../utils/dates';
 import { CertificationDialog } from './CertificationDialog';
+import { EmploymentContractsPanel } from './EmploymentContractsPanel';
 import { PaidStaffSchedulePanel } from './PaidStaffSchedulePanel';
 
 const InfoRow = ({ label, value }: { label: string; value?: string | null }) => (
@@ -363,6 +364,10 @@ const ReadinessChip = () => {
 /** A person's full record — profile, identity, and their certifications. */
 export const UserShow = () => {
   const t = useT();
+  // Bumped whenever `EmploymentContractsPanel` adds or ends a contract, so
+  // `PaidStaffSchedulePanel` (a separate fetch of its own) knows to re-check
+  // which contracts exist without the two sharing state directly.
+  const [contractsVersion, setContractsVersion] = useState(0);
   return (
     <Show>
       <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -413,7 +418,9 @@ export const UserShow = () => {
 
         <CertificationsPanel />
 
-        <PaidStaffSchedulePanel />
+        <EmploymentContractsPanel onChanged={() => setContractsVersion((version) => version + 1)} />
+
+        <PaidStaffSchedulePanel refreshToken={contractsVersion} />
 
         <Paper variant="outlined" sx={{ p: 2 }}>
           <Typography variant="subtitle2" sx={{ mb: 1 }}>

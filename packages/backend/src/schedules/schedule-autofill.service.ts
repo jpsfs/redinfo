@@ -64,7 +64,6 @@ export class ScheduleAutofillService {
           id: true,
           firstName: true,
           lastName: true,
-          isPaidStaff: true,
           certifications: { select: CERT_HELD_SELECT },
         },
       }),

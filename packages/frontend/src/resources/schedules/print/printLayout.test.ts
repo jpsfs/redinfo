@@ -40,7 +40,6 @@ function makeAssignment(overrides: Partial<ScheduleAssignment> & { userId: strin
       firstName: 'First',
       lastName: overrides.userId,
       isDriver: false,
-      isPaidStaff: false,
       certifications: [],
     },
     ...overrides,
@@ -120,7 +119,7 @@ function dateSeries(count: number, start = '2026-06-01'): string[] {
 describe('buildPrintRows', () => {
   it('produces one row per shift with a filled cell per assigned role', () => {
     const assignments = [
-      makeAssignment({ userId: 'alice', roleId: 'r-driver', user: { id: 'alice', firstName: 'Alice', lastName: 'A', isDriver: true, isPaidStaff: false, certifications: [] } }),
+      makeAssignment({ userId: 'alice', roleId: 'r-driver', user: { id: 'alice', firstName: 'Alice', lastName: 'A', isDriver: true, certifications: [] } }),
       makeAssignment({ userId: 'bob', roleId: 'r-leader' }),
       makeAssignment({ userId: 'carl', roleId: 'r-member' }),
     ];

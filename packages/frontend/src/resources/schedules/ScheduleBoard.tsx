@@ -8,6 +8,8 @@ import {
   Chip,
   CircularProgress,
   Divider,
+  Menu,
+  MenuItem,
   Paper,
   Stack,
   Table,
@@ -64,6 +66,7 @@ import { WindowIdentity } from '../availability/WindowIdentity';
 import { AdjustShiftDialog, AdjustShiftTarget } from './AdjustShiftDialog';
 import { AssignPersonDialog, AssignTarget } from './AssignPersonDialog';
 import { AutofillDialog } from './AutofillDialog';
+import { CompensationDialog, CompensationTarget } from './CompensationDialog';
 import { PublishDialog } from './PublishDialog';
 import { SignUpDialog } from './SignUpDialog';
 
@@ -90,6 +93,13 @@ interface Viewer {
   isDriver: boolean;
   certifications: HeldCertification[];
   isCoordinator: boolean;
+  /**
+   * Separate from `isCoordinator` (`MANAGE_SCHEDULES`) — building the rota
+   * and knowing who on it gets paid are different jobs (D5). Gates the
+   * "crew classification" menu item alone, never the shift-options menu
+   * itself, which stays tied to `isCoordinator`.
+   */
+  canManageCompensation: boolean;
   /** The schedule is published, so open places are there to be taken. */
   canSignUp: boolean;
   /** Whether the viewer already holds a duty overlapping this shift. */
@@ -462,6 +472,87 @@ const RoleCell = ({
   );
 };
 
+/**
+ * The shift label, for a coordinator: a plain button when there is nothing
+ * else to offer, or a menu when there's a choice to make. Reused by both the
+ * desktop table cell and the mobile card — one menu, not a second click
+ * target competing with the label itself.
+ *
+ * "Adjust hours" is always on it for a coordinator; "Crew classification"
+ * only when the viewer also holds `MANAGE_COMPENSATION` — a plain
+ * `MANAGE_SCHEDULES` coordinator never even sees the item exists.
+ */
+const ShiftLabelCell = ({
+  day,
+  shift,
+  viewer,
+  onAdjust,
+  onSetCompensation,
+}: {
+  day: ScheduleDayBoard;
+  shift: ScheduleShiftBoard;
+  viewer: Viewer;
+  onAdjust: (target: AdjustShiftTarget) => void;
+  onSetCompensation: (target: CompensationTarget) => void;
+}) => {
+  const t = useT();
+  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const dayLabel = formatDayLabel(t, day.date);
+
+  if (!viewer.isCoordinator) {
+    return (
+      <Typography variant="body2" sx={{ fontWeight: 600 }}>
+        {shift.label}
+      </Typography>
+    );
+  }
+
+  const closeMenu = () => setMenuAnchor(null);
+
+  const adjustTarget = (): AdjustShiftTarget => ({
+    date: day.date,
+    slot: shift.slot,
+    shift,
+    otherShiftsThatDay: day.shifts
+      .filter((other) => other.slot !== shift.slot)
+      .map((other) => ({ startMinute: other.startMinute, endMinute: other.endMinute })),
+  });
+
+  return (
+    <>
+      <Button
+        size="small"
+        variant="text"
+        sx={{ p: 0, minWidth: 0, fontWeight: 600, textTransform: 'none' }}
+        aria-label={t('scheduleBoard.adjustShiftAria', { day: dayLabel, label: shift.label })}
+        onClick={(event) => setMenuAnchor(event.currentTarget)}
+      >
+        {shift.label}
+      </Button>
+      <Menu anchorEl={menuAnchor} open={Boolean(menuAnchor)} onClose={closeMenu}>
+        <MenuItem
+          onClick={() => {
+            closeMenu();
+            onAdjust(adjustTarget());
+          }}
+        >
+          {t('scheduleBoard.shiftMenuAdjust')}
+        </MenuItem>
+        {viewer.canManageCompensation && (
+          <MenuItem
+            onClick={() => {
+              closeMenu();
+              onSetCompensation({ date: day.date, slot: shift.slot, shift });
+            }}
+          >
+            {t('scheduleBoard.shiftMenuCompensation')}
+          </MenuItem>
+        )}
+      </Menu>
+    </>
+  );
+};
+
 // ─── Desktop table ─────────────────────────────────────────────────────────────
 
 const DesktopBoard = ({
@@ -471,6 +562,7 @@ const DesktopBoard = ({
   onAssign,
   onRemove,
   onAdjust,
+  onSetCompensation,
   viewer,
 }: {
   board: ScheduleBoardResponse;
@@ -479,6 +571,7 @@ const DesktopBoard = ({
   onAssign: (target: AssignTarget) => void;
   onRemove: (assignment: ScheduleAssignment) => void;
   onAdjust: (target: AdjustShiftTarget) => void;
+  onSetCompensation: (target: CompensationTarget) => void;
   viewer: Viewer;
 }) => {
   const t = useT();
@@ -548,36 +641,13 @@ const DesktopBoard = ({
                 )}
               </TableCell>
               <TableCell>
-                {viewer.isCoordinator ? (
-                  <Button
-                    size="small"
-                    variant="text"
-                    sx={{ p: 0, minWidth: 0, fontWeight: 600, textTransform: 'none' }}
-                    aria-label={t('scheduleBoard.adjustShiftAria', {
-                      day: formatDayLabel(t, day.date),
-                      label: shift.label,
-                    })}
-                    onClick={() =>
-                      onAdjust({
-                        date: day.date,
-                        slot: shift.slot,
-                        shift,
-                        otherShiftsThatDay: day.shifts
-                          .filter((other) => other.slot !== shift.slot)
-                          .map((other) => ({
-                            startMinute: other.startMinute,
-                            endMinute: other.endMinute,
-                          })),
-                      })
-                    }
-                  >
-                    {shift.label}
-                  </Button>
-                ) : (
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    {shift.label}
-                  </Typography>
-                )}
+                <ShiftLabelCell
+                  day={day}
+                  shift={shift}
+                  viewer={viewer}
+                  onAdjust={onAdjust}
+                  onSetCompensation={onSetCompensation}
+                />
                 {shift.adjustment && (
                   <Typography variant="caption" color="warning.dark" display="block">
                     {t('scheduleBoard.adjustedWas', {
@@ -650,6 +720,7 @@ const MobileBoard = ({
   onAssign,
   onRemove,
   onAdjust,
+  onSetCompensation,
   viewer,
 }: {
   board: ScheduleBoardResponse;
@@ -658,6 +729,7 @@ const MobileBoard = ({
   onAssign: (target: AssignTarget) => void;
   onRemove: (assignment: ScheduleAssignment) => void;
   onAdjust: (target: AdjustShiftTarget) => void;
+  onSetCompensation: (target: CompensationTarget) => void;
   viewer: Viewer;
 }) => {
   const t = useT();
@@ -670,36 +742,13 @@ const MobileBoard = ({
           <Stack spacing={2} sx={{ mt: 1.5 }}>
             {day.shifts.map((shift) => (
               <Box key={shift.slot}>
-                {viewer.isCoordinator ? (
-                  <Button
-                    size="small"
-                    variant="text"
-                    sx={{ p: 0, minWidth: 0, fontWeight: 600, textTransform: 'none' }}
-                    aria-label={t('scheduleBoard.adjustShiftAria', {
-                      day: formatDayLabel(t, day.date),
-                      label: shift.label,
-                    })}
-                    onClick={() =>
-                      onAdjust({
-                        date: day.date,
-                        slot: shift.slot,
-                        shift,
-                        otherShiftsThatDay: day.shifts
-                          .filter((other) => other.slot !== shift.slot)
-                          .map((other) => ({
-                            startMinute: other.startMinute,
-                            endMinute: other.endMinute,
-                          })),
-                      })
-                    }
-                  >
-                    {shift.label}
-                  </Button>
-                ) : (
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    {shift.label}
-                  </Typography>
-                )}
+                <ShiftLabelCell
+                  day={day}
+                  shift={shift}
+                  viewer={viewer}
+                  onAdjust={onAdjust}
+                  onSetCompensation={onSetCompensation}
+                />
                 {shift.adjustment && (
                   <Typography variant="caption" color="warning.dark" display="block">
                     {t('scheduleBoard.adjustedWas', {
@@ -765,6 +814,7 @@ export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
   const [target, setTarget] = useState<AssignTarget | null>(null);
   const [signUpTarget, setSignUpTarget] = useState<AssignTarget | null>(null);
   const [adjustTarget, setAdjustTarget] = useState<AdjustShiftTarget | null>(null);
+  const [compensationTarget, setCompensationTarget] = useState<CompensationTarget | null>(null);
   const [autofillOpen, setAutofillOpen] = useState(false);
   const [publishOpen, setPublishOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
@@ -843,6 +893,9 @@ export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
       certifications: self?.certifications ?? [],
       isCoordinator: permissions
         ? hasPermission(permissions, Action.MANAGE_SCHEDULES)
+        : false,
+      canManageCompensation: permissions
+        ? hasPermission(permissions, Action.MANAGE_COMPENSATION)
         : false,
       canSignUp: board?.schedule.status === ScheduleStatus.PUBLISHED,
       overlaps: (date, shift) =>
@@ -1013,6 +1066,7 @@ export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
           onAssign={viewer.isCoordinator ? setTarget : setSignUpTarget}
           onRemove={(assignment) => void handleRemove(assignment)}
           onAdjust={setAdjustTarget}
+          onSetCompensation={setCompensationTarget}
           viewer={viewer}
         />
       ) : (
@@ -1023,6 +1077,7 @@ export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
           onAssign={viewer.isCoordinator ? setTarget : setSignUpTarget}
           onRemove={(assignment) => void handleRemove(assignment)}
           onAdjust={setAdjustTarget}
+          onSetCompensation={setCompensationTarget}
           viewer={viewer}
         />
       )}
@@ -1073,6 +1128,15 @@ export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
         onClose={() => setAdjustTarget(null)}
         onSaved={() => {
           setAdjustTarget(null);
+          void load();
+        }}
+      />
+      <CompensationDialog
+        scheduleId={scheduleId}
+        target={compensationTarget}
+        onClose={() => setCompensationTarget(null)}
+        onSaved={() => {
+          setCompensationTarget(null);
           void load();
         }}
       />

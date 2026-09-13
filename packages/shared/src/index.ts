@@ -146,6 +146,17 @@ export enum Action {
    * capability than ordinary emergency operation.
    */
   MANAGE_INEM_STATUS = 'MANAGE_INEM_STATUS',
+  /**
+   * See or set who is paid vs. volunteering for a shift — employment
+   * contracts, and `ScheduleAssignment.compensation` (the rework that
+   * replaced #223's blanket `User.isPaidStaff` flag and #245's
+   * `PaidStaffSchedule`-only gate). Split from `MANAGE_SCHEDULES`: building
+   * the rota and knowing who on it gets paid are different jobs, and one
+   * person's pay is not something every colleague who can see the rota
+   * should also see — see `generatesVolunteerHours`/
+   * `resolveAssignmentCompensation` for the rule this gates.
+   */
+  MANAGE_COMPENSATION = 'MANAGE_COMPENSATION',
 }
 
 export const ROLE_PERMISSIONS: Record<UserRole, Action[]> = {
@@ -192,6 +203,9 @@ export const ROLE_PERMISSIONS: Record<UserRole, Action[]> = {
     Action.VIEW_VOLUNTEER_HOURS,
     Action.MANAGE_NOTICES,
     Action.MANAGE_INEM_STATUS,
+    // The coordinator who assigns the crew is the one who decides whether an
+    // off-clock assignment was paid extra.
+    Action.MANAGE_COMPENSATION,
   ],
   [UserRole.LOGISTICS_COORDINATOR]: [
     Action.MANAGE_LOGISTICS,
@@ -273,14 +287,6 @@ export interface User {
   roles: UserRole[];
   provider: AuthProvider;
   isActive: boolean;
-  /**
-   * Paid staff rather than a volunteer (#223). Distinct from every role
-   * above — a transport driver can be paid or volunteer regardless of what
-   * they're permitted to do — and from `isActive`: paid staff still sign in
-   * and work shifts, they just never accrue volunteer-hours credit for them.
-   * Defaults false so no existing account changes behaviour.
-   */
-  isPaidStaff: boolean;
   /**
    * Certified driver. Computed from holding a valid `DRIVER` certification —
    * there is no `isDriver` column; see the `── Certifications ──` section.
@@ -1762,33 +1768,77 @@ export interface SchedulePerson {
   firstName: string;
   lastName: string;
   isDriver: boolean;
-  /** Paid staff rather than a volunteer (#223) — see `AssignmentCompensationKind` for what this changes about assignment. */
-  isPaidStaff: boolean;
   /** What they hold, for checking a post's `requiredCertification` client-side. */
   certifications: HeldCertification[];
 }
 
 /**
- * A coordinator's explicit call on whether one *off-the-clock* assignment
- * counts as volunteering or paid work, overriding the default (#245).
- * Schedule data alone can say whether a paid staffer was on or off the
- * clock; it cannot say whether a specific piece of off-clock work was
- * volunteered or paid overtime — that is a human decision made at
- * assignment time, not something to infer.
+ * How one shift of one person's time is classified for pay (Stage 1 of the
+ * rework that supersedes #223's blanket `User.isPaidStaff` flag and #245's
+ * binary `PAID_EXTRA` — this comment is that domain's actual, current spec,
+ * not #245's).
  *
- * On-the-clock assignments are never affected by this field: on-clock time
- * is already paid via salary and never generates volunteer-hours, override
- * or not — that is #223's original rule and this does not reopen it. The
- * field only changes anything for an assignment `isOnPaidClock` judges
- * off-clock: left unset, it generates volunteer-hours by default, same as
- * any volunteer; `PAID_EXTRA` suppresses that generation instead. A
- * non-paid-staff assignment is unaffected by clock resolution at all, but
- * `PAID_EXTRA` still suppresses it — the escape hatch a volunteer's paid
- * non-urgent-transport stipend (#246) will eventually need.
+ * `VOLUNTEER` is the default and by far the common case: money must stay
+ * invisible everywhere a paid arrangement does not exist, so every
+ * assignment starts here — see `resolveAssignmentCompensation`.
+ *
+ * `SALARY` means the person was already being paid a wage for this exact
+ * time under an `EmploymentContract` — see `isOnContractClock`. It is an
+ * **absolute veto**: nobody, coordinator included, may explicitly
+ * reclassify on-contract-clock time to `VOLUNTEER` or `PAID` — crediting
+ * volunteer hours or an extra stipend on top of a salary already being paid
+ * for the same time would double-pay it either way. An explicit choice is
+ * simply not consulted when the clock veto applies — see
+ * `resolveAssignmentCompensation`'s own rule.
+ *
+ * `PAID` is a coordinator's explicit call that one *off-clock* assignment
+ * was extra paid work rather than volunteering (Apoio Local, Apoio CNE, an
+ * emergency covered on a day off) — the case #223/#245 could not represent
+ * because the paid/volunteer choice was locked to a person-level flag
+ * rather than editable per assignment.
+ *
+ * Whichever it resolves to, `generatesVolunteerHours` says whether a
+ * `VolunteerHoursEntry` is produced from it — only `VOLUNTEER` does.
+ *
+ * Materialised at write (`ScheduleAssignment.compensation`), never derived
+ * at read: a later contract edit must never retroactively reclassify a past
+ * shift.
  */
 export enum AssignmentCompensationKind {
   VOLUNTEER = 'VOLUNTEER',
-  PAID_EXTRA = 'PAID_EXTRA',
+  SALARY = 'SALARY',
+  PAID = 'PAID',
+}
+
+/**
+ * Whether `kind` produces a `VolunteerHoursEntry` at all. Only `VOLUNTEER`
+ * does — `SALARY` is already paid via wage, and `PAID` is paid a different
+ * way; crediting volunteer hours on top of either would double-count the
+ * same time.
+ */
+export function generatesVolunteerHours(kind: AssignmentCompensationKind): boolean {
+  return kind === AssignmentCompensationKind.VOLUNTEER;
+}
+
+/**
+ * The one place `AssignmentCompensationKind` gets decided (D1–D3 of the
+ * paid-staff rework). `onContractClock` is an absolute veto — see the enum's
+ * own doc comment — checked before, and instead of, `explicit`: an
+ * explicit `VOLUNTEER` set by a coordinator must never beat a `SALARY`
+ * resolution, which is exactly the bug this ordering avoids. Only once the
+ * clock veto does not apply does `explicit` get to speak at all, and even
+ * then it defaults to `VOLUNTEER` — the always-safe default — when nobody
+ * has classified the assignment yet.
+ */
+export function resolveAssignmentCompensation({
+  explicit,
+  onContractClock,
+}: {
+  explicit?: AssignmentCompensationKind | null;
+  onContractClock: boolean;
+}): AssignmentCompensationKind {
+  if (onContractClock) return AssignmentCompensationKind.SALARY;
+  return explicit ?? AssignmentCompensationKind.VOLUNTEER;
 }
 
 export interface ScheduleAssignment {
@@ -1818,8 +1868,15 @@ export interface ScheduleAssignment {
    * without a reason — see `CreateScheduleAssignmentRequest.overrideReason`.
    */
   certificationOverrideReason?: string | null;
-  /** See `AssignmentCompensationKind` (#245). Null = default resolution applies. */
-  compensationOverride?: AssignmentCompensationKind | null;
+  /**
+   * How this one shift is classified for pay — see
+   * `AssignmentCompensationKind`. Always resolved and stored at write time
+   * (never derived at read), but **redacted from the wire entirely** for a
+   * viewer without `Action.MANAGE_COMPENSATION` (D5): the key is omitted,
+   * not sent null, so a plain member's own client never even sees that the
+   * field exists for a colleague's assignment.
+   */
+  compensation?: AssignmentCompensationKind;
   /**
    * The person put themselves here, on a published schedule.
    *
@@ -1980,10 +2037,32 @@ export interface CreateScheduleAssignmentRequest {
    */
   overrideReason?: string;
   /**
-   * Only meaningful for a paid-staff assignee, and only when off the clock
-   * — see `AssignmentCompensationKind` (#245). Omitted or ignored otherwise.
+   * An explicit `VOLUNTEER`/`PAID` call for this one assignment, made at the
+   * moment it is created. Ignored — never an error — when the assignee is on
+   * their contract's clock for this shift: `resolveAssignmentCompensation`'s
+   * veto always wins. Omit to get the default (`VOLUNTEER` off the clock).
+   * Most assignments are classified later instead, via
+   * `SetShiftCompensationRequest` — this field exists for the rare case a
+   * coordinator already knows at assignment time.
    */
-  compensationOverride?: AssignmentCompensationKind;
+  compensation?: AssignmentCompensationKind;
+}
+
+/**
+ * `PUT /schedules/:id/shifts/:date/:slot/compensation` — a coordinator's
+ * classification for a whole shift's crew in one call (`MANAGE_COMPENSATION`).
+ * One entry per assignment being (re)classified; an assignment left out is
+ * untouched. `SALARY` is never a valid `compensation` here — it is resolved,
+ * never chosen — so only `VOLUNTEER`/`PAID` are accepted, and an entry for an
+ * assignee on their contract's clock is rejected rather than silently
+ * dropped, since silently ignoring a coordinator's explicit instruction would
+ * be worse than telling them why it didn't apply.
+ */
+export interface SetShiftCompensationRequest {
+  assignments: Array<{
+    assignmentId: string;
+    compensation: AssignmentCompensationKind;
+  }>;
 }
 
 /** `PUT /schedules/:id/shifts/:date/:slot` — move one shift's hours for this schedule alone. */
@@ -2362,6 +2441,66 @@ export function shiftMandatoryRolesFilled({
 
 // ─── Paid staff schedule (#245) ─────────────────────────────────────────────────
 
+/** Descriptive only — no logic reads `kind`; it exists purely for a coordinator's own record-keeping. */
+export enum EmploymentContractKind {
+  FULL_TIME = 'FULL_TIME',
+  PART_TIME = 'PART_TIME',
+}
+
+/**
+ * A dated fact — "this person is on contract Mar–Oct" — replacing #223's
+ * timeless `User.isPaidStaff` flag, which answered a dated question with a
+ * boolean that silently rewrote history the moment it changed: resolving a
+ * 2026-04 shift against *today's* flag, after the person's contract ended in
+ * October, would get it wrong. A contract's own `startDate`/`endDate` is the
+ * authoritative, gating fact `isOnContractClock` checks first — see its own
+ * doc comment. `PaidStaffSchedule`'s recurring blocks and one-off overrides
+ * (below) describe the *pattern* of hours within a contract; the contract
+ * itself is what says the pattern applies at all, for a given date.
+ */
+export interface EmploymentContract {
+  id: string;
+  userId: string;
+  kind: EmploymentContractKind;
+  /** ISO date. */
+  startDate: string;
+  /** ISO date, inclusive. Null = still in effect. */
+  endDate?: string | null;
+  /**
+   * Null only for a contract a migration backfilled from #223's flag, where
+   * there is no real actor — same pattern as `PaidStaffSchedule`'s own
+   * migration would need if it ever had to backfill without one. Every
+   * contract created through the API has one; the request DTO enforces it.
+   */
+  createdById?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateEmploymentContractRequest {
+  kind: EmploymentContractKind;
+  startDate: string;
+  endDate?: string | null;
+}
+
+/**
+ * `PATCH /employment-contracts/:userId/:contractId` — dating when a contract
+ * stopped, rather than deleting the row: the contract was a real, dated fact
+ * while it lasted, and a past assignment's `SALARY` resolution depends on it
+ * staying on file (`isOnContractClock`). Deleting it outright is still
+ * possible (`DELETE`, for a contract entered in error), but ending one is the
+ * ordinary close-out.
+ */
+export interface EndEmploymentContractRequest {
+  /** ISO date, inclusive. Must not be before the contract's own `startDate`. */
+  endDate: string;
+}
+
+export interface EmploymentContractsResponse {
+  userId: string;
+  contracts: EmploymentContract[];
+}
+
 /**
  * A paid staffer's recurring on-the-clock hours: worked every `dayOfWeek`
  * from `startMinute` to `endMinute`, for as long as `effectiveFrom`–
@@ -2370,9 +2509,9 @@ export function shiftMandatoryRolesFilled({
  * old block's `effectiveTo` gets set instead — so a past assignment's
  * on-clock resolution never rewrites itself under a later change.
  *
- * Supersedes #223's blanket `User.isPaidStaff`-only gate: that flag still
- * marks *who* is paid staff, but no longer decides on its own whether a
- * given assignment counts as volunteering — see `isOnPaidClock` below.
+ * Belongs to one `EmploymentContract` (`contractId` at the persistence
+ * layer) — the pattern within a contract's own dates. See `isOnContractClock`
+ * for how the two combine: the contract is the gate, this is the pattern.
  */
 export interface PaidStaffScheduleBlock {
   id: string;
@@ -2468,6 +2607,40 @@ export function isOnPaidClock(
       (!block.effectiveTo || date <= block.effectiveTo) &&
       minuteRangesOverlap(shiftStartMinute, shiftEndMinute, block.startMinute, block.endMinute),
   );
+}
+
+/**
+ * Whether someone was on a contract's paid clock for `[startMinute,
+ * endMinute)` on `date` — the contract-aware wrapper `resolveAssignmentCompensation`
+ * actually calls. Wraps `isOnPaidClock` rather than reimplementing it: the
+ * recurring-block/override resolution is unchanged, this only adds the
+ * contract as an **authoritative gate** in front of it. Outside every
+ * contract's own `startDate`/`endDate`, the person is never on the clock,
+ * regardless of what a block or override says — a block/override row can
+ * outlive the contract it was set up under (nothing deletes them when a
+ * contract ends), and without this gate a leftover row would resolve
+ * `SALARY` for a date the person was, in fact, volunteering.
+ */
+export function isOnContractClock({
+  contracts,
+  blocks,
+  overrides,
+  date,
+  startMinute,
+  endMinute,
+}: {
+  contracts: Array<Pick<EmploymentContract, 'startDate' | 'endDate'>>;
+  blocks: PaidStaffScheduleBlock[];
+  overrides: PaidStaffScheduleOverride[];
+  date: string;
+  startMinute: number;
+  endMinute: number;
+}): boolean {
+  const coveredByContract = contracts.some(
+    (contract) => contract.startDate <= date && (!contract.endDate || date <= contract.endDate),
+  );
+  if (!coveredByContract) return false;
+  return isOnPaidClock(blocks, overrides, date, startMinute, endMinute);
 }
 
 // ─── Volunteer hours ────────────────────────────────────────────────────────────
@@ -6427,7 +6600,8 @@ export type ApiErrorCode =
   | 'LAST_SYSTEM_ADMIN'
   | 'INEM_SESSION_NOT_ACTIVE'
   | 'LIVE_RUN_CLOSE_BLOCKED'
-  | 'PAID_STAFF_SCHEDULE_INVALID_RANGE';
+  | 'PAID_STAFF_SCHEDULE_INVALID_RANGE'
+  | 'COMPENSATION_RECLASSIFY_PRE_CUTOVER';
 
 export interface ApiErrorBody {
   code: ApiErrorCode;

@@ -1,10 +1,12 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import {
+  AssignmentCompensationKind,
   VolunteerActivityType,
   VolunteerHoursSource,
   VolunteerHoursStatus,
   VOLUNTEER_HOURS_SCHEDULED_GENERATION_START_DATE,
 } from '@redinfo/shared';
+import { ApiBadRequestException } from '../common/api-error.exception';
 import { VolunteerHoursService } from './volunteer-hours.service';
 
 // ── Volunteer hours generation and review (#164) ────────────────────────────────
@@ -39,6 +41,9 @@ const ASSIGNMENT = (overrides: Record<string, unknown> = {}) => ({
   slot: 1,
   userId: 'u-ana',
   roleId: null,
+  // Resolved and stored at assignment write time (D3) — generation now only
+  // ever reads this, never recomputes an on-clock lookup of its own.
+  compensation: 'VOLUNTEER',
   ...overrides,
 });
 
@@ -66,20 +71,10 @@ type EntryWhere = Record<string, unknown> & {
   flags?: { isEmpty?: boolean; has?: string };
   date?: Date | { lt?: Date; gte?: Date; lte?: Date };
   description?: { contains?: string };
-  user?: { isPaidStaff?: boolean };
   OR?: Array<Record<string, unknown>>;
 };
 
-/**
- * `paidStaffUserIds` stands in for the `isPaidStaff` join the real query does
- * via `user: { isPaidStaff: false }` — this flat double has no relation to
- * join, so the caller passes the same id list it gave `buildPrisma`.
- */
-function matchesWhere(row: Record<string, unknown>, where: EntryWhere, paidStaffUserIds: string[] = []): boolean {
-  if (where.user?.isPaidStaff !== undefined) {
-    const rowIsPaidStaff = paidStaffUserIds.includes(row.userId as string);
-    if (rowIsPaidStaff !== where.user.isPaidStaff) return false;
-  }
+function matchesWhere(row: Record<string, unknown>, where: EntryWhere): boolean {
   if (where.userId && row.userId !== where.userId) return false;
   if (where.status && row.status !== where.status) return false;
   if (where.source && row.source !== where.source) return false;
@@ -130,12 +125,12 @@ function matchesWhere(row: Record<string, unknown>, where: EntryWhere, paidStaff
  * multi-step read-then-write awkward to assert on otherwise. Extended (#redesign)
  * with `count`/`aggregate`/ordering support for `getReviewQueue`.
  */
-function buildEntryTable(paidStaffUserIds: string[] = []) {
+function buildEntryTable() {
   const rows: Array<Record<string, unknown>> = [];
   let nextId = 1;
 
   function filtered(where?: Record<string, unknown>) {
-    return rows.filter((row) => matchesWhere(row, (where ?? {}) as EntryWhere, paidStaffUserIds));
+    return rows.filter((row) => matchesWhere(row, (where ?? {}) as EntryWhere));
   }
 
   function sorted(rowsIn: Array<Record<string, unknown>>, orderBy?: unknown) {
@@ -216,6 +211,7 @@ function buildEntryTable(paidStaffUserIds: string[] = []) {
         deletedById: null,
         deletedBy: null,
         deletionReason: null,
+        deletedBySystem: false,
         createdAt: new Date(),
         updatedAt: new Date(),
         ...data,
@@ -223,8 +219,10 @@ function buildEntryTable(paidStaffUserIds: string[] = []) {
       rows.push(row);
       return row;
     }),
-    findUnique: jest.fn(async ({ where }: { where: { id: string } }) =>
-      rows.find((row) => row.id === where.id) ?? null,
+    // Real Prisma allows `findUnique` by any `@unique` field, not only `id` —
+    // `assignmentId` is one (`reconcileEntryForCompensation` looks up by it).
+    findUnique: jest.fn(async ({ where }: { where: { id?: string; assignmentId?: string } }) =>
+      rows.find((row) => (where.id ? row.id === where.id : row.assignmentId === where.assignmentId)) ?? null,
     ),
     update: jest.fn(async ({ where, data }: { where: { id: string }; data: Record<string, unknown> }) => {
       const row = rows.find((r) => r.id === where.id)!;
@@ -251,9 +249,8 @@ function buildPrisma({
   overrides = [] as Array<Record<string, unknown>>,
   eventReports = [] as Array<Record<string, unknown>>,
   activeUserIds = ['u-ana', 'u-bruno', 'u-carla'] as string[],
-  paidStaffUserIds = [] as string[],
 } = {}) {
-  const entryTable = buildEntryTable(paidStaffUserIds);
+  const entryTable = buildEntryTable();
 
   const scheduleAssignmentFindMany = jest.fn(async (args: { where: Record<string, unknown> }) => {
     const { where } = args;
@@ -286,13 +283,9 @@ function buildPrisma({
     },
     user: {
       // Simulates `isActive: true` filtering — a test can shrink
-      // `activeUserIds` to model an unknown or deactivated volunteer. Also
-      // reports `isPaidStaff` (#223), for `generateForShift`'s paid-staff
-      // gate — a test can list ids in `paidStaffUserIds` to model one.
+      // `activeUserIds` to model an unknown or deactivated volunteer.
       findMany: jest.fn(async ({ where }: { where: { id: { in: string[] } } }) =>
-        where.id.in
-          .filter((id) => activeUserIds.includes(id))
-          .map((id) => ({ id, isPaidStaff: paidStaffUserIds.includes(id) })),
+        where.id.in.filter((id) => activeUserIds.includes(id)).map((id) => ({ id })),
       ),
     },
     volunteerHoursEntry: entryTable,
@@ -313,18 +306,11 @@ function buildPrisma({
   return prisma;
 }
 
-/**
- * `onClockUserIds` stands in for `PaidStaffScheduleService.isOnClock` (#245)
- * — a test lists the paid-staff ids that should be judged on the clock for
- * whatever shift is in play; everyone else resolves off the clock.
- */
-function makeService(prisma = buildPrisma(), pattern = PATTERN, onClockUserIds: string[] = []) {
+function makeService(prisma = buildPrisma(), pattern = PATTERN) {
   const shiftSchedule = { getPatternForWindow: jest.fn().mockResolvedValue(pattern) };
-  const paidStaffSchedule = { isOnClock: jest.fn(async (userId: string) => onClockUserIds.includes(userId)) };
   return {
-    service: new VolunteerHoursService(prisma as never, shiftSchedule as never, paidStaffSchedule as never),
+    service: new VolunteerHoursService(prisma as never, shiftSchedule as never),
     prisma,
-    paidStaffSchedule,
   };
 }
 
@@ -376,26 +362,21 @@ describe('generation', () => {
   // #223 / #245 — the trap Feature #219 named explicitly: reusing the rota
   // engine unchanged for paid staff would silently credit them volunteer
   // time. #245 refined the rule from a blanket per-user gate to a
-  // per-assignment resolution against the paid staffer's actual schedule.
-  describe('paid staff (#245)', () => {
+  // per-assignment resolution stored on `ScheduleAssignment.compensation` at
+  // write time (Stage 1 of the paid-staff rework, superseding #223/#245) —
+  // generation now only ever reads it, never recomputes a clock lookup.
+  describe('compensation-gated generation (Stage 1)', () => {
     const EMERGENCY_SCHEDULE = () =>
       SCHEDULE({ window: WINDOW({ category: 'EMERGENCY', roles: [DRIVER_ROLE, MEMBER_ROLE] }) });
 
-    it('generates nothing for a paid staff member on the clock, but still generates for a volunteer on the same shift', async () => {
+    it('generates nothing for a SALARY assignment, but still generates for a VOLUNTEER one on the same shift', async () => {
       const schedule = EMERGENCY_SCHEDULE();
       const assignments = [
-        ASSIGNMENT({ id: 'a-paid', userId: 'u-paid', roleId: DRIVER_ROLE.id }),
-        ASSIGNMENT({ id: 'a-volunteer', userId: 'u-volunteer', roleId: MEMBER_ROLE.id }),
+        ASSIGNMENT({ id: 'a-salary', userId: 'u-paid', roleId: DRIVER_ROLE.id, compensation: 'SALARY' }),
+        ASSIGNMENT({ id: 'a-volunteer', userId: 'u-volunteer', roleId: MEMBER_ROLE.id, compensation: 'VOLUNTEER' }),
       ];
       const { service, prisma } = makeService(
-        buildPrisma({
-          schedule,
-          assignments,
-          activeUserIds: ['u-paid', 'u-volunteer'],
-          paidStaffUserIds: ['u-paid'],
-        }),
-        PATTERN,
-        ['u-paid'], // on the clock for this shift
+        buildPrisma({ schedule, assignments, activeUserIds: ['u-paid', 'u-volunteer'] }),
       );
 
       const { entries: paidEntries } = await service.getMyHours('u-paid');
@@ -407,52 +388,27 @@ describe('generation', () => {
       expect(prisma.entryTable.rows[0]).toMatchObject({ userId: 'u-volunteer' });
     });
 
-    it('generates a volunteer-hours entry for a paid staff member off the clock, same as any volunteer', async () => {
+    it('generates a volunteer-hours entry for a VOLUNTEER assignment same as any other', async () => {
       const schedule = EMERGENCY_SCHEDULE();
-      const assignments = [ASSIGNMENT({ id: 'a-paid', userId: 'u-paid', roleId: DRIVER_ROLE.id })];
-      const { service, prisma, paidStaffSchedule } = makeService(
-        buildPrisma({
-          schedule,
-          assignments,
-          activeUserIds: ['u-paid'],
-          paidStaffUserIds: ['u-paid'],
-        }),
-        PATTERN,
-        [], // nobody on the clock for this shift
-      );
+      const assignments = [
+        ASSIGNMENT({ id: 'a-vol', userId: 'u-paid', roleId: DRIVER_ROLE.id, compensation: 'VOLUNTEER' }),
+      ];
+      const { service, prisma } = makeService(buildPrisma({ schedule, assignments, activeUserIds: ['u-paid'] }));
 
       const { entries } = await service.getMyHours('u-paid');
 
       expect(entries).toHaveLength(1);
       expect(prisma.entryTable.create).toHaveBeenCalledTimes(1);
-      expect(paidStaffSchedule.isOnClock).toHaveBeenCalledWith('u-paid', '2026-10-01', 1200, 1440);
     });
 
-    it('suppresses generation for an off-clock assignment explicitly classified PAID_EXTRA', async () => {
+    it('suppresses generation for an assignment explicitly classified PAID', async () => {
       const schedule = EMERGENCY_SCHEDULE();
       const assignments = [
-        ASSIGNMENT({ id: 'a-paid', userId: 'u-paid', roleId: DRIVER_ROLE.id, compensationOverride: 'PAID_EXTRA' }),
+        ASSIGNMENT({ id: 'a-paid', userId: 'u-paid', roleId: DRIVER_ROLE.id, compensation: 'PAID' }),
       ];
-      const { service, prisma } = makeService(
-        buildPrisma({ schedule, assignments, activeUserIds: ['u-paid'], paidStaffUserIds: ['u-paid'] }),
-        PATTERN,
-        [],
-      );
+      const { service, prisma } = makeService(buildPrisma({ schedule, assignments, activeUserIds: ['u-paid'] }));
 
       const { entries } = await service.getMyHours('u-paid');
-
-      expect(entries).toHaveLength(0);
-      expect(prisma.entryTable.create).not.toHaveBeenCalled();
-    });
-
-    it('PAID_EXTRA suppresses generation for a non-paid-staff assignment too', async () => {
-      const schedule = EMERGENCY_SCHEDULE();
-      const assignments = [
-        ASSIGNMENT({ id: 'a-vol', userId: 'u-volunteer', roleId: DRIVER_ROLE.id, compensationOverride: 'PAID_EXTRA' }),
-      ];
-      const { service, prisma } = makeService(buildPrisma({ schedule, assignments }));
-
-      const { entries } = await service.getMyHours('u-volunteer');
 
       expect(entries).toHaveLength(0);
       expect(prisma.entryTable.create).not.toHaveBeenCalled();
@@ -934,10 +890,8 @@ describe('getReviewQueue', () => {
     expect(scheduledOnly.data).toHaveLength(1);
   });
 
-  it('includes a paid staff member’s manually logged entry (#245 — no blanket isPaidStaff exclusion)', async () => {
-    const { service } = makeService(
-      buildPrisma({ assignments: [], paidStaffUserIds: ['u-paid'] }),
-    );
+  it('includes a paid staff member’s manually logged entry (no blanket exclusion by person)', async () => {
+    const { service } = makeService(buildPrisma({ assignments: [] }));
     await service.createManualEntry('u-paid', {
       activityType: VolunteerActivityType.MEETING,
       date: '2026-10-05',
@@ -1242,5 +1196,201 @@ describe('deleteMine', () => {
     await service.approve(entry.id, 'u-coord', {});
 
     await expect(service.deleteMine(entry.id, 'u-ana')).rejects.toThrow(BadRequestException);
+  });
+});
+
+// ── reconcileEntryForCompensation (Stage 1 of the paid-staff rework) ────────
+//
+// Called from ScheduleAssignmentsService.setCompensation whenever a
+// coordinator reclassifies one assignment. Seven transitions, plus the
+// pre-cutover refusal that gates all of them.
+
+describe('reconcileEntryForCompensation', () => {
+  const AFTER_CUTOVER = '2026-10-05'; // > VOLUNTEER_HOURS_SCHEDULED_GENERATION_START_DATE ('2026-10-01')
+  const BEFORE_CUTOVER = '2026-09-01';
+
+  async function seedEntry(prisma: ReturnType<typeof buildPrisma>, overrides: Record<string, unknown> = {}) {
+    return prisma.entryTable.create({
+      data: {
+        userId: 'u-ana',
+        source: VolunteerHoursSource.SCHEDULED,
+        activityType: 'EMERGENCY',
+        assignmentId: 'a1',
+        scheduleId: 's1',
+        date: new Date(`${AFTER_CUTOVER}T00:00:00.000Z`),
+        baselineMinutes: 240,
+        proposedMinutes: 240,
+        minutes: 240,
+        flags: [],
+        ...overrides,
+      },
+    });
+  }
+
+  it('→ PAID/SALARY, entry live: soft-deletes it, deletedBySystem = true', async () => {
+    const { service, prisma } = makeService(buildPrisma({ assignments: [] }));
+    const entry = await seedEntry(prisma);
+
+    await service.reconcileEntryForCompensation({
+      assignmentId: 'a1',
+      date: AFTER_CUTOVER,
+      newCompensation: AssignmentCompensationKind.PAID,
+      actorId: 'u-coord',
+    });
+
+    const row = prisma.entryTable.rows.find((r) => r.id === entry.id)!;
+    expect(row.deletedAt).not.toBeNull();
+    expect(row.deletedBySystem).toBe(true);
+    expect(row.deletedById).toBe('u-coord');
+  });
+
+  it('→ PAID/SALARY, already deleted: no-op — never overwrites an existing dismissal', async () => {
+    const { service, prisma } = makeService(buildPrisma({ assignments: [] }));
+    const deletedAt = new Date('2026-10-06T00:00:00.000Z');
+    const entry = await seedEntry(prisma, {
+      deletedAt,
+      deletedById: 'u-someone-else',
+      deletedBySystem: false,
+      deletionReason: 'Coordinator dismissed by hand',
+    });
+
+    await service.reconcileEntryForCompensation({
+      assignmentId: 'a1',
+      date: AFTER_CUTOVER,
+      newCompensation: AssignmentCompensationKind.SALARY,
+      actorId: 'u-coord',
+    });
+
+    const row = prisma.entryTable.rows.find((r) => r.id === entry.id)!;
+    expect(row.deletedAt).toBe(deletedAt);
+    expect(row.deletedById).toBe('u-someone-else');
+  });
+
+  it('→ PAID/SALARY, no entry at all: no-op — generation already skips it', async () => {
+    const { service } = makeService(buildPrisma({ assignments: [] }));
+
+    await expect(
+      service.reconcileEntryForCompensation({
+        assignmentId: 'no-such-assignment',
+        date: AFTER_CUTOVER,
+        newCompensation: AssignmentCompensationKind.PAID,
+        actorId: 'u-coord',
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('→ VOLUNTEER, deleted with deletedBySystem: un-deletes the same row as PENDING with reopenedAt stamped', async () => {
+    const { service, prisma } = makeService(buildPrisma({ assignments: [] }));
+    const entry = await seedEntry(prisma, {
+      status: VolunteerHoursStatus.APPROVED,
+      deletedAt: new Date('2026-10-06T00:00:00.000Z'),
+      deletedById: 'system-actor',
+      deletedBySystem: true,
+      deletionReason: 'Reclassified to PAID — no longer volunteering.',
+    });
+
+    await service.reconcileEntryForCompensation({
+      assignmentId: 'a1',
+      date: AFTER_CUTOVER,
+      newCompensation: AssignmentCompensationKind.VOLUNTEER,
+      actorId: 'u-coord',
+    });
+
+    const row = prisma.entryTable.rows.find((r) => r.id === entry.id)!;
+    expect(row.deletedAt).toBeNull();
+    expect(row.deletedBySystem).toBe(false);
+    expect(row.status).toBe(VolunteerHoursStatus.PENDING);
+    expect(row.reopenedAt).not.toBeNull();
+    expect(row.reopenedById).toBe('u-coord');
+    // Never resurrected as a second row.
+    expect(prisma.entryTable.rows).toHaveLength(1);
+  });
+
+  it('→ VOLUNTEER, deleted manually: must not resurrect', async () => {
+    const { service, prisma } = makeService(buildPrisma({ assignments: [] }));
+    const deletedAt = new Date('2026-10-06T00:00:00.000Z');
+    const entry = await seedEntry(prisma, {
+      deletedAt,
+      deletedById: 'u-coord',
+      deletedBySystem: false,
+      deletionReason: 'This never happened — logged in error.',
+    });
+
+    await service.reconcileEntryForCompensation({
+      assignmentId: 'a1',
+      date: AFTER_CUTOVER,
+      newCompensation: AssignmentCompensationKind.VOLUNTEER,
+      actorId: 'u-coord',
+    });
+
+    const row = prisma.entryTable.rows.find((r) => r.id === entry.id)!;
+    expect(row.deletedAt).toBe(deletedAt);
+    expect(row.deletedBySystem).toBe(false);
+    expect(row.reopenedAt).toBeNull();
+  });
+
+  it('→ VOLUNTEER, no entry, date on/after cutover: no-op — lazy generation picks it up', async () => {
+    const { service } = makeService(buildPrisma({ assignments: [] }));
+
+    await expect(
+      service.reconcileEntryForCompensation({
+        assignmentId: 'no-such-assignment',
+        date: AFTER_CUTOVER,
+        newCompensation: AssignmentCompensationKind.VOLUNTEER,
+        actorId: 'u-coord',
+      }),
+    ).resolves.toBeUndefined();
+  });
+
+  it('refuses the call outright before the scheduled-generation cutover, in both directions', async () => {
+    const { service } = makeService(buildPrisma({ assignments: [] }));
+
+    await expect(
+      service.reconcileEntryForCompensation({
+        assignmentId: 'a1',
+        date: BEFORE_CUTOVER,
+        newCompensation: AssignmentCompensationKind.PAID,
+        actorId: 'u-coord',
+      }),
+    ).rejects.toBeInstanceOf(ApiBadRequestException);
+
+    await expect(
+      service.reconcileEntryForCompensation({
+        assignmentId: 'a1',
+        date: BEFORE_CUTOVER,
+        newCompensation: AssignmentCompensationKind.VOLUNTEER,
+        actorId: 'u-coord',
+      }),
+    ).rejects.toMatchObject({ code: 'COMPENSATION_RECLASSIFY_PRE_CUTOVER' });
+  });
+
+  it('voiding an APPROVED entry requires a typed reason', async () => {
+    const { service, prisma } = makeService(buildPrisma({ assignments: [] }));
+    await seedEntry(prisma, { status: VolunteerHoursStatus.APPROVED });
+
+    await expect(
+      service.reconcileEntryForCompensation({
+        assignmentId: 'a1',
+        date: AFTER_CUTOVER,
+        newCompensation: AssignmentCompensationKind.SALARY,
+        actorId: 'u-coord',
+      }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('voiding an APPROVED entry with a reason stamps it into deletionReason', async () => {
+    const { service, prisma } = makeService(buildPrisma({ assignments: [] }));
+    const entry = await seedEntry(prisma, { status: VolunteerHoursStatus.APPROVED });
+
+    await service.reconcileEntryForCompensation({
+      assignmentId: 'a1',
+      date: AFTER_CUTOVER,
+      newCompensation: AssignmentCompensationKind.SALARY,
+      actorId: 'u-coord',
+      voidReason: 'Confirmed paid via Apoio Local stipend.',
+    });
+
+    const row = prisma.entryTable.rows.find((r) => r.id === entry.id)!;
+    expect(row.deletionReason).toBe('Confirmed paid via Apoio Local stipend.');
   });
 });

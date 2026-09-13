@@ -21,7 +21,6 @@ const person = (overrides: Partial<User>): User =>
     roles: [],
     provider: AuthProvider.LOCAL,
     isActive: true,
-    isPaidStaff: false,
     isDriver: false,
     isActiveEmergencyOperational: false,
     createdAt: '2026-01-01T00:00:00.000Z',
@@ -36,15 +35,15 @@ const renderDialog = () =>
     </AdminContext>,
   );
 
-// #245 — a paid staffer can still volunteer off the clock, so the picker
-// must not hide them by a blanket isPaidStaff rule (that would just be
-// #223's superseded assumption re-appearing in the UI).
-describe('BulkHoursDialog — volunteer picker (#245)', () => {
-  it('offers a paid staff member alongside a volunteer, not just the volunteer', async () => {
+// Someone on an employment contract can still volunteer off the clock, so
+// the picker must not hide them by any blanket person-level rule —
+// compensation is a property of the assignment, not the person.
+describe('BulkHoursDialog — volunteer picker', () => {
+  it('offers a contracted staff member alongside a volunteer, not just the volunteer', async () => {
     mockApiFetch.mockResolvedValue({
       data: [
-        person({ id: 'u-paid', firstName: 'Paula', lastName: 'Paid', isPaidStaff: true }),
-        person({ id: 'u-vol', firstName: 'Vera', lastName: 'Volunteer', isPaidStaff: false }),
+        person({ id: 'u-paid', firstName: 'Paula', lastName: 'Paid' }),
+        person({ id: 'u-vol', firstName: 'Vera', lastName: 'Volunteer' }),
       ],
       total: 2,
     });

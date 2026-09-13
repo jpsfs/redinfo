@@ -83,16 +83,6 @@ export class CreateUserDto {
   @IsBoolean()
   isActive?: boolean;
 
-  @ApiPropertyOptional({
-    default: false,
-    description:
-      'Paid staff rather than a volunteer. Gates volunteer-hours generation: a paid ' +
-      "shift never produces credited volunteer time. Doesn't affect roles or permissions.",
-  })
-  @IsOptional()
-  @IsBoolean()
-  isPaidStaff?: boolean;
-
   // ── Personnel profile ──────────────────────────────────────────────────
   @ApiPropertyOptional({ example: '+351 917 445 200' })
   @IsOptional()

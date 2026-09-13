@@ -92,10 +92,14 @@ export class CreateScheduleAssignmentDto {
   @ApiPropertyOptional({
     enum: AssignmentCompensationKind,
     description:
-      'Only meaningful for a paid-staff assignee, and only when off the clock (#245). ' +
-      'Omitted or ignored otherwise.',
+      'An explicit VOLUNTEER/PAID call for this one assignment, made at creation time. ' +
+      "Ignored — never an error — when the assignee is on their contract's clock for " +
+      'this shift, which always resolves SALARY instead. SALARY itself is never a valid ' +
+      'value here — it is resolved, not chosen.',
   })
   @IsOptional()
-  @IsEnum(AssignmentCompensationKind)
-  compensationOverride?: AssignmentCompensationKind;
+  @IsEnum(AssignmentCompensationKind, {
+    message: 'compensation must be VOLUNTEER or PAID — SALARY is resolved, never chosen.',
+  })
+  compensation?: AssignmentCompensationKind;
 }

@@ -4,7 +4,14 @@ import userEvent from '@testing-library/user-event';
 import { AdminContext, ResourceContextProvider, testDataProvider } from 'react-admin';
 import polyglotI18nProvider from 'ra-i18n-polyglot';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
-import { CertificationType, User, UserRole } from '@redinfo/shared';
+import {
+  CertificationType,
+  EmploymentContract,
+  EmploymentContractKind,
+  PaidStaffScheduleResponse,
+  User,
+  UserRole,
+} from '@redinfo/shared';
 import { UserShow } from './UserShow';
 import { apiDownload, apiFetch, apiUpload } from '../../api';
 import { messages } from '../../i18n/i18nProvider';
@@ -159,57 +166,94 @@ describe('UserShow', () => {
 
 // ── Paid staff schedule (#245) ─────────────────────────────────────────────────
 
+const FULL_TIME_CONTRACT: EmploymentContract = {
+  id: 'ec-1',
+  userId: 'u-1',
+  kind: EmploymentContractKind.FULL_TIME,
+  startDate: '2026-01-01',
+  endDate: null,
+  createdById: 'u-coord',
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+};
+
 describe('UserShow — paid staff schedule', () => {
   beforeEach(() => {
     mockApiFetch.mockReset();
   });
 
-  it('is not shown for a volunteer, and never fetched for one', async () => {
-    renderShow(person({ isPaidStaff: false }));
+  /** Routes both `/employment-contracts/u-1` and `/paid-staff-schedule/u-1` GETs by path. */
+  function respondWith(
+    contracts: EmploymentContract[] = [],
+    schedule: PaidStaffScheduleResponse = { userId: 'u-1', blocks: [], overrides: [] },
+  ) {
+    mockApiFetch.mockImplementation((path: string) => {
+      if (path === '/employment-contracts/u-1') return Promise.resolve({ userId: 'u-1', contracts });
+      if (path === '/paid-staff-schedule/u-1') return Promise.resolve(schedule);
+      return Promise.resolve(undefined);
+    });
+  }
+
+  // Stage 1 of the paid-staff rework removed `User.isPaidStaff` — a block now
+  // belongs to an `EmploymentContract`, and the panel gates on having one.
+  it('is not shown for a volunteer with no employment contract, and never fetched for one', async () => {
+    respondWith([]);
+    renderShow(person());
 
     await waitFor(() => expect(screen.getAllByText('TAS').length).toBeGreaterThan(0));
     expect(screen.queryByText('Work schedule')).not.toBeInTheDocument();
-    expect(mockApiFetch).not.toHaveBeenCalled();
-  });
-
-  it('is hidden from someone without MANAGE_PERSONNEL, even for a paid staff member', async () => {
-    renderShow(person({ isPaidStaff: true }), [UserRole.EMERGENCY_OPERATIONAL]);
-
-    await waitFor(() => expect(screen.getAllByText('TAS').length).toBeGreaterThan(0));
-    expect(screen.queryByText('Work schedule')).not.toBeInTheDocument();
-    expect(mockApiFetch).not.toHaveBeenCalled();
+    expect(mockApiFetch).not.toHaveBeenCalledWith('/paid-staff-schedule/u-1');
   });
 
   it("shows a paid staff member's recurring pattern and one-off exceptions", async () => {
-    mockApiFetch.mockResolvedValue({
+    respondWith([FULL_TIME_CONTRACT], {
       userId: 'u-1',
       blocks: [
-        { id: 'b1', userId: 'u-1', dayOfWeek: 1, startMinute: 480, endMinute: 960, effectiveFrom: '2026-01-01', effectiveTo: null },
+        {
+          id: 'block-1',
+          userId: 'u-1',
+          dayOfWeek: 1,
+          startMinute: 8 * 60,
+          endMinute: 16 * 60,
+          effectiveFrom: '2026-01-05',
+          effectiveTo: null,
+        },
       ],
       overrides: [
-        { id: 'o1', userId: 'u-1', date: '2026-10-05', isOff: true, startMinute: null, endMinute: null, notes: null },
+        {
+          id: 'ov-1',
+          userId: 'u-1',
+          date: '2026-02-01',
+          isOff: true,
+          startMinute: null,
+          endMinute: null,
+          notes: "Doctor's appointment",
+        },
       ],
     });
-    renderShow(person({ isPaidStaff: true }));
+    renderShow(person());
 
     expect(await screen.findByText('Work schedule')).toBeInTheDocument();
-    expect(await screen.findByText(/08:00–16:00/)).toBeInTheDocument();
-    expect(screen.getByText('2026-10-05')).toBeInTheDocument();
+    expect(screen.getByText('Mon · 08:00–16:00')).toBeInTheDocument();
     expect(screen.getByText('Day off')).toBeInTheDocument();
+    expect(screen.getByText("Doctor's appointment")).toBeInTheDocument();
   });
 
   it('adds a recurring block for a paid staff member', async () => {
+    respondWith([FULL_TIME_CONTRACT]);
     const user = userEvent.setup();
-    mockApiFetch.mockResolvedValue({ userId: 'u-1', blocks: [], overrides: [] });
-    renderShow(person({ isPaidStaff: true }));
+    renderShow(person());
 
     await user.click(await screen.findByRole('button', { name: /add block/i }));
-    await user.click(screen.getByRole('button', { name: /save block/i }));
+    await user.click(await screen.findByRole('button', { name: /save block/i }));
 
     await waitFor(() =>
       expect(mockApiFetch).toHaveBeenCalledWith(
         '/paid-staff-schedule/u-1/blocks',
-        expect.objectContaining({ method: 'POST' }),
+        expect.objectContaining({
+          method: 'POST',
+          body: expect.objectContaining({ contractId: 'ec-1' }),
+        }),
       ),
     );
   });

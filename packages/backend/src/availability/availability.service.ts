@@ -38,7 +38,6 @@ const PERSON_SELECT = {
   id: true,
   firstName: true,
   lastName: true,
-  isPaidStaff: true,
   certifications: { select: CERT_HELD_SELECT },
 } as const;
 

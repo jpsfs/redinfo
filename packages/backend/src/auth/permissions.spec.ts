@@ -157,6 +157,7 @@ describe('hasPermission', () => {
     Action.MANAGE_VOLUNTEER_HOURS,
     Action.VIEW_VOLUNTEER_HOURS,
     Action.MANAGE_INEM_STATUS,
+    Action.MANAGE_COMPENSATION,
   ])('LOGISTICS_COORDINATOR cannot %s (cross-domain denied)', (action) => {
     expect(hasPermission(UserRole.LOGISTICS_COORDINATOR, action)).toBe(false);
   });
@@ -178,6 +179,16 @@ describe('hasPermission', () => {
 
   it('EMERGENCY_COORDINATOR can perform MANAGE_INEM_STATUS', () => {
     expect(hasPermission(UserRole.EMERGENCY_COORDINATOR, Action.MANAGE_INEM_STATUS)).toBe(true);
+  });
+
+  // ── Compensation permissions (Stage 1 of the paid-staff rework) ────────────
+
+  it('EMERGENCY_COORDINATOR can perform MANAGE_COMPENSATION', () => {
+    expect(hasPermission(UserRole.EMERGENCY_COORDINATOR, Action.MANAGE_COMPENSATION)).toBe(true);
+  });
+
+  it('EMERGENCY_OPERATIONAL cannot perform MANAGE_COMPENSATION — a colleague’s pay is not everyone’s business', () => {
+    expect(hasPermission(UserRole.EMERGENCY_OPERATIONAL, Action.MANAGE_COMPENSATION)).toBe(false);
   });
 
   // Scenario 3: new emergency action added → EMERGENCY_OPERATIONAL gains it after mapping

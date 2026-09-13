@@ -1,5 +1,4 @@
 import {
-  BooleanInput,
   Create,
   FormDataConsumer,
   SelectArrayInput,
@@ -72,7 +71,6 @@ export const UserCreate = () => {
 
         <Divider sx={{ width: '100%', my: 2 }} />
         <Typography variant="subtitle2">{t('userForm.personnelSectionOptional')}</Typography>
-        <BooleanInput source="isPaidStaff" helperText={t('userForm.isPaidStaffHint')} />
         <TextInput source="phone" />
         <TextInput source="birthDate" type="date" InputLabelProps={{ shrink: true }} />
         <TextInput source="joinedOn" type="date" InputLabelProps={{ shrink: true }} />

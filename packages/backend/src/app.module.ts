@@ -15,6 +15,7 @@ import { EventReportsModule } from './event-reports/event-reports.module';
 import { LiveRunsModule } from './live-runs/live-runs.module';
 import { VolunteerHoursModule } from './volunteer-hours/volunteer-hours.module';
 import { PaidStaffScheduleModule } from './paid-staff-schedule/paid-staff-schedule.module';
+import { EmploymentContractsModule } from './employment-contracts/employment-contracts.module';
 import { StatisticsModule } from './statistics/statistics.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { NoticesModule } from './notices/notices.module';
@@ -43,6 +44,7 @@ import { McpModule } from './mcp/mcp.module';
     LiveRunsModule,
     VolunteerHoursModule,
     PaidStaffScheduleModule,
+    EmploymentContractsModule,
     StatisticsModule,
     NotificationsModule,
     NoticesModule,

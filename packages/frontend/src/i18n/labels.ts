@@ -621,10 +621,6 @@ const MESSAGES = {
     pt: 'Só para uso administrativo (seguros, certificados). O nome próprio e o apelido continuam a ser usados em todo o lado.',
     en: 'For administrative use only (insurance, certificates). First and last name keep being used everywhere else.',
   },
-  'userForm.isPaidStaffHint': {
-    pt: 'Não acumula horas de voluntariado pelos turnos que faz.',
-    en: 'Does not accrue volunteer-hours credit for shifts worked.',
-  },
 
   'personnelList.nameColumn': { pt: 'Nome', en: 'Name' },
   'personnelList.roleColumn': { pt: 'Funções', en: 'Roles' },
@@ -707,6 +703,30 @@ const MESSAGES = {
   'userShow.scheduleOverrideSaveFailed': { pt: 'Não foi possível guardar a exceção.', en: 'Could not save the exception.' },
   'userShow.scheduleOverrideRemoved': { pt: 'Exceção removida', en: 'Exception removed' },
   'userShow.scheduleOverrideRemoveFailed': { pt: 'Não foi possível remover a exceção.', en: 'Could not remove the exception.' },
+  'userShow.contractSelectorLabel': { pt: 'Contrato', en: 'Contract' },
+  'userShow.contractStillActive': { pt: 'em curso', en: 'ongoing' },
+
+  'employmentContracts.heading': { pt: 'Contratos', en: 'Contracts' },
+  'employmentContracts.hint': {
+    pt: 'Períodos em que esta pessoa está contratada. O horário de trabalho dentro de cada contrato define-se abaixo.',
+    en: "Periods this person is under contract. That contract's own hours are set below.",
+  },
+  'employmentContracts.add': { pt: 'Adicionar contrato', en: 'Add contract' },
+  'employmentContracts.none': { pt: 'Sem contratos registados.', en: 'No contracts on file.' },
+  'employmentContracts.kindLabel': { pt: 'Tipo', en: 'Kind' },
+  'employmentContracts.kindFullTime': { pt: 'Tempo inteiro', en: 'Full time' },
+  'employmentContracts.kindPartTime': { pt: 'Tempo parcial', en: 'Part time' },
+  'employmentContracts.startDateLabel': { pt: 'Início', en: 'Start' },
+  'employmentContracts.endDateLabel': { pt: 'Fim', en: 'End' },
+  'employmentContracts.stillActive': { pt: 'em curso', en: 'ongoing' },
+  'employmentContracts.save': { pt: 'Guardar', en: 'Save' },
+  'employmentContracts.saved': { pt: 'Contrato guardado', en: 'Contract saved' },
+  'employmentContracts.saveFailed': { pt: 'Não foi possível guardar o contrato.', en: 'Could not save the contract.' },
+  'employmentContracts.end': { pt: 'Terminar contrato', en: 'End contract' },
+  'employmentContracts.confirmEnd': { pt: 'Confirmar', en: 'Confirm' },
+  'employmentContracts.ended': { pt: 'Contrato terminado', en: 'Contract ended' },
+  'employmentContracts.endFailed': { pt: 'Não foi possível terminar o contrato.', en: 'Could not end the contract.' },
+  'employmentContracts.loadFailed': { pt: 'Não foi possível carregar os contratos.', en: 'Could not load the contracts.' },
 
   'certificationDialog.add': { pt: 'Adicionar certificação', en: 'Add certification' },
   'certificationDialog.edit': { pt: 'Editar certificação', en: 'Edit certification' },
@@ -1337,7 +1357,9 @@ const MESSAGES = {
   'scheduleBoard.legendConflict': { pt: 'Duplamente escalado', en: 'Double-booked' },
   'scheduleBoard.legendAdjusted': { pt: 'Horário ajustado só para esta escala', en: "Hours adjusted for this schedule alone" },
   'scheduleBoard.legendNameChip': { pt: 'Nome', en: 'Name' },
-  'scheduleBoard.adjustShiftAria': { pt: 'Ajustar o horário de %{day}, %{label}', en: 'Adjust the hours of %{day}, %{label}' },
+  'scheduleBoard.adjustShiftAria': { pt: 'Opções do turno de %{day}, %{label}', en: 'Options for the shift on %{day}, %{label}' },
+  'scheduleBoard.shiftMenuAdjust': { pt: 'Ajustar horário', en: 'Adjust hours' },
+  'scheduleBoard.shiftMenuCompensation': { pt: 'Classificação da equipa', en: 'Crew classification' },
   'scheduleBoard.adjustedWas': { pt: 'era %{label}', en: 'was %{label}' },
   'scheduleBoard.doubleBookedTooltip': {
     pt: 'Duplamente escalado: também em %{window}, %{label}',
@@ -1446,10 +1468,6 @@ const MESSAGES = {
     pt: 'Aparece na escala e na versão publicada.',
     en: 'Shown on the board and on the published schedule.',
   },
-  'assignDialog.paidExtraLabel': {
-    pt: 'Contar como horas extra pagas (não gera horas de voluntariado)',
-    en: 'Count as paid extra hours (does not generate volunteer hours)',
-  },
   'autofillDialog.title': { pt: 'Preenchimento automático', en: 'Auto-fill draft' },
   'autofillDialog.description': {
     pt: 'Preenche a partir da disponibilidade submetida, condutores primeiro para cada viatura que um turno precisa. Ninguém que não tenha submetido é colocado.',
@@ -1540,6 +1558,21 @@ const MESSAGES = {
   },
   'adjustShift.errorOverlaps': { pt: 'Sobrepõe-se a %{label}.', en: 'Overlaps %{label}.' },
   'adjustShift.failed': { pt: 'Não foi possível ajustar este turno.', en: 'Could not adjust this shift.' },
+
+  // ── Compensation dialog (Stage 1 of the paid-staff rework) ──
+  'compensationDialog.title': { pt: 'Classificação da equipa', en: 'Crew classification' },
+  'compensationDialog.hint': {
+    pt: 'Por predefinição, todos estão a fazer voluntariado. Quem está em horário de contrato aparece automaticamente e não pode ser alterado aqui.',
+    en: 'Everyone volunteers by default. Anyone on their contract clock is set automatically and cannot be changed here.',
+  },
+  'compensationDialog.optionVolunteer': { pt: 'Voluntariado', en: 'Volunteer' },
+  'compensationDialog.optionPaid': { pt: 'Pago', en: 'Paid' },
+  'compensationDialog.onContractClock': { pt: 'Horário de contrato', en: 'On contract clock' },
+  'compensationDialog.save': { pt: 'Guardar', en: 'Save' },
+  'compensationDialog.failed': {
+    pt: 'Não foi possível guardar a classificação.',
+    en: 'Could not save the classification.',
+  },
 
   // ── TimeRangeField (shared start/end input for manual volunteer-hours forms) ──
   'timeRangeField.startAria': { pt: 'Início', en: 'Start' },
@@ -2508,6 +2541,10 @@ const MESSAGES = {
   'apiError.PAID_STAFF_SCHEDULE_INVALID_RANGE': {
     pt: 'A hora de fim tem de ser depois da hora de início.',
     en: 'The end time must be after the start time.',
+  },
+  'apiError.COMPENSATION_RECLASSIFY_PRE_CUTOVER': {
+    pt: 'Este turno é anterior ao início do registo automático de horas de voluntariado e não pode ser reclassificado.',
+    en: 'This shift predates scheduled volunteer-hours generation and cannot be reclassified.',
   },
 
   // ── Calendar headers (#180 phase 5) ──

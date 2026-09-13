@@ -159,6 +159,7 @@ describe('every enum value has a label', () => {
     'INEM_SESSION_NOT_ACTIVE',
     'LIVE_RUN_CLOSE_BLOCKED',
     'PAID_STAFF_SCHEDULE_INVALID_RANGE',
+    'COMPENSATION_RECLASSIFY_PRE_CUTOVER',
   ] as const satisfies readonly ApiErrorCode[];
   // If ApiErrorCode ever grows a member not listed above, this fails to
   // *compile* — the same trick as the EventReportProblemCode guard below.

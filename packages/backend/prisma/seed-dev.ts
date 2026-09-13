@@ -9,6 +9,7 @@ import {
   CertificationType,
   DEFAULT_DELEGATION_SETTINGS,
   DRIVER_ROLE_NAME,
+  EmploymentContractKind,
   EventLocationType,
   EventReportType,
   Gender,
@@ -33,6 +34,7 @@ import { ScheduleAssignmentsService } from '../src/schedules/schedule-assignment
 import { ScheduleAutofillService } from '../src/schedules/schedule-autofill.service';
 import { VolunteerHoursService } from '../src/volunteer-hours/volunteer-hours.service';
 import { PaidStaffScheduleService } from '../src/paid-staff-schedule/paid-staff-schedule.service';
+import { EmploymentContractsService } from '../src/employment-contracts/employment-contracts.service';
 import { EventReportsService } from '../src/event-reports/event-reports.service';
 import { EventReportNumbering } from '../src/event-reports/event-report-numbering';
 import { StockMovementsService } from '../src/inventory/stock-movements.service';
@@ -105,8 +107,6 @@ interface UserFixture {
   lastName: string;
   roles: UserRole[];
   isActive?: boolean;
-  /** #223 — paid staff rather than a volunteer. Defaults false, like the column. */
-  isPaidStaff?: boolean;
   phone: string;
   birthDate: string;
   joinedOn: string;
@@ -259,9 +259,9 @@ async function main() {
       firstName: 'Tiago',
       lastName: 'Correia',
       roles: [UserRole.EMERGENCY_OPERATIONAL],
-      // #223 — the delegation's one paid driver, for manual QA of the
-      // paid-staff/volunteer-hours gate.
-      isPaidStaff: true,
+      // The delegation's one contracted driver, for manual QA of the
+      // employment-contract/volunteer-hours gate — see the `EmploymentContract`
+      // and `PaidStaffSchedule` block created for him below.
       phone: '+351 916 789 012',
       birthDate: '1993-09-09',
       joinedOn: '2017-06-10',
@@ -431,7 +431,6 @@ async function main() {
         passwordHash,
         roles: fixture.roles,
         isActive: fixture.isActive ?? true,
-        isPaidStaff: fixture.isPaidStaff ?? false,
         phone: fixture.phone,
         birthDate: parseIsoDate(fixture.birthDate),
         joinedOn: parseIsoDate(fixture.joinedOn),
@@ -603,18 +602,37 @@ async function main() {
   const windows = new AvailabilityWindowsService(prisma, shiftSchedule);
   const availability = new AvailabilityService(prisma, windows, shiftSchedule);
   const schedules = new SchedulesService(prisma, shiftSchedule);
-  const assignments = new ScheduleAssignmentsService(prisma, schedules, shiftSchedule);
-  const autofill = new ScheduleAutofillService(prisma, schedules);
   const paidStaffSchedule = new PaidStaffScheduleService(prisma);
-  const volunteerHours = new VolunteerHoursService(prisma, shiftSchedule, paidStaffSchedule);
+  const volunteerHours = new VolunteerHoursService(prisma, shiftSchedule);
+  const assignments = new ScheduleAssignmentsService(
+    prisma,
+    schedules,
+    shiftSchedule,
+    paidStaffSchedule,
+    volunteerHours,
+  );
+  const autofill = new ScheduleAutofillService(prisma, schedules);
+  const employmentContracts = new EmploymentContractsService(prisma);
 
-  // #245 — Tiago's contracted hours, so a shift that falls inside them
-  // generates nothing while one outside them still credits him like any
-  // volunteer. Monday–Friday, office hours, open-ended.
+  // Tiago's employment contract, so a shift that falls inside its contracted
+  // hours generates nothing while one outside them still credits him like
+  // any volunteer — exercises the salary path in manual QA. Open-ended,
+  // Monday–Friday, office hours.
+  const tiagoContract = await employmentContracts.create(
+    tiago.id,
+    { kind: EmploymentContractKind.FULL_TIME, startDate: '2020-01-01' },
+    admin.id,
+  );
   for (let dayOfWeek = 1; dayOfWeek <= 5; dayOfWeek += 1) {
     await paidStaffSchedule.addBlock(
       tiago.id,
-      { dayOfWeek, startMinute: toMinuteOfDay(8), endMinute: toMinuteOfDay(16), effectiveFrom: '2020-01-01' },
+      {
+        contractId: tiagoContract.id,
+        dayOfWeek,
+        startMinute: toMinuteOfDay(8),
+        endMinute: toMinuteOfDay(16),
+        effectiveFrom: '2020-01-01',
+      },
       admin.id,
     );
   }

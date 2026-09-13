@@ -58,10 +58,6 @@ model User {
   provider     AuthProvider @default(LOCAL)
   providerId   String?
   isActive     Boolean      @default(true)
-  /// Paid staff rather than a volunteer (#223). Gates volunteer-hours
-  /// generation: a paid shift never produces a `VolunteerHoursEntry`. Default
-  /// false so no existing user changes behaviour.
-  isPaidStaff  Boolean      @default(false)
   createdAt    DateTime     @default(now())
   updatedAt    DateTime     @updatedAt
 
@@ -114,12 +110,15 @@ model User {
   availabilitySubmissions AvailabilitySubmission[]
   availabilityResponses   AvailabilityResponse[]
 
-  schedulesCreated     Schedule[]              @relation("ScheduleCreatedBy")
-  schedulesPublished   Schedule[]              @relation("SchedulePublishedBy")
-  scheduleAssignments  ScheduleAssignment[]    @relation("ScheduleAssignedTo")
-  assignmentsMade      ScheduleAssignment[]    @relation("ScheduleAssignedBy")
-  shiftAdjustmentsMade ScheduleShiftOverride[] @relation("ScheduleShiftAdjustedBy")
+  schedulesCreated             Schedule[]              @relation("ScheduleCreatedBy")
+  schedulesPublished           Schedule[]              @relation("SchedulePublishedBy")
+  scheduleAssignments          ScheduleAssignment[]    @relation("ScheduleAssignedTo")
+  assignmentsMade              ScheduleAssignment[]    @relation("ScheduleAssignedBy")
+  assignmentCompensationsSet   ScheduleAssignment[]    @relation("ScheduleAssignmentCompensationSetBy")
+  shiftAdjustmentsMade         ScheduleShiftOverride[] @relation("ScheduleShiftAdjustedBy")
 
+  employmentContracts        EmploymentContract[]        @relation("EmploymentContractOwner")
+  employmentContractsCreated EmploymentContract[]        @relation("EmploymentContractCreatedBy")
   paidStaffSchedule           PaidStaffSchedule[]         @relation("PaidStaffScheduleOwner")
   paidStaffScheduleCreated    PaidStaffSchedule[]         @relation("PaidStaffScheduleCreatedBy")
   paidStaffScheduleOverride   PaidStaffScheduleOverride[] @relation("PaidStaffScheduleOverrideOwner")
@@ -721,11 +720,13 @@ enum ScheduleStatus {
   PUBLISHED
 }
 
-/// A coordinator's explicit call on one off-the-clock assignment (#245) — see
-/// the shared enum's doc comment for the full resolution rule.
+/// How one shift of one person's time is classified for pay — see the shared
+/// enum's doc comment for the full resolution rule (D1–D3 of the paid-staff
+/// rework, superseding #223/#245).
 enum AssignmentCompensationKind {
   VOLUNTEER
-  PAID_EXTRA
+  SALARY
+  PAID
 }
 
 /// The duty roster built from one availability window.
@@ -783,11 +784,19 @@ model ScheduleAssignment {
   /// Distinct from `isOverride`, which is about availability, not
   /// certification: an assignment may carry either, both, or neither.
   certificationOverrideReason String?
-  /// A coordinator's explicit volunteer-vs-paid call for this one
-  /// assignment (#245). Null = default resolution against
-  /// `PaidStaffSchedule`/`PaidStaffScheduleOverride` applies; see the shared
-  /// `AssignmentCompensationKind` doc comment for the full rule.
-  compensationOverride        AssignmentCompensationKind?
+  /// How this one shift is classified for pay. Resolved and stored at write
+  /// time (assignment create, or a later `setCompensation` call) — never
+  /// derived at read, so a later contract edit never retro-reclassifies a
+  /// past shift. See the shared `AssignmentCompensationKind` doc comment for
+  /// the resolution rule, and `resolveAssignmentCompensation`.
+  compensation                AssignmentCompensationKind @default(VOLUNTEER)
+  /// Who last set `compensation` explicitly, and when — null for a row still
+  /// at its resolved default. Distinct from `assignedBy`/`assignedAt`: those
+  /// record who put the person on the shift, this records who classified
+  /// their pay, which is very often someone else, later.
+  compensationSetById         String?
+  compensationSetBy           User?                   @relation("ScheduleAssignmentCompensationSetBy", fields: [compensationSetById], references: [id])
+  compensationSetAt           DateTime?
   assignedById                String
   assignedBy                  User                    @relation("ScheduleAssignedBy", fields: [assignedById], references: [id])
   assignedAt                  DateTime                @default(now())
@@ -858,16 +867,47 @@ model AvailabilityResponse {
 
 // ─── Paid staff schedule (#245) ─────────────────────────────────────────────────
 
-/// A paid staffer's recurring on-the-clock hours. Supersedes #223's blanket
-/// `User.isPaidStaff`-only gate for volunteer-hours generation: that flag
-/// still marks *who* is paid staff, this says *when* they are actually on
-/// the clock. A contract change is a new row — the old row's `effectiveTo`
+enum EmploymentContractKind {
+  FULL_TIME
+  PART_TIME
+}
+
+/// A dated fact — "this person is on contract Mar–Oct" — replacing #223's
+/// timeless `User.isPaidStaff` flag. The contract's own `startDate`/`endDate`
+/// is the authoritative gate `isOnContractClock` (shared) checks first, ahead
+/// of any `PaidStaffSchedule` block or override: outside it, the person is
+/// never on the clock no matter what pattern is on file.
+model EmploymentContract {
+  id        String                 @id @default(cuid())
+  userId    String
+  user      User                   @relation("EmploymentContractOwner", fields: [userId], references: [id], onDelete: Cascade)
+  kind      EmploymentContractKind
+  startDate DateTime               @db.Date
+  /// Inclusive. Null = still in effect.
+  endDate   DateTime?              @db.Date
+  /// Nullable: a migration-backfilled contract (from #223's flag) has no real
+  /// actor — there is no system user — but the DTO enforces it non-null for
+  /// every contract created through the API. Same pattern as `User.roles`.
+  createdById String?
+  createdBy   User?                @relation("EmploymentContractCreatedBy", fields: [createdById], references: [id])
+  createdAt DateTime               @default(now())
+  updatedAt DateTime               @updatedAt
+
+  schedules PaidStaffSchedule[]
+
+  @@index([userId, startDate])
+}
+
+/// A paid staffer's recurring on-the-clock hours, within one `EmploymentContract`.
+/// A contract change (new hours) is a new row — the old row's `effectiveTo`
 /// gets set rather than the row edited — so resolving a past assignment's
 /// on-clock status never rewrites itself under a later change.
 model PaidStaffSchedule {
-  id            String    @id @default(cuid())
+  id            String             @id @default(cuid())
   userId        String
-  user          User      @relation("PaidStaffScheduleOwner", fields: [userId], references: [id], onDelete: Cascade)
+  user          User               @relation("PaidStaffScheduleOwner", fields: [userId], references: [id], onDelete: Cascade)
+  contractId    String
+  contract      EmploymentContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
   /// `Date#getDay()` convention: 0 = Sunday … 6 = Saturday.
   dayOfWeek     Int
   /// Minutes from midnight the block starts, 0–1439.
@@ -883,6 +923,7 @@ model PaidStaffSchedule {
   updatedAt     DateTime  @updatedAt
 
   @@index([userId, dayOfWeek])
+  @@index([contractId])
 }
 
 /// A one-off exception to the recurring pattern for a single date — a full
@@ -904,6 +945,9 @@ model PaidStaffScheduleOverride {
   createdById String
   createdBy   User     @relation("PaidStaffScheduleOverrideCreatedBy", fields: [createdById], references: [id])
   createdAt   DateTime @default(now())
+  /// Missing from the original #245 shape despite `setOverride` upserting —
+  /// an edited override looked untouched.
+  updatedAt   DateTime @updatedAt
 
   /// One override per person per date — a correction edits the existing row.
   @@unique([userId, date])
@@ -1042,6 +1086,12 @@ model VolunteerHoursEntry {
   deletedById    String?
   deletedBy      User?     @relation("VolunteerHoursDeletedBy", fields: [deletedById], references: [id])
   deletionReason String?   @db.Text
+  /// True when the system (`reconcileEntryForCompensation`, on a coordinator
+  /// reclassifying the assignment to SALARY/PAID) did the soft delete, rather
+  /// than a coordinator dismissing it by hand. The discriminator that lets
+  /// reclassifying the assignment back to VOLUNTEER safely un-delete this
+  /// same row — a manual dismissal must never be resurrected that way.
+  deletedBySystem Boolean  @default(false)
 
   @@index([userId, date])
   @@index([status])

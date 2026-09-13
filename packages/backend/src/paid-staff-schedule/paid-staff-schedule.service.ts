@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import {
-  isOnPaidClock,
+  EmploymentContract,
+  isOnContractClock,
   PaidStaffScheduleBlock,
   PaidStaffScheduleOverride,
   PaidStaffScheduleResponse,
@@ -31,6 +32,12 @@ type OverrideRow = {
   notes: string | null;
 };
 
+type ContractRow = {
+  userId: string;
+  startDate: Date;
+  endDate: Date | null;
+};
+
 const toBlock = (row: BlockRow): PaidStaffScheduleBlock => ({
   id: row.id,
   userId: row.userId,
@@ -51,13 +58,34 @@ const toOverride = (row: OverrideRow): PaidStaffScheduleOverride => ({
   notes: row.notes,
 });
 
+const toContractRange = (row: ContractRow): Pick<EmploymentContract, 'startDate' | 'endDate'> => ({
+  startDate: toIsoDate(row.startDate),
+  endDate: row.endDate ? toIsoDate(row.endDate) : null,
+});
+
+/** Two inclusive date ranges (`end` null = open-ended) sharing any day at all. */
+function dateRangesOverlap(aStart: string, aEnd: string | null, bStart: string, bEnd: string | null): boolean {
+  const aEndsAfterBStarts = aEnd === null || aEnd >= bStart;
+  const bEndsAfterAStarts = bEnd === null || bEnd >= aStart;
+  return aEndsAfterBStarts && bEndsAfterAStarts;
+}
+
+/** Everything `isOnContractClock` needs for one person, over a date range. */
+export interface ClockContext {
+  contracts: Array<Pick<EmploymentContract, 'startDate' | 'endDate'>>;
+  blocks: PaidStaffScheduleBlock[];
+  overrides: PaidStaffScheduleOverride[];
+}
+
 /**
- * A paid staffer's on-the-clock hours (#245) — replaces #223's blanket
- * `User.isPaidStaff`-only gate for volunteer-hours generation with an actual
- * schedule. `isOnClock` is this module's real product: the answer
- * `VolunteerHoursService` needs before deciding whether an assignment
- * generates an entry. Everything else here (blocks, overrides) is what a
- * coordinator edits to keep that answer honest.
+ * A paid staffer's on-the-clock hours (#245, contract-aware since Stage 1 of
+ * the paid-staff rework) — replaces #223's blanket `User.isPaidStaff`-only
+ * gate for volunteer-hours generation with an actual schedule, gated by a
+ * dated `EmploymentContract` rather than a timeless flag. `isOnClock` and its
+ * batched sibling `loadClockContext` are this module's real product: the
+ * answer `resolveAssignmentCompensation` needs before an assignment's
+ * compensation is written. Everything else here (blocks, overrides) is what
+ * a coordinator edits to keep that answer honest.
  */
 @Injectable()
 export class PaidStaffScheduleService {
@@ -84,9 +112,52 @@ export class PaidStaffScheduleService {
         'The effective-to date cannot be before the effective-from date.',
       );
     }
+
+    const contract = await this.prisma.employmentContract.findUnique({ where: { id: dto.contractId } });
+    if (!contract || contract.userId !== userId) {
+      throw new NotFoundException(`Employment contract ${dto.contractId} not found`);
+    }
+    const contractStart = toIsoDate(contract.startDate);
+    const contractEnd = contract.endDate ? toIsoDate(contract.endDate) : null;
+    if (dto.effectiveFrom < contractStart || (contractEnd !== null && dto.effectiveFrom > contractEnd)) {
+      throw new ApiBadRequestException(
+        'PAID_STAFF_SCHEDULE_INVALID_RANGE',
+        "This block's start must fall within the contract's own dates.",
+      );
+    }
+    if (dto.effectiveTo && contractEnd !== null && dto.effectiveTo > contractEnd) {
+      throw new ApiBadRequestException(
+        'PAID_STAFF_SCHEDULE_INVALID_RANGE',
+        "This block's end cannot run past the contract's own end date.",
+      );
+    }
+
+    // Overlap guard (a #245 oversight): two blocks for the same person, same
+    // day of week, whose minute ranges and effective date ranges both
+    // overlap would leave `isOnPaidClock` with two conflicting answers for
+    // the same instant — not itself wrong (it only needs one to match), but
+    // a sign the data no longer describes one coherent pattern.
+    const siblings = await this.prisma.paidStaffSchedule.findMany({ where: { userId, dayOfWeek: dto.dayOfWeek } });
+    const overlap = siblings.find((row) => {
+      const datesOverlap = dateRangesOverlap(
+        dto.effectiveFrom,
+        dto.effectiveTo ?? null,
+        toIsoDate(row.effectiveFrom),
+        row.effectiveTo ? toIsoDate(row.effectiveTo) : null,
+      );
+      return datesOverlap && dto.startMinute < row.endMinute && row.startMinute < dto.endMinute;
+    });
+    if (overlap) {
+      throw new ApiBadRequestException(
+        'PAID_STAFF_SCHEDULE_INVALID_RANGE',
+        'This overlaps another block already on file for the same day of week.',
+      );
+    }
+
     const row = await this.prisma.paidStaffSchedule.create({
       data: {
         userId,
+        contractId: dto.contractId,
         dayOfWeek: dto.dayOfWeek,
         startMinute: dto.startMinute,
         endMinute: dto.endMinute,
@@ -146,23 +217,71 @@ export class PaidStaffScheduleService {
   }
 
   /**
-   * Whether `userId` was on the clock for some `[shiftStartMinute,
-   * shiftEndMinute)` window on `date`. The one method `VolunteerHoursService`
-   * actually calls — see `isOnPaidClock` (shared) for the resolution rule
-   * itself, kept there as a pure function so it can be unit tested without a
-   * database.
+   * Whether `userId` was on a contract's clock for some `[shiftStartMinute,
+   * shiftEndMinute)` window on `date`. The one method callers with a single
+   * assignment in hand (`ScheduleAssignmentsService.assign`) use — see
+   * `loadClockContext` for the batched form a whole shift's crew needs.
    */
   async isOnClock(userId: string, date: string, shiftStartMinute: number, shiftEndMinute: number): Promise<boolean> {
-    const [blocks, override] = await Promise.all([
-      this.prisma.paidStaffSchedule.findMany({ where: { userId } }),
-      this.prisma.paidStaffScheduleOverride.findUnique({ where: { userId_date: { userId, date: parseIsoDate(date) } } }),
-    ]);
-    return isOnPaidClock(
-      blocks.map(toBlock),
-      override ? [toOverride(override)] : [],
+    const context = (await this.loadClockContext([userId], { start: date, end: date })).get(userId);
+    if (!context) return false;
+    return isOnContractClock({
+      contracts: context.contracts,
+      blocks: context.blocks,
+      overrides: context.overrides,
       date,
-      shiftStartMinute,
-      shiftEndMinute,
-    );
+      startMinute: shiftStartMinute,
+      endMinute: shiftEndMinute,
+    });
+  }
+
+  /**
+   * Batched form of the same lookup, grouped per user — three queries total
+   * regardless of how many people are involved, rather than `isOnClock`'s two
+   * per person. `setCompensation` (a whole shift's crew at once) is the
+   * caller this exists for: awaiting `isOnClock` in a loop over a ~300-
+   * assignment board was the thing this replaces.
+   *
+   * `dateRange` bounds every query so this stays cheap even for a userId list
+   * spanning the whole roster — contracts/blocks still in effect at any point
+   * in the range, and overrides that actually fall inside it. Resolution
+   * itself (`isOnContractClock`) is left to the caller, one date/shift at a
+   * time, from the in-memory context this returns.
+   */
+  async loadClockContext(
+    userIds: string[],
+    dateRange: { start: string; end: string },
+  ): Promise<Map<string, ClockContext>> {
+    const result = new Map<string, ClockContext>();
+    for (const userId of userIds) result.set(userId, { contracts: [], blocks: [], overrides: [] });
+    if (userIds.length === 0) return result;
+
+    const start = parseIsoDate(dateRange.start);
+    const end = parseIsoDate(dateRange.end);
+
+    const [contracts, blocks, overrides] = await Promise.all([
+      this.prisma.employmentContract.findMany({
+        where: {
+          userId: { in: userIds },
+          startDate: { lte: end },
+          OR: [{ endDate: null }, { endDate: { gte: start } }],
+        },
+      }),
+      this.prisma.paidStaffSchedule.findMany({
+        where: {
+          userId: { in: userIds },
+          effectiveFrom: { lte: end },
+          OR: [{ effectiveTo: null }, { effectiveTo: { gte: start } }],
+        },
+      }),
+      this.prisma.paidStaffScheduleOverride.findMany({
+        where: { userId: { in: userIds }, date: { gte: start, lte: end } },
+      }),
+    ]);
+
+    for (const row of contracts) result.get(row.userId)?.contracts.push(toContractRange(row));
+    for (const row of blocks) result.get(row.userId)?.blocks.push(toBlock(row));
+    for (const row of overrides) result.get(row.userId)?.overrides.push(toOverride(row));
+    return result;
   }
 }

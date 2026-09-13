@@ -27,6 +27,7 @@ import { ScheduleAutofillService } from './schedule-autofill.service';
 import { AdjustShiftDto } from './dto/adjust-shift.dto';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
 import { CreateScheduleAssignmentDto, SelfAssignDto } from './dto/create-assignment.dto';
+import { SetShiftCompensationDto } from './dto/set-compensation.dto';
 import { AutofillScheduleDto } from './dto/autofill-schedule.dto';
 
 @ApiTags('Schedules')
@@ -220,5 +221,23 @@ export class SchedulesController {
     @Param('slot', ParseIntPipe) slot: number,
   ) {
     return this.schedules.resetShift(id, date, slot);
+  }
+
+  /**
+   * A coordinator's classification for a whole shift's crew, in one call.
+   * Gated separately from every other route here: building the rota
+   * (`MANAGE_SCHEDULES`) and knowing who on it gets paid
+   * (`MANAGE_COMPENSATION`) are different jobs.
+   */
+  @Put(':id/shifts/:date/:slot/compensation')
+  @Actions(Action.MANAGE_COMPENSATION)
+  setCompensation(
+    @Param('id') id: string,
+    @Param('date') date: string,
+    @Param('slot', ParseIntPipe) slot: number,
+    @Body() dto: SetShiftCompensationDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.assignments.setCompensation(id, date, slot, dto, user.id);
   }
 }

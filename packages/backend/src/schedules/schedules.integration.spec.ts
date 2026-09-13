@@ -15,6 +15,8 @@ import { ShiftScheduleService } from '../availability/shift-schedule.service';
 import { SchedulesService } from './schedules.service';
 import { ScheduleAssignmentsService } from './schedule-assignments.service';
 import { ScheduleAutofillService } from './schedule-autofill.service';
+import { PaidStaffScheduleService } from '../paid-staff-schedule/paid-staff-schedule.service';
+import { VolunteerHoursService } from '../volunteer-hours/volunteer-hours.service';
 
 /** Minutes from midnight, so expectations read in wall-clock hours. */
 const at = (hour: number, minute = 0) => toMinuteOfDay(hour, minute);
@@ -156,7 +158,15 @@ describeIntegration('Schedules module (integration)', () => {
     windows = new AvailabilityWindowsService(prisma, shiftSchedule);
     availability = new AvailabilityService(prisma, windows, shiftSchedule);
     schedules = new SchedulesService(prisma, shiftSchedule);
-    assignments = new ScheduleAssignmentsService(prisma, schedules, shiftSchedule);
+    const paidStaffSchedule = new PaidStaffScheduleService(prisma);
+    const volunteerHours = new VolunteerHoursService(prisma, shiftSchedule);
+    assignments = new ScheduleAssignmentsService(
+      prisma,
+      schedules,
+      shiftSchedule,
+      paidStaffSchedule,
+      volunteerHours,
+    );
     autofill = new ScheduleAutofillService(prisma, schedules);
 
     [ana, bruno, carla, rui, logistics, coordinator] = await Promise.all([
@@ -751,8 +761,9 @@ describeIntegration('Schedules module (integration)', () => {
 
   // A colleague's paid-vs-volunteer status is a coordinator's business, not
   // the rota's — the board is deliberately ungated for a published schedule,
-  // but `compensationOverride` is not part of what gets posted.
-  it('integration: hides compensationOverride from a member without MANAGE_SCHEDULES, shows it to a coordinator', async () => {
+  // but `compensation` is not part of what gets posted (D5) — gated on
+  // `MANAGE_COMPENSATION`, not `MANAGE_SCHEDULES`.
+  it('integration: hides compensation from a member without MANAGE_COMPENSATION, shows it to a coordinator', async () => {
     const window = await openWindow();
     const schedule = await schedules.create({ windowId: window.id }, coordinator.id);
     await assignments.assign(
@@ -762,7 +773,7 @@ describeIntegration('Schedules module (integration)', () => {
         slot: 1,
         userId: ana.id,
         roleId: roleId(window, 'Driver'),
-        compensationOverride: AssignmentCompensationKind.PAID_EXTRA,
+        compensation: AssignmentCompensationKind.PAID,
       },
       coordinator.id,
       true,
@@ -777,12 +788,12 @@ describeIntegration('Schedules module (integration)', () => {
 
     const coordinatorBoard = await schedules.getBoard(schedule.id, coordinatorUser);
     expect(findAnasAssignment(coordinatorBoard)).toHaveProperty(
-      'compensationOverride',
-      AssignmentCompensationKind.PAID_EXTRA,
+      'compensation',
+      AssignmentCompensationKind.PAID,
     );
 
     const memberBoard = await schedules.getBoard(schedule.id, anaUser);
-    expect(findAnasAssignment(memberBoard)).not.toHaveProperty('compensationOverride');
+    expect(findAnasAssignment(memberBoard)).not.toHaveProperty('compensation');
   });
 
   it('integration: a member adds themselves to an open place on a published rota', async () => {

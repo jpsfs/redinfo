@@ -83,7 +83,6 @@ const ASSIGNMENT_INCLUDE = {
       id: true,
       firstName: true,
       lastName: true,
-      isPaidStaff: true,
       certifications: { select: CERT_HELD_SELECT },
     },
   },
@@ -135,14 +134,16 @@ const canSeeDrafts = (user: RequestUser) =>
  * Whether this viewer may see who on a shift is paid vs. volunteering.
  *
  * A published rota is posted to the whole platform (see `assertVisible`), but
- * `ScheduleAssignment.compensationOverride` is not part of that posting — it
- * is a coordinator's call about one person's pay, and every colleague on the
- * same shift can otherwise see it. Exported so `ScheduleAssignmentsService`
- * (the assign/self-assign paths) can compute the same answer rather than
- * guessing at it.
+ * `ScheduleAssignment.compensation` is not part of that posting (D5) — it is
+ * a coordinator's call about one person's pay, and every colleague on the
+ * same shift can otherwise see it. Gated on `MANAGE_COMPENSATION`, not
+ * `MANAGE_SCHEDULES`: building the rota and knowing who on it gets paid are
+ * different jobs. Exported so `ScheduleAssignmentsService` (the
+ * assign/self-assign/setCompensation paths) can compute the same answer
+ * rather than guessing at it.
  */
 export const canSeeCompensation = (user: RequestUser) =>
-  hasPermission(user.roles, Action.MANAGE_SCHEDULES);
+  hasPermission(user.roles, Action.MANAGE_COMPENSATION);
 
 @Injectable()
 export class SchedulesService {
@@ -1275,7 +1276,7 @@ export function serializeAssignment(
     // Template-literal, not the nominal shared enum — Prisma generates its own
     // `$Enums.AssignmentCompensationKind` for query results, the same trick
     // `HeldCertificationRow.type` uses (see that type's own doc comment).
-    compensationOverride?: `${AssignmentCompensationKind}` | null;
+    compensation: `${AssignmentCompensationKind}`;
     assignedById: string;
     assignedBy?: { id: string; firstName: string; lastName: string } | null;
     assignedAt: Date;
@@ -1283,10 +1284,9 @@ export function serializeAssignment(
   date: string,
   availability: { submitted: boolean; declined: boolean },
   /**
-   * Whether this viewer may see `compensationOverride` — see
-   * `canSeeCompensation`. Deliberately a required, explicit argument rather
-   * than inferred from a role or guard here: the caller is the one who knows
-   * who is asking.
+   * Whether this viewer may see `compensation` — see `canSeeCompensation`.
+   * Deliberately a required, explicit argument rather than inferred from a
+   * role or guard here: the caller is the one who knows who is asking.
    */
   canSeeCompensation: boolean,
 ): ScheduleAssignment {
@@ -1301,14 +1301,10 @@ export function serializeAssignment(
     roleName: row.role?.name ?? null,
     isOverride: row.isOverride,
     certificationOverrideReason: row.certificationOverrideReason ?? null,
-    // Omitted entirely when redacted, never `null` — `null` already means
-    // "no explicit call was made", a real answer this viewer is not owed.
-    ...(canSeeCompensation
-      ? {
-          compensationOverride:
-            (row.compensationOverride as AssignmentCompensationKind | null | undefined) ?? null,
-        }
-      : {}),
+    // Omitted entirely when redacted (D5) — the key itself must not exist on
+    // the wire, so a plain member's client never learns the field is there
+    // for a colleague's assignment.
+    ...(canSeeCompensation ? { compensation: row.compensation as AssignmentCompensationKind } : {}),
     // Derived, not stored: an override is something done *to* someone, so
     // a volunteer who put themselves forward must not read as one.
     selfAssigned: row.assignedById === row.userId,

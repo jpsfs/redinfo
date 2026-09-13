@@ -1,13 +1,21 @@
-import { IsDateString, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { IsDateString, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { MINUTES_PER_DAY } from '@redinfo/shared';
 
 /**
  * One recurring block of a paid staffer's on-the-clock hours (#245). A
- * contract change is a new block — see `PaidStaffSchedule`'s doc comment —
+ * pattern change is a new block — see `PaidStaffSchedule`'s doc comment —
  * so there is no update endpoint, only create and delete.
  */
 export class CreatePaidStaffScheduleBlockDto {
+  @ApiProperty({
+    example: 'clx8w2k9c0003abcd1234efgh',
+    description: 'The EmploymentContract this recurring block belongs to.',
+  })
+  @IsString()
+  @MaxLength(40)
+  contractId: string;
+
   @ApiProperty({ example: 1, minimum: 0, maximum: 6, description: "Date#getDay() convention: 0 = Sunday" })
   @IsInt()
   @Min(0)

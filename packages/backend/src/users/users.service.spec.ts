@@ -23,7 +23,6 @@ const BASE_ROW = {
   roles: [UserRole.EMERGENCY_OPERATIONAL],
   provider: AuthProvider.LOCAL,
   isActive: true,
-  isPaidStaff: false,
   createdAt: new Date('2026-01-01T00:00:00.000Z'),
   updatedAt: new Date('2026-01-01T00:00:00.000Z'),
   phone: null,
@@ -241,14 +240,6 @@ describe('UsersService.update — account vs personnel fields', () => {
     );
   });
 
-  it('a coordinator may set isPaidStaff — personnel-level, gates volunteer-hours generation (#223)', async () => {
-    const { service, prisma } = makeService();
-    await service.update(USER.id, { isPaidStaff: true }, COORDINATOR);
-    expect(prisma.user.update).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ isPaidStaff: true }) }),
-    );
-  });
-
   it('a coordinator may not change email, roles or password — account-level stays admin-only', async () => {
     const { service } = makeService();
     await expect(
@@ -462,14 +453,6 @@ describe('UsersService.create', () => {
     const person = await service.create({ email: 'new@example.test', firstName: 'A', lastName: 'B' });
     expect(person.isDriver).toBe(false);
     expect(person.isActiveEmergencyOperational).toBe(false);
-  });
-
-  it('defaults isPaidStaff to false so no existing behaviour changes (#223)', async () => {
-    const { service, prisma } = makeService({
-      user: { findUnique: jest.fn().mockResolvedValue(null), create: jest.fn().mockResolvedValue(BASE_ROW) },
-    });
-    await service.create({ email: 'new@example.test', firstName: 'A', lastName: 'B' });
-    expect(prisma.user.create.mock.calls[0][0].data.isPaidStaff).toBe(false);
   });
 
   it('defaults a new account to LOCAL and hashes the given password', async () => {

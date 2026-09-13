@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import {
   ApiBadRequestException,
   ApiConflictException,
@@ -7,13 +7,17 @@ import {
 import {
   Action,
   AssignmentAvailability,
+  AssignmentCompensationKind,
   AvailabilityWindowRole,
   availabilityEligibleRoles,
   availabilityWindowLabel,
   CERTIFICATION_LABEL,
   formatRoleCapacity,
+  generatesVolunteerHours,
   hasPermission,
   holdsCertification,
+  isOnContractClock,
+  resolveAssignmentCompensation,
   ScheduleAssignment,
   ScheduleCandidate,
   ScheduleCandidatesResponse,
@@ -24,6 +28,8 @@ import {
 } from '@redinfo/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { ShiftScheduleService } from '../availability/shift-schedule.service';
+import { PaidStaffScheduleService } from '../paid-staff-schedule/paid-staff-schedule.service';
+import { VolunteerHoursService } from '../volunteer-hours/volunteer-hours.service';
 import { toIsoDate } from '../utils/date.util';
 import {
   CERT_HELD_SELECT,
@@ -32,6 +38,7 @@ import {
   toSchedulePerson,
 } from '../users/certifications.util';
 import { CreateScheduleAssignmentDto, SelfAssignDto } from './dto/create-assignment.dto';
+import { SetShiftCompensationDto } from './dto/set-compensation.dto';
 import {
   canSeeCompensation,
   RequestUser,
@@ -47,7 +54,6 @@ const ASSIGNMENT_INCLUDE = {
       id: true,
       firstName: true,
       lastName: true,
-      isPaidStaff: true,
       certifications: { select: CERT_HELD_SELECT },
     },
   },
@@ -59,7 +65,6 @@ const PERSON_SELECT = {
   id: true,
   firstName: true,
   lastName: true,
-  isPaidStaff: true,
   certifications: { select: CERT_HELD_SELECT },
 } as const;
 
@@ -83,6 +88,8 @@ export class ScheduleAssignmentsService {
     private readonly prisma: PrismaService,
     private readonly schedules: SchedulesService,
     private readonly shiftSchedule: ShiftScheduleService,
+    private readonly paidStaffSchedule: PaidStaffScheduleService,
+    private readonly volunteerHours: VolunteerHoursService,
   ) {}
 
   async assign(
@@ -90,8 +97,8 @@ export class ScheduleAssignmentsService {
     dto: CreateScheduleAssignmentDto,
     assignedById: string,
     /**
-     * Whether the caller may see `compensationOverride` on the response —
-     * see `canSeeCompensation` in `schedules.service.ts`. A required argument
+     * Whether the caller may see `compensation` on the response — see
+     * `canSeeCompensation` in `schedules.service.ts`. A required argument
      * computed by each caller from the *actual* requesting viewer, not
      * inferred here from, say, "this DTO has no compensation field today" —
      * that is a property of the DTO's current shape, not an invariant, and
@@ -104,8 +111,18 @@ export class ScheduleAssignmentsService {
     canSeeCompensation = false,
   ): Promise<ScheduleAssignment> {
     const context = await this.schedules.loadContext(scheduleId);
-    this.assertShift(context, dto.date, dto.slot);
+    const shift = this.assertShift(context, dto.date, dto.slot);
     const role = this.assertRole(context, dto.roleId ?? null);
+
+    // SALARY is resolved, never chosen — a client asking for it explicitly
+    // is almost certainly a bug (echoing a redacted read back as a write),
+    // not a real intent, so this refuses rather than silently letting
+    // `resolveAssignmentCompensation` override it.
+    if (dto.compensation === AssignmentCompensationKind.SALARY) {
+      throw new BadRequestException(
+        'SALARY cannot be set explicitly — it is resolved from the contract clock.',
+      );
+    }
 
     const person = await this.prisma.user.findUnique({
       where: { id: dto.userId },
@@ -186,6 +203,20 @@ export class ScheduleAssignmentsService {
       select: { id: true },
     });
 
+    // D3: resolved and stored once, here, at write time — never derived at
+    // read. A later contract edit must never retroactively reclassify this
+    // shift.
+    const onContractClock = await this.paidStaffSchedule.isOnClock(
+      dto.userId,
+      dto.date,
+      shift.startMinute,
+      shift.endMinute,
+    );
+    const compensation = resolveAssignmentCompensation({
+      explicit: dto.compensation,
+      onContractClock,
+    });
+
     const created = await this.prisma.scheduleAssignment.create({
       data: {
         scheduleId,
@@ -195,7 +226,13 @@ export class ScheduleAssignmentsService {
         roleId: role?.id ?? null,
         isOverride: submission === null,
         certificationOverrideReason: meetsRequirement ? null : (overrideReason as string),
-        compensationOverride: dto.compensationOverride ?? null,
+        compensation,
+        // Only stamped when the caller actually made an explicit call —
+        // otherwise this row is still at its resolved default, nobody's
+        // decision to record.
+        ...(dto.compensation !== undefined
+          ? { compensationSetById: assignedById, compensationSetAt: new Date() }
+          : {}),
         assignedById,
       },
       include: ASSIGNMENT_INCLUDE,
@@ -299,6 +336,109 @@ export class ScheduleAssignmentsService {
     }
     await this.prisma.scheduleAssignment.delete({ where: { id: assignmentId } });
     return { id: assignmentId };
+  }
+
+  /**
+   * A coordinator's classification for a whole shift's crew, in one call
+   * (`Action.MANAGE_COMPENSATION`) — the edit path #223/#245 never had:
+   * `assign()` only wrote compensation once, at creation, with no way back
+   * in afterwards. Batches the clock lookup across every assignee via
+   * `PaidStaffScheduleService.loadClockContext` rather than awaiting
+   * `isOnClock` once per assignment — the thing that made the crew dialog
+   * untenable over a real board.
+   *
+   * Validates every entry before writing any of them: an assignee on their
+   * contract's clock is rejected outright (D2's veto — silently dropping a
+   * coordinator's explicit instruction would be worse than telling them why
+   * it didn't apply), and a violation partway through a batch must not leave
+   * the earlier half already written.
+   */
+  async setCompensation(
+    scheduleId: string,
+    date: string,
+    slot: number,
+    dto: SetShiftCompensationDto,
+    actorId: string,
+  ): Promise<ScheduleAssignment[]> {
+    const assignmentIds = dto.assignments.map((entry) => entry.assignmentId);
+    const rows = await this.prisma.scheduleAssignment.findMany({
+      where: { id: { in: assignmentIds }, scheduleId, date: parseDate(date), slot },
+      include: ASSIGNMENT_INCLUDE,
+    });
+    if (rows.length !== assignmentIds.length) {
+      throw new NotFoundException('One or more assignments were not found on this shift.');
+    }
+    const byId = new Map(rows.map((row) => [row.id, row]));
+
+    const context = await this.schedules.loadContext(scheduleId);
+    const shift = this.assertShift(context, date, slot);
+
+    const clockContext = await this.paidStaffSchedule.loadClockContext(
+      rows.map((row) => row.userId),
+      { start: date, end: date },
+    );
+
+    // Pass 1: resolve and validate every entry before writing any of them.
+    const resolved = dto.assignments.map((entry) => {
+      const row = byId.get(entry.assignmentId)!;
+      if (entry.compensation === AssignmentCompensationKind.SALARY) {
+        throw new BadRequestException(
+          'SALARY cannot be set explicitly — it is resolved from the contract clock.',
+        );
+      }
+      const userClock = clockContext.get(row.userId) ?? { contracts: [], blocks: [], overrides: [] };
+      const onContractClock = isOnContractClock({
+        contracts: userClock.contracts,
+        blocks: userClock.blocks,
+        overrides: userClock.overrides,
+        date,
+        startMinute: shift.startMinute,
+        endMinute: shift.endMinute,
+      });
+      if (onContractClock) {
+        throw new BadRequestException(
+          `${row.user.firstName} ${row.user.lastName} is on their contract's clock for this shift ` +
+            'and cannot be reclassified — it always resolves SALARY.',
+        );
+      }
+      return { row, compensation: resolveAssignmentCompensation({ explicit: entry.compensation, onContractClock: false }) };
+    });
+
+    // Pass 2: write. `reconcileEntryForCompensation` keeps any already-
+    // generated volunteer-hours entry in step with the new classification.
+    const updatedRows: (typeof rows)[number][] = [];
+    for (const { row, compensation } of resolved) {
+      const updatedRow = await this.prisma.scheduleAssignment.update({
+        where: { id: row.id },
+        data: { compensation, compensationSetById: actorId, compensationSetAt: new Date() },
+        include: ASSIGNMENT_INCLUDE,
+      });
+      await this.volunteerHours.reconcileEntryForCompensation({
+        assignmentId: row.id,
+        date,
+        newCompensation: compensation,
+        actorId,
+      });
+      updatedRows.push(updatedRow);
+    }
+
+    const [submissions, declined] = await Promise.all([
+      this.prisma.availabilitySubmission.findMany({
+        where: { windowId: context.window.id, date: parseDate(date), slot },
+        select: { userId: true },
+      }),
+      this.schedules.loadDeclinedUserIds(context.window.id),
+    ]);
+    const submittedUserIds = new Set(submissions.map((row) => row.userId));
+
+    return updatedRows.map((row) =>
+      serializeAssignment(
+        row,
+        date,
+        { submitted: submittedUserIds.has(row.userId), declined: declined.has(row.userId) },
+        true, // reachable only via the MANAGE_COMPENSATION-gated route
+      ),
+    );
   }
 
   /**
