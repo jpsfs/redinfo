@@ -197,6 +197,63 @@ export class FacilitiesService {
     return sortFacilitiesForPicker(withDistance);
   }
 
+  /**
+   * The create-if-missing path a referral's destination needs (#228): a
+   * private hospital in Porto will not be in a table seeded with emergency
+   * rooms, and entering a referral cannot wait on `MANAGE_HOSPITALS` (a
+   * transport coordinator does not hold it — see `Action.MANAGE_HOSPITALS`).
+   *
+   * Matches on the same `[name, municipalityId]` pair `assertNameFree`
+   * enforces; an existing emergency-only match is opted into the transport
+   * list rather than duplicated, since that pair is unique. Deliberately
+   * skips `validateFacility`'s coordinate requirement — a referral's
+   * destination has none yet, and geocoding is unscoped (#231) — so this is
+   * the one path that can leave a transport destination without its own
+   * position; every other write to this table still goes through `create`/
+   * `update` and their normal validation.
+   */
+  async findOrCreateTransportDestination(
+    name: string,
+    municipalityId: string,
+    addressLine?: string | null,
+    postalCode?: string | null,
+  ): Promise<Facility> {
+    const trimmedName = name.trim();
+
+    const municipalityExists = await this.prisma.municipality.count({ where: { id: municipalityId } });
+    if (municipalityExists === 0) {
+      throw new BadRequestException(`Municipality ${municipalityId} not found`);
+    }
+
+    const existing = await this.prisma.facility.findFirst({
+      where: { name: trimmedName, municipalityId },
+      include: FACILITY_INCLUDE,
+    });
+    if (existing) {
+      if (existing.isTransportDestination) return serializeFacility(existing);
+      const opted = await this.prisma.facility.update({
+        where: { id: existing.id },
+        data: { isTransportDestination: true },
+        include: FACILITY_INCLUDE,
+      });
+      return serializeFacility(opted);
+    }
+
+    const created = await this.prisma.facility.create({
+      data: {
+        name: trimmedName,
+        municipalityId,
+        addressLine: addressLine?.trim() || null,
+        postalCode: postalCode?.trim() || null,
+        isEmergencyDestination: false,
+        isTransportDestination: true,
+        isActive: true,
+      },
+      include: FACILITY_INCLUDE,
+    });
+    return serializeFacility(created);
+  }
+
   async create(dto: CreateFacilityDto): Promise<Facility> {
     const input = this.normalize(dto);
     const error = validateFacility(input);

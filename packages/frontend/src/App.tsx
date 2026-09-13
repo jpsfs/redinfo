@@ -49,6 +49,11 @@ import { FacilityList, FacilityCreate, FacilityEdit } from './resources/faciliti
 import { PatientList, PatientShow, PatientCreate, PatientEdit } from './resources/patients';
 import { OrganisationList, OrganisationCreate, OrganisationEdit } from './resources/organisations';
 import { AgreementList, AgreementCreate, AgreementEdit } from './resources/agreements';
+import {
+  TransportRequestList,
+  TransportRequestCreate,
+  TransportRequestEdit,
+} from './resources/transportRequests';
 import { LiveEntryPage, LiveRunGate, LiveRunPage } from './resources/liveRuns';
 import { MyAvailabilityPage } from './pages/MyAvailabilityPage';
 import { MyDutiesPage } from './pages/MyDutiesPage';
@@ -76,6 +81,7 @@ import MedicalServicesIcon from '@mui/icons-material/MedicalServices';
 import DescriptionIcon from '@mui/icons-material/Description';
 import BusinessIcon from '@mui/icons-material/Business';
 import HandshakeIcon from '@mui/icons-material/Handshake';
+import AssignmentIcon from '@mui/icons-material/Assignment';
 
 export default function App() {
   return (
@@ -302,6 +308,14 @@ export default function App() {
         list={AgreementList}
         create={AgreementCreate}
         edit={AgreementEdit}
+      />
+
+      <Resource
+        name="transport-requests"
+        icon={AssignmentIcon}
+        list={TransportRequestList}
+        create={TransportRequestCreate}
+        edit={TransportRequestEdit}
       />
 
       {/* Read-only reference data, reached only by the pickers that need it —

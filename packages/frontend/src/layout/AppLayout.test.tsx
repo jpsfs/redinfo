@@ -151,6 +151,7 @@ describe('RedInfoMenu', () => {
       '/patients',
       '/organisations',
       '/agreements',
+      '/transport-requests',
       '/users',
       '/staff-absences',
       '/vehicles',

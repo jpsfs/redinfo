@@ -25,6 +25,7 @@ import { OAuthModule } from './oauth/oauth.module';
 import { McpModule } from './mcp/mcp.module';
 import { PatientsModule } from './patients/patients.module';
 import { OrganisationsModule } from './organisations/organisations.module';
+import { TransportRequestsModule } from './transport-requests/transport-requests.module';
 
 @Module({
   imports: [
@@ -57,6 +58,7 @@ import { OrganisationsModule } from './organisations/organisations.module';
     McpModule,
     PatientsModule,
     OrganisationsModule,
+    TransportRequestsModule,
   ],
 })
 export class AppModule {}

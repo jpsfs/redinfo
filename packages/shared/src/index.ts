@@ -7328,6 +7328,226 @@ export function validateAgreement(input: AgreementInput): string | null {
   return null;
 }
 
+// ─── Transport requests (#228) ─────────────────────────────────────────────────
+//
+// A non-urgent transport referral, entered by hand from the source referral —
+// field order and grouping mirror the referral's own layout (an email today;
+// a governmental-platform integration is unscoped, see #219's spikes) rather
+// than an idealised one. Envelope fields (`batchReference`, `communicatedAt`,
+// `requesterAccountCode`, `responseDueAt`) are the referral's own header,
+// carried on every row the same email covered rather than split into a
+// separate batch shape — the same one-model-not-two bias `Organisation` uses
+// for requester/payer.
+
+/** Ocorrência on the referral. Seed values; the real list is an open question
+ * (see the governmental-platform spike) — model as an enum, expect to extend. */
+export enum TransportRequestOccurrenceType {
+  CONSULTA = 'CONSULTA',
+  TRATAMENTO = 'TRATAMENTO',
+  ALTA = 'ALTA',
+  EXAME = 'EXAME',
+  OUTRO = 'OUTRO',
+}
+
+/** Transporte on the referral — the vehicle type the requester is asking
+ * for, which constrains vehicle choice at planning time. Same "seeded, not
+ * final" caveat as `TransportRequestOccurrenceType`. Deliberately distinct
+ * from `VehicleType` (the fleet's own physical configuration): this is what
+ * was *asked for*, not what redinfo actually has. */
+export enum TransportRequestVehicleType {
+  AMBULANCIA = 'AMBULANCIA',
+  TRANSPORTE = 'TRANSPORTE',
+  OUTRO = 'OUTRO',
+}
+
+/** Whether the delegation has accepted the referral. `ACCEPTED`/`REJECTED`
+ * are terminal — see `TransportRequest.decidedAt`/`decidedByUserId`. */
+export enum TransportRequestDecision {
+  PENDING = 'PENDING',
+  ACCEPTED = 'ACCEPTED',
+  REJECTED = 'REJECTED',
+}
+
+export const MAX_TRANSPORT_REQUEST_REFERENCE_LENGTH = 120;
+export const MAX_TRANSPORT_REQUEST_ADDRESS_LENGTH = 300;
+export const MAX_TRANSPORT_REQUEST_MESSAGE_LENGTH = 2000;
+export const MAX_TRANSPORT_REQUEST_REJECTION_REASON_LENGTH = 500;
+
+/**
+ * A destination named by a referral that a create-if-missing path may need
+ * to add to the transport destination list on the fly — a private hospital
+ * in Porto will not be in a table seeded with emergency rooms. Deliberately
+ * lighter than `FacilityInput`: coordinates are not required here, unlike
+ * `validateFacility`'s rule for a human-managed transport destination,
+ * because a referral's destination has none yet — geocoding is unscoped
+ * (#231). See `FacilitiesService.findOrCreateTransportDestination`.
+ */
+export interface DestinationFacilityInput {
+  name: string;
+  municipalityId: string;
+  addressLine?: string | null;
+  postalCode?: string | null;
+}
+
+/**
+ * The writable shape of a referral, mirroring the source document's own
+ * fields and grouping. `destinationFacilityId` names an existing facility;
+ * `destinationFacility` is the create-if-missing alternative — exactly one
+ * of the two is given, never both, never neither.
+ */
+export interface TransportRequestInput {
+  batchReference: string;
+  /** ISO datetime. */
+  communicatedAt: string;
+  requesterAccountCode: string;
+  /** ISO datetime — the referral's stated deadline for a decision. */
+  responseDueAt: string;
+
+  /** The requester's own reference for this one transport — unique per
+   * requesting organisation, never globally. */
+  externalServiceNumber: string;
+  /** ISO datetime — Data, date and time of the appointment. */
+  appointmentAt: string;
+
+  requestingOrganisationId: string;
+  payingOrganisationId: string;
+  agreementId?: string | null;
+
+  patientId: string;
+
+  occurrenceType: TransportRequestOccurrenceType;
+  requestedVehicleType: TransportRequestVehicleType;
+
+  /** Accom. */
+  escortTravels: boolean;
+  /** Ida-Volta. */
+  isRoundTrip: boolean;
+
+  /** Origin arrives as a door — a house number and a postcode — not a
+   * locality, unlike `Patient.localityId`. */
+  originAddress: string;
+  originLatitude?: number | null;
+  originLongitude?: number | null;
+
+  destinationFacilityId?: string | null;
+  destinationFacility?: DestinationFacilityInput | null;
+
+  /** Msg. */
+  freeTextMessage?: string | null;
+  /** The purpose of the referral's `Coord` column is unresolved (see the
+   * referral-field-list spike) — parked verbatim rather than dropped. */
+  coordColumnValue?: string | null;
+}
+
+export interface TransportRequest extends Omit<TransportRequestInput, 'destinationFacility'> {
+  id: string;
+  requestingOrganisation?: Organisation;
+  payingOrganisation?: Organisation;
+  agreement?: Agreement | null;
+  patient?: Patient;
+  destinationFacilityId: string;
+  destinationFacility?: Facility;
+
+  decision: TransportRequestDecision;
+  decidedByUserId?: string | null;
+  decidedAt?: string | null;
+  rejectionReason?: string | null;
+  /** The moment somebody actually clicked Aceitar on the requester's own
+   * platform — a shadow of a decision made outside redinfo, and the two can
+   * silently diverge. Accepting a request in redinfo never sets this. */
+  externallyRegisteredAt?: string | null;
+
+  /**
+   * Minutes left before `responseDueAt`, negative once overdue — computed at
+   * serialization time so the ageing query and its tests agree on what "time
+   * remaining" means without either recomputing "now" independently.
+   */
+  minutesUntilResponseDue: number;
+
+  createdById: string;
+  createdBy?: { id: string; firstName: string; lastName: string };
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Minutes left before `responseDueAt`, negative once overdue. Shared so the
+ * backend (serialization) and its tests compute the same number. */
+export function minutesUntilResponseDue(responseDueAt: string, now: Date = new Date()): number {
+  return Math.round((new Date(responseDueAt).getTime() - now.getTime()) / 60000);
+}
+
+/** Accepting or rejecting a referral (#229 builds the decision page this
+ * feeds; #228 exposes the capability). Rejecting needs a reason so the
+ * requester can be told why; accepting never does. */
+export interface DecideTransportRequestInput {
+  decision: TransportRequestDecision.ACCEPTED | TransportRequestDecision.REJECTED;
+  rejectionReason?: string | null;
+}
+
+/**
+ * Whether a referral is coherent — same "message or null" shape as every
+ * other validator here, so the intake form blocks Save with the wording the
+ * API would reject the payload with.
+ */
+export function validateTransportRequest(input: TransportRequestInput): string | null {
+  if (!input.batchReference?.trim()) return 'Give the communication\'s own reference.';
+  if (input.batchReference.trim().length > MAX_TRANSPORT_REQUEST_REFERENCE_LENGTH) {
+    return `The communication reference may be at most ${MAX_TRANSPORT_REQUEST_REFERENCE_LENGTH} characters.`;
+  }
+  if (!input.communicatedAt) return 'Give when the referral was communicated.';
+  if (!input.requesterAccountCode?.trim()) return 'Give the requester\'s account code.';
+  if (!input.responseDueAt) return 'Give the deadline to respond.';
+
+  if (!input.externalServiceNumber?.trim()) return 'Give the requester\'s own reference for this transport.';
+  if (input.externalServiceNumber.trim().length > MAX_TRANSPORT_REQUEST_REFERENCE_LENGTH) {
+    return `The service reference may be at most ${MAX_TRANSPORT_REQUEST_REFERENCE_LENGTH} characters.`;
+  }
+  if (!input.appointmentAt) return 'Give the appointment date and time.';
+
+  if (!input.requestingOrganisationId) return 'Choose the requesting organisation.';
+  if (!input.payingOrganisationId) return 'Choose the paying organisation.';
+  if (!input.patientId) return 'Choose the patient.';
+
+  if (!Object.values(TransportRequestOccurrenceType).includes(input.occurrenceType)) {
+    return 'Choose the occurrence type.';
+  }
+  if (!Object.values(TransportRequestVehicleType).includes(input.requestedVehicleType)) {
+    return 'Choose the requested vehicle type.';
+  }
+
+  if (!input.originAddress?.trim()) return 'Give the pickup address.';
+  if (input.originAddress.trim().length > MAX_TRANSPORT_REQUEST_ADDRESS_LENGTH) {
+    return `The pickup address may be at most ${MAX_TRANSPORT_REQUEST_ADDRESS_LENGTH} characters.`;
+  }
+  const hasOriginLatitude = input.originLatitude !== null && input.originLatitude !== undefined;
+  const hasOriginLongitude = input.originLongitude !== null && input.originLongitude !== undefined;
+  if (hasOriginLatitude !== hasOriginLongitude) {
+    return 'Give both the pickup latitude and longitude, or neither.';
+  }
+
+  const hasFacilityId = !!input.destinationFacilityId;
+  const hasNewFacility = !!input.destinationFacility;
+  if (hasFacilityId === hasNewFacility) {
+    return 'Choose an existing destination facility, or give a new one to create.';
+  }
+  if (hasNewFacility) {
+    const name = input.destinationFacility!.name?.trim() ?? '';
+    if (!name) return 'The new destination facility needs a name.';
+    if (!input.destinationFacility!.municipalityId) {
+      return 'Choose the municipality the new destination facility is in.';
+    }
+  }
+
+  if (
+    input.freeTextMessage &&
+    input.freeTextMessage.length > MAX_TRANSPORT_REQUEST_MESSAGE_LENGTH
+  ) {
+    return `The message may be at most ${MAX_TRANSPORT_REQUEST_MESSAGE_LENGTH} characters.`;
+  }
+
+  return null;
+}
+
 // ─── API error codes (#180 phase 4) ───────────────────────────────────────────
 //
 // A machine code for the business-rule failures that are genuinely worth a

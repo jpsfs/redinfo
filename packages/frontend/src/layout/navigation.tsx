@@ -25,6 +25,7 @@ import CampaignIcon from '@mui/icons-material/Campaign';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import BusinessIcon from '@mui/icons-material/Business';
 import HandshakeIcon from '@mui/icons-material/Handshake';
+import AssignmentIcon from '@mui/icons-material/Assignment';
 import { Action } from '@redinfo/shared';
 import { MessageKey } from '../i18n/labels';
 
@@ -176,8 +177,9 @@ export const NAV_SECTIONS: NavSection[] = [
     // Non-urgent patient transport (#219). Settled by #225: the top-level
     // group and its position exist, screens added one by one as their
     // stories land. Patients (#226) is the first; Organisations and
-    // Agreements (#227) are reference data, not a daily screen — Pedidos,
-    // Planeamento and Atendimento still follow with their own `requires`.
+    // Agreements (#227) are reference data, not a daily screen; Pedidos
+    // (#228) is referral intake — Planeamento and Atendimento still follow
+    // with their own `requires`.
     label: 'nav.transports',
     entries: [
       {
@@ -197,6 +199,12 @@ export const NAV_SECTIONS: NavSection[] = [
         label: 'nav.agreements',
         icon: <HandshakeIcon />,
         requires: [Action.MANAGE_TRANSPORT_CONFIG],
+      },
+      {
+        to: '/transport-requests',
+        label: 'nav.transportRequests',
+        icon: <AssignmentIcon />,
+        requires: [Action.MANAGE_TRANSPORT_REQUESTS],
       },
     ],
   },

@@ -15,8 +15,8 @@ NestJS + Prisma. Read `../shared/CLAUDE.md` first if the feature touches shared 
 
 Current modules: `auth`, `availability`, `event-reports`, `facilities`, `geography`, `health`,
 `inem`, `inventory`, `live-runs`, `notices`, `notifications`, `organisations`, `paid-staff-schedule`,
-`patients`, `schedules`, `staff-absences`, `statistics`, `storage`, `users`, `vehicles`,
-`vehicle-occupancy`, `volunteer-hours`, `employment-contracts`, `prisma`.
+`patients`, `schedules`, `staff-absences`, `statistics`, `storage`, `transport-requests`, `users`,
+`vehicles`, `vehicle-occupancy`, `volunteer-hours`, `employment-contracts`, `prisma`.
 New modules are wired into `src/app.module.ts`.
 Bootstrap (global `ValidationPipe`, global `ApiErrorFilter`, port 3000) is in `src/main.ts`.
 
@@ -39,6 +39,17 @@ that ever does a cold Playwright login, reachable solely via the polled, shared-
 requester/payer role-flagged party) and `AgreementsService`/`Controller` (the terms a transport
 falls under, scoped to its paying organisation) — both gated by `MANAGE_TRANSPORT_CONFIG`, no
 tariff or rate fields on either.
+
+`transport-requests` (#228) is referral intake, entered by hand — field order mirrors the
+referral's own layout, not an idealised one. `externalServiceNumber` is unique per
+`requestingOrganisationId`, never globally. `destinationFacilityId` has a create-if-missing
+alternative (`destinationFacility`, resolved via `FacilitiesService.findOrCreateTransportDestination`)
+since a referral's destination is routinely not yet in the transport destination list, and a
+`TRANSPORT_COORDINATOR` does not hold `MANAGE_HOSPITALS`. A decision (`decide`) is terminal —
+`update` refuses a request already accepted/rejected — and accepting one never sets
+`externallyRegisteredAt`, which only the requester's own platform can. Gated by
+`MANAGE_TRANSPORT_REQUESTS`; #229 builds the actual decision page against `findManaged`'s
+`responseDueAt`-ordered ageing query and `decide`.
 
 ## Controller pattern
 
@@ -124,6 +135,12 @@ Model index by domain (names only — grep for fields/relations):
   example carries two at once; `Agreement` — the terms a transport falls under, scoped to its
   `payerOrganisation`. No tariff or rate fields anywhere here — billing is modelled, never
   performed
+- **Transport requests** (#228): `TransportRequest` — a referral entered by hand, field order
+  mirroring the source document; envelope fields (`batchReference`, `communicatedAt`,
+  `requesterAccountCode`, `responseDueAt`) are denormalised onto every row one email covered
+  rather than split into a batch table. `decision` (`PENDING`/`ACCEPTED`/`REJECTED`) is terminal;
+  `externallyRegisteredAt` is a shadow of a decision made on the requester's own platform and is
+  never set by accepting in redinfo
 
 Migrations: `prisma:migrate` (dev, interactive) / `prisma:migrate:deploy` (non-interactive —
 prefer this in scripts/CI, per `.github/AI-GOVERNANCE.md`). Run `prisma:generate` after every

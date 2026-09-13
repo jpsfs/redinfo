@@ -110,12 +110,15 @@ describe('no unfiltered accessor', () => {
     // the wrong list — only a method that hands back many rows does.
     // `findForPicker` is the private helper both destination pickers share —
     // it always filters by the `flag` its two public callers pass in.
+    // `findOrCreateTransportDestination` (#228) is a single-row get-or-create
+    // by `[name, municipalityId]`, not a list, same exemption as `findOne`.
     const listMethods = [
       'findManaged',
       'findEmergencyDestinations',
       'findTransportDestinations',
       'findForPicker',
     ];
+    const singleRowMethods = ['findOne', 'findOrCreateTransportDestination'];
     const methodNames = Object.getOwnPropertyNames(FacilitiesService.prototype).filter(
       (name) => name !== 'constructor' && !name.startsWith('_'),
     );
@@ -124,7 +127,7 @@ describe('no unfiltered accessor', () => {
       return typeof descriptor?.value === 'function';
     });
     const unaccountedListLikeMethods = publicMethods.filter(
-      (name) => /^find/.test(name) && !listMethods.includes(name) && name !== 'findOne',
+      (name) => /^find/.test(name) && !listMethods.includes(name) && !singleRowMethods.includes(name),
     );
     expect(unaccountedListLikeMethods).toEqual([]);
   });
@@ -431,5 +434,82 @@ describe('removing a facility', () => {
       expect.objectContaining({ data: { isActive: false } }),
     );
     expect(result.isActive).toBe(false);
+  });
+});
+
+describe('the create-if-missing path a referral needs (#228)', () => {
+  it('creates a new transport destination with no coordinates required', async () => {
+    const { service, prisma } = makeService({
+      facility: {
+        findFirst: jest.fn(() => Promise.resolve(null)),
+        create: jest.fn((args: { data: Record<string, unknown> }) =>
+          Promise.resolve(facility(args.data as never)),
+        ),
+      },
+    });
+
+    const result = await service.findOrCreateTransportDestination(
+      '  Hospital Privado de Braga  ',
+      COIMBRA.id,
+      'Rua X, 10',
+      '4700-000',
+    );
+
+    expect(prisma.facility.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          name: 'Hospital Privado de Braga',
+          isTransportDestination: true,
+          isEmergencyDestination: false,
+        }),
+      }),
+    );
+    expect(result.isTransportDestination).toBe(true);
+  });
+
+  it('reuses an exact [name, municipality] match instead of duplicating it', async () => {
+    const existing = facility({ isTransportDestination: false, isEmergencyDestination: true });
+    const { service, prisma } = makeService({
+      facility: {
+        findFirst: jest.fn(() => Promise.resolve(existing)),
+        create: jest.fn(),
+        update: jest.fn((args: { data: Record<string, unknown> }) =>
+          Promise.resolve(facility({ ...existing, ...args.data })),
+        ),
+      },
+    });
+
+    const result = await service.findOrCreateTransportDestination(existing.name, COIMBRA.id);
+
+    expect(prisma.facility.create).not.toHaveBeenCalled();
+    expect(prisma.facility.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: existing.id },
+        data: { isTransportDestination: true },
+      }),
+    );
+    expect(result.isTransportDestination).toBe(true);
+    // The emergency flag survives — opting a row into the transport list
+    // must never take it out of the emergency one.
+    expect(result.isEmergencyDestination).toBe(true);
+  });
+
+  it('leaves an existing transport destination untouched', async () => {
+    const existing = facility({ isTransportDestination: true });
+    const { service, prisma } = makeService({
+      facility: { findFirst: jest.fn(() => Promise.resolve(existing)), update: jest.fn() },
+    });
+
+    await service.findOrCreateTransportDestination(existing.name, COIMBRA.id);
+
+    expect(prisma.facility.update).not.toHaveBeenCalled();
+  });
+
+  it('refuses an unknown municipality', async () => {
+    const { service } = makeService({ municipality: { count: jest.fn(() => Promise.resolve(0)) } });
+
+    await expect(
+      service.findOrCreateTransportDestination('New Clinic', 'no-such-municipality'),
+    ).rejects.toThrow(BadRequestException);
   });
 });

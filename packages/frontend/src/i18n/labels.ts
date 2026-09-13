@@ -526,6 +526,7 @@ const MESSAGES = {
   'nav.patients': { pt: 'Doentes', en: 'Patients' },
   'nav.organisations': { pt: 'Organizações', en: 'Organisations' },
   'nav.agreements': { pt: 'Acordos', en: 'Agreements' },
+  'nav.transportRequests': { pt: 'Pedidos', en: 'Referrals' },
   'nav.holidays': { pt: 'Feriados', en: 'Holidays' },
   'nav.myProfile': { pt: 'O meu perfil', en: 'My Profile' },
   'nav.myNotices': { pt: 'Avisos', en: 'Notices' },
@@ -562,6 +563,7 @@ const MESSAGES = {
   'resources.holidays.name': { pt: 'Feriados', en: 'Holidays' },
   'resources.organisations.name': { pt: 'Organizações', en: 'Organisations' },
   'resources.agreements.name': { pt: 'Acordos', en: 'Agreements' },
+  'resources.transport-requests.name': { pt: 'Pedidos', en: 'Referrals' },
 
   // ── Personnel registry (#180 phase 3 — users) ──
   'resources.users.fields.firstName': { pt: 'Nome próprio', en: 'First Name' },
@@ -2636,6 +2638,90 @@ const MESSAGES = {
   'resources.agreements.fields.validTo': { pt: 'Fim da validade (opcional)', en: 'Valid to (optional)' },
   'resources.agreements.fields.notes': { pt: 'Notas (opcional)', en: 'Notes (optional)' },
   'resources.agreements.fields.isActive': { pt: 'Estado', en: 'Status' },
+
+  // ── Transport requests (#228) — referral intake, field order mirroring the
+  // source document's own layout rather than an idealised one ──
+  'resources.transport-requests.fields.batchReference': { pt: 'Nº do e-mail', en: 'Email No.' },
+  'resources.transport-requests.fields.communicatedAt': { pt: 'Data Comunicação', en: 'Communicated at' },
+  'resources.transport-requests.fields.requesterAccountCode': { pt: 'Cliente', en: 'Account code' },
+  'resources.transport-requests.fields.responseDueAt': { pt: 'Prazo de resposta', en: 'Response due' },
+  'resources.transport-requests.fields.externalServiceNumber': {
+    pt: 'Referência do requisitante',
+    en: "Requester's reference",
+  },
+  'resources.transport-requests.fields.appointmentAt': { pt: 'Data', en: 'Appointment at' },
+  'resources.transport-requests.fields.requestingOrganisationId': {
+    pt: 'Organização requisitante',
+    en: 'Requesting organisation',
+  },
+  'resources.transport-requests.fields.payingOrganisationId': {
+    pt: 'Organização pagadora',
+    en: 'Paying organisation',
+  },
+  'resources.transport-requests.fields.agreementId': { pt: 'Acordo (opcional)', en: 'Agreement (optional)' },
+  'resources.transport-requests.fields.patientId': { pt: 'Doente', en: 'Patient' },
+  'resources.transport-requests.fields.occurrenceType': { pt: 'Ocorrência', en: 'Occurrence' },
+  'resources.transport-requests.fields.requestedVehicleType': { pt: 'Transporte', en: 'Requested vehicle' },
+  'resources.transport-requests.fields.escortTravels': { pt: 'Acompanhante', en: 'Escort travels' },
+  'resources.transport-requests.fields.isRoundTrip': { pt: 'Ida-Volta', en: 'Round trip' },
+  'resources.transport-requests.fields.originAddress': { pt: 'Morada de recolha', en: 'Pickup address' },
+  'resources.transport-requests.fields.destinationFacilityId': { pt: 'Destino', en: 'Destination' },
+  'resources.transport-requests.fields.freeTextMessage': { pt: 'Msg', en: 'Message' },
+  'resources.transport-requests.fields.coordColumnValue': { pt: 'Coord', en: 'Coord' },
+  'resources.transport-requests.fields.decision': { pt: 'Decisão', en: 'Decision' },
+  'resources.transport-requests.fields.rejectionReason': { pt: 'Motivo da rejeição', en: 'Rejection reason' },
+  'resources.transport-requests.fields.minutesUntilResponseDue': {
+    pt: 'Tempo restante',
+    en: 'Time remaining',
+  },
+
+  'transportRequestOccurrenceType.CONSULTA': { pt: 'Consulta', en: 'Consultation' },
+  'transportRequestOccurrenceType.TRATAMENTO': { pt: 'Tratamento', en: 'Treatment' },
+  'transportRequestOccurrenceType.ALTA': { pt: 'Alta', en: 'Discharge' },
+  'transportRequestOccurrenceType.EXAME': { pt: 'Exame', en: 'Examination' },
+  'transportRequestOccurrenceType.OUTRO': { pt: 'Outro', en: 'Other' },
+
+  'transportRequestVehicleType.AMBULANCIA': { pt: 'Ambulância', en: 'Ambulance' },
+  'transportRequestVehicleType.TRANSPORTE': { pt: 'Transporte', en: 'Transport vehicle' },
+  'transportRequestVehicleType.OUTRO': { pt: 'Outro', en: 'Other' },
+
+  'transportRequestDecision.PENDING': { pt: 'Pendente', en: 'Pending' },
+  'transportRequestDecision.ACCEPTED': { pt: 'Aceite', en: 'Accepted' },
+  'transportRequestDecision.REJECTED': { pt: 'Rejeitado', en: 'Rejected' },
+
+  'transportRequestForm.sectionEnvelope': { pt: 'Comunicação', en: 'Communication' },
+  'transportRequestForm.sectionService': { pt: 'Transporte', en: 'Transport' },
+  'transportRequestForm.sectionOrigin': { pt: 'Origem', en: 'Origin' },
+  'transportRequestForm.sectionDestination': { pt: 'Destino', en: 'Destination' },
+  'transportRequestForm.helpText': {
+    pt: 'Os campos e a ordem seguem o próprio pedido — mais fácil copiar sem enganos.',
+    en: "Fields and their order follow the referral's own layout — fewer copying mistakes.",
+  },
+  'transportRequestForm.destinationExisting': { pt: 'Destino já registado', en: 'Existing destination' },
+  'transportRequestForm.destinationNew': { pt: 'Novo destino', en: 'New destination' },
+  'transportRequestForm.addNewDestination': {
+    pt: 'Não está na lista? Adicionar novo destino',
+    en: "Not in the list? Add a new destination",
+  },
+  'transportRequestForm.useExistingDestination': {
+    pt: 'Usar um destino já registado',
+    en: 'Use an existing destination instead',
+  },
+  'transportRequestForm.destinationName': { pt: 'Nome do destino', en: 'Destination name' },
+  'transportRequestForm.destinationMunicipality': { pt: 'Concelho', en: 'Municipality' },
+  'transportRequestForm.destinationAddress': { pt: 'Morada (opcional)', en: 'Address (optional)' },
+  'transportRequestForm.destinationPostalCode': { pt: 'Código postal (opcional)', en: 'Postal code (optional)' },
+  'transportRequestForm.noDestinationChosen': { pt: 'Nenhum destino escolhido', en: 'No destination chosen' },
+  'transportRequestForm.chooseDestination': { pt: 'Escolher destino', en: 'Choose destination' },
+
+  'transportRequestList.addRequest': { pt: 'Adicionar pedido', en: 'Add referral' },
+  'transportRequestList.helpText': {
+    pt: 'Um pedido de transporte, tal como chega no próprio pedido — o requisitante e o pagador podem ser organizações diferentes.',
+    en: 'A transport referral, entered as it actually arrives — the requester and the payer can be different organisations.',
+  },
+  'transportRequestList.overdue': { pt: 'Atrasado', en: 'Overdue' },
+  'transportRequestList.minutesRemaining': { pt: '%{minutes} min restantes', en: '%{minutes} min left' },
+  'transportRequestList.overdueByMinutes': { pt: 'Atrasado %{minutes} min', en: 'Overdue by %{minutes} min' },
 
   // ── Rich text editor (#180 phase 3) — shared by crew and coordinator forms ──
   'richText.bold': { pt: 'Negrito', en: 'Bold' },
