@@ -5,6 +5,13 @@ export enum UserRole {
   EMERGENCY_OPERATIONAL = 'EMERGENCY_OPERATIONAL',
   EMERGENCY_COORDINATOR = 'EMERGENCY_COORDINATOR',
   LOGISTICS_COORDINATOR = 'LOGISTICS_COORDINATOR',
+  /**
+   * Runs the non-urgent patient transport operation (#219, #225): referral
+   * intake, patients, treatment plans and trip planning. Additive, not a
+   * replacement for `EMERGENCY_COORDINATOR` — the same person commonly holds
+   * both at Campo, and the two capability sets stay separate even then.
+   */
+  TRANSPORT_COORDINATOR = 'TRANSPORT_COORDINATOR',
 }
 
 /**
@@ -25,6 +32,7 @@ export const ROLE_METADATA: Record<UserRole, RoleMetadata> = {
   [UserRole.EMERGENCY_OPERATIONAL]: { domain: 'emergency' },
   [UserRole.EMERGENCY_COORDINATOR]: { domain: 'emergency' },
   [UserRole.LOGISTICS_COORDINATOR]: { domain: 'logistics' },
+  [UserRole.TRANSPORT_COORDINATOR]: { domain: 'transports' },
 };
 
 /**
@@ -157,6 +165,34 @@ export enum Action {
    * `resolveAssignmentCompensation` for the rule this gates.
    */
   MANAGE_COMPENSATION = 'MANAGE_COMPENSATION',
+  /** Enter referrals and accept or reject them (#219, #225). */
+  MANAGE_TRANSPORT_REQUESTS = 'MANAGE_TRANSPORT_REQUESTS',
+  /**
+   * Create and edit patient records — profile, mobility, default address,
+   * reference contact. Deliberately does **not** include reading the sealed
+   * identity blob; see `VIEW_PATIENT_IDENTITY`.
+   */
+  MANAGE_PATIENTS = 'MANAGE_PATIENTS',
+  /**
+   * Open a patient's sealed identity blob. Deliberately not implied by
+   * `MANAGE_PATIENTS` or by ordinary transport operation — the same
+   * narrower-than-its-neighbour shape as `MANAGE_INEM_STATUS` next to
+   * `EMERGENCY_OPERATION`.
+   */
+  VIEW_PATIENT_IDENTITY = 'VIEW_PATIENT_IDENTITY',
+  /** Create and edit treatment plans — recurrence, destination, validity period. */
+  MANAGE_TREATMENT_PLANS = 'MANAGE_TREATMENT_PLANS',
+  /**
+   * Build the day's trips: assign legs to a vehicle and crew, sequence
+   * stops. Reading one's own assigned trips needs no action — self-scoped,
+   * the same way `GET /schedules/me` is.
+   */
+  PLAN_TRANSPORT_TRIPS = 'PLAN_TRANSPORT_TRIPS',
+  /**
+   * Delegation-wide transport configuration: occurrence-type duration
+   * floors, arrival-window thresholds, organisations and agreements.
+   */
+  MANAGE_TRANSPORT_CONFIG = 'MANAGE_TRANSPORT_CONFIG',
 }
 
 export const ROLE_PERMISSIONS: Record<UserRole, Action[]> = {
@@ -216,6 +252,18 @@ export const ROLE_PERMISSIONS: Record<UserRole, Action[]> = {
     // The archive is org-wide reading, same as for every other role — see
     // `VIEW_EVENT_REPORTS`'s doc comment above.
     Action.VIEW_EVENT_REPORTS,
+    // Deliberately no transport actions (#225). LOGISTICS_COORDINATOR covers
+    // fleet/inventory logistics, not the patient transport operation — the
+    // two are separate on purpose, same as EMERGENCY_COORDINATOR and
+    // TRANSPORT_COORDINATOR below.
+  ],
+  [UserRole.TRANSPORT_COORDINATOR]: [
+    Action.MANAGE_TRANSPORT_REQUESTS,
+    Action.MANAGE_PATIENTS,
+    Action.VIEW_PATIENT_IDENTITY,
+    Action.MANAGE_TREATMENT_PLANS,
+    Action.PLAN_TRANSPORT_TRIPS,
+    Action.MANAGE_TRANSPORT_CONFIG,
   ],
 };
 

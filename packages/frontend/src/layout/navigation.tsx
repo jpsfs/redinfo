@@ -170,6 +170,14 @@ export const NAV_SECTIONS: NavSection[] = [
     ],
   },
   {
+    // Non-urgent patient transport (#219). Settled by #225: the top-level
+    // group and its position exist now, holding no entries yet — screens
+    // (Pedidos, Doentes, Planeamento, Atendimento) are added, each with its
+    // own `requires`, by the stories that build them.
+    label: 'nav.transports',
+    entries: [],
+  },
+  {
     label: 'nav.people',
     entries: [
       {

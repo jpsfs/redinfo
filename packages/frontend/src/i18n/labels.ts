@@ -499,6 +499,7 @@ const MESSAGES = {
   // ── The drawer and app bar (layout/navigation.tsx, layout/AppLayout.tsx) ──
   'nav.myWork': { pt: 'O meu trabalho', en: 'My work' },
   'nav.operations': { pt: 'Operações', en: 'Operations' },
+  'nav.transports': { pt: 'Transportes', en: 'Transports' },
   'nav.people': { pt: 'Pessoal', en: 'People' },
   'nav.fleet': { pt: 'Frota', en: 'Fleet' },
   'nav.configuration': { pt: 'Configuração', en: 'Configuration' },
@@ -3206,6 +3207,10 @@ const ENUM_MESSAGES = {
     pt: 'Coordenador de Logística',
     en: 'Logistics Coordinator',
   },
+  [`accountRole.${UserRole.TRANSPORT_COORDINATOR}`]: {
+    pt: 'Coordenador de Transportes',
+    en: 'Transport Coordinator',
+  },
   // ── Auth providers — how a person signs in, `UserForm`'s provider field ──
   [`authProvider.${AuthProvider.LOCAL}`]: { pt: 'Palavra-passe', en: 'Password' },
   [`authProvider.${AuthProvider.GOOGLE}`]: { pt: 'Google', en: 'Google' },
@@ -3226,6 +3231,10 @@ const ENUM_MESSAGES = {
   [`accountRoleDescription.${UserRole.LOGISTICS_COORDINATOR}`]: {
     pt: 'Gere as operações e a configuração de logística.',
     en: 'Manages logistics operations and configuration.',
+  },
+  [`accountRoleDescription.${UserRole.TRANSPORT_COORDINATOR}`]: {
+    pt: 'Gere pedidos de transporte, doentes, planos de tratamento e o planeamento de viagens.',
+    en: 'Manages transport requests, patients, treatment plans and trip planning.',
   },
 
   // ── Availability-window categories (#180 phase 2) ──

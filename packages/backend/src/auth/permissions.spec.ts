@@ -191,6 +191,55 @@ describe('hasPermission', () => {
     expect(hasPermission(UserRole.EMERGENCY_OPERATIONAL, Action.MANAGE_COMPENSATION)).toBe(false);
   });
 
+  // ── Transport permissions (#219, #225) ──────────────────────────────────────
+
+  it.each([
+    Action.MANAGE_TRANSPORT_REQUESTS,
+    Action.MANAGE_PATIENTS,
+    Action.VIEW_PATIENT_IDENTITY,
+    Action.MANAGE_TREATMENT_PLANS,
+    Action.PLAN_TRANSPORT_TRIPS,
+    Action.MANAGE_TRANSPORT_CONFIG,
+  ])('TRANSPORT_COORDINATOR can %s', (action) => {
+    expect(hasPermission(UserRole.TRANSPORT_COORDINATOR, action)).toBe(true);
+  });
+
+  it.each([Action.EMERGENCY_OPERATION, Action.MANAGE_EMERGENCY_CONFIG, Action.MANAGE_LOGISTICS])(
+    'TRANSPORT_COORDINATOR cannot %s (emergency/logistics-only routes stay refused)',
+    (action) => {
+      expect(hasPermission(UserRole.TRANSPORT_COORDINATOR, action)).toBe(false);
+    },
+  );
+
+  it.each([
+    Action.MANAGE_TRANSPORT_REQUESTS,
+    Action.MANAGE_PATIENTS,
+    Action.VIEW_PATIENT_IDENTITY,
+    Action.MANAGE_TREATMENT_PLANS,
+    Action.PLAN_TRANSPORT_TRIPS,
+    Action.MANAGE_TRANSPORT_CONFIG,
+  ])('EMERGENCY_COORDINATOR cannot %s (transport routes stay refused)', (action) => {
+    expect(hasPermission(UserRole.EMERGENCY_COORDINATOR, action)).toBe(false);
+  });
+
+  it('EMERGENCY_COORDINATOR and TRANSPORT_COORDINATOR may be held by the same person, each keeping their own routes', () => {
+    const both = [UserRole.EMERGENCY_COORDINATOR, UserRole.TRANSPORT_COORDINATOR];
+    expect(hasPermission(both, Action.MANAGE_EMERGENCY_CONFIG)).toBe(true);
+    expect(hasPermission(both, Action.MANAGE_TRANSPORT_REQUESTS)).toBe(true);
+  });
+
+  it('MANAGE_PATIENTS does not imply VIEW_PATIENT_IDENTITY — the two are independently grantable', () => {
+    // Simulate a role holding MANAGE_PATIENTS but not the narrower identity
+    // action, to prove hasPermission never infers one from the other.
+    const permissions = ROLE_PERMISSIONS[UserRole.TRANSPORT_COORDINATOR];
+    const identityIndex = permissions.indexOf(Action.VIEW_PATIENT_IDENTITY);
+    permissions.splice(identityIndex, 1);
+    expect(hasPermission(UserRole.TRANSPORT_COORDINATOR, Action.MANAGE_PATIENTS)).toBe(true);
+    expect(hasPermission(UserRole.TRANSPORT_COORDINATOR, Action.VIEW_PATIENT_IDENTITY)).toBe(false);
+    // Restore.
+    permissions.splice(identityIndex, 0, Action.VIEW_PATIENT_IDENTITY);
+  });
+
   // Scenario 3: new emergency action added → EMERGENCY_OPERATIONAL gains it after mapping
   it('new emergency action is accessible to EMERGENCY_OPERATIONAL once added to ROLE_PERMISSIONS', () => {
     const DISPATCH_AMBULANCE = 'DISPATCH_AMBULANCE' as Action;
@@ -393,6 +442,18 @@ describe('RolesGuard', () => {
     expect(
       guard.canActivate(makeCtx([UserRole.EMERGENCY_OPERATIONAL, UserRole.EMERGENCY_COORDINATOR])),
     ).toBe(true);
+  });
+
+  it('TRANSPORT_COORDINATOR is denied for an emergency-only @Actions guard (#225)', () => {
+    const guard = new RolesGuard(reflector);
+    spyReflectorWith(reflector, (key) => (key === ACTIONS_KEY ? [Action.MANAGE_EMERGENCY_CONFIG] : undefined));
+    expect(guard.canActivate(makeCtx([UserRole.TRANSPORT_COORDINATOR]))).toBe(false);
+  });
+
+  it('EMERGENCY_COORDINATOR is denied for a transport-only @Actions guard (#225)', () => {
+    const guard = new RolesGuard(reflector);
+    spyReflectorWith(reflector, (key) => (key === ACTIONS_KEY ? [Action.MANAGE_TRANSPORT_REQUESTS] : undefined));
+    expect(guard.canActivate(makeCtx([UserRole.EMERGENCY_COORDINATOR]))).toBe(false);
   });
 
   it('@Roles fails on an empty intersection', () => {
