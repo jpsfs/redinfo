@@ -15,7 +15,8 @@ NestJS + Prisma. Read `../shared/CLAUDE.md` first if the feature touches shared 
 
 Current modules: `auth`, `availability`, `event-reports`, `facilities`, `geography`, `health`,
 `inem`, `inventory`, `live-runs`, `notices`, `notifications`, `paid-staff-schedule`, `schedules`,
-`statistics`, `storage`, `users`, `vehicles`, `vehicle-occupancy`, `volunteer-hours`, `prisma`.
+`statistics`, `storage`, `users`, `vehicles`, `vehicle-occupancy`, `volunteer-hours`,
+`employment-contracts`, `prisma`.
 New modules are wired into `src/app.module.ts`.
 Bootstrap (global `ValidationPipe`, global `ApiErrorFilter`, port 3000) is in `src/main.ts`.
 
@@ -76,10 +77,18 @@ Model index by domain (names only — grep for fields/relations):
 - **Inventory**: `MaterialItem`, `MaterialItemBarcode`, `InventoryTemplate`, `InventoryTemplateItem`, `VehicleInventoryItem`, `VehicleInventoryAudit`, `StockMovement`
 - **Availability**: `Holiday`, `AvailabilityWindow`, `AvailabilityWindowShift`, `AvailabilityWindowRole`, `AvailabilitySubmission`, `AvailabilityResponse`
 - **Schedules**: `Schedule`, `ScheduleAssignment`, `ScheduleShiftOverride`
-- **Paid staff schedule** (#245): `PaidStaffSchedule` (recurring on-the-clock pattern),
-  `PaidStaffScheduleOverride` (per-date exception) — replaces #223's blanket
-  `User.isPaidStaff`-only volunteer-hours gate with a real schedule; `ScheduleAssignment
-  .compensationOverride` is the per-assignment escape hatch schedule data alone can't resolve
+- **Employment & compensation**: `EmploymentContract` (dated fact — who is on contract *and
+  when*), `PaidStaffSchedule` (recurring on-the-clock pattern, hangs off a contract),
+  `PaidStaffScheduleOverride` (per-date exception). Supersedes #223/#245: `User.isPaidStaff`
+  is **gone** — a timeless flag could not answer a dated question. Compensation is a per-person
+  property of the *work*: `ScheduleAssignment.compensation` (`VOLUNTEER | SALARY | PAID`) is
+  non-null and **materialised at write**, never derived at read, so a later contract edit never
+  retro-reclassifies a past shift. Default is always `VOLUNTEER`; on-contract-clock is an
+  absolute veto resolving `SALARY`. The money *offer* (`CompensationOfferKind`, cents) lives on
+  `AvailabilityWindow` — so members see it before submitting availability — and `Schedule` may
+  replace it **as a whole unit** (incl. `NONE` to cancel); never merge the two field-wise.
+  Reclassifying after generation soft-deletes/un-deletes the *same* `VolunteerHoursEntry` via
+  `deletedBySystem`; see `reconcileEntryForCompensation` in `volunteer-hours.service.ts`
 - **Volunteer hours**: `VolunteerHoursEntry`
 - **Geography**: `Municipality`, `Locality`
 - **Facilities** (#220): `Facility` — hospitals, clinics and private medical facilities, one
