@@ -92,6 +92,7 @@ function makeBoard(overrides: Partial<ScheduleBoardResponse>): ScheduleBoardResp
     roles: [],
     days: [],
     conflicts: [],
+    absenceWarnings: [],
     stats: {
       requiredSlots: 0,
       filledSlots: 0,

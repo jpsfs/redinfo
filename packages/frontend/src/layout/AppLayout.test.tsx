@@ -114,6 +114,7 @@ describe('RedInfoMenu', () => {
       '/statistics',
       '/notices',
       '/users',
+      '/staff-absences',
       '/vehicles',
       // Not '/inventory-templates': ROLE_PERMISSIONS does not give this role
       // MANAGE_LOGISTICS. See navigation.test.tsx for the note on this gap
@@ -148,6 +149,7 @@ describe('RedInfoMenu', () => {
       '/statistics',
       '/notices',
       '/users',
+      '/staff-absences',
       '/vehicles',
       '/inventory-templates',
       '/material-items',

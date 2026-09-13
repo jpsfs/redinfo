@@ -15,8 +15,8 @@ NestJS + Prisma. Read `../shared/CLAUDE.md` first if the feature touches shared 
 
 Current modules: `auth`, `availability`, `event-reports`, `facilities`, `geography`, `health`,
 `inem`, `inventory`, `live-runs`, `notices`, `notifications`, `paid-staff-schedule`, `schedules`,
-`statistics`, `storage`, `users`, `vehicles`, `vehicle-occupancy`, `volunteer-hours`,
-`employment-contracts`, `prisma`.
+`staff-absences`, `statistics`, `storage`, `users`, `vehicles`, `vehicle-occupancy`,
+`volunteer-hours`, `employment-contracts`, `prisma`.
 New modules are wired into `src/app.module.ts`.
 Bootstrap (global `ValidationPipe`, global `ApiErrorFilter`, port 3000) is in `src/main.ts`.
 
@@ -89,6 +89,10 @@ Model index by domain (names only — grep for fields/relations):
   replace it **as a whole unit** (incl. `NONE` to cancel); never merge the two field-wise.
   Reclassifying after generation soft-deletes/un-deletes the *same* `VolunteerHoursEntry` via
   `deletedBySystem`; see `reconcileEntryForCompensation` in `volunteer-hours.service.ts`
+- **Staff absences** (#224): `StaffAbsence` — vacation, sick leave and other paid leave as a
+  durable HR fact, independent of `PaidStaffScheduleOverride`'s ad-hoc schedule shuffles. A
+  warning to the roster (`SchedulesService`'s board, `ScheduleAbsenceWarning`) and the future
+  trip planner, never a block — same override precedent as `VehicleOccupancy`
 - **Volunteer hours**: `VolunteerHoursEntry`
 - **Geography**: `Municipality`, `Locality`
 - **Facilities** (#220): `Facility` — hospitals, clinics and private medical facilities, one

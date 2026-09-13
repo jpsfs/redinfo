@@ -40,6 +40,7 @@ Don't ask for a list of all exports — grep them.
 | Schedules | Schedule, assignment, shift-override shapes and rules |
 | Compensation offer | `CompensationOfferKind`, `resolveCompensationOffer`, `validateCompensationOffer` (#246 Stage 2) — the rate a window/schedule advertises before availability is collected, distinct from `AssignmentCompensationKind`'s per-person classification |
 | Paid staff schedule | `PaidStaffScheduleBlock`/`Override`, `isOnPaidClock` (#245) — on/off-clock resolution for `AssignmentCompensationKind` |
+| Staff absences | `StaffAbsence`, `StaffAbsenceKind`, `staffAbsencesOnDate` (#224) — vacation/sick/other paid leave as a durable HR fact; a warning to the roster and trip planner, never a block |
 | Volunteer hours | `VolunteerHoursEntry`, exception detection, auto-approval rules |
 | Geography | Municipality, locality location shapes |
 | Facilities | `Facility` shapes — hospitals, clinics, private medical facilities; independent `isEmergencyDestination`/`isTransportDestination` flags, `validateFacility` (#220) |

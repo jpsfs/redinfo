@@ -176,10 +176,14 @@ function makeService(prisma = buildPrismaStub()) {
   const shiftSchedule = {
     getPatternForWindow: jest.fn().mockResolvedValue(PATTERN),
   };
+  const staffAbsences = {
+    findOverlapping: jest.fn().mockResolvedValue([]),
+  };
   return {
-    service: new SchedulesService(prisma as never, shiftSchedule as never),
+    service: new SchedulesService(prisma as never, shiftSchedule as never, staffAbsences as never),
     prisma,
     shiftSchedule,
+    staffAbsences,
   };
 }
 
@@ -766,6 +770,93 @@ describe('SchedulesService double-booking detection', () => {
       otherWindowId: 'w2',
       otherLabel: '14:00–18:00',
     });
+  });
+});
+
+describe('SchedulesService absence warnings (#224)', () => {
+  beforeEach(() => jest.clearAllMocks());
+
+  it('warns when an assignment lands on a day the person is on file as absent', async () => {
+    const { service, prisma, staffAbsences } = makeService();
+    prisma.scheduleAssignment.findMany.mockResolvedValueOnce([assignmentRow()]);
+    staffAbsences.findOverlapping.mockResolvedValue([
+      {
+        id: 'abs-1',
+        userId: ANA.id,
+        kind: 'VACATION',
+        startDate: '2026-10-01',
+        endDate: '2026-10-10',
+        notes: null,
+        createdById: ACTOR.id,
+        createdAt: '2026-09-01T00:00:00.000Z',
+        updatedAt: '2026-09-01T00:00:00.000Z',
+      },
+    ]);
+
+    const board = await service.getBoard('s1', COORDINATOR);
+
+    expect(staffAbsences.findOverlapping).toHaveBeenCalledWith('2026-10-03', '2026-10-04');
+    expect(board.absenceWarnings).toHaveLength(1);
+    expect(board.absenceWarnings[0]).toMatchObject({
+      userId: ANA.id,
+      userName: 'Ana Silva',
+      date: '2026-10-03',
+      slot: 1,
+      absenceId: 'abs-1',
+      kind: 'VACATION',
+    });
+  });
+
+  it('reports nothing when nobody assigned is on file as absent', async () => {
+    const { service, prisma, staffAbsences } = makeService();
+    prisma.scheduleAssignment.findMany.mockResolvedValueOnce([assignmentRow()]);
+    staffAbsences.findOverlapping.mockResolvedValue([
+      {
+        id: 'abs-1',
+        userId: JOANA.id,
+        kind: 'SICK_LEAVE',
+        startDate: '2026-10-01',
+        endDate: '2026-10-10',
+        notes: null,
+        createdById: ACTOR.id,
+        createdAt: '2026-09-01T00:00:00.000Z',
+        updatedAt: '2026-09-01T00:00:00.000Z',
+      },
+    ]);
+
+    const board = await service.getBoard('s1', COORDINATOR);
+
+    expect(board.absenceWarnings).toEqual([]);
+  });
+
+  it('reports nothing when the absence does not cover the assigned date', async () => {
+    const { service, prisma, staffAbsences } = makeService();
+    prisma.scheduleAssignment.findMany.mockResolvedValueOnce([assignmentRow()]);
+    staffAbsences.findOverlapping.mockResolvedValue([
+      {
+        id: 'abs-1',
+        userId: ANA.id,
+        kind: 'VACATION',
+        startDate: '2026-10-10',
+        endDate: '2026-10-20',
+        notes: null,
+        createdById: ACTOR.id,
+        createdAt: '2026-09-01T00:00:00.000Z',
+        updatedAt: '2026-09-01T00:00:00.000Z',
+      },
+    ]);
+
+    const board = await service.getBoard('s1', COORDINATOR);
+
+    expect(board.absenceWarnings).toEqual([]);
+  });
+
+  it('does not query for absences when the board has no assignments at all', async () => {
+    const { service, staffAbsences } = makeService();
+
+    await service.getBoard('s1', COORDINATOR);
+
+    expect(staffAbsences.findOverlapping).not.toHaveBeenCalled();
   });
 });
 

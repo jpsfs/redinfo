@@ -358,6 +358,7 @@ export function scheduleBoard(
       },
     ],
     conflicts: [],
+    absenceWarnings: [],
     stats: {
       requiredSlots: 6,
       filledSlots: 2,

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AvailabilityModule } from '../availability/availability.module';
 import { PaidStaffScheduleModule } from '../paid-staff-schedule/paid-staff-schedule.module';
 import { VolunteerHoursModule } from '../volunteer-hours/volunteer-hours.module';
+import { StaffAbsencesModule } from '../staff-absences/staff-absences.module';
 import { SchedulesService } from './schedules.service';
 import { ScheduleAssignmentsService } from './schedule-assignments.service';
 import { ScheduleAutofillService } from './schedule-autofill.service';
@@ -15,10 +16,12 @@ import { AuditInterceptor } from '../auth/interceptors/audit.interceptor';
  * (whether an assignee is on their contract's clock) and VolunteerHoursModule
  * (keeping a generated entry in step with a reclassification) for the same
  * reason — `ScheduleAssignmentsService.setCompensation` needs both, and
- * neither belongs duplicated here.
+ * neither belongs duplicated here. Imports StaffAbsencesModule so the board
+ * can warn on an assignment landing on a day the person is on file as
+ * absent (#224) — the same override precedent as `ScheduleConflict`.
  */
 @Module({
-  imports: [AvailabilityModule, PaidStaffScheduleModule, VolunteerHoursModule],
+  imports: [AvailabilityModule, PaidStaffScheduleModule, VolunteerHoursModule, StaffAbsencesModule],
   providers: [
     SchedulesService,
     ScheduleAssignmentsService,

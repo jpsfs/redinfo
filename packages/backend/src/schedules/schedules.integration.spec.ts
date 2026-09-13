@@ -17,6 +17,7 @@ import { ScheduleAssignmentsService } from './schedule-assignments.service';
 import { ScheduleAutofillService } from './schedule-autofill.service';
 import { PaidStaffScheduleService } from '../paid-staff-schedule/paid-staff-schedule.service';
 import { VolunteerHoursService } from '../volunteer-hours/volunteer-hours.service';
+import { StaffAbsencesService } from '../staff-absences/staff-absences.service';
 
 /** Minutes from midnight, so expectations read in wall-clock hours. */
 const at = (hour: number, minute = 0) => toMinuteOfDay(hour, minute);
@@ -157,7 +158,7 @@ describeIntegration('Schedules module (integration)', () => {
     shiftSchedule = new ShiftScheduleService(holidays, prisma);
     windows = new AvailabilityWindowsService(prisma, shiftSchedule);
     availability = new AvailabilityService(prisma, windows, shiftSchedule);
-    schedules = new SchedulesService(prisma, shiftSchedule);
+    schedules = new SchedulesService(prisma, shiftSchedule, new StaffAbsencesService(prisma));
     const paidStaffSchedule = new PaidStaffScheduleService(prisma);
     const volunteerHours = new VolunteerHoursService(prisma, shiftSchedule);
     assignments = new ScheduleAssignmentsService(

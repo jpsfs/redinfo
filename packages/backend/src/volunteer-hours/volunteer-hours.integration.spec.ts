@@ -16,6 +16,7 @@ import { ScheduleAssignmentsService } from '../schedules/schedule-assignments.se
 import { VolunteerHoursService } from './volunteer-hours.service';
 import { VolunteerHoursSummaryService } from './volunteer-hours-summary.service';
 import { PaidStaffScheduleService } from '../paid-staff-schedule/paid-staff-schedule.service';
+import { StaffAbsencesService } from '../staff-absences/staff-absences.service';
 import { EmploymentContractsService } from '../employment-contracts/employment-contracts.service';
 
 /**
@@ -146,7 +147,7 @@ describeIntegration('Volunteer hours module (integration)', () => {
     holidays = new HolidaysService(prisma);
     shiftSchedule = new ShiftScheduleService(holidays, prisma);
     windows = new AvailabilityWindowsService(prisma, shiftSchedule);
-    schedules = new SchedulesService(prisma, shiftSchedule);
+    schedules = new SchedulesService(prisma, shiftSchedule, new StaffAbsencesService(prisma));
     paidStaffSchedule = new PaidStaffScheduleService(prisma);
     volunteerHours = new VolunteerHoursService(prisma, shiftSchedule);
     assignments = new ScheduleAssignmentsService(

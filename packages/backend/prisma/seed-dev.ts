@@ -15,6 +15,7 @@ import {
   Gender,
   InemSupportUnitType,
   LiveRunState,
+  StaffAbsenceKind,
   UserRole,
   VehicleType,
   VictimDestinationKind,
@@ -35,6 +36,7 @@ import { ScheduleAutofillService } from '../src/schedules/schedule-autofill.serv
 import { VolunteerHoursService } from '../src/volunteer-hours/volunteer-hours.service';
 import { PaidStaffScheduleService } from '../src/paid-staff-schedule/paid-staff-schedule.service';
 import { EmploymentContractsService } from '../src/employment-contracts/employment-contracts.service';
+import { StaffAbsencesService } from '../src/staff-absences/staff-absences.service';
 import { EventReportsService } from '../src/event-reports/event-reports.service';
 import { EventReportNumbering } from '../src/event-reports/event-report-numbering';
 import { StockMovementsService } from '../src/inventory/stock-movements.service';
@@ -601,7 +603,8 @@ async function main() {
   const shiftSchedule = new ShiftScheduleService(holidays, prisma);
   const windows = new AvailabilityWindowsService(prisma, shiftSchedule);
   const availability = new AvailabilityService(prisma, windows, shiftSchedule);
-  const schedules = new SchedulesService(prisma, shiftSchedule);
+  const staffAbsences = new StaffAbsencesService(prisma);
+  const schedules = new SchedulesService(prisma, shiftSchedule, staffAbsences);
   const paidStaffSchedule = new PaidStaffScheduleService(prisma);
   const volunteerHours = new VolunteerHoursService(prisma, shiftSchedule);
   const assignments = new ScheduleAssignmentsService(
@@ -759,6 +762,44 @@ async function main() {
   await autofill.autofill(nextSchedule.id, {}, mariana.id);
   void nextSchedule;
   console.log("  … opened and partially planned next month's Emergency window (still a draft)");
+
+  // ── Staff absences (#224) ─────────────────────────────────────────────────
+  // Tiago's vacation overlaps day 7 of next month, one of the days his
+  // `rhythm` entry (cycle 3, offset 2) makes him eligible for a shift on —
+  // exactly the case the roster board's absence warning exists for. The
+  // other two exercise the remaining kinds and colours on the calendar
+  // without needing to land on a rostered day at all.
+  await staffAbsences.create(
+    {
+      userId: tiago.id,
+      kind: StaffAbsenceKind.VACATION,
+      startDate: `${nextMonth.year}-${pad2(nextMonth.month)}-06`,
+      endDate: `${nextMonth.year}-${pad2(nextMonth.month)}-08`,
+      notes: 'Férias de verão.',
+    },
+    mariana.id,
+  );
+  await staffAbsences.create(
+    {
+      userId: beatriz.id,
+      kind: StaffAbsenceKind.SICK_LEAVE,
+      startDate: isoAgo(4),
+      endDate: isoAgo(3),
+      notes: 'Baixa médica — gripe.',
+    },
+    mariana.id,
+  );
+  await staffAbsences.create(
+    {
+      userId: ines.id,
+      kind: StaffAbsenceKind.OTHER_PAID_LEAVE,
+      startDate: `${nextMonth.year}-${pad2(nextMonth.month)}-20`,
+      endDate: `${nextMonth.year}-${pad2(nextMonth.month)}-20`,
+      notes: 'Doação de sangue.',
+    },
+    mariana.id,
+  );
+  console.log('✅ Staff absences recorded (vacation, sick leave, other paid leave).');
 
   // Materialises SCHEDULED volunteer-hours entries for every past, published
   // assignment above, and auto-approves whichever are already past the

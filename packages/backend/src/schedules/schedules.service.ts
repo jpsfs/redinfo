@@ -26,6 +26,7 @@ import {
   MyDutyCrewmate,
   resolveCompensationOffer,
   Schedule,
+  ScheduleAbsenceWarning,
   ScheduleAssignment,
   ScheduleBoardResponse,
   ScheduleConflict,
@@ -49,12 +50,14 @@ import {
   shiftGaps,
   shiftMandatoryRolesFilled,
   shiftsOverlap,
+  staffAbsencesOnDate,
   validateCompensationOffer,
   validateDayShifts,
 } from '@redinfo/shared';
 import { SetScheduleCompensationDto } from './dto/set-schedule-compensation.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { ShiftScheduleService } from '../availability/shift-schedule.service';
+import { StaffAbsencesService } from '../staff-absences/staff-absences.service';
 import { serializeWindow } from '../availability/availability-windows.service';
 import { toIsoDate } from '../utils/date.util';
 import {
@@ -157,6 +160,7 @@ export class SchedulesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly shiftSchedule: ShiftScheduleService,
+    private readonly staffAbsences: StaffAbsencesService,
   ) {}
 
   // ── Lifecycle ───────────────────────────────────────────────────────────────
@@ -542,6 +546,7 @@ export class SchedulesService {
       roles: context.roles,
       days,
       conflicts: await this.detectConflicts(context, days),
+      absenceWarnings: await this.detectAbsenceWarnings(context, days),
       stats,
     };
   }
@@ -660,6 +665,50 @@ export class SchedulesService {
     }
 
     return conflicts;
+  }
+
+  /**
+   * An assignment on a day the person is on file as absent (#224) — vacation,
+   * sick leave or other paid leave. A warning alongside `detectConflicts`,
+   * never a block: nothing here refuses the assignment, it only tells the
+   * coordinator building the board what they might not otherwise notice.
+   */
+  private async detectAbsenceWarnings(
+    context: ScheduleContext,
+    days: ScheduleDayBoard[],
+  ): Promise<ScheduleAbsenceWarning[]> {
+    const mine = days.flatMap((day) =>
+      day.shifts.flatMap((shift) =>
+        shift.assignments.map((assignment) => ({ day, shift, assignment })),
+      ),
+    );
+    if (mine.length === 0) return [];
+
+    const absences = await this.staffAbsences.findOverlapping(context.window.startDate, context.window.endDate);
+    if (absences.length === 0) return [];
+
+    const absencesByUser = new Map<string, typeof absences>();
+    for (const absence of absences) {
+      const forUser = absencesByUser.get(absence.userId);
+      if (forUser) forUser.push(absence);
+      else absencesByUser.set(absence.userId, [absence]);
+    }
+
+    const warnings: ScheduleAbsenceWarning[] = [];
+    for (const entry of mine) {
+      const covering = staffAbsencesOnDate(absencesByUser.get(entry.assignment.userId) ?? [], entry.day.date);
+      for (const absence of covering) {
+        warnings.push({
+          userId: entry.assignment.userId,
+          userName: `${entry.assignment.user.firstName} ${entry.assignment.user.lastName}`,
+          date: entry.day.date,
+          slot: entry.shift.slot,
+          absenceId: absence.id,
+          kind: absence.kind,
+        });
+      }
+    }
+    return warnings;
   }
 
   // ── Shift adjustments ──────────────────────────────────────────────────────

@@ -125,6 +125,8 @@ model User {
   paidStaffScheduleCreated    PaidStaffSchedule[]         @relation("PaidStaffScheduleCreatedBy")
   paidStaffScheduleOverride   PaidStaffScheduleOverride[] @relation("PaidStaffScheduleOverrideOwner")
   paidStaffScheduleOverrideBy PaidStaffScheduleOverride[] @relation("PaidStaffScheduleOverrideCreatedBy")
+  staffAbsences               StaffAbsence[]              @relation("StaffAbsenceOwner")
+  staffAbsencesCreated        StaffAbsence[]              @relation("StaffAbsenceCreatedBy")
 
   eventReportsCreated    EventReport[]           @relation("EventReportCreatedBy")
   eventReportsSubmitted  EventReport[]           @relation("EventReportSubmittedBy")
@@ -1005,6 +1007,37 @@ model PaidStaffScheduleOverride {
 
   /// One override per person per date — a correction edits the existing row.
   @@unique([userId, date])
+}
+
+// ─── Staff absences (#224) ──────────────────────────────────────────────────────
+
+/// A durable HR fact — not an ad-hoc schedule shuffle (`PaidStaffScheduleOverride`
+/// is that). Entitlement balances, accrual, carry-over and approval workflow are
+/// explicitly out of scope: that is HR software, and #219 rules it out by name.
+enum StaffAbsenceKind {
+  VACATION
+  SICK_LEAVE
+  OTHER_PAID_LEAVE
+}
+
+/// A dated range someone is off — vacation, sick leave or other paid leave —
+/// so the roster and (later) the trip planner can warn a coordinator before
+/// assigning them, never block it. The range is inclusive; overlapping ranges
+/// for the same person are rejected at the service layer, not here.
+model StaffAbsence {
+  id          String           @id @default(cuid())
+  userId      String
+  user        User             @relation("StaffAbsenceOwner", fields: [userId], references: [id], onDelete: Cascade)
+  kind        StaffAbsenceKind
+  startDate   DateTime         @db.Date
+  endDate     DateTime         @db.Date
+  notes       String?
+  createdById String
+  createdBy   User             @relation("StaffAbsenceCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([userId, startDate, endDate])
 }
 
 // ─── Volunteer hours ────────────────────────────────────────────────────────────

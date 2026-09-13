@@ -11,6 +11,7 @@ import DescriptionIcon from '@mui/icons-material/Description';
 import EventNoteIcon from '@mui/icons-material/EventNote';
 import DateRangeIcon from '@mui/icons-material/DateRange';
 import PeopleIcon from '@mui/icons-material/People';
+import BeachAccessIcon from '@mui/icons-material/BeachAccess';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import InventoryIcon from '@mui/icons-material/Inventory';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
@@ -176,6 +177,13 @@ export const NAV_SECTIONS: NavSection[] = [
         label: 'nav.personnel',
         icon: <PeopleIcon />,
         requires: [Action.VIEW_USERS],
+      },
+      {
+        // Team-wide vacation/sick-leave/other-paid-leave calendar (#224).
+        to: '/staff-absences',
+        label: 'nav.staffAbsences',
+        icon: <BeachAccessIcon />,
+        requires: [Action.MANAGE_PERSONNEL],
       },
     ],
   },

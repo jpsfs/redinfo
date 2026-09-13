@@ -1976,6 +1976,24 @@ export interface ScheduleConflict {
   crossWindow: boolean;
 }
 
+/**
+ * An assignment landing on a day a `StaffAbsence` (#224) covers for the same
+ * person — vacation, sick leave or other paid leave already on file. A
+ * warning alongside `ScheduleConflict`, never a block: the same override
+ * precedent used everywhere else (double-booking here, vehicle occupancy in
+ * `VehicleOccupancy`) — a coordinator can see it and decide, but nothing
+ * stops the assignment from being made.
+ */
+export interface ScheduleAbsenceWarning {
+  userId: string;
+  userName: string;
+  /** ISO date, `YYYY-MM-DD`. */
+  date: string;
+  slot: number;
+  absenceId: string;
+  kind: StaffAbsenceKind;
+}
+
 export interface ScheduleFillStats {
   /** Slots the window's roles ask for, over every shift. Unlimited roles ask for none. */
   requiredSlots: number;
@@ -2046,6 +2064,8 @@ export interface ScheduleBoardResponse {
   roles: AvailabilityWindowRole[];
   days: ScheduleDayBoard[];
   conflicts: ScheduleConflict[];
+  /** Assignments landing on a day the person is on file as absent (#224). */
+  absenceWarnings: ScheduleAbsenceWarning[];
   stats: ScheduleFillStats;
 }
 
@@ -2882,6 +2902,84 @@ export function isOnContractClock({
   );
   if (!coveredByContract) return false;
   return isOnPaidClock(blocks, overrides, date, startMinute, endMinute);
+}
+
+// ─── Staff absences (#224) ──────────────────────────────────────────────────────
+
+/**
+ * A durable HR fact — this is not an ad-hoc schedule shuffle
+ * (`PaidStaffScheduleOverride` is that). Entitlement balances, accrual,
+ * carry-over and approval workflow are explicitly out of scope: that is HR
+ * software, and #219 rules it out by name.
+ */
+export enum StaffAbsenceKind {
+  VACATION = 'VACATION',
+  SICK_LEAVE = 'SICK_LEAVE',
+  OTHER_PAID_LEAVE = 'OTHER_PAID_LEAVE',
+}
+
+/**
+ * A dated range someone is off — vacation, sick leave or other paid leave —
+ * recorded so the roster and (later) the trip planner can warn a coordinator
+ * before assigning them, never block it (`staffAbsencesOnDate`,
+ * `ScheduleAbsenceWarning`). `startDate`/`endDate` are both inclusive.
+ */
+export interface StaffAbsence {
+  id: string;
+  userId: string;
+  kind: StaffAbsenceKind;
+  /** ISO date. */
+  startDate: string;
+  /** ISO date, inclusive. */
+  endDate: string;
+  notes?: string | null;
+  createdById: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateStaffAbsenceRequest {
+  userId: string;
+  kind: StaffAbsenceKind;
+  startDate: string;
+  endDate: string;
+  notes?: string | null;
+}
+
+/** `PATCH /staff-absences/:id` — a correction to an existing block, not a new one. */
+export interface UpdateStaffAbsenceRequest {
+  kind: StaffAbsenceKind;
+  startDate: string;
+  endDate: string;
+  notes?: string | null;
+}
+
+/** `endDate` before `startDate` is never valid, inclusive range or not. */
+export function isValidStaffAbsenceRange(startDate: string, endDate: string): boolean {
+  return endDate >= startDate;
+}
+
+/** Two inclusive date ranges sharing any day at all. */
+export function staffAbsenceRangesOverlap(
+  aStart: string,
+  aEnd: string,
+  bStart: string,
+  bEnd: string,
+): boolean {
+  return aStart <= bEnd && bStart <= aEnd;
+}
+
+/**
+ * Which of `absences` cover `date` — "who is absent on date D", the question
+ * the roster and trip planner ask before assigning someone. Pure so both the
+ * backend service and the schedule board's conflict-style computation can
+ * share it without agreeing on a shape beyond these three fields.
+ */
+export function staffAbsencesOnDate<T extends Pick<StaffAbsence, 'startDate' | 'endDate'>>(
+  absences: T[],
+  date: string,
+): T[] {
+  return absences.filter((absence) => absence.startDate <= date && date <= absence.endDate);
 }
 
 // ─── Volunteer hours ────────────────────────────────────────────────────────────
