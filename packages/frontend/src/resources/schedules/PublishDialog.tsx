@@ -145,6 +145,15 @@ export const PublishDialog = ({
             note={t('publishDialog.eachWithReason')}
           />
         )}
+        {!!stats.unclassifiedPaidShiftsCount && stats.unclassifiedPaidShiftsCount > 0 && (
+          <Line
+            icon={<WarningAmberIcon fontSize="small" sx={{ color: 'warning.dark' }} />}
+            text={t('publishDialog.unclassifiedPaidShifts', {
+              count: stats.unclassifiedPaidShiftsCount,
+            })}
+            note={t('publishDialog.unclassifiedPaidShiftsNote')}
+          />
+        )}
         {stats.lapsedCertificationCount > 0 && (
           <Line
             icon={<ErrorOutlineIcon fontSize="small" sx={{ color: 'error.dark' }} />}

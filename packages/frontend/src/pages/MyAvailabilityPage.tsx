@@ -30,10 +30,12 @@ import {
   DayShiftPattern,
   formatShiftShortLabel,
   MyAvailabilityResponse,
+  resolveCompensationOffer,
   ShiftDefinition,
 } from '@redinfo/shared';
 import { apiFetch } from '../api';
 import { useT } from '../i18n/useT';
+import { CompensationOfferLine } from '../resources/availability/CompensationOfferLine';
 import { WindowCategoryChip } from '../resources/availability/WindowIdentity';
 import { useIsMobile } from '../hooks/useIsMobile';
 import {
@@ -786,6 +788,7 @@ export const MyAvailabilityPage = () => {
             </Typography>
           </Stack>
         )}
+        {window && <CompensationOfferLine offer={resolveCompensationOffer(undefined, window)} />}
       </Box>
 
       <WindowPicker

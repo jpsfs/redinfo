@@ -1126,6 +1126,40 @@ const MESSAGES = {
     pt: 'Não foi possível iniciar a escala.',
     en: 'Could not start the schedule.',
   },
+  'windowShow.editCompensationOffer': { pt: 'Editar oferta de pagamento', en: 'Edit pay offer' },
+  'windowShow.setCompensationOffer': { pt: 'Definir oferta de pagamento', en: 'Set pay offer' },
+
+  // ── Window compensation offer dialog (#246 Stage 2) ──
+  'windowCompensationDialog.title': { pt: 'Oferta de pagamento', en: 'Pay offer' },
+  'windowCompensationDialog.hint': {
+    pt: 'Publicado nesta janela antes de a disponibilidade ser recolhida — os voluntários veem-no ao submeter. Editável enquanto a janela estiver aberta; depois de fechada, altera-se na escala.',
+    en: 'Published on this window before availability is collected — volunteers see it when submitting. Editable while the window is open; once closed, change it on the schedule instead.',
+  },
+  'windowCompensationDialog.kindAria': { pt: 'Tipo de oferta', en: 'Offer kind' },
+  'windowCompensationDialog.kindNone': { pt: 'Sem oferta', en: 'No offer' },
+  'windowCompensationDialog.kindHourly': { pt: 'Por hora', en: 'Hourly' },
+  'windowCompensationDialog.kindFixed': { pt: 'Valor fixo', en: 'Fixed amount' },
+  'windowCompensationDialog.rateLabel': { pt: 'Valor por hora', en: 'Rate per hour' },
+  'windowCompensationDialog.amountLabel': { pt: 'Valor por turno', en: 'Amount per shift' },
+  'windowCompensationDialog.amountInvalid': {
+    pt: 'Indica um valor em euros, igual ou superior a 0.',
+    en: 'Enter an amount in euros, 0 or more.',
+  },
+  'windowCompensationDialog.amountFixedHint': {
+    pt: 'Por pessoa, por turno — não é dividido pela equipa.',
+    en: 'Per person, per shift — not split across the crew.',
+  },
+  'windowCompensationDialog.noteLabel': { pt: 'Nota (opcional)', en: 'Note (optional)' },
+  'windowCompensationDialog.save': { pt: 'Guardar', en: 'Save' },
+  'windowCompensationDialog.failed': {
+    pt: 'Não foi possível guardar a oferta de pagamento.',
+    en: 'Could not save the pay offer.',
+  },
+
+  // ── The compensation offer line — rendered wherever an offer resolves,
+  // and only then (#246 Stage 2). ──
+  'compensationOffer.hourly': { pt: '%{amount} / hora', en: '%{amount} / hour' },
+  'compensationOffer.fixed': { pt: '%{amount}, por pessoa, por turno', en: '%{amount}, per person, per shift' },
 
   // ── Window create form ──
   'windowCreate.pageTitle': { pt: 'Abrir janela de disponibilidade', en: 'Open availability window' },
@@ -1360,6 +1394,10 @@ const MESSAGES = {
   'scheduleBoard.adjustShiftAria': { pt: 'Opções do turno de %{day}, %{label}', en: 'Options for the shift on %{day}, %{label}' },
   'scheduleBoard.shiftMenuAdjust': { pt: 'Ajustar horário', en: 'Adjust hours' },
   'scheduleBoard.shiftMenuCompensation': { pt: 'Classificação da equipa', en: 'Crew classification' },
+  'scheduleBoard.unclassifiedPaidCrew': {
+    pt: 'Há oferta de pagamento e ainda ninguém foi classificado — clica para rever',
+    en: 'A pay offer applies and nobody has been classified yet — click to review',
+  },
   'scheduleBoard.adjustedWas': { pt: 'era %{label}', en: 'was %{label}' },
   'scheduleBoard.doubleBookedTooltip': {
     pt: 'Duplamente escalado: também em %{window}, %{label}',
@@ -1526,6 +1564,14 @@ const MESSAGES = {
   'publishDialog.agreedOffPlatform': { pt: 'acordadas fora da plataforma', en: 'agreed off-platform' },
   'publishDialog.certExceptions': { pt: '%{count} excepções de certificação', en: '%{count} certification exceptions' },
   'publishDialog.eachWithReason': { pt: 'cada uma com justificação registada', en: 'each with a recorded reason' },
+  'publishDialog.unclassifiedPaidShifts': {
+    pt: '%{count} turnos com oferta de pagamento por classificar',
+    en: '%{count} shifts with a pay offer still unclassified',
+  },
+  'publishDialog.unclassifiedPaidShiftsNote': {
+    pt: 'revê a classificação da equipa antes ou depois de publicar',
+    en: 'review crew classification before or after publishing',
+  },
   'publishDialog.lapsedCerts': {
     pt: '%{count} certificações caducadas desde a atribuição',
     en: '%{count} certifications lapsed since assignment',
@@ -2449,6 +2495,10 @@ const MESSAGES = {
   'apiError.WINDOW_ALREADY_CLOSED': {
     pt: 'Esta janela de disponibilidade já está fechada.',
     en: 'This availability window is already closed.',
+  },
+  'apiError.WINDOW_COMPENSATION_LOCKED': {
+    pt: 'Esta janela está fechada; edita a oferta de pagamento na escala.',
+    en: "This window is closed; edit the schedule's own pay offer instead.",
   },
   'apiError.SCHEDULE_DRAFT_NOT_VISIBLE': {
     pt: 'Esta escala ainda não foi publicada — só os coordenadores podem ver um rascunho.',

@@ -1,7 +1,13 @@
-import { ConflictException, ForbiddenException, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   AssignmentCompensationKind,
   CertificationType,
+  CompensationOfferKind,
   ScheduleStatus,
   UserRole,
 } from '@redinfo/shared';
@@ -233,6 +239,64 @@ describe('SchedulesService lifecycle', () => {
     const { service, prisma } = makeService();
     await expect(service.remove('s1')).resolves.toEqual({ id: 's1' });
     expect(prisma.schedule.delete).toHaveBeenCalled();
+  });
+
+  // ── setCompensation — the post-close escape hatch (#246 Stage 2, D4) ────────
+
+  describe('setCompensation', () => {
+    it('writes the schedule-level offer, replacing the window as a whole unit', async () => {
+      const { service, prisma } = makeService();
+
+      const result = await service.setCompensation(
+        's1',
+        { kind: CompensationOfferKind.HOURLY, rateCents: 500 },
+        ACTOR.id,
+      );
+
+      const { data } = prisma.schedule.update.mock.calls[0][0];
+      expect(data.compensationKind).toBe(CompensationOfferKind.HOURLY);
+      expect(data.compensationRateCents).toBe(500);
+      expect(data.compensationAmountCents).toBeNull();
+      expect(data.compensationSetById).toBe(ACTOR.id);
+      expect(result.compensationKind).toBe(CompensationOfferKind.HOURLY);
+    });
+
+    it('writes an explicit NONE, cancelling the window offer', async () => {
+      const { service, prisma } = makeService();
+
+      await service.setCompensation('s1', { kind: CompensationOfferKind.NONE }, ACTOR.id);
+
+      const { data } = prisma.schedule.update.mock.calls[0][0];
+      expect(data.compensationKind).toBe(CompensationOfferKind.NONE);
+      expect(data.compensationRateCents).toBeNull();
+      expect(data.compensationAmountCents).toBeNull();
+    });
+
+    it('is not gated on the window being closed — the whole point is the post-close case', async () => {
+      const { service, prisma } = makeService();
+      prisma.schedule.findUnique.mockResolvedValue(
+        scheduleRow({ window: windowRow({ status: 'CLOSED' }) }),
+      );
+
+      await expect(
+        service.setCompensation('s1', { kind: CompensationOfferKind.HOURLY, rateCents: 500 }, ACTOR.id),
+      ).resolves.toBeDefined();
+    });
+
+    it('rejects an incoherent offer', async () => {
+      const { service } = makeService();
+      await expect(
+        service.setCompensation('s1', { kind: CompensationOfferKind.HOURLY }, ACTOR.id),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('404s an unknown schedule', async () => {
+      const { service, prisma } = makeService();
+      prisma.schedule.findUnique.mockResolvedValue(null);
+      await expect(
+        service.setCompensation('nope', { kind: CompensationOfferKind.HOURLY, rateCents: 500 }, ACTOR.id),
+      ).rejects.toBeInstanceOf(NotFoundException);
+    });
   });
 
   it('refuses to delete a published schedule people are turning up on', async () => {
@@ -472,7 +536,75 @@ describe('SchedulesService.getBoard', () => {
       overrideCount: 1,
       certificationExceptionCount: 0,
       lapsedCertificationCount: 0,
+      // No compensation offer on this fixture's window/schedule, so nothing
+      // is ever "unclassified" despite the viewer holding MANAGE_COMPENSATION.
+      unclassifiedPaidShiftsCount: 0,
     });
+  });
+
+  // ── the visible offer (#246 Stage 2) ────────────────────────────────────────
+
+  it('flags a shift whose crew is still at the untouched default despite a resolved offer', async () => {
+    const { service, prisma } = makeService();
+    prisma.schedule.findUnique.mockResolvedValue(
+      scheduleRow({ compensationKind: CompensationOfferKind.HOURLY, compensationRateCents: 500 }),
+    );
+    prisma.scheduleAssignment.findMany.mockResolvedValue([
+      assignmentRow({ compensation: AssignmentCompensationKind.VOLUNTEER, compensationSetById: null }),
+    ]);
+
+    const board = await service.getBoard('s1', COORDINATOR);
+
+    expect(board.days[0].shifts[0].hasUnclassifiedPaidCrew).toBe(true);
+    expect(board.stats.unclassifiedPaidShiftsCount).toBe(1);
+  });
+
+  it('does not flag a shift a coordinator already explicitly classified VOLUNTEER', async () => {
+    const { service, prisma } = makeService();
+    prisma.schedule.findUnique.mockResolvedValue(
+      scheduleRow({ compensationKind: CompensationOfferKind.HOURLY, compensationRateCents: 500 }),
+    );
+    prisma.scheduleAssignment.findMany.mockResolvedValue([
+      assignmentRow({
+        compensation: AssignmentCompensationKind.VOLUNTEER,
+        compensationSetById: ACTOR.id,
+      }),
+    ]);
+
+    const board = await service.getBoard('s1', COORDINATOR);
+
+    expect(board.days[0].shifts[0].hasUnclassifiedPaidCrew).toBe(false);
+    expect(board.stats.unclassifiedPaidShiftsCount).toBe(0);
+  });
+
+  it('never flags a shift when no offer resolves at all', async () => {
+    const { service, prisma } = makeService();
+    prisma.scheduleAssignment.findMany.mockResolvedValue([
+      assignmentRow({ compensation: AssignmentCompensationKind.VOLUNTEER, compensationSetById: null }),
+    ]);
+
+    const board = await service.getBoard('s1', COORDINATOR);
+
+    expect(board.days[0].shifts[0].hasUnclassifiedPaidCrew).toBe(false);
+  });
+
+  it('omits the unclassified-crew flag and count for a viewer without MANAGE_COMPENSATION', async () => {
+    const { service, prisma } = makeService();
+    prisma.schedule.findUnique.mockResolvedValue(
+      scheduleRow({
+        status: ScheduleStatus.PUBLISHED,
+        compensationKind: CompensationOfferKind.HOURLY,
+        compensationRateCents: 500,
+      }),
+    );
+    prisma.scheduleAssignment.findMany.mockResolvedValue([
+      assignmentRow({ compensation: AssignmentCompensationKind.VOLUNTEER, compensationSetById: null }),
+    ]);
+
+    const board = await service.getBoard('s1', VOLUNTEER);
+
+    expect(board.days[0].shifts[0]).not.toHaveProperty('hasUnclassifiedPaidCrew');
+    expect(board.stats).not.toHaveProperty('unclassifiedPaidShiftsCount');
   });
 
   it("surfaces an adjusted shift at its new hours, with the window's own kept alongside", async () => {

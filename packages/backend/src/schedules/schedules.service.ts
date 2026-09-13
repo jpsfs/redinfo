@@ -17,12 +17,14 @@ import {
   AvailabilityWindowRole,
   availabilityWindowLabel,
   applyShiftOverrides,
+  CompensationOfferKind,
   DayShiftPattern,
   formatShiftLabel,
   holdsCertification,
   MyDutiesResponse,
   MyDuty,
   MyDutyCrewmate,
+  resolveCompensationOffer,
   Schedule,
   ScheduleAssignment,
   ScheduleBoardResponse,
@@ -33,6 +35,7 @@ import {
   ScheduleShiftBoard,
   ScheduleStatus,
   ShiftDefinition,
+  shiftHasUnclassifiedPaidCrew,
   ShiftTimes,
   TodayRosterGroup,
   TodayRosterMember,
@@ -46,8 +49,10 @@ import {
   shiftGaps,
   shiftMandatoryRolesFilled,
   shiftsOverlap,
+  validateCompensationOffer,
   validateDayShifts,
 } from '@redinfo/shared';
+import { SetScheduleCompensationDto } from './dto/set-schedule-compensation.dto';
 import { PrismaService } from '../prisma/prisma.service';
 import { ShiftScheduleService } from '../availability/shift-schedule.service';
 import { serializeWindow } from '../availability/availability-windows.service';
@@ -68,6 +73,7 @@ const ACTOR_SELECT = { select: { id: true, firstName: true, lastName: true } };
 const WINDOW_INCLUDE = {
   openedBy: ACTOR_SELECT,
   closedBy: ACTOR_SELECT,
+  compensationSetBy: ACTOR_SELECT,
   roles: { orderBy: { order: 'asc' } },
 } as const;
 
@@ -75,6 +81,7 @@ const SCHEDULE_INCLUDE = {
   window: { include: WINDOW_INCLUDE },
   createdBy: ACTOR_SELECT,
   publishedBy: ACTOR_SELECT,
+  compensationSetBy: ACTOR_SELECT,
 } as const;
 
 const ASSIGNMENT_INCLUDE = {
@@ -281,6 +288,41 @@ export class SchedulesService {
     return serializeSchedule(published);
   }
 
+  /**
+   * `PATCH /schedules/:id/compensation` — the post-close escape hatch (D4):
+   * a window's own offer freezes once it closes, so a rate correction (or an
+   * explicit withdrawal, `kind: NONE`) after that point lands here instead,
+   * replacing the window's offer as a whole unit
+   * (`resolveCompensationOffer`). Not gated on the window's own status —
+   * unlike the window's route, this one exists specifically *for* the
+   * post-close case, so it stays usable regardless.
+   */
+  async setCompensation(
+    id: string,
+    dto: SetScheduleCompensationDto,
+    setById: string,
+  ): Promise<Schedule> {
+    await this.loadRow(id);
+
+    const rateCents = dto.rateCents ?? null;
+    const amountCents = dto.amountCents ?? null;
+    const error = validateCompensationOffer(dto.kind, rateCents, amountCents);
+    if (error) throw new BadRequestException(error);
+
+    const updated = await this.prisma.schedule.update({
+      where: { id },
+      data: {
+        compensationKind: dto.kind,
+        compensationRateCents: dto.kind === CompensationOfferKind.HOURLY ? rateCents : null,
+        compensationAmountCents: dto.kind === CompensationOfferKind.FIXED ? amountCents : null,
+        compensationSetById: setById,
+        compensationSetAt: new Date(),
+      },
+      include: SCHEDULE_INCLUDE,
+    });
+    return serializeSchedule(updated);
+  }
+
   // ── Context ─────────────────────────────────────────────────────────────────
 
   /** The window, its roles and its own shift grid, for one schedule. */
@@ -401,7 +443,28 @@ export class SchedulesService {
       this.loadDeclinedUserIds(context.window.id),
     ]);
 
+    const canSeeComp = canSeeCompensation(user);
+    // The one offer that applies to every shift of this schedule — resolved
+    // once here rather than per shift, since it never varies within a
+    // schedule (D4: the schedule's own row replaces the window's as a whole
+    // unit, or the window's own applies).
+    const offer = resolveCompensationOffer(
+      {
+        compensationKind: row.compensationKind as CompensationOfferKind | null,
+        compensationRateCents: row.compensationRateCents,
+        compensationAmountCents: row.compensationAmountCents,
+      },
+      context.window,
+    );
+
     const byShift = new Map<string, ScheduleAssignment[]>();
+    // Parallel to `byShift`, but the raw rows: `compensationSetById` is not
+    // part of the wire `ScheduleAssignment` shape (D5 redacts `compensation`
+    // itself; this would only ever be used internally, so it never needs a
+    // wire representation at all), yet `shiftHasUnclassifiedPaidCrew` needs
+    // it to tell an untouched default from a coordinator's own explicit
+    // `VOLUNTEER` call.
+    const rawByShift = new Map<string, typeof assignments>();
     for (const assignment of assignments) {
       const date = toIsoDate(assignment.date);
       const key = shiftKey(date, assignment.slot);
@@ -414,10 +477,14 @@ export class SchedulesService {
             submitted: submissions.has(submissionKey(assignment.userId, date, assignment.slot)),
             declined: declined.has(assignment.userId),
           },
-          canSeeCompensation(user),
+          canSeeComp,
         ),
       );
       byShift.set(key, bucket);
+
+      const rawBucket = rawByShift.get(key) ?? [];
+      rawBucket.push(assignment);
+      rawByShift.set(key, rawBucket);
     }
 
     const days: ScheduleDayBoard[] = context.pattern.map((day) => ({
@@ -428,6 +495,7 @@ export class SchedulesService {
       shifts: day.shifts.map<ScheduleShiftBoard>((shift) => {
         const key = shiftKey(day.date, shift.slot);
         const onShift = byShift.get(key) ?? [];
+        const rawOnShift = rawByShift.get(key) ?? [];
         return {
           slot: shift.slot,
           startMinute: shift.startMinute,
@@ -442,9 +510,31 @@ export class SchedulesService {
             roles: context.roles,
             assignments: onShift,
           }),
+          // Omitted, not false, for a viewer without MANAGE_COMPENSATION —
+          // same convention as `compensation` itself (D5): they cannot open
+          // CompensationDialog either, so the flag would be inert noise.
+          ...(canSeeComp
+            ? {
+                hasUnclassifiedPaidCrew: shiftHasUnclassifiedPaidCrew(
+                  offer,
+                  rawOnShift.map((a) => ({
+                    compensation: a.compensation as AssignmentCompensationKind,
+                    compensationSetById: a.compensationSetById,
+                  })),
+                ),
+              }
+            : {}),
         };
       }),
     }));
+
+    const stats: ScheduleFillStats = scheduleFillStats(days, context.roles, today());
+    if (canSeeComp) {
+      stats.unclassifiedPaidShiftsCount = days.reduce(
+        (total, day) => total + day.shifts.filter((shift) => shift.hasUnclassifiedPaidCrew).length,
+        0,
+      );
+    }
 
     return {
       schedule: serializeSchedule(row),
@@ -452,7 +542,7 @@ export class SchedulesService {
       roles: context.roles,
       days,
       conflicts: await this.detectConflicts(context, days),
-      stats: scheduleFillStats(days, context.roles, today()),
+      stats,
     };
   }
 
@@ -1244,6 +1334,12 @@ type ScheduleRow = {
   publishedAt: Date | null;
   updatedAt: Date;
   window?: Parameters<typeof serializeWindow>[0] | null;
+  compensationKind: `${CompensationOfferKind}` | null;
+  compensationRateCents: number | null;
+  compensationAmountCents: number | null;
+  compensationSetById: string | null;
+  compensationSetBy?: { id: string; firstName: string; lastName: string } | null;
+  compensationSetAt: Date | null;
 };
 
 export function serializeSchedule(row: ScheduleRow): Schedule {
@@ -1259,6 +1355,14 @@ export function serializeSchedule(row: ScheduleRow): Schedule {
     publishedBy: row.publishedBy ?? null,
     publishedAt: row.publishedAt ? row.publishedAt.toISOString() : null,
     updatedAt: row.updatedAt.toISOString(),
+    // Same as the window's own offer fields: not redacted (D5 is about who on
+    // a shift gets paid, not the rate advertised) — every viewer sees this.
+    compensationKind: (row.compensationKind as CompensationOfferKind | null) ?? null,
+    compensationRateCents: row.compensationRateCents ?? null,
+    compensationAmountCents: row.compensationAmountCents ?? null,
+    compensationSetById: row.compensationSetById ?? null,
+    compensationSetBy: row.compensationSetBy ?? null,
+    compensationSetAt: row.compensationSetAt ? row.compensationSetAt.toISOString() : null,
   };
 }
 

@@ -107,11 +107,13 @@ model User {
 
   windowsOpened           AvailabilityWindow[]     @relation("WindowOpenedBy")
   windowsClosed           AvailabilityWindow[]     @relation("WindowClosedBy")
+  windowCompensationsSet  AvailabilityWindow[]     @relation("WindowCompensationSetBy")
   availabilitySubmissions AvailabilitySubmission[]
   availabilityResponses   AvailabilityResponse[]
 
   schedulesCreated             Schedule[]              @relation("ScheduleCreatedBy")
   schedulesPublished           Schedule[]              @relation("SchedulePublishedBy")
+  scheduleCompensationsSet      Schedule[]              @relation("ScheduleCompensationSetBy")
   scheduleAssignments          ScheduleAssignment[]    @relation("ScheduleAssignedTo")
   assignmentsMade              ScheduleAssignment[]    @relation("ScheduleAssignedBy")
   assignmentCompensationsSet   ScheduleAssignment[]    @relation("ScheduleAssignmentCompensationSetBy")
@@ -619,6 +621,32 @@ model AvailabilityWindow {
   closedById String?
   closedBy   User?                      @relation("WindowClosedBy", fields: [closedById], references: [id])
   closedAt   DateTime?
+  /// This window's own compensation offer (Stage 2 of the paid-staff rework,
+  /// #246) — a coordinator publishing a rate *before* availability is
+  /// collected, e.g. "Apoio CNE, 5€/hour". Editable freely while `status =
+  /// OPEN`; frozen once closed, since submissions were made against the
+  /// window as it stood (see the doc comment above `status`). Post-close
+  /// corrections go through `Schedule`'s own offer fields instead, which
+  /// replace this one as a whole unit (`resolveCompensationOffer`) — never
+  /// mix a schedule's `compensationKind` with this row's rate/amount.
+  ///
+  /// `null` means nothing was ever offered; `NONE` (a real enum value) means
+  /// one was explicitly withdrawn. `HOURLY` implies `compensationRateCents`
+  /// is set and `compensationAmountCents` is null, `FIXED` the mirror, and
+  /// `NONE`/null implies both are null — Prisma cannot express that
+  /// conditional NOT NULL, so it is a hand-written CHECK constraint in this
+  /// column's migration (`compensationRateCents`/`compensationAmountCents`
+  /// are also never negative). `FIXED` is per person, per shift.
+  compensationKind        CompensationOfferKind?
+  /// EUR cents per hour. Set only when `compensationKind = HOURLY`.
+  compensationRateCents   Int?
+  /// EUR cents per person, per shift. Set only when `compensationKind = FIXED`.
+  compensationAmountCents Int?
+  /// Free-text context shown alongside the offer, e.g. "paid by the client".
+  compensationNote        String?
+  compensationSetById     String?
+  compensationSetBy       User?                      @relation("WindowCompensationSetBy", fields: [compensationSetById], references: [id])
+  compensationSetAt       DateTime?
   createdAt  DateTime                   @default(now())
   updatedAt  DateTime                   @updatedAt
 
@@ -729,6 +757,17 @@ enum AssignmentCompensationKind {
   PAID
 }
 
+/// How a window (or a schedule, overriding it) advertises pay for its shifts,
+/// before anyone is even assigned — see the shared enum's doc comment
+/// (Stage 2 of the paid-staff rework, #246). `NONE` is a real, storable
+/// value distinct from the column being null: null means nothing was ever
+/// offered, `NONE` means an offer was explicitly withdrawn.
+enum CompensationOfferKind {
+  HOURLY
+  FIXED
+  NONE
+}
+
 /// The duty roster built from one availability window.
 ///
 /// One per window, and identified by it: windows of different categories may
@@ -746,6 +785,21 @@ model Schedule {
   publishedById String?
   publishedBy   User?              @relation("SchedulePublishedBy", fields: [publishedById], references: [id])
   publishedAt   DateTime?
+  /// This schedule's own compensation offer, replacing the window's as a
+  /// **whole unit** when set at all — never field-wise (`resolveCompensationOffer`,
+  /// D4). The post-close escape hatch: the window's own offer freezes once
+  /// it closes (submissions were made against it), but a rate may still need
+  /// correcting — or withdrawing (`compensationKind = NONE`) — afterwards.
+  /// Same hand-written CHECK constraint as `AvailabilityWindow`'s own fields
+  /// (`HOURLY` ⇒ rate set, no amount; `FIXED` the mirror; both null
+  /// otherwise), and no note column — the window's own note is what members
+  /// read before submitting; this is a figures-only override.
+  compensationKind        CompensationOfferKind?
+  compensationRateCents   Int?
+  compensationAmountCents Int?
+  compensationSetById     String?
+  compensationSetBy       User?                   @relation("ScheduleCompensationSetBy", fields: [compensationSetById], references: [id])
+  compensationSetAt       DateTime?
   updatedAt     DateTime           @updatedAt
 
   assignments           ScheduleAssignment[]

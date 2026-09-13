@@ -21,21 +21,28 @@ import {
   Divider,
   Typography,
 } from '@mui/material';
+import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import EventNoteIcon from '@mui/icons-material/EventNote';
 import LockIcon from '@mui/icons-material/Lock';
 import { useNavigate } from 'react-router-dom';
 import {
+  Action,
   AvailabilityMatrixResponse,
   AvailabilityWindow,
   availabilityWindowLabel,
   AvailabilityWindowStatus,
+  resolveCompensationOffer,
   Schedule,
 } from '@redinfo/shared';
 import { apiFetch, ApiError } from '../../api';
 import { apiErrorLabel } from '../../i18n/labels';
+import { useCapabilities } from '../../hooks/useCapabilities';
 import { useT } from '../../i18n/useT';
 import { formatDateRange } from '../../utils/dates';
 import { AvailabilityMatrix } from './AvailabilityMatrix';
+import { CompensationOfferLine } from './CompensationOfferLine';
+import { useScheduleForWindow } from './useScheduleForWindow';
+import { WindowCompensationDialog } from './WindowCompensationDialog';
 import { WindowIdentity, WindowRoleChips, WindowStatusChip } from './WindowIdentity';
 
 /**
@@ -139,6 +146,7 @@ const CloseWindowButton = () => {
 const WindowHeader = () => {
   const t = useT();
   const record = useRecordContext<AvailabilityWindow>();
+  const schedule = useScheduleForWindow(record?.id);
   if (!record) return null;
   return (
     <Box
@@ -160,11 +168,66 @@ const WindowHeader = () => {
         <Box sx={{ mt: 0.5 }}>
           <WindowIdentity category={record.category} name={record.name} />
         </Box>
+        <CompensationOfferSection record={record} schedule={schedule} />
       </Box>
       <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-        <ScheduleButton />
+        <ScheduleButton schedule={schedule} />
         <CloseWindowButton />
       </Box>
+    </Box>
+  );
+};
+
+/**
+ * The window's own compensation offer (#246 Stage 2) — a discreet line,
+ * shown only when one actually resolves, never a badge or a column. Every
+ * viewer sees this (it is meant to be public, before submissions), but only
+ * a coordinator holding `MANAGE_COMPENSATION` gets the edit affordance, and
+ * only while the window is still `OPEN` — frozen once closed, per the
+ * policy `AvailabilityWindowsService.setCompensation` enforces.
+ */
+const CompensationOfferSection = ({
+  record,
+  schedule,
+}: {
+  record: AvailabilityWindow;
+  schedule: ReturnType<typeof useScheduleForWindow>;
+}) => {
+  const t = useT();
+  const refresh = useRefresh();
+  const capabilities = useCapabilities();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const offer = resolveCompensationOffer(schedule, record);
+  const canEdit =
+    capabilities.can([Action.MANAGE_COMPENSATION]) && record.status === AvailabilityWindowStatus.OPEN;
+
+  if (!offer && !canEdit) return null;
+
+  return (
+    <Box sx={{ mt: 0.5, display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+      <CompensationOfferLine offer={offer} />
+      {canEdit && (
+        <Button
+          size="small"
+          variant="text"
+          startIcon={<AttachMoneyIcon fontSize="small" />}
+          sx={{ textTransform: 'none' }}
+          onClick={() => setDialogOpen(true)}
+        >
+          {offer ? t('windowShow.editCompensationOffer') : t('windowShow.setCompensationOffer')}
+        </Button>
+      )}
+      {canEdit && (
+        <WindowCompensationDialog
+          window={record}
+          open={dialogOpen}
+          onClose={() => setDialogOpen(false)}
+          onSaved={() => {
+            setDialogOpen(false);
+            refresh();
+          }}
+        />
+      )}
     </Box>
   );
 };
@@ -176,32 +239,12 @@ const WindowHeader = () => {
  * coordinators begin arranging cover before submissions end, and the builder
  * says plainly that availability may still change.
  */
-const ScheduleButton = () => {
+const ScheduleButton = ({ schedule }: { schedule: ReturnType<typeof useScheduleForWindow> }) => {
   const t = useT();
   const record = useRecordContext<AvailabilityWindow>();
   const notify = useNotify();
   const navigate = useNavigate();
-  const [schedule, setSchedule] = useState<Schedule | null | undefined>(undefined);
   const [busy, setBusy] = useState(false);
-
-  useEffect(() => {
-    if (!record?.id) return;
-    let cancelled = false;
-    apiFetch<{ data: Schedule[] }>(
-      `/schedules?windowId=${encodeURIComponent(String(record.id))}&perPage=1`,
-    )
-      .then((result) => {
-        if (!cancelled) setSchedule(result.data[0] ?? null);
-      })
-      .catch(() => {
-        // A volunteer reading a window has no schedule permission; the button
-        // simply does not appear for them.
-        if (!cancelled) setSchedule(undefined);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [record?.id]);
 
   if (!record || schedule === undefined) return null;
 

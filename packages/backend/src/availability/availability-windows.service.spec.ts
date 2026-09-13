@@ -15,6 +15,7 @@ import {
   AvailabilityWindowCategory,
   AvailabilityWindowStatus,
   CertificationType,
+  CompensationOfferKind,
   formatShiftLabel,
   toMinuteOfDay,
 } from '@redinfo/shared';
@@ -857,6 +858,115 @@ describe('AvailabilityWindowsService', () => {
       );
       await expect(service.close('win-1', COORDINATOR.id)).rejects.toThrow(ConflictException);
       expect(prisma.availabilityWindow.update).not.toHaveBeenCalled();
+    });
+  });
+
+  // ── setCompensation (#246 Stage 2) ──────────────────────────────────────────
+
+  describe('setCompensation', () => {
+    it('writes an HOURLY offer while the window is open', async () => {
+      prisma.availabilityWindow.findUnique.mockResolvedValue(windowRow());
+
+      const result = await service.setCompensation(
+        'win-1',
+        { kind: CompensationOfferKind.HOURLY, rateCents: 500 },
+        COORDINATOR.id,
+      );
+
+      const { data } = prisma.availabilityWindow.update.mock.calls[0][0];
+      expect(data.compensationKind).toBe(CompensationOfferKind.HOURLY);
+      expect(data.compensationRateCents).toBe(500);
+      expect(data.compensationAmountCents).toBeNull();
+      expect(data.compensationSetById).toBe(COORDINATOR.id);
+      expect(data.compensationSetAt).toBeInstanceOf(Date);
+      expect(result.compensationKind).toBe(CompensationOfferKind.HOURLY);
+    });
+
+    it('writes a FIXED offer, dropping any rate', async () => {
+      prisma.availabilityWindow.findUnique.mockResolvedValue(windowRow());
+
+      await service.setCompensation(
+        'win-1',
+        { kind: CompensationOfferKind.FIXED, amountCents: 2500 },
+        COORDINATOR.id,
+      );
+
+      const { data } = prisma.availabilityWindow.update.mock.calls[0][0];
+      expect(data.compensationKind).toBe(CompensationOfferKind.FIXED);
+      expect(data.compensationAmountCents).toBe(2500);
+      expect(data.compensationRateCents).toBeNull();
+    });
+
+    it('writes NONE, withdrawing a previous offer', async () => {
+      prisma.availabilityWindow.findUnique.mockResolvedValue(
+        windowRow({ compensationKind: CompensationOfferKind.HOURLY, compensationRateCents: 500 }),
+      );
+
+      await service.setCompensation(
+        'win-1',
+        { kind: CompensationOfferKind.NONE },
+        COORDINATOR.id,
+      );
+
+      const { data } = prisma.availabilityWindow.update.mock.calls[0][0];
+      expect(data.compensationKind).toBe(CompensationOfferKind.NONE);
+      expect(data.compensationRateCents).toBeNull();
+      expect(data.compensationAmountCents).toBeNull();
+    });
+
+    it('throws NotFoundException for an unknown window', async () => {
+      prisma.availabilityWindow.findUnique.mockResolvedValue(null);
+      await expect(
+        service.setCompensation(
+          'nope',
+          { kind: CompensationOfferKind.HOURLY, rateCents: 500 },
+          COORDINATOR.id,
+        ),
+      ).rejects.toThrow(NotFoundException);
+    });
+
+    it('refuses to change the offer once the window is closed', async () => {
+      prisma.availabilityWindow.findUnique.mockResolvedValue(
+        windowRow({ status: AvailabilityWindowStatus.CLOSED }),
+      );
+
+      await expect(
+        service.setCompensation(
+          'win-1',
+          { kind: CompensationOfferKind.HOURLY, rateCents: 500 },
+          COORDINATOR.id,
+        ),
+      ).rejects.toThrow(ConflictException);
+      expect(prisma.availabilityWindow.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects an HOURLY offer with no rate', async () => {
+      prisma.availabilityWindow.findUnique.mockResolvedValue(windowRow());
+      await expect(
+        service.setCompensation('win-1', { kind: CompensationOfferKind.HOURLY }, COORDINATOR.id),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects an HOURLY offer that also carries an amount', async () => {
+      prisma.availabilityWindow.findUnique.mockResolvedValue(windowRow());
+      await expect(
+        service.setCompensation(
+          'win-1',
+          { kind: CompensationOfferKind.HOURLY, rateCents: 500, amountCents: 100 },
+          COORDINATOR.id,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    it('rejects NONE carrying a rate or amount', async () => {
+      prisma.availabilityWindow.findUnique.mockResolvedValue(windowRow());
+      await expect(
+        service.setCompensation(
+          'win-1',
+          { kind: CompensationOfferKind.NONE, rateCents: 500 },
+          COORDINATOR.id,
+        ),
+      ).rejects.toThrow(BadRequestException);
     });
   });
 

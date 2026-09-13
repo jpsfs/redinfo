@@ -38,6 +38,7 @@ Don't ask for a list of all exports — grep them.
 | Availability | Windows, shifts, submissions, responses |
 | Window roles | Roles within an availability window |
 | Schedules | Schedule, assignment, shift-override shapes and rules |
+| Compensation offer | `CompensationOfferKind`, `resolveCompensationOffer`, `validateCompensationOffer` (#246 Stage 2) — the rate a window/schedule advertises before availability is collected, distinct from `AssignmentCompensationKind`'s per-person classification |
 | Paid staff schedule | `PaidStaffScheduleBlock`/`Override`, `isOnPaidClock` (#245) — on/off-clock resolution for `AssignmentCompensationKind` |
 | Volunteer hours | `VolunteerHoursEntry`, exception detection, auto-approval rules |
 | Geography | Municipality, locality location shapes |

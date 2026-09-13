@@ -25,6 +25,7 @@ import {
   CreateAvailabilityWindowDto,
   CreateMonthlyAvailabilityWindowDto,
 } from './dto/create-availability-window.dto';
+import { SetWindowCompensationDto } from './dto/set-window-compensation.dto';
 import { SubmitAvailabilityDto } from './dto/submit-availability.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -182,6 +183,22 @@ export class AvailabilityWindowsController {
   @Actions(Action.MANAGE_AVAILABILITY_WINDOWS)
   close(@Param('id') id: string, @CurrentUser() user: RequestUser) {
     return this.windowsService.close(id, user.id);
+  }
+
+  /**
+   * The window's own compensation offer — editable while `status = OPEN`,
+   * refused once closed (see `AvailabilityWindowsService.setCompensation`).
+   * Gated on `MANAGE_COMPENSATION`, not `MANAGE_AVAILABILITY_WINDOWS`:
+   * building the window and publishing a rate on it are different calls.
+   */
+  @Patch(':id')
+  @Actions(Action.MANAGE_COMPENSATION)
+  setCompensation(
+    @Param('id') id: string,
+    @Body() dto: SetWindowCompensationDto,
+    @CurrentUser() user: RequestUser,
+  ) {
+    return this.windowsService.setCompensation(id, dto, user.id);
   }
 }
 

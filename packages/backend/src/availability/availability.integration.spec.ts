@@ -13,6 +13,7 @@ import { ShiftScheduleService } from './shift-schedule.service';
 import {
   AvailabilityWindowCategory,
   AvailabilityWindowStatus,
+  CompensationOfferKind,
   toMinuteOfDay,
   UserRole,
 } from '@redinfo/shared';
@@ -282,6 +283,85 @@ describeIntegration('Availability module (integration)', () => {
 
       expect(reloaded.startDate).toBe('2026-03-28');
       expect(reloaded.endDate).toBe('2026-03-30');
+    });
+  });
+
+  // ── compensation offer (#246 Stage 2) ─────────────────────────────────────
+
+  describe('compensation offer', () => {
+    it('sets and replaces the offer while the window is open', async () => {
+      const window = await openWindow();
+
+      const withOffer = await windowsService.setCompensation(
+        window.id,
+        { kind: CompensationOfferKind.HOURLY, rateCents: 500 },
+        coordinator.id,
+      );
+      expect(withOffer.compensationKind).toBe(CompensationOfferKind.HOURLY);
+      expect(withOffer.compensationRateCents).toBe(500);
+      expect(withOffer.compensationAmountCents).toBeNull();
+      expect(withOffer.compensationSetBy).toMatchObject({ firstName: 'Maria' });
+      expect(withOffer.compensationSetAt).not.toBeNull();
+
+      // Switching kind replaces the offer as a whole unit: the old rate must
+      // not linger once FIXED is what applies.
+      const switched = await windowsService.setCompensation(
+        window.id,
+        { kind: CompensationOfferKind.FIXED, amountCents: 2500 },
+        coordinator.id,
+      );
+      expect(switched.compensationKind).toBe(CompensationOfferKind.FIXED);
+      expect(switched.compensationAmountCents).toBe(2500);
+      expect(switched.compensationRateCents).toBeNull();
+    });
+
+    it('refuses to change the offer once the window is closed', async () => {
+      const window = await openWindow();
+      await windowsService.close(window.id, coordinator.id);
+
+      await expect(
+        windowsService.setCompensation(
+          window.id,
+          { kind: CompensationOfferKind.HOURLY, rateCents: 500 },
+          coordinator.id,
+        ),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('rejects an incoherent offer before it ever reaches the database', async () => {
+      const window = await openWindow();
+
+      await expect(
+        windowsService.setCompensation(
+          window.id,
+          { kind: CompensationOfferKind.HOURLY, rateCents: 500, amountCents: 2500 },
+          coordinator.id,
+        ),
+      ).rejects.toThrow(BadRequestException);
+    });
+
+    /**
+     * The service always validates before writing, so this reaches for the
+     * database directly — the CHECK constraint is the actual guarantee for
+     * any row a future code path might write without going through the
+     * service (a migration, a script, a bug).
+     */
+    it('has the database itself reject a row the service would never write', async () => {
+      const window = await openWindow();
+
+      await expect(
+        prisma.$executeRawUnsafe(
+          `UPDATE "AvailabilityWindow" SET "compensationKind" = 'HOURLY', "compensationRateCents" = NULL, "compensationAmountCents" = NULL WHERE id = $1`,
+          window.id,
+        ),
+      ).rejects.toThrow();
+
+      await expect(
+        prisma.$executeRawUnsafe(
+          `UPDATE "AvailabilityWindow" SET "compensationKind" = 'FIXED', "compensationRateCents" = 100, "compensationAmountCents" = 100 WHERE id = $1`,
+          window.id,
+        ),
+      ).rejects.toThrow();
     });
   });
 

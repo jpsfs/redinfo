@@ -16,6 +16,7 @@ import {
   AvailabilityWindowRole,
   AvailabilityWindowStatus,
   CertificationType,
+  CompensationOfferKind,
   DayShiftPattern,
   defaultRolesForCategory,
   defaultShiftsForDayType,
@@ -26,9 +27,11 @@ import {
   ShiftSpec,
   toShiftDefinitions,
   toWindowRoles,
+  validateCompensationOffer,
   validateWindowRoles,
   WindowRoleSpec,
 } from '@redinfo/shared';
+import { SetWindowCompensationDto } from './dto/set-window-compensation.dto';
 
 // Re-exported so this module stays the import site it has always been; the
 // value lives in @redinfo/shared because the window editor enforces it too.
@@ -64,6 +67,15 @@ type WindowRow = {
   closedBy?: ActorRow | null;
   closedAt: Date | null;
   roles?: RoleRow[];
+  // Template-literal so Prisma's generated string-union enum type-checks
+  // against the shared TS enum without a cast — same trick as `category`.
+  compensationKind: `${CompensationOfferKind}` | null;
+  compensationRateCents: number | null;
+  compensationAmountCents: number | null;
+  compensationNote: string | null;
+  compensationSetById: string | null;
+  compensationSetBy?: ActorRow | null;
+  compensationSetAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
 };
@@ -77,6 +89,7 @@ const ACTOR_SELECT = { select: { id: true, firstName: true, lastName: true } };
 const WINDOW_INCLUDE = {
   openedBy: ACTOR_SELECT,
   closedBy: ACTOR_SELECT,
+  compensationSetBy: ACTOR_SELECT,
   roles: { orderBy: { order: 'asc' } },
 } as const;
 
@@ -456,6 +469,44 @@ export class AvailabilityWindowsService {
     return serializeWindow(closed);
   }
 
+  /**
+   * `PATCH /availability-windows/:id` — the offer, and nothing else this
+   * route can touch, only while the window is still `OPEN`. Frozen once
+   * closed: submissions were made against the window as it stood, and a
+   * rate slipped in afterwards would misrepresent what people actually saw
+   * before answering. Post-close changes go through `Schedule`'s own
+   * compensation fields instead (`resolveCompensationOffer`, D4).
+   */
+  async setCompensation(id: string, dto: SetWindowCompensationDto, setById: string) {
+    const window = await this.prisma.availabilityWindow.findUnique({ where: { id } });
+    if (!window) throw new NotFoundException(`Availability window ${id} not found`);
+    if (window.status === AvailabilityWindowStatus.CLOSED) {
+      throw new ApiConflictException(
+        'WINDOW_COMPENSATION_LOCKED',
+        `Availability window ${id} is closed; edit the schedule's own compensation offer instead.`,
+      );
+    }
+
+    const rateCents = dto.rateCents ?? null;
+    const amountCents = dto.amountCents ?? null;
+    const error = validateCompensationOffer(dto.kind, rateCents, amountCents);
+    if (error) throw new BadRequestException(error);
+
+    const updated = await this.prisma.availabilityWindow.update({
+      where: { id },
+      data: {
+        compensationKind: dto.kind,
+        compensationRateCents: dto.kind === CompensationOfferKind.HOURLY ? rateCents : null,
+        compensationAmountCents: dto.kind === CompensationOfferKind.FIXED ? amountCents : null,
+        compensationNote: dto.note?.trim() || null,
+        compensationSetById: setById,
+        compensationSetAt: new Date(),
+      },
+      include: WINDOW_INCLUDE,
+    });
+    return serializeWindow(updated);
+  }
+
   private assertIsoDate(value: string, field: string): string {
     const normalised = value?.length > 10 ? toIsoDate(value) : value;
     if (!isIsoDate(normalised)) {
@@ -543,6 +594,16 @@ export function serializeWindow(row: WindowRow): AvailabilityWindow {
     // Undefined rather than [] when the roles were not read: "none defined" and
     // "not loaded" are different answers, and only one of them is this row's.
     roles: row.roles ? row.roles.map(serializeRole) : undefined,
+    // Not redacted like `ScheduleAssignment.compensation` (D5 is about who on
+    // a shift gets paid, not the rate a window advertises) — every viewer
+    // sees this, which is the point of publishing it before submissions.
+    compensationKind: (row.compensationKind as CompensationOfferKind | null) ?? null,
+    compensationRateCents: row.compensationRateCents ?? null,
+    compensationAmountCents: row.compensationAmountCents ?? null,
+    compensationNote: row.compensationNote ?? null,
+    compensationSetById: row.compensationSetById ?? null,
+    compensationSetBy: row.compensationSetBy ?? null,
+    compensationSetAt: row.compensationSetAt ? row.compensationSetAt.toISOString() : null,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

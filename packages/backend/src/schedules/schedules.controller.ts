@@ -6,6 +6,7 @@ import {
   Get,
   Param,
   ParseIntPipe,
+  Patch,
   Post,
   Put,
   Query,
@@ -28,6 +29,7 @@ import { AdjustShiftDto } from './dto/adjust-shift.dto';
 import { CreateScheduleDto } from './dto/create-schedule.dto';
 import { CreateScheduleAssignmentDto, SelfAssignDto } from './dto/create-assignment.dto';
 import { SetShiftCompensationDto } from './dto/set-compensation.dto';
+import { SetScheduleCompensationDto } from './dto/set-schedule-compensation.dto';
 import { AutofillScheduleDto } from './dto/autofill-schedule.dto';
 
 @ApiTags('Schedules')
@@ -239,5 +241,20 @@ export class SchedulesController {
     @CurrentUser() user: { id: string },
   ) {
     return this.assignments.setCompensation(id, date, slot, dto, user.id);
+  }
+
+  /**
+   * The schedule's own compensation offer — the post-close escape hatch
+   * (D4): a window's own offer freezes once it closes, so a rate correction
+   * (or an explicit withdrawal, `kind: NONE`) afterwards goes here instead.
+   */
+  @Patch(':id/compensation')
+  @Actions(Action.MANAGE_COMPENSATION)
+  setScheduleCompensation(
+    @Param('id') id: string,
+    @Body() dto: SetScheduleCompensationDto,
+    @CurrentUser() user: { id: string },
+  ) {
+    return this.schedules.setCompensation(id, dto, user.id);
   }
 }

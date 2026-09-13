@@ -4,7 +4,13 @@ import userEvent from '@testing-library/user-event';
 import { AdminContext, testDataProvider } from 'react-admin';
 import polyglotI18nProvider from 'ra-i18n-polyglot';
 import { MemoryRouter } from 'react-router-dom';
-import { AvailabilityWindowStatus, CertificationType, ScheduleStatus, UserRole } from '@redinfo/shared';
+import {
+  AvailabilityWindowStatus,
+  CertificationType,
+  CompensationOfferKind,
+  ScheduleStatus,
+  UserRole,
+} from '@redinfo/shared';
 import { messages } from '../../i18n/i18nProvider';
 import { ScheduleBoard } from './ScheduleBoard';
 import { apiDownload, apiFetch } from '../../api';
@@ -430,6 +436,87 @@ describe('ScheduleBoard', () => {
 
     expect(await screen.findByText('Schedule sched-1 not found')).toBeInTheDocument();
   });
+
+  // ── the compensation offer (#246 Stage 2) ─────────────────────────────────
+
+  describe('compensation offer', () => {
+    it('shows the discreet offer line on the shift header when one resolves', async () => {
+      respondWith(
+        scheduleBoard({
+          schedule: {
+            ...DRAFT_SCHEDULE,
+            compensationKind: CompensationOfferKind.HOURLY,
+            compensationRateCents: 500,
+          },
+        }),
+      );
+      renderBoard();
+
+      expect((await screen.findAllByText('€5.00 / hour')).length).toBeGreaterThan(0);
+    });
+
+    // The requirement-regression test: volunteering is the norm, so a board
+    // with no offer must show no money vocabulary anywhere at all.
+    it('renders no money text anywhere when no offer resolves', async () => {
+      renderBoard();
+      await screen.findByText('Sat, 3 Oct');
+
+      expect(screen.queryByText(/€/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/unpaid/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/pay offer/i)).not.toBeInTheDocument();
+    });
+
+    it('nudges a coordinator toward classifying a shift the server flags as unclassified', async () => {
+      const board = scheduleBoard({
+        schedule: {
+          ...DRAFT_SCHEDULE,
+          compensationKind: CompensationOfferKind.HOURLY,
+          compensationRateCents: 500,
+        },
+      });
+      board.days[0].shifts[0] = { ...board.days[0].shifts[0], hasUnclassifiedPaidCrew: true };
+      respondWith(board);
+      renderBoard();
+
+      expect(
+        await screen.findByText(/pay offer applies and nobody has been classified/i),
+      ).toBeInTheDocument();
+    });
+
+    it('opens crew classification when the nudge is clicked', async () => {
+      const board = scheduleBoard({
+        schedule: {
+          ...DRAFT_SCHEDULE,
+          compensationKind: CompensationOfferKind.HOURLY,
+          compensationRateCents: 500,
+        },
+      });
+      board.days[0].shifts[0] = { ...board.days[0].shifts[0], hasUnclassifiedPaidCrew: true };
+      respondWith(board);
+      renderBoard();
+      const user = userEvent.setup();
+
+      await user.click(await screen.findByText(/pay offer applies and nobody has been classified/i));
+
+      expect(screen.getByRole('dialog')).toBeInTheDocument();
+    });
+
+    it('does not nudge when the server never flagged the shift, even with an offer', async () => {
+      respondWith(
+        scheduleBoard({
+          schedule: {
+            ...DRAFT_SCHEDULE,
+            compensationKind: CompensationOfferKind.HOURLY,
+            compensationRateCents: 500,
+          },
+        }),
+      );
+      renderBoard();
+      await screen.findByText('Sat, 3 Oct');
+
+      expect(screen.queryByText(/pay offer applies and nobody has been classified/i)).not.toBeInTheDocument();
+    });
+  });
 });
 
 // ── What a member sees on a published rota ─────────────────────────────────────
@@ -613,5 +700,34 @@ describe('ScheduleBoard as a member', () => {
 
     expect(await screen.findByLabelText(/Carla Ferreira, signed up/)).toBeInTheDocument();
     expect(screen.queryByLabelText(/override/)).not.toBeInTheDocument();
+  });
+
+  // The requirement-regression test, for the far more common viewer: a
+  // published, unpaid rota must show no money vocabulary at all to a member.
+  it('renders no money text anywhere on a published board with no offer', async () => {
+    renderBoard(MEMBER);
+    await screen.findByText('Sat, 3 Oct');
+
+    expect(screen.queryByText(/€/)).not.toBeInTheDocument();
+    expect(screen.queryByText(/unpaid/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/pay offer/i)).not.toBeInTheDocument();
+    expect(screen.queryByText(/volunteer/i)).not.toBeInTheDocument();
+  });
+
+  it('sees the same discreet offer line a coordinator sees, but never the classification nudge', async () => {
+    respondWith(
+      publishedBoard({
+        schedule: {
+          ...DRAFT_SCHEDULE,
+          status: ScheduleStatus.PUBLISHED,
+          compensationKind: CompensationOfferKind.HOURLY,
+          compensationRateCents: 500,
+        },
+      }),
+    );
+    renderBoard(MEMBER);
+
+    expect((await screen.findAllByText('€5.00 / hour')).length).toBeGreaterThan(0);
+    expect(screen.queryByText(/pay offer applies and nobody has been classified/i)).not.toBeInTheDocument();
   });
 });

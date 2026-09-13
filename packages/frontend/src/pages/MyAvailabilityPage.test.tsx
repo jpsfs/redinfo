@@ -3,7 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AdminContext, Notification, testDataProvider } from 'react-admin';
 import polyglotI18nProvider from 'ra-i18n-polyglot';
-import { toMinuteOfDay } from '@redinfo/shared';
+import { CompensationOfferKind, toMinuteOfDay } from '@redinfo/shared';
 import { messages } from '../i18n/i18nProvider';
 import { MyAvailabilityPage } from './MyAvailabilityPage';
 import { apiFetch } from '../api';
@@ -119,6 +119,42 @@ describe('MyAvailabilityPage', () => {
 
     expect(await screen.findByText('Window open')).toBeInTheDocument();
     expect(screen.getByText('28 Sep 2026 – 5 Oct 2026')).toBeInTheDocument();
+  });
+
+  // ── the compensation offer (#246 Stage 2) ───────────────────────────────────
+  //
+  // This is the screen the offer exists to be seen on: it drives submissions,
+  // so it renders every viewer regardless of role — no gate to check here.
+
+  describe('compensation offer', () => {
+    it('shows the discreet line when the window carries one', async () => {
+      stubApi({
+        me: myAvailability({
+          window: {
+            ...OPEN_WINDOW,
+            compensationKind: CompensationOfferKind.HOURLY,
+            compensationRateCents: 500,
+          },
+        }),
+      });
+      renderPage();
+
+      expect(await screen.findByText('€5.00 / hour')).toBeInTheDocument();
+    });
+
+    // The requirement-regression test: volunteering is the norm, so a window
+    // with no offer must show no money vocabulary anywhere at all — assert on
+    // rendered text, not on the record's own fields.
+    it('renders no money text anywhere on a window with no offer', async () => {
+      renderPage();
+
+      await waitFor(() => expect(screen.getByText('Window open')).toBeInTheDocument());
+
+      expect(screen.queryByText(/€/)).not.toBeInTheDocument();
+      expect(screen.queryByText(/unpaid/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/volunteer/i)).not.toBeInTheDocument();
+      expect(screen.queryByText(/pay offer/i)).not.toBeInTheDocument();
+    });
   });
 
   it('renders a month calendar covering the window', async () => {

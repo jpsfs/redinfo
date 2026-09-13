@@ -1569,6 +1569,23 @@ export interface AvailabilityWindow {
    * be empty; irrelevant to submitting availability, which never mentions them.
    */
   roles?: AvailabilityWindowRole[];
+  /**
+   * This window's own compensation offer, if a coordinator published one —
+   * see `resolveCompensationOffer` for how it combines with a schedule's own
+   * override, and `CompensationOfferKind`/`CompensationOfferFields` for what
+   * each field means. Unlike `ScheduleAssignment.compensation`, this is not
+   * redacted (D5 is about who on a shift gets paid, not about the rate a
+   * window advertises) — it is meant to be seen by everyone, before they even
+   * submit availability.
+   */
+  compensationKind?: CompensationOfferKind | null;
+  compensationRateCents?: number | null;
+  compensationAmountCents?: number | null;
+  /** Free-text context for the offer, e.g. "Apoio CNE — paid by the client". */
+  compensationNote?: string | null;
+  compensationSetById?: string | null;
+  compensationSetBy?: AvailabilityWindowActor | null;
+  compensationSetAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -1921,6 +1938,14 @@ export interface ScheduleShiftBoard extends ShiftSpec {
   /** Certified drivers across every role on this shift. */
   driverCount: number;
   gaps: ScheduleGap[];
+  /**
+   * A resolved compensation offer exists on this schedule, and at least one
+   * person on this shift is still at the untouched `VOLUNTEER` default —
+   * see `ScheduleFillStats.unclassifiedPaidShiftsCount`, the aggregate this
+   * feeds. Same redaction as `compensation` itself: present only for a
+   * viewer with `Action.MANAGE_COMPENSATION`, omitted for anyone else.
+   */
+  hasUnclassifiedPaidCrew?: boolean;
 }
 
 export interface ScheduleDayBoard {
@@ -1967,6 +1992,18 @@ export interface ScheduleFillStats {
    * separately: something to review, not a decision anyone made.
    */
   lapsedCertificationCount: number;
+  /**
+   * Shifts where the resolved compensation offer (`resolveCompensationOffer`)
+   * is non-null and at least one assignment is still at its untouched
+   * `VOLUNTEER` default (`compensation === VOLUNTEER` and nobody has ever
+   * called `setCompensation` on it) — the gap Stage 1's always-`VOLUNTEER`
+   * default leaves open on a genuinely paid post. Present only for a viewer
+   * who holds `Action.MANAGE_COMPENSATION`; omitted, not zero, for anyone
+   * else, since they cannot act on it and cannot see `compensation` itself
+   * either. Like every other figure here, this never blocks publication —
+   * it is restated in `PublishDialog`, not enforced.
+   */
+  unclassifiedPaidShiftsCount?: number;
 }
 
 export interface Schedule {
@@ -1981,6 +2018,22 @@ export interface Schedule {
   publishedBy?: AvailabilityWindowActor | null;
   publishedAt?: string | null;
   updatedAt: string;
+  /**
+   * This schedule's own compensation offer, replacing the window's as a
+   * **whole unit** when set at all (D4) — see `resolveCompensationOffer`.
+   * The post-close escape hatch: a window's offer freezes once it closes
+   * (submissions were made against it), but a schedule built from it may
+   * still need a rate corrected, or withdrawn (`kind: NONE`), afterwards.
+   * No `compensationNote` here — the window's own note is the one members
+   * read before submitting; this is a coordinator-only override of the
+   * figures alone.
+   */
+  compensationKind?: CompensationOfferKind | null;
+  compensationRateCents?: number | null;
+  compensationAmountCents?: number | null;
+  compensationSetById?: string | null;
+  compensationSetBy?: AvailabilityWindowActor | null;
+  compensationSetAt?: string | null;
   /** Present on list rows so the grid can show progress without the full board. */
   stats?: ScheduleFillStats;
 }
@@ -2437,6 +2490,194 @@ export function shiftMandatoryRolesFilled({
     const filled = assignments.filter((a) => a.roleId === role.id).length;
     return filled >= role.mandatoryCount;
   });
+}
+
+// ─── Compensation offer (#246 Stage 2) ──────────────────────────────────────────
+//
+// The visible offer: a coordinator publishing a rate on a window *before*
+// availability is collected, so a genuinely paid post (the product owner's
+// example: "Apoio CNE" at 5€/hour) reads as one on the screen that drives
+// submissions. Distinct from `AssignmentCompensationKind`, which classifies
+// one person's time *after* they are assigned — that stays default
+// `VOLUNTEER` no matter what is offered here (Stage 1's D1 is unchanged); an
+// offer only makes `PAID` selectable and expected in `CompensationDialog`, it
+// never auto-classifies anyone.
+
+/**
+ * How a window (or a schedule, overriding it) advertises pay for its shifts.
+ *
+ * `NONE` is a real, storable value, not merely "no offer" — it is the only
+ * way a schedule can *cancel* a window's offer once one exists, once the
+ * window itself is frozen (see `resolveCompensationOffer`). A field left
+ * `null`/undefined means "nothing was ever set here"; `NONE` means "an offer
+ * existed and was explicitly withdrawn". The two read identically to
+ * `resolveCompensationOffer`'s callers, but differ to anything inspecting
+ * `compensationKind` directly (the edit dialog needs the distinction to
+ * prefill correctly).
+ */
+export enum CompensationOfferKind {
+  HOURLY = 'HOURLY',
+  FIXED = 'FIXED',
+  NONE = 'NONE',
+}
+
+/**
+ * The fields one compensation offer is made of — shared shape for
+ * `AvailabilityWindow` and `Schedule` so `resolveCompensationOffer` can take
+ * either without knowing which. Currency is always EUR, and every cents
+ * value is a non-negative integer, never a float (validated by
+ * `validateCompensationOffer` and mirrored by a hand-written DB CHECK
+ * constraint — Prisma cannot express "HOURLY implies a rate and no amount").
+ *
+ * `FIXED` is **per person, per shift**: every volunteer or paid crew member
+ * assigned to that shift earns the fixed amount once each, the shift's
+ * headcount does not split it.
+ */
+export interface CompensationOfferFields {
+  compensationKind?: CompensationOfferKind | null;
+  /** EUR cents per hour. Set only when `compensationKind === HOURLY`. */
+  compensationRateCents?: number | null;
+  /**
+   * EUR cents per person, per shift. Set only when
+   * `compensationKind === FIXED`.
+   */
+  compensationAmountCents?: number | null;
+}
+
+/** What `resolveCompensationOffer` returns when an offer actually applies. */
+export interface ResolvedCompensationOffer {
+  kind: CompensationOfferKind.HOURLY | CompensationOfferKind.FIXED;
+  rateCents?: number | null;
+  amountCents?: number | null;
+}
+
+/**
+ * Resolves the one offer that applies to a schedule's shifts, from the
+ * schedule's own override and the window it was built from — **as a whole
+ * unit**, never field-by-field. A schedule whose `compensationKind` is set
+ * at all (`HOURLY`, `FIXED`, or an explicit `NONE`) replaces the window's
+ * offer entirely; only when the schedule has never touched it
+ * (`compensationKind` null/undefined) does the window's own offer apply.
+ *
+ * This must never degrade into field-wise `??` fallback — e.g. reading a
+ * schedule's `HOURLY` kind together with the window's own
+ * `compensationAmountCents` would silently invent a rate nobody set. Taking
+ * `compensationKind` as the single switch that decides *which row's fields
+ * to read, together*, is what prevents that (D4 of the paid-staff rework).
+ *
+ * Returns null both when nothing was ever offered and when `NONE` was set
+ * explicitly — callers that only ask "is there an offer to show" (the
+ * window/board UI) need not tell the two apart; the edit dialog, which does,
+ * reads `compensationKind` directly off the row instead of through this
+ * function.
+ */
+export function resolveCompensationOffer(
+  schedule: CompensationOfferFields | null | undefined,
+  window: CompensationOfferFields | null | undefined,
+): ResolvedCompensationOffer | null {
+  const source = schedule?.compensationKind != null ? schedule : window;
+  if (
+    !source ||
+    source.compensationKind == null ||
+    source.compensationKind === CompensationOfferKind.NONE
+  ) {
+    return null;
+  }
+  return {
+    kind: source.compensationKind,
+    rateCents:
+      source.compensationKind === CompensationOfferKind.HOURLY
+        ? (source.compensationRateCents ?? null)
+        : null,
+    amountCents:
+      source.compensationKind === CompensationOfferKind.FIXED
+        ? (source.compensationAmountCents ?? null)
+        : null,
+  };
+}
+
+/**
+ * The one validation rule for a compensation offer payload — shared by the
+ * window and schedule DTOs, and mirrored by a hand-written DB CHECK
+ * constraint (see the doc comments on `AvailabilityWindow`/`Schedule` in
+ * `schema.prisma`) since Prisma cannot express a conditional NOT NULL.
+ * Returns a message fit to show a coordinator, or null when the combination
+ * is coherent.
+ */
+export function validateCompensationOffer(
+  kind: CompensationOfferKind,
+  rateCents?: number | null,
+  amountCents?: number | null,
+): string | null {
+  const isNonNegativeInt = (value: number) => Number.isInteger(value) && value >= 0;
+
+  if (kind === CompensationOfferKind.HOURLY) {
+    if (rateCents == null || !isNonNegativeInt(rateCents)) {
+      return 'An hourly offer needs a non-negative whole number of cents as its rate.';
+    }
+    if (amountCents != null) {
+      return 'An hourly offer must not also carry a fixed amount.';
+    }
+    return null;
+  }
+
+  if (kind === CompensationOfferKind.FIXED) {
+    if (amountCents == null || !isNonNegativeInt(amountCents)) {
+      return 'A fixed offer needs a non-negative whole number of cents as its amount.';
+    }
+    if (rateCents != null) {
+      return 'A fixed offer must not also carry an hourly rate.';
+    }
+    return null;
+  }
+
+  // NONE
+  if (rateCents != null || amountCents != null) {
+    return 'Withdrawing an offer (NONE) must not carry a rate or an amount.';
+  }
+  return null;
+}
+
+/** `PATCH /schedules/:id/compensation` — the schedule-level override (D4). */
+export interface SetCompensationOfferRequest {
+  kind: CompensationOfferKind;
+  /** EUR cents. Required (and only meaningful) when `kind === HOURLY`. */
+  rateCents?: number | null;
+  /** EUR cents. Required (and only meaningful) when `kind === FIXED`. */
+  amountCents?: number | null;
+}
+
+/**
+ * `PATCH /availability-windows/:id` — the offer is the only thing this route
+ * edits, and only while the window is still `OPEN` (frozen once closed; see
+ * the doc comment near `AvailabilityWindow.status` in `schema.prisma`).
+ */
+export interface SetWindowCompensationOfferRequest extends SetCompensationOfferRequest {
+  note?: string | null;
+}
+
+/**
+ * Whether a shift has at least one person still at the untouched
+ * `VOLUNTEER` default despite a resolved compensation offer — the gap
+ * Stage 1's always-`VOLUNTEER` default leaves open on a genuinely paid post,
+ * until a coordinator opens `CompensationDialog`. An assignment a coordinator
+ * *explicitly* set to `VOLUNTEER` (`compensationSetById` non-null) is a
+ * deliberate decision, not a gap, and must not keep nagging — only a row
+ * nobody has ever touched counts.
+ */
+export function shiftHasUnclassifiedPaidCrew(
+  offer: ResolvedCompensationOffer | null,
+  assignments: Array<{
+    compensation: AssignmentCompensationKind;
+    compensationSetById?: string | null;
+  }>,
+): boolean {
+  if (!offer) return false;
+  return assignments.some(
+    (assignment) =>
+      assignment.compensation === AssignmentCompensationKind.VOLUNTEER &&
+      assignment.compensationSetById == null,
+  );
 }
 
 // ─── Paid staff schedule (#245) ─────────────────────────────────────────────────
@@ -6578,6 +6819,7 @@ export type ApiErrorCode =
   | 'WINDOW_OVERLAP_OPEN'
   | 'WINDOW_OVERLAP_CLOSED'
   | 'WINDOW_ALREADY_CLOSED'
+  | 'WINDOW_COMPENSATION_LOCKED'
   | 'SCHEDULE_DRAFT_NOT_VISIBLE'
   | 'SCHEDULE_ALREADY_EXISTS_FOR_WINDOW'
   | 'SCHEDULE_PUBLISHED_CANNOT_DELETE'

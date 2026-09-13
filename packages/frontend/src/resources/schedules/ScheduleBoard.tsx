@@ -51,6 +51,8 @@ import {
   ScheduleGap,
   ScheduleShiftBoard,
   ScheduleStatus,
+  resolveCompensationOffer,
+  ResolvedCompensationOffer,
   selfAssignBlockedReason,
   shiftsOverlap,
   UNLIMITED_ROLE_PEOPLE,
@@ -62,6 +64,7 @@ import { certificationLabel } from '../../i18n/labels';
 import { useIntlLocale } from '../../i18n/useIntlLocale';
 import { useT } from '../../i18n/useT';
 import { formatDateRange, formatDayLabel } from '../../utils/dates';
+import { CompensationOfferLine } from '../availability/CompensationOfferLine';
 import { WindowIdentity } from '../availability/WindowIdentity';
 import { AdjustShiftDialog, AdjustShiftTarget } from './AdjustShiftDialog';
 import { AssignPersonDialog, AssignTarget } from './AssignPersonDialog';
@@ -481,17 +484,27 @@ const RoleCell = ({
  * "Adjust hours" is always on it for a coordinator; "Crew classification"
  * only when the viewer also holds `MANAGE_COMPENSATION` — a plain
  * `MANAGE_SCHEDULES` coordinator never even sees the item exists.
+ *
+ * The compensation offer (#246 Stage 2) is a discreet line under the label,
+ * for *every* viewer — it is meant to be seen, the same rate a member read
+ * before submitting availability. Rendered only when one resolves at all
+ * (`CompensationOfferLine` itself is the guard on that). The "unclassified
+ * crew" nudge alongside it is coordinator-only: it depends on
+ * `shift.hasUnclassifiedPaidCrew`, which the server only ever sends to a
+ * viewer holding `MANAGE_COMPENSATION` in the first place.
  */
 const ShiftLabelCell = ({
   day,
   shift,
   viewer,
+  offer,
   onAdjust,
   onSetCompensation,
 }: {
   day: ScheduleDayBoard;
   shift: ScheduleShiftBoard;
   viewer: Viewer;
+  offer: ResolvedCompensationOffer | null;
   onAdjust: (target: AdjustShiftTarget) => void;
   onSetCompensation: (target: CompensationTarget) => void;
 }) => {
@@ -501,9 +514,12 @@ const ShiftLabelCell = ({
 
   if (!viewer.isCoordinator) {
     return (
-      <Typography variant="body2" sx={{ fontWeight: 600 }}>
-        {shift.label}
-      </Typography>
+      <>
+        <Typography variant="body2" sx={{ fontWeight: 600 }}>
+          {shift.label}
+        </Typography>
+        <CompensationOfferLine offer={offer} variant="caption" />
+      </>
     );
   }
 
@@ -549,6 +565,18 @@ const ShiftLabelCell = ({
           </MenuItem>
         )}
       </Menu>
+      <CompensationOfferLine offer={offer} variant="caption" />
+      {viewer.canManageCompensation && shift.hasUnclassifiedPaidCrew && (
+        <Typography
+          variant="caption"
+          color="warning.dark"
+          display="block"
+          sx={{ cursor: 'pointer' }}
+          onClick={() => onSetCompensation({ date: day.date, slot: shift.slot, shift })}
+        >
+          {t('scheduleBoard.unclassifiedPaidCrew')}
+        </Typography>
+      )}
     </>
   );
 };
@@ -563,6 +591,7 @@ const DesktopBoard = ({
   onRemove,
   onAdjust,
   onSetCompensation,
+  offer,
   viewer,
 }: {
   board: ScheduleBoardResponse;
@@ -572,6 +601,7 @@ const DesktopBoard = ({
   onRemove: (assignment: ScheduleAssignment) => void;
   onAdjust: (target: AdjustShiftTarget) => void;
   onSetCompensation: (target: CompensationTarget) => void;
+  offer: ResolvedCompensationOffer | null;
   viewer: Viewer;
 }) => {
   const t = useT();
@@ -645,6 +675,7 @@ const DesktopBoard = ({
                   day={day}
                   shift={shift}
                   viewer={viewer}
+                  offer={offer}
                   onAdjust={onAdjust}
                   onSetCompensation={onSetCompensation}
                 />
@@ -721,6 +752,7 @@ const MobileBoard = ({
   onRemove,
   onAdjust,
   onSetCompensation,
+  offer,
   viewer,
 }: {
   board: ScheduleBoardResponse;
@@ -730,6 +762,7 @@ const MobileBoard = ({
   onRemove: (assignment: ScheduleAssignment) => void;
   onAdjust: (target: AdjustShiftTarget) => void;
   onSetCompensation: (target: CompensationTarget) => void;
+  offer: ResolvedCompensationOffer | null;
   viewer: Viewer;
 }) => {
   const t = useT();
@@ -746,6 +779,7 @@ const MobileBoard = ({
                   day={day}
                   shift={shift}
                   viewer={viewer}
+                  offer={offer}
                   onAdjust={onAdjust}
                   onSetCompensation={onSetCompensation}
                 />
@@ -921,6 +955,9 @@ export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
   const isPublished = board.schedule.status === ScheduleStatus.PUBLISHED;
   const windowIsOpen = board.window.status === AvailabilityWindowStatus.OPEN;
   const { stats } = board;
+  // Same for every shift of this schedule (D4) — resolved once here rather
+  // than per row.
+  const offer = resolveCompensationOffer(board.schedule, board.window);
 
   return (
     <Box>
@@ -1067,6 +1104,7 @@ export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
           onRemove={(assignment) => void handleRemove(assignment)}
           onAdjust={setAdjustTarget}
           onSetCompensation={setCompensationTarget}
+          offer={offer}
           viewer={viewer}
         />
       ) : (
@@ -1078,6 +1116,7 @@ export const ScheduleBoard = ({ scheduleId }: { scheduleId: string }) => {
           onRemove={(assignment) => void handleRemove(assignment)}
           onAdjust={setAdjustTarget}
           onSetCompensation={setCompensationTarget}
+          offer={offer}
           viewer={viewer}
         />
       )}
