@@ -7186,6 +7186,148 @@ export function validatePatient(input: PatientInput): string | null {
   return null;
 }
 
+// ─── Organisations & agreements (#227) ─────────────────────────────────────────
+
+/**
+ * A third party to a transport — the body that requests it, the one that
+ * pays for it, or both (#219, "requester, payer and patient are three
+ * different parties"). One row can hold both roles, but a single transport
+ * request may still name different organisations in the two slots: AXA
+ * Assistance refers a trip that Allianz covers. Deliberately no tariff or
+ * rate fields — billing is modelled here, never performed; invoicing stays
+ * in the delegation's own accounting software.
+ */
+export interface Organisation {
+  id: string;
+  name: string;
+  taxId?: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+  isRequester: boolean;
+  isPayer: boolean;
+  notes?: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+  /** The organisation's own reference codes — see `OrganisationReference`. */
+  references?: OrganisationReference[];
+}
+
+export const MAX_ORGANISATION_NAME_LENGTH = 160;
+
+/**
+ * One of an organisation's own reference codes. A collection, not a single
+ * column: the worked example carries two distinct codes at once — an
+ * envelope-level account code (e.g. `AZP`) and a per-row insurer code —
+ * neither of which is "the" code for the organisation.
+ */
+export interface OrganisationReference {
+  id: string;
+  organisationId: string;
+  code: string;
+  description?: string | null;
+}
+
+export const MAX_ORGANISATION_REFERENCE_CODE_LENGTH = 64;
+
+export interface OrganisationReferenceInput {
+  code: string;
+  description?: string | null;
+}
+
+export interface OrganisationInput {
+  name: string;
+  taxId?: string | null;
+  contactEmail?: string | null;
+  contactPhone?: string | null;
+  isRequester?: boolean;
+  isPayer?: boolean;
+  notes?: string | null;
+  isActive?: boolean;
+  references?: OrganisationReferenceInput[];
+}
+
+/**
+ * Whether an organisation record is coherent — same "message or null" shape
+ * as every other validator here, so the form blocks Save with the wording
+ * the API would reject the payload with.
+ */
+export function validateOrganisation(input: OrganisationInput): string | null {
+  const name = input.name?.trim() ?? '';
+  if (!name) return 'An organisation needs a name.';
+  if (name.length > MAX_ORGANISATION_NAME_LENGTH) {
+    return `An organisation name may be at most ${MAX_ORGANISATION_NAME_LENGTH} characters (got ${name.length}).`;
+  }
+  // Default-deny, same rationale as `validateFacility`: a role-less
+  // organisation cannot be named as a requester or a payer by anything, so
+  // it can never surface again once saved.
+  if (!input.isRequester && !input.isPayer) {
+    return 'Flag the organisation as a requester, a payer, or both.';
+  }
+  for (const reference of input.references ?? []) {
+    const code = reference.code?.trim() ?? '';
+    if (!code) return 'A reference code cannot be blank.';
+    if (code.length > MAX_ORGANISATION_REFERENCE_CODE_LENGTH) {
+      return `A reference code may be at most ${MAX_ORGANISATION_REFERENCE_CODE_LENGTH} characters (got ${code.length}).`;
+    }
+  }
+  return null;
+}
+
+/**
+ * The terms a given transport falls under — the national health service
+ * agreement, an insurer's, a private arrangement — scoped to the
+ * organisation paying under it. No tariff or rate fields, same reasoning as
+ * `Organisation`.
+ */
+export interface Agreement {
+  id: string;
+  payerOrganisationId: string;
+  payerOrganisation?: Organisation;
+  name: string;
+  externalReference?: string | null;
+  /** `YYYY-MM-DD`. */
+  validFrom: string;
+  /** `YYYY-MM-DD`, or null for an agreement with no known end date. */
+  validTo?: string | null;
+  notes?: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export const MAX_AGREEMENT_NAME_LENGTH = 160;
+
+export interface AgreementInput {
+  payerOrganisationId: string;
+  name: string;
+  externalReference?: string | null;
+  validFrom: string;
+  validTo?: string | null;
+  notes?: string | null;
+  isActive?: boolean;
+}
+
+/**
+ * Whether an agreement record is coherent — same "message or null" shape as
+ * every other validator here.
+ */
+export function validateAgreement(input: AgreementInput): string | null {
+  if (!input.payerOrganisationId) {
+    return 'Choose the organisation paying under this agreement.';
+  }
+  const name = input.name?.trim() ?? '';
+  if (!name) return 'An agreement needs a name.';
+  if (name.length > MAX_AGREEMENT_NAME_LENGTH) {
+    return `An agreement name may be at most ${MAX_AGREEMENT_NAME_LENGTH} characters (got ${name.length}).`;
+  }
+  if (!input.validFrom) return 'Give the date the agreement starts.';
+  if (input.validTo && input.validTo < input.validFrom) {
+    return 'The agreement cannot end before it starts.';
+  }
+  return null;
+}
+
 // ─── API error codes (#180 phase 4) ───────────────────────────────────────────
 //
 // A machine code for the business-rule failures that are genuinely worth a

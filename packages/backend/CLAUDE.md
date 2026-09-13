@@ -14,9 +14,9 @@ NestJS + Prisma. Read `../shared/CLAUDE.md` first if the feature touches shared 
 **`src/schedules/` is the richest exemplar — copy its shape for a new feature module.**
 
 Current modules: `auth`, `availability`, `event-reports`, `facilities`, `geography`, `health`,
-`inem`, `inventory`, `live-runs`, `notices`, `notifications`, `paid-staff-schedule`, `patients`,
-`schedules`, `staff-absences`, `statistics`, `storage`, `users`, `vehicles`, `vehicle-occupancy`,
-`volunteer-hours`, `employment-contracts`, `prisma`.
+`inem`, `inventory`, `live-runs`, `notices`, `notifications`, `organisations`, `paid-staff-schedule`,
+`patients`, `schedules`, `staff-absences`, `statistics`, `storage`, `users`, `vehicles`,
+`vehicle-occupancy`, `volunteer-hours`, `employment-contracts`, `prisma`.
 New modules are wired into `src/app.module.ts`.
 Bootstrap (global `ValidationPipe`, global `ApiErrorFilter`, port 3000) is in `src/main.ts`.
 
@@ -34,6 +34,11 @@ schedule. `InemSessionService` owns the scraped SSO session (`alAuth`/`samlsessi
 that ever does a cold Playwright login, reachable solely via the polled, shared-secret-guarded
 `/internal/inem/login-jobs` endpoints (`InemWorkerGuard`, off Swagger). See
 `docs/inem-portal-contract.md` for the wire contract this module codes against.
+
+`organisations` (#227) holds two resources, not one: `OrganisationsService`/`Controller` (the
+requester/payer role-flagged party) and `AgreementsService`/`Controller` (the terms a transport
+falls under, scoped to its paying organisation) — both gated by `MANAGE_TRANSPORT_CONFIG`, no
+tariff or rate fields on either.
 
 ## Controller pattern
 
@@ -113,6 +118,12 @@ Model index by domain (names only — grep for fields/relations):
   `UserNotificationPreference`
 - **INEM integration** (#211): `INEMSession`, `OWASession`, `INEMUnit`, `INEMStatusAudit`,
   `INEMUnitStatusPeriod`
+- **Organisations & agreements** (#227): `Organisation` — requester and payer as role flags on
+  one model, since the same body routinely requests one transport and pays for another (#219);
+  `OrganisationReference` — an organisation's own reference codes, a collection since the worked
+  example carries two at once; `Agreement` — the terms a transport falls under, scoped to its
+  `payerOrganisation`. No tariff or rate fields anywhere here — billing is modelled, never
+  performed
 
 Migrations: `prisma:migrate` (dev, interactive) / `prisma:migrate:deploy` (non-interactive —
 prefer this in scripts/CI, per `.github/AI-GOVERNANCE.md`). Run `prisma:generate` after every

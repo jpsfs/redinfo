@@ -524,6 +524,8 @@ const MESSAGES = {
   'nav.inemStatus': { pt: 'Estado INEM', en: 'INEM Status' },
   'nav.facilities': { pt: 'Unidades de Saúde', en: 'Health Facilities' },
   'nav.patients': { pt: 'Doentes', en: 'Patients' },
+  'nav.organisations': { pt: 'Organizações', en: 'Organisations' },
+  'nav.agreements': { pt: 'Acordos', en: 'Agreements' },
   'nav.holidays': { pt: 'Feriados', en: 'Holidays' },
   'nav.myProfile': { pt: 'O meu perfil', en: 'My Profile' },
   'nav.myNotices': { pt: 'Avisos', en: 'Notices' },
@@ -558,6 +560,8 @@ const MESSAGES = {
   'resources.municipalities.name': { pt: 'Concelhos', en: 'Municipalities' },
   'resources.localities.name': { pt: 'Localidades', en: 'Localities' },
   'resources.holidays.name': { pt: 'Feriados', en: 'Holidays' },
+  'resources.organisations.name': { pt: 'Organizações', en: 'Organisations' },
+  'resources.agreements.name': { pt: 'Acordos', en: 'Agreements' },
 
   // ── Personnel registry (#180 phase 3 — users) ──
   'resources.users.fields.firstName': { pt: 'Nome próprio', en: 'First Name' },
@@ -2595,6 +2599,43 @@ const MESSAGES = {
   },
   'patientForm.pickLocality': { pt: 'Escolher localidade', en: 'Choose locality' },
   'patientForm.noLocalityChosen': { pt: 'Nenhuma localidade escolhida', en: 'No locality chosen' },
+
+  // ── Organisations & agreements (#227) — requester and payer as roles on
+  // one model; an agreement is the terms a transport falls under ──
+  'resources.organisations.fields.name': { pt: 'Nome', en: 'Name' },
+  'resources.organisations.fields.taxId': { pt: 'NIF (opcional)', en: 'Tax ID (optional)' },
+  'resources.organisations.fields.contactEmail': { pt: 'E-mail de contacto (opcional)', en: 'Contact email (optional)' },
+  'resources.organisations.fields.contactPhone': { pt: 'Telefone de contacto (opcional)', en: 'Contact phone (optional)' },
+  'resources.organisations.fields.isRequester': { pt: 'Requisitante', en: 'Requester' },
+  'resources.organisations.fields.isPayer': { pt: 'Pagador', en: 'Payer' },
+  'resources.organisations.fields.notes': { pt: 'Notas (opcional)', en: 'Notes (optional)' },
+  'resources.organisations.fields.isActive': { pt: 'Estado', en: 'Status' },
+  'resources.organisations.fields.references': { pt: 'Códigos de referência', en: 'Reference codes' },
+  'resources.organisations.fields.references.code': { pt: 'Código', en: 'Code' },
+  'resources.organisations.fields.references.description': { pt: 'Descrição (opcional)', en: 'Description (optional)' },
+
+  'organisationList.addOrganisation': { pt: 'Adicionar organização', en: 'Add organisation' },
+  'organisationList.active': { pt: 'Ativo', en: 'Active' },
+  'organisationList.retired': { pt: 'Retirado', en: 'Retired' },
+  'organisationList.helpText': {
+    pt: 'Uma organização pode requisitar transportes, pagá-los, ou ambos — o mesmo pedido de transporte pode nomear organizações diferentes em cada papel.',
+    en: 'An organisation can request transports, pay for them, or both — the same transport request can name different organisations in each role.',
+  },
+
+  'agreementList.addAgreement': { pt: 'Adicionar acordo', en: 'Add agreement' },
+  'agreementList.active': { pt: 'Ativo', en: 'Active' },
+  'agreementList.retired': { pt: 'Retirado', en: 'Retired' },
+  'agreementList.helpText': {
+    pt: 'As condições em que um transporte se enquadra — o acordo com o SNS, o de uma seguradora, um arranjo privado — associadas à organização que paga. Sem valores de tarifário: a faturação é gerida fora do redinfo.',
+    en: 'The terms a transport falls under — the national health service agreement, an insurer’s, a private arrangement — scoped to the organisation paying. No tariff values: billing stays outside redinfo.',
+  },
+  'resources.agreements.fields.payerOrganisationId': { pt: 'Organização pagadora', en: 'Paying organisation' },
+  'resources.agreements.fields.name': { pt: 'Nome', en: 'Name' },
+  'resources.agreements.fields.externalReference': { pt: 'Referência externa (opcional)', en: 'External reference (optional)' },
+  'resources.agreements.fields.validFrom': { pt: 'Início da validade', en: 'Valid from' },
+  'resources.agreements.fields.validTo': { pt: 'Fim da validade (opcional)', en: 'Valid to (optional)' },
+  'resources.agreements.fields.notes': { pt: 'Notas (opcional)', en: 'Notes (optional)' },
+  'resources.agreements.fields.isActive': { pt: 'Estado', en: 'Status' },
 
   // ── Rich text editor (#180 phase 3) — shared by crew and coordinator forms ──
   'richText.bold': { pt: 'Negrito', en: 'Bold' },

@@ -2380,3 +2380,70 @@ model Patient {
   /// The purge sweep's cutoff.
   @@index([updatedAt])
 }
+
+/// A third party to a transport (#227): the body that requests it, the one
+/// that pays for it, or both — role flags on one model, not separate tables,
+/// because the same body routinely requests one transport and pays for
+/// another (#219). Deliberately no tariff or rate fields: billing is
+/// modelled here, never performed.
+model Organisation {
+  id String @id @default(cuid())
+
+  name         String
+  taxId        String?
+  contactEmail String?
+  contactPhone String?
+
+  isRequester Boolean @default(false)
+  isPayer     Boolean @default(false)
+
+  notes    String?
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  references OrganisationReference[]
+  agreements Agreement[]
+
+  @@index([isActive])
+}
+
+/// One of an organisation's own reference codes. A collection rather than a
+/// single column: the worked example carries two distinct codes at once — an
+/// envelope-level account code and a per-row insurer code.
+model OrganisationReference {
+  id             String       @id @default(cuid())
+  organisationId String
+  organisation   Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  code        String
+  description String?
+
+  @@unique([organisationId, code])
+}
+
+/// The terms a given transport falls under — the national health service
+/// agreement, an insurer's, a private arrangement — scoped to the
+/// organisation paying under it (#227). No tariff or rate fields, same
+/// reasoning as `Organisation`.
+model Agreement {
+  id                  String       @id @default(cuid())
+  payerOrganisationId String
+  payerOrganisation   Organisation @relation(fields: [payerOrganisationId], references: [id], onDelete: Restrict)
+
+  name              String
+  externalReference String?
+
+  validFrom DateTime  @db.Date
+  validTo   DateTime? @db.Date
+
+  notes    String?
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([payerOrganisationId])
+  @@index([isActive])
+}

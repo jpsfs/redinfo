@@ -57,6 +57,7 @@ Don't ask for a list of all exports — grep them.
 | Statistics | `/statistics/*` query and response shapes (people/activity/fleet/inem) |
 | INEM integration | `INEMSessionStatus`, `INEM_AVAILABLE_INOP_CODE`, `INEM_INOP_REASONS`, `INEMInopCode`, `INEMUnit`, `SetINEMUnitStatusRequest`, `INEMStatusOverview`, worker job contract (`INEMLoginJob`/`INEMLoginJobResult`) (#211) |
 | Patients | `Patient`, `PatientMobility`, `PatientIdentity` (sealed name/telephone/address/reference contact), `validatePatient`/`validatePatientIdentity`, `DEFAULT_PATIENT_IDENTITY_RETENTION_DAYS` (#219, #226) — non-urgent transport patient, sealed the same way as `LiveRun`'s victim fields |
+| Organisations & agreements | `Organisation`, `OrganisationReference`, `Agreement`, `validateOrganisation`/`validateAgreement` (#227) — requester and payer as roles on one model; an agreement is the terms a transport falls under, scoped to its paying organisation; no tariff/rate fields |
 | API error codes | `ApiErrorCode` |
 
 ## Edit rules

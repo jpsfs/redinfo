@@ -47,6 +47,8 @@ import {
 } from './resources/eventReports';
 import { FacilityList, FacilityCreate, FacilityEdit } from './resources/facilities';
 import { PatientList, PatientShow, PatientCreate, PatientEdit } from './resources/patients';
+import { OrganisationList, OrganisationCreate, OrganisationEdit } from './resources/organisations';
+import { AgreementList, AgreementCreate, AgreementEdit } from './resources/agreements';
 import { LiveEntryPage, LiveRunGate, LiveRunPage } from './resources/liveRuns';
 import { MyAvailabilityPage } from './pages/MyAvailabilityPage';
 import { MyDutiesPage } from './pages/MyDutiesPage';
@@ -72,6 +74,8 @@ import EventNoteIcon from '@mui/icons-material/EventNote';
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
 import MedicalServicesIcon from '@mui/icons-material/MedicalServices';
 import DescriptionIcon from '@mui/icons-material/Description';
+import BusinessIcon from '@mui/icons-material/Business';
+import HandshakeIcon from '@mui/icons-material/Handshake';
 
 export default function App() {
   return (
@@ -282,6 +286,22 @@ export default function App() {
         show={PatientShow}
         create={PatientCreate}
         edit={PatientEdit}
+      />
+
+      <Resource
+        name="organisations"
+        icon={BusinessIcon}
+        list={OrganisationList}
+        create={OrganisationCreate}
+        edit={OrganisationEdit}
+      />
+
+      <Resource
+        name="agreements"
+        icon={HandshakeIcon}
+        list={AgreementList}
+        create={AgreementCreate}
+        edit={AgreementEdit}
       />
 
       {/* Read-only reference data, reached only by the pickers that need it —

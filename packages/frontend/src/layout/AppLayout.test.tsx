@@ -149,6 +149,8 @@ describe('RedInfoMenu', () => {
       '/statistics',
       '/notices',
       '/patients',
+      '/organisations',
+      '/agreements',
       '/users',
       '/staff-absences',
       '/vehicles',
