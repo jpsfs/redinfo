@@ -35,15 +35,19 @@ export interface StaffAbsenceDialogPerson {
 }
 
 /**
- * Kind + date range + notes for one absence block — opened either by
- * dragging across a fresh range on the calendar (`existing` absent) or by
- * clicking an existing block (`existing` present, and deletable). A whole-row
- * save either way: `startDate`/`endDate` are re-editable here too, since the
- * drag only proposes a range, it doesn't have to be the final one.
+ * Kind + date range + notes for one absence block. Three ways in: selecting a
+ * range on the grid or tapping a person's "+" on mobile (`person` preset,
+ * `existing` absent), editing an existing block (`person` and `existing` both
+ * set, from `existing.userId` — reassigning the person is not offered), or
+ * the page-level "Add absence" button (`person` absent — a picker over
+ * `people` decides who it's for). `startDate`/`endDate` are always re-editable
+ * here regardless of how the dialog was opened, since a grid selection only
+ * proposes a range.
  */
 export const StaffAbsenceDialog = ({
   open,
   person,
+  people,
   startDate: initialStartDate,
   endDate: initialEndDate,
   existing,
@@ -51,7 +55,9 @@ export const StaffAbsenceDialog = ({
   onSaved,
 }: {
   open: boolean;
-  person: StaffAbsenceDialogPerson | null;
+  /** Preset when known (a grid selection, or editing). Omit to show a picker over `people`. */
+  person?: StaffAbsenceDialogPerson | null;
+  people: StaffAbsenceDialogPerson[];
   startDate: string;
   endDate: string;
   existing?: StaffAbsence | null;
@@ -61,6 +67,7 @@ export const StaffAbsenceDialog = ({
   const t = useT();
   const notify = useNotify();
 
+  const [personId, setPersonId] = useState('');
   const [kind, setKind] = useState<StaffAbsenceKind>(StaffAbsenceKind.VACATION);
   const [startDate, setStartDate] = useState(initialStartDate);
   const [endDate, setEndDate] = useState(initialEndDate);
@@ -69,15 +76,19 @@ export const StaffAbsenceDialog = ({
 
   useEffect(() => {
     if (!open) return;
+    setPersonId(existing?.userId ?? person?.id ?? people[0]?.id ?? '');
     setKind(existing?.kind ?? StaffAbsenceKind.VACATION);
     setStartDate(existing?.startDate ?? initialStartDate);
     setEndDate(existing?.endDate ?? initialEndDate);
     setNotes(existing?.notes ?? '');
+    // `people`/`person` intentionally excluded: they identify *who* opened the
+    // dialog for, which never changes while it's open, so re-running this
+    // every time the roster reference changes would stomp on a picker choice.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, existing, initialStartDate, initialEndDate]);
 
-  if (!person) return null;
-
   const handleSave = async () => {
+    if (!personId) return;
     setSaving(true);
     try {
       if (existing) {
@@ -88,7 +99,7 @@ export const StaffAbsenceDialog = ({
       } else {
         await apiFetch('/staff-absences', {
           method: 'POST',
-          body: { userId: person.id, kind, startDate, endDate, notes: notes || undefined },
+          body: { userId: personId, kind, startDate, endDate, notes: notes || undefined },
         });
       }
       notify(t('staffAbsences.saved'), { type: 'success' });
@@ -127,9 +138,25 @@ export const StaffAbsenceDialog = ({
       </DialogTitle>
       <DialogContent>
         <Stack spacing={2} sx={{ mt: 0.5 }}>
-          <Typography variant="body2" color="text.secondary">
-            {t('staffAbsences.personLabel')}: {person.firstName} {person.lastName}
-          </Typography>
+          {person ? (
+            <Typography variant="body2" color="text.secondary">
+              {t('staffAbsences.personLabel')}: {person.firstName} {person.lastName}
+            </Typography>
+          ) : (
+            <TextField
+              select
+              size="small"
+              label={t('staffAbsences.personLabel')}
+              value={personId}
+              onChange={(e) => setPersonId(e.target.value)}
+            >
+              {people.map((candidate) => (
+                <MenuItem key={candidate.id} value={candidate.id}>
+                  {candidate.firstName} {candidate.lastName}
+                </MenuItem>
+              ))}
+            </TextField>
+          )}
           <TextField
             select
             size="small"
@@ -179,7 +206,7 @@ export const StaffAbsenceDialog = ({
           <Button disabled={saving} onClick={onClose}>
             {t('action.cancel')}
           </Button>
-          <Button variant="contained" disabled={saving} onClick={() => void handleSave()}>
+          <Button variant="contained" disabled={saving || !personId} onClick={() => void handleSave()}>
             {t('staffAbsences.save')}
           </Button>
         </Stack>

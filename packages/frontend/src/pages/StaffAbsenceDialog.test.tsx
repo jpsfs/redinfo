@@ -17,6 +17,7 @@ const mockApiFetch = apiFetch as unknown as Mock;
 const i18nProvider = polyglotI18nProvider(messages, 'en');
 
 const ANA = { id: 'u-ana', firstName: 'Ana', lastName: 'Silva' };
+const BRUNO = { id: 'u-bruno', firstName: 'Bruno', lastName: 'Costa' };
 
 const EXISTING = {
   id: 'abs-1',
@@ -38,6 +39,7 @@ function renderDialog(props: Partial<Parameters<typeof StaffAbsenceDialog>[0]> =
       <StaffAbsenceDialog
         open
         person={ANA}
+        people={[ANA, BRUNO]}
         startDate="2026-10-10"
         endDate="2026-10-12"
         onClose={onClose}
@@ -56,7 +58,7 @@ describe('StaffAbsenceDialog', () => {
     mockApiFetch.mockResolvedValue({});
   });
 
-  it('proposes the dragged range for a new absence, defaulting to vacation', () => {
+  it('proposes the selected range for a new absence, defaulting to vacation', () => {
     renderDialog();
     expect(screen.getByText('Record absence')).toBeInTheDocument();
     expect(screen.getByLabelText('Start')).toHaveValue('2026-10-10');
@@ -136,5 +138,28 @@ describe('StaffAbsenceDialog', () => {
 
     expect(await screen.findByText('Could not save the absence.')).toBeInTheDocument();
     expect(onClose).not.toHaveBeenCalled();
+  });
+
+  describe('without a preset person (the page-level "Add absence" button)', () => {
+    it('shows a picker defaulting to the first person on the roster', () => {
+      renderDialog({ person: undefined });
+      expect(screen.getByLabelText('Person')).toHaveTextContent('Ana Silva');
+    });
+
+    it('saves for whoever is picked', async () => {
+      const user = userEvent.setup();
+      renderDialog({ person: undefined });
+
+      await user.click(screen.getByLabelText('Person'));
+      await user.click(await screen.findByRole('option', { name: 'Bruno Costa' }));
+      await user.click(screen.getByRole('button', { name: /^save$/i }));
+
+      await waitFor(() =>
+        expect(mockApiFetch).toHaveBeenCalledWith(
+          '/staff-absences',
+          expect.objectContaining({ method: 'POST', body: expect.objectContaining({ userId: BRUNO.id }) }),
+        ),
+      );
+    });
   });
 });

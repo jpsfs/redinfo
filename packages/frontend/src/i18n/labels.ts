@@ -735,14 +735,20 @@ const MESSAGES = {
     pt: 'Férias, baixas médicas e outras ausências pagas da equipa remunerada.',
     en: 'Vacation, sick leave and other paid absences for paid staff.',
   },
-  'staffAbsences.dragHint': {
-    pt: 'Arrasta ao longo de uma linha para marcar uma ausência.',
-    en: 'Drag across a row to mark an absence.',
+  'staffAbsences.selectHint': {
+    pt: 'Clica no primeiro dia e depois no último para marcar uma ausência de vários dias.',
+    en: 'Click the first day, then the last, to mark a multi-day absence.',
+  },
+  'staffAbsences.selectHintPending': {
+    pt: 'Agora clica no último dia da ausência (ou clica de novo para cancelar).',
+    en: 'Now click the last day of the absence (or click it again to cancel).',
   },
   'staffAbsences.loadFailed': { pt: 'Não foi possível carregar as ausências.', en: 'Could not load the absences.' },
   'staffAbsences.noPeople': { pt: 'Sem pessoal para mostrar.', en: 'No staff to show.' },
+  'staffAbsences.noneThisMonth': { pt: 'Sem ausências este mês.', en: 'No absences this month.' },
   'staffAbsences.prevMonth': { pt: 'Mês anterior', en: 'Previous month' },
   'staffAbsences.nextMonth': { pt: 'Mês seguinte', en: 'Next month' },
+  'staffAbsences.addAbsence': { pt: 'Registar ausência', en: 'Add absence' },
   'staffAbsences.kindVacation': { pt: 'Férias', en: 'Vacation' },
   'staffAbsences.kindSickLeave': { pt: 'Baixa médica', en: 'Sick leave' },
   'staffAbsences.kindOtherPaidLeave': { pt: 'Outra ausência paga', en: 'Other paid leave' },

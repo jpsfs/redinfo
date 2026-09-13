@@ -3,6 +3,10 @@ import { Title } from 'react-admin';
 import {
   Alert,
   Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
   CircularProgress,
   IconButton,
   Paper,
@@ -16,13 +20,27 @@ import {
   Tooltip,
   Typography,
 } from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
-import { StaffAbsence, StaffAbsenceKind } from '@redinfo/shared';
+import FlagIcon from '@mui/icons-material/Flag';
+import { DayShiftPattern, StaffAbsence, StaffAbsenceKind, staffAbsenceRangesOverlap } from '@redinfo/shared';
 import { apiFetch, ApiError } from '../api';
 import { apiErrorLabel } from '../i18n/labels';
 import { useT } from '../i18n/useT';
-import { dayOfMonth, formatMonthLabel, isoDateRange, isoMonth, monthEnd, monthStart, addMonths, toIsoDate, weekdayAbbreviation } from '../utils/dates';
+import { useIsMobile } from '../hooks/useIsMobile';
+import {
+  dayOfMonth,
+  formatDateRange,
+  formatMonthLabel,
+  isoDateRange,
+  isoMonth,
+  monthEnd,
+  monthStart,
+  addMonths,
+  toIsoDate,
+  weekdayAbbreviation,
+} from '../utils/dates';
 import { StaffAbsenceDialog, StaffAbsenceDialogPerson } from './StaffAbsenceDialog';
 
 interface StaffPerson {
@@ -31,12 +49,23 @@ interface StaffPerson {
   lastName: string;
 }
 
+type DialogState = {
+  person?: StaffAbsenceDialogPerson;
+  startDate: string;
+  endDate: string;
+  existing?: StaffAbsence;
+};
+
 /** Colours by kind — the calendar's own legend, independent of any other screen's palette. */
 const KIND_STYLE: Record<StaffAbsenceKind, { bg: string; fg: string; border: string }> = {
   [StaffAbsenceKind.VACATION]: { bg: '#E3F2FD', fg: '#1565C0', border: '#90CAF9' },
   [StaffAbsenceKind.SICK_LEAVE]: { bg: '#FDECEA', fg: '#C62828', border: '#EF9A9A' },
   [StaffAbsenceKind.OTHER_PAID_LEAVE]: { bg: '#F3E5F5', fg: '#6A1B9A', border: '#CE93D8' },
 };
+
+/** Weekends and holidays get their own tint, same convention as `MyAvailabilityPage`'s calendar. */
+const WEEKEND_BG = 'grey.50';
+const HOLIDAY_BG = '#FFF8EE';
 
 const kindLabel = (t: (key: string) => string, kind: StaffAbsenceKind) => {
   switch (kind) {
@@ -74,39 +103,249 @@ const Legend = () => {
   );
 };
 
-/** Anchor/current within one person's row — the range a drag currently proposes. */
-interface DragState {
+const MonthNav = ({ month, onChange }: { month: string; onChange: (month: string) => void }) => {
+  const t = useT();
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 2, p: 1, mb: 1 }}>
+      <IconButton size="small" aria-label={t('staffAbsences.prevMonth')} onClick={() => onChange(addMonths(month, -1))}>
+        <ChevronLeftIcon />
+      </IconButton>
+      <Typography variant="subtitle1" sx={{ minWidth: 170, textAlign: 'center' }}>
+        {formatMonthLabel(t, month)}
+      </Typography>
+      <IconButton size="small" aria-label={t('staffAbsences.nextMonth')} onClick={() => onChange(addMonths(month, 1))}>
+        <ChevronRightIcon />
+      </IconButton>
+    </Box>
+  );
+};
+
+/** Anchor cell of a click-to-select range in progress — the first of two taps. */
+interface PendingSelection {
   userId: string;
-  anchor: string;
-  current: string;
+  anchorDate: string;
 }
 
 const NAME_COLUMN_WIDTH = 160;
 const DAY_COLUMN_WIDTH = 34;
 
+// ─── Desktop grid ────────────────────────────────────────────────────────────
+
+const DesktopGrid = ({
+  people,
+  days,
+  dayPatterns,
+  absenceByCell,
+  pending,
+  onCellClick,
+}: {
+  people: StaffPerson[];
+  days: string[];
+  dayPatterns: Map<string, DayShiftPattern>;
+  absenceByCell: Map<string, StaffAbsence>;
+  pending: PendingSelection | null;
+  onCellClick: (person: StaffPerson, date: string) => void;
+}) => {
+  const t = useT();
+
+  const dayBg = (date: string) => {
+    const pattern = dayPatterns.get(date);
+    if (pattern?.isHoliday) return HOLIDAY_BG;
+    if (pattern?.isWeekend) return WEEKEND_BG;
+    return undefined;
+  };
+
+  return (
+    // The CSS Grid wrapper (rather than a plain flex Box) is what keeps a
+    // month's worth of day columns from bubbling their intrinsic width up
+    // through react-admin's own layout chrome and forcing a page-level
+    // horizontal scrollbar at tablet width — only the TableContainer below
+    // should ever scroll sideways.
+    <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)' }}>
+      <TableContainer component={Paper} variant="outlined" sx={{ overflowX: 'auto', minWidth: 0 }}>
+        <Table size="small" sx={{ userSelect: 'none' }}>
+          <TableHead>
+            <TableRow sx={{ backgroundColor: 'grey.100' }}>
+              <TableCell
+                sx={{ position: 'sticky', left: 0, zIndex: 2, backgroundColor: 'grey.100', minWidth: NAME_COLUMN_WIDTH }}
+              />
+              {days.map((date) => {
+                const pattern = dayPatterns.get(date);
+                return (
+                  <TableCell
+                    key={date}
+                    align="center"
+                    sx={{
+                      minWidth: DAY_COLUMN_WIDTH,
+                      maxWidth: DAY_COLUMN_WIDTH,
+                      px: 0.5,
+                      backgroundColor: dayBg(date) ?? 'grey.100',
+                    }}
+                  >
+                    <Typography variant="caption" sx={{ fontWeight: 700, display: 'block' }}>
+                      {dayOfMonth(date)}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary" sx={{ fontSize: 9.5 }}>
+                      {weekdayAbbreviation(t, new Date(`${date}T00:00:00.000Z`).getUTCDay())}
+                    </Typography>
+                    {pattern?.isHoliday && (
+                      <FlagIcon
+                        sx={{ fontSize: 11, color: 'warning.main', display: 'block', mx: 'auto' }}
+                        titleAccess={pattern.holidayName ? t('dayType.holidayNamed', { name: pattern.holidayName }) : t('dayType.holiday')}
+                      />
+                    )}
+                  </TableCell>
+                );
+              })}
+            </TableRow>
+          </TableHead>
+          <TableBody>
+            {people.map((person) => (
+              <TableRow key={person.id}>
+                <TableCell
+                  sx={{
+                    position: 'sticky',
+                    left: 0,
+                    zIndex: 1,
+                    backgroundColor: 'background.paper',
+                    minWidth: NAME_COLUMN_WIDTH,
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  <Typography variant="body2">
+                    {person.firstName} {person.lastName}
+                  </Typography>
+                </TableCell>
+                {days.map((date) => {
+                  const absence = absenceByCell.get(`${person.id}#${date}`);
+                  const isAnchor = pending?.userId === person.id && pending.anchorDate === date;
+                  const style = absence ? KIND_STYLE[absence.kind] : null;
+                  const cell = (
+                    <TableCell
+                      key={date}
+                      align="center"
+                      data-testid={`absence-cell-${person.id}-${date}`}
+                      onClick={() => onCellClick(person, date)}
+                      sx={{
+                        cursor: 'pointer',
+                        minWidth: DAY_COLUMN_WIDTH,
+                        maxWidth: DAY_COLUMN_WIDTH,
+                        height: 32,
+                        p: 0,
+                        backgroundColor: style ? style.bg : (dayBg(date) ?? undefined),
+                        border: style
+                          ? `1.5px solid ${style.border}`
+                          : isAnchor
+                            ? '1.5px dashed'
+                            : undefined,
+                        borderColor: isAnchor && !style ? 'primary.main' : undefined,
+                      }}
+                    />
+                  );
+                  return absence ? (
+                    <Tooltip
+                      key={date}
+                      title={`${kindLabel(t, absence.kind)}${absence.notes ? ` — ${absence.notes}` : ''}`}
+                    >
+                      {cell}
+                    </Tooltip>
+                  ) : (
+                    cell
+                  );
+                })}
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </TableContainer>
+    </Box>
+  );
+};
+
+// ─── Mobile list ─────────────────────────────────────────────────────────────
+
+const MobileList = ({
+  people,
+  absencesByUser,
+  onAdd,
+  onEdit,
+}: {
+  people: StaffPerson[];
+  absencesByUser: Map<string, StaffAbsence[]>;
+  onAdd: (person: StaffPerson) => void;
+  onEdit: (person: StaffPerson, absence: StaffAbsence) => void;
+}) => {
+  const t = useT();
+  return (
+    <Stack spacing={1}>
+      {people.map((person) => {
+        const personAbsences = absencesByUser.get(person.id) ?? [];
+        return (
+          <Card key={person.id} variant="outlined">
+            <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+              <Stack direction="row" alignItems="center" justifyContent="space-between">
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  {person.firstName} {person.lastName}
+                </Typography>
+                <IconButton
+                  size="small"
+                  aria-label={`${t('staffAbsences.addAbsence')}: ${person.firstName} ${person.lastName}`}
+                  onClick={() => onAdd(person)}
+                >
+                  <AddIcon fontSize="small" />
+                </IconButton>
+              </Stack>
+              {personAbsences.length === 0 ? (
+                <Typography variant="caption" color="text.secondary">
+                  {t('staffAbsences.noneThisMonth')}
+                </Typography>
+              ) : (
+                <Stack direction="row" spacing={0.75} flexWrap="wrap" useFlexGap sx={{ mt: 0.75 }}>
+                  {personAbsences.map((absence) => (
+                    <Chip
+                      key={absence.id}
+                      size="small"
+                      onClick={() => onEdit(person, absence)}
+                      label={`${kindLabel(t, absence.kind)} · ${formatDateRange(t, absence.startDate, absence.endDate)}`}
+                      sx={{
+                        backgroundColor: KIND_STYLE[absence.kind].bg,
+                        color: KIND_STYLE[absence.kind].fg,
+                        border: `1px solid ${KIND_STYLE[absence.kind].border}`,
+                      }}
+                    />
+                  ))}
+                </Stack>
+              )}
+            </CardContent>
+          </Card>
+        );
+      })}
+    </Stack>
+  );
+};
+
+// ─── Page ──────────────────────────────────────────────────────────────────────
+
 /**
  * Team-wide vacation/sick-leave/other-paid-leave calendar (#224) — people as
- * rows, days of the visible month as columns. Dragging across a row proposes
- * a new range (`StaffAbsenceDialog` confirms kind and notes); clicking an
- * existing block opens the same dialog to edit or delete it. Entitlement
- * balances, accrual and approval workflow are explicitly out of scope — see
- * the work item's "why".
+ * rows, days of the visible month as columns on desktop; a card per person
+ * with their absences as chips on mobile, where a month-wide grid would be
+ * unusable. Either way, clicking through opens `StaffAbsenceDialog` for kind,
+ * range and notes. Entitlement balances, accrual and approval workflow are
+ * explicitly out of scope — see the work item's "why".
  */
 export const StaffAbsencesPage = () => {
   const t = useT();
+  const isMobile = useIsMobile();
 
   const [month, setMonth] = useState(() => isoMonth(toIsoDate(new Date())));
   const [people, setPeople] = useState<StaffPerson[] | null>(null);
   const [absences, setAbsences] = useState<StaffAbsence[] | null>(null);
+  const [dayPatterns, setDayPatterns] = useState<Map<string, DayShiftPattern>>(new Map());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [drag, setDrag] = useState<DragState | null>(null);
-  const [dialog, setDialog] = useState<{
-    person: StaffAbsenceDialogPerson;
-    startDate: string;
-    endDate: string;
-    existing?: StaffAbsence;
-  } | null>(null);
+  const [pending, setPending] = useState<PendingSelection | null>(null);
+  const [dialog, setDialog] = useState<DialogState | null>(null);
 
   useEffect(() => {
     apiFetch<{ data: StaffPerson[] }>('/users?perPage=500&isActive=true')
@@ -134,6 +373,22 @@ export const StaffAbsencesPage = () => {
     void loadAbsences();
   }, [loadAbsences]);
 
+  // Weekend/holiday flags only, off the same calendar the availability
+  // screens use — no reason to keep a second copy of the holiday table.
+  useEffect(() => {
+    let cancelled = false;
+    apiFetch<DayShiftPattern[]>(`/availability/calendar?from=${monthStart(month)}&to=${monthEnd(month)}`)
+      .then((rows) => {
+        if (!cancelled) setDayPatterns(new Map(rows.map((row) => [row.date, row])));
+      })
+      .catch(() => {
+        if (!cancelled) setDayPatterns(new Map());
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [month]);
+
   const days = useMemo(() => isoDateRange(monthStart(month), monthEnd(month)), [month]);
 
   /** `userId#date` → the absence covering that cell, clamped to the visible month. */
@@ -149,36 +404,53 @@ export const StaffAbsencesPage = () => {
     return map;
   }, [absences, month]);
 
-  // A release outside any cell (dragged past the table's edge) still has to
-  // end the drag, so this listens on the window rather than the table.
-  useEffect(() => {
-    if (!drag) return undefined;
-    const handleUp = () => {
-      const person = people?.find((candidate) => candidate.id === drag.userId);
-      if (person) {
-        setDialog({
-          person,
-          startDate: drag.anchor <= drag.current ? drag.anchor : drag.current,
-          endDate: drag.anchor <= drag.current ? drag.current : drag.anchor,
-        });
-      }
-      setDrag(null);
-    };
-    window.addEventListener('mouseup', handleUp);
-    return () => window.removeEventListener('mouseup', handleUp);
-  }, [drag, people]);
-
-  const handleCellMouseDown = (person: StaffPerson, date: string) => {
-    const existing = absenceByCell.get(`${person.id}#${date}`);
-    if (existing) {
-      setDialog({ person, startDate: existing.startDate, endDate: existing.endDate, existing });
-      return;
+  const absencesByUser = useMemo(() => {
+    const map = new Map<string, StaffAbsence[]>();
+    for (const absence of absences ?? []) {
+      if (!staffAbsenceRangesOverlap(absence.startDate, absence.endDate, monthStart(month), monthEnd(month))) continue;
+      const forUser = map.get(absence.userId);
+      if (forUser) forUser.push(absence);
+      else map.set(absence.userId, [absence]);
     }
-    setDrag({ userId: person.id, anchor: date, current: date });
+    return map;
+  }, [absences, month]);
+
+  const openEdit = (person: StaffPerson, absence: StaffAbsence) => {
+    setPending(null);
+    setDialog({ person, startDate: absence.startDate, endDate: absence.endDate, existing: absence });
   };
 
-  const handleCellMouseEnter = (userId: string, date: string) => {
-    setDrag((current) => (current && current.userId === userId ? { ...current, current: date } : current));
+  const openAdd = (person: StaffPerson, date?: string) => {
+    const today = toIsoDate(new Date());
+    setPending(null);
+    setDialog({ person, startDate: date ?? today, endDate: date ?? today });
+  };
+
+  /**
+   * Two clicks make a range: the first sets the anchor, the second (on the
+   * same row) opens the dialog with both ends filled in — no drag gesture
+   * required, so this works identically with a mouse or a finger. Clicking
+   * the anchor again cancels it; clicking a different row restarts on that
+   * row instead of erroring.
+   */
+  const handleCellClick = (person: StaffPerson, date: string) => {
+    const existing = absenceByCell.get(`${person.id}#${date}`);
+    if (existing) {
+      openEdit(person, existing);
+      return;
+    }
+    if (pending && pending.userId === person.id) {
+      if (pending.anchorDate === date) {
+        setPending(null);
+        return;
+      }
+      const startDate = pending.anchorDate <= date ? pending.anchorDate : date;
+      const endDate = pending.anchorDate <= date ? date : pending.anchorDate;
+      setPending(null);
+      setDialog({ person, startDate, endDate });
+      return;
+    }
+    setPending({ userId: person.id, anchorDate: date });
   };
 
   if (loading && !absences) {
@@ -194,12 +466,29 @@ export const StaffAbsencesPage = () => {
     <Box sx={{ p: { xs: 2, sm: 3 } }}>
       <Title title={t('staffAbsences.pageTitle')} />
 
-      <Box sx={{ mb: 2 }}>
-        <Typography variant="h5">{t('staffAbsences.heading')}</Typography>
-        <Typography variant="body2" color="text.secondary">
-          {t('staffAbsences.subheading')}
-        </Typography>
-      </Box>
+      <Stack direction="row" alignItems="flex-start" justifyContent="space-between" spacing={2} sx={{ mb: 2 }}>
+        <Box>
+          <Typography variant="h5">{t('staffAbsences.heading')}</Typography>
+          <Typography variant="body2" color="text.secondary">
+            {t('staffAbsences.subheading')}
+          </Typography>
+        </Box>
+        {!isMobile && people && people.length > 0 && (
+          <Button
+            size="small"
+            variant="outlined"
+            startIcon={<AddIcon />}
+            onClick={() => {
+              const today = toIsoDate(new Date());
+              setPending(null);
+              setDialog({ startDate: today, endDate: today });
+            }}
+            sx={{ flexShrink: 0 }}
+          >
+            {t('staffAbsences.addAbsence')}
+          </Button>
+        )}
+      </Stack>
 
       {error && (
         <Alert severity="warning" sx={{ mb: 2 }}>
@@ -209,30 +498,13 @@ export const StaffAbsencesPage = () => {
 
       <Legend />
 
-      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
-        {t('staffAbsences.dragHint')}
-      </Typography>
-
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          gap: 2,
-          p: 1,
-          mb: 1,
-        }}
-      >
-        <IconButton size="small" aria-label={t('staffAbsences.prevMonth')} onClick={() => setMonth((m) => addMonths(m, -1))}>
-          <ChevronLeftIcon />
-        </IconButton>
-        <Typography variant="subtitle1" sx={{ minWidth: 170, textAlign: 'center' }}>
-          {formatMonthLabel(t, month)}
+      {!isMobile && (
+        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 1 }}>
+          {pending ? t('staffAbsences.selectHintPending') : t('staffAbsences.selectHint')}
         </Typography>
-        <IconButton size="small" aria-label={t('staffAbsences.nextMonth')} onClick={() => setMonth((m) => addMonths(m, 1))}>
-          <ChevronRightIcon />
-        </IconButton>
-      </Box>
+      )}
+
+      <MonthNav month={month} onChange={setMonth} />
 
       {people && people.length === 0 && (
         <Typography variant="body2" color="text.secondary">
@@ -240,108 +512,31 @@ export const StaffAbsencesPage = () => {
         </Typography>
       )}
 
-      {people && people.length > 0 && (
-        // The CSS Grid wrapper (rather than a plain flex Box) is what keeps a
-        // month's worth of day columns from bubbling their intrinsic width up
-        // through react-admin's own layout chrome and forcing a page-level
-        // horizontal scrollbar at tablet width — only the TableContainer
-        // below should ever scroll sideways.
-        <Box sx={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr)' }}>
-          <TableContainer component={Paper} variant="outlined" sx={{ overflowX: 'auto', minWidth: 0 }}>
-            <Table size="small" sx={{ userSelect: 'none' }}>
-              <TableHead>
-                <TableRow sx={{ backgroundColor: 'grey.100' }}>
-                  <TableCell
-                    sx={{
-                      position: 'sticky',
-                      left: 0,
-                      zIndex: 2,
-                      backgroundColor: 'grey.100',
-                      minWidth: NAME_COLUMN_WIDTH,
-                    }}
-                  />
-                  {days.map((date) => (
-                    <TableCell
-                      key={date}
-                      align="center"
-                      sx={{ minWidth: DAY_COLUMN_WIDTH, maxWidth: DAY_COLUMN_WIDTH, px: 0.5 }}
-                    >
-                      <Typography variant="caption" sx={{ fontWeight: 700, display: 'block' }}>
-                        {dayOfMonth(date)}
-                      </Typography>
-                      <Typography variant="caption" color="text.secondary" sx={{ fontSize: 9.5 }}>
-                        {weekdayAbbreviation(t, new Date(`${date}T00:00:00.000Z`).getUTCDay())}
-                      </Typography>
-                    </TableCell>
-                  ))}
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {people.map((person) => (
-                  <TableRow key={person.id}>
-                    <TableCell
-                      sx={{
-                        position: 'sticky',
-                        left: 0,
-                        zIndex: 1,
-                        backgroundColor: 'background.paper',
-                        minWidth: NAME_COLUMN_WIDTH,
-                        whiteSpace: 'nowrap',
-                      }}
-                    >
-                      <Typography variant="body2">
-                        {person.firstName} {person.lastName}
-                      </Typography>
-                    </TableCell>
-                    {days.map((date) => {
-                      const absence = absenceByCell.get(`${person.id}#${date}`);
-                      const inDrag =
-                        drag &&
-                        drag.userId === person.id &&
-                        date >= (drag.anchor <= drag.current ? drag.anchor : drag.current) &&
-                        date <= (drag.anchor <= drag.current ? drag.current : drag.anchor);
-                      const style = absence ? KIND_STYLE[absence.kind] : null;
-                      const cell = (
-                        <TableCell
-                          key={date}
-                          align="center"
-                          data-testid={`absence-cell-${person.id}-${date}`}
-                          onMouseDown={() => handleCellMouseDown(person, date)}
-                          onMouseEnter={() => handleCellMouseEnter(person.id, date)}
-                          sx={{
-                            cursor: 'pointer',
-                            minWidth: DAY_COLUMN_WIDTH,
-                            maxWidth: DAY_COLUMN_WIDTH,
-                            height: 32,
-                            p: 0,
-                            backgroundColor: style ? style.bg : inDrag ? 'action.selected' : undefined,
-                            border: style ? `1.5px solid ${style.border}` : undefined,
-                          }}
-                        />
-                      );
-                      return absence ? (
-                        <Tooltip
-                          key={date}
-                          title={`${kindLabel(t, absence.kind)}${absence.notes ? ` — ${absence.notes}` : ''}`}
-                        >
-                          {cell}
-                        </Tooltip>
-                      ) : (
-                        cell
-                      );
-                    })}
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </TableContainer>
-        </Box>
+      {people && people.length > 0 && isMobile && (
+        <MobileList
+          people={people}
+          absencesByUser={absencesByUser}
+          onAdd={(person) => openAdd(person)}
+          onEdit={openEdit}
+        />
+      )}
+
+      {people && people.length > 0 && !isMobile && (
+        <DesktopGrid
+          people={people}
+          days={days}
+          dayPatterns={dayPatterns}
+          absenceByCell={absenceByCell}
+          pending={pending}
+          onCellClick={handleCellClick}
+        />
       )}
 
       {dialog && (
         <StaffAbsenceDialog
           open
           person={dialog.person}
+          people={people ?? []}
           startDate={dialog.startDate}
           endDate={dialog.endDate}
           existing={dialog.existing}
