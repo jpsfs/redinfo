@@ -14,8 +14,8 @@ NestJS + Prisma. Read `../shared/CLAUDE.md` first if the feature touches shared 
 **`src/schedules/` is the richest exemplar — copy its shape for a new feature module.**
 
 Current modules: `auth`, `availability`, `event-reports`, `facilities`, `geography`, `health`,
-`inem`, `inventory`, `live-runs`, `notices`, `notifications`, `paid-staff-schedule`, `schedules`,
-`staff-absences`, `statistics`, `storage`, `users`, `vehicles`, `vehicle-occupancy`,
+`inem`, `inventory`, `live-runs`, `notices`, `notifications`, `paid-staff-schedule`, `patients`,
+`schedules`, `staff-absences`, `statistics`, `storage`, `users`, `vehicles`, `vehicle-occupancy`,
 `volunteer-hours`, `employment-contracts`, `prisma`.
 New modules are wired into `src/app.module.ts`.
 Bootstrap (global `ValidationPipe`, global `ApiErrorFilter`, port 3000) is in `src/main.ts`.
@@ -99,6 +99,14 @@ Model index by domain (names only — grep for fields/relations):
   table with independent `isEmergencyDestination`/`isTransportDestination` flags
 - **Event reports**: `EventReport`, `EventReportAssessment`, `EventReportCrewMember`, `EventReportVehicle`, `EventReportMaterial`, `EventReportVictim`, `EventReportInemSupportUnit`, `EventReportAttachment`
 - **Live**: `LiveRun`, `LiveRunCrewMember`
+- **Patients** (#219, #226): `Patient` — non-urgent transport patient, a durable months-long
+  relationship unlike `EventReportVictim`. Identity (full name, telephone, home address,
+  reference contact) sealed the same way as `LiveRun`'s victim fields, one `IdentityCipher`
+  blob (scope `'patient'`); mobility/coordinates/`localityId` stay unsealed since planning needs
+  them without opening it. `PatientIdentityPurgeService` sweeps on `updatedAt` against
+  `PATIENT_IDENTITY_RETENTION_DAYS` (env var, conservative default pending a data-protection
+  spike) — no inline purge-on-read like `LiveRun`'s, since a patient is read constantly for as
+  long as they remain one
 - **Config**: `DelegationSettings`
 - **Notices & notifications** (#165): `Notice`, `NoticeTargetRole`, `NoticeChannel`,
   `NoticeReceipt`, `NotificationDelivery`, `PushSubscription`, `NotificationTypeSetting`,

@@ -46,6 +46,7 @@ import {
   EventReportEdit,
 } from './resources/eventReports';
 import { FacilityList, FacilityCreate, FacilityEdit } from './resources/facilities';
+import { PatientList, PatientShow, PatientCreate, PatientEdit } from './resources/patients';
 import { LiveEntryPage, LiveRunGate, LiveRunPage } from './resources/liveRuns';
 import { MyAvailabilityPage } from './pages/MyAvailabilityPage';
 import { MyDutiesPage } from './pages/MyDutiesPage';
@@ -69,6 +70,7 @@ import DateRangeIcon from '@mui/icons-material/DateRange';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
 import EventNoteIcon from '@mui/icons-material/EventNote';
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
+import MedicalServicesIcon from '@mui/icons-material/MedicalServices';
 import DescriptionIcon from '@mui/icons-material/Description';
 
 export default function App() {
@@ -271,6 +273,15 @@ export default function App() {
         list={FacilityList}
         create={FacilityCreate}
         edit={FacilityEdit}
+      />
+
+      <Resource
+        name="patients"
+        icon={MedicalServicesIcon}
+        list={PatientList}
+        show={PatientShow}
+        create={PatientCreate}
+        edit={PatientEdit}
       />
 
       {/* Read-only reference data, reached only by the pickers that need it —

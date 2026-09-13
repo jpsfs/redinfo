@@ -17,6 +17,7 @@ import InventoryIcon from '@mui/icons-material/Inventory';
 import Inventory2Icon from '@mui/icons-material/Inventory2';
 import SyncIcon from '@mui/icons-material/Sync';
 import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
+import MedicalServicesIcon from '@mui/icons-material/MedicalServices';
 import EventBusyIcon from '@mui/icons-material/EventBusy';
 import QueryStatsIcon from '@mui/icons-material/QueryStats';
 import NotificationsIcon from '@mui/icons-material/Notifications';
@@ -171,11 +172,18 @@ export const NAV_SECTIONS: NavSection[] = [
   },
   {
     // Non-urgent patient transport (#219). Settled by #225: the top-level
-    // group and its position exist now, holding no entries yet — screens
-    // (Pedidos, Doentes, Planeamento, Atendimento) are added, each with its
-    // own `requires`, by the stories that build them.
+    // group and its position exist, screens added one by one as their
+    // stories land. Patients (#226) is the first: Pedidos, Planeamento and
+    // Atendimento follow with their own `requires`.
     label: 'nav.transports',
-    entries: [],
+    entries: [
+      {
+        to: '/patients',
+        label: 'nav.patients',
+        icon: <MedicalServicesIcon />,
+        requires: [Action.MANAGE_PATIENTS],
+      },
+    ],
   },
   {
     label: 'nav.people',

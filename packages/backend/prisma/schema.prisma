@@ -137,6 +137,8 @@ model User {
   liveRunsCreated LiveRun[]           @relation("LiveRunCreatedBy")
   liveRunCrew     LiveRunCrewMember[]
 
+  patientsCreated Patient[] @relation("PatientCreatedBy")
+
   certifications        UserCertification[] @relation("UserCertifications")
   certificationsCreated UserCertification[] @relation("UserCertificationCreatedBy")
   profileAudits         UserProfileAudit[]  @relation("UserProfileAuditSubject")
@@ -1253,6 +1255,7 @@ model Locality {
   eventReports EventReport[]
   liveRuns     LiveRun[]
   users        User[]
+  patients     Patient[]
 
   @@unique([municipalityId, name])
   @@index([searchName])
@@ -2292,4 +2295,88 @@ model INEMUnitStatusPeriod {
 
   @@index([unitId, startedAt])
   @@index([vehicleId, startedAt])
+}
+
+// ─── Patients (#219, #226) ──────────────────────────────────────────────────────
+
+enum PatientMobility {
+  AMBULATORY
+  WHEELCHAIR
+  STRETCHER
+}
+
+/// A non-urgent transport patient: a durable, months-long relationship, unlike
+/// `EventReportVictim` which is scoped to a single incident — and the most
+/// sensitive data this Feature persists.
+///
+/// Identity is sealed the same way as `LiveRun`'s victim fields: one
+/// AES-256-GCM blob (`IdentityCipher`, scope `'patient'`), bound to the row id
+/// as additional authenticated data, so copying one patient's blob into
+/// another row fails to open. `identityPurgedAt` distinguishes "never had
+/// identity" from "had it, and it is gone" — see `PatientIdentityPurgeService`.
+///
+/// `MANAGE_PATIENTS` covers every column here except `identity` itself, which
+/// needs `VIEW_PATIENT_IDENTITY` too — deliberately not implied, the same
+/// narrower-than-its-neighbour shape as `LiveRun`'s emergency-board split.
+/// Serializers omit `identity` entirely for a caller without it.
+model Patient {
+  id String @id @default(cuid())
+
+  /// One AES-256-GCM blob: full name, telephone, home address, reference
+  /// contact name/relationship/telephone. See `PatientIdentity` (shared) for
+  /// its shape — written and read as one unit, never field-by-field.
+  identity Bytes?
+  /// Set when the blob was destroyed. Retention policy is still an open
+  /// question on the Feature (see the data-protection spike):
+  /// `PatientIdentityPurgeService` reads `PATIENT_IDENTITY_RETENTION_DAYS` (an
+  /// env var, deliberately not a hard-coded constant like `LiveRun`'s) so the
+  /// window can move without a deploy once that spike lands, and defaults
+  /// conservatively — long enough that an active patient is never purged out
+  /// from under daily use — pending an actual answer.
+  identityPurgedAt DateTime?
+
+  // ── Unsealed: planning needs these without opening the blob ────────────────
+  mobility       PatientMobility @default(AMBULATORY)
+  needsOxygen    Boolean         @default(false)
+  escortRequired Boolean         @default(false)
+  isBariatric    Boolean         @default(false)
+
+  /// The geocoded home, coordinates only. Kept unsealed **on purpose**:
+  /// every planning/routing query needs them, and sealing them would make
+  /// routing impossible. They are still personal data — recorded here as a
+  /// decision, not an oversight, so it is on the record rather than
+  /// rediscovered later (#226).
+  defaultLatitude  Float?
+  defaultLongitude Float?
+
+  /// For traffic-corridor lookups. Kept unsealed for the same reason as the
+  /// coordinates above — unlike `LiveRun.victimHomeLocalityId`, which stays
+  /// inside that model's identity blob: a live run's locality is read once,
+  /// a patient's is read by every planning query for as long as they remain
+  /// a patient.
+  localityId String?
+  locality   Locality? @relation(fields: [localityId], references: [id], onDelete: SetNull)
+
+  /// The reference contact may be an institution rather than a person — e.g.
+  /// the care home a patient lives in, which is then the address and the
+  /// contact at once. One contact, not a priority-ordered list: modelling
+  /// more would be inventing a problem the business does not have.
+  referenceContactIsOrganisation Boolean @default(false)
+  /// Whether the patient authorised naming this contact — a recorded fact,
+  /// never an assumption baked into notification code: telling a third party
+  /// about a transport can disclose the fact of the patient's treatment.
+  contactAuthorisationRecorded Boolean @default(false)
+  contactAuthorisationNote     String?
+
+  isActive Boolean @default(true)
+
+  createdById String
+  createdBy   User     @relation("PatientCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([localityId])
+  @@index([isActive])
+  /// The purge sweep's cutoff.
+  @@index([updatedAt])
 }

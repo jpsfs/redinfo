@@ -6978,6 +6978,214 @@ export type INEMLoginJobResult =
       message: string;
     };
 
+// ─── Patients (#219, #226) ──────────────────────────────────────────────────────
+//
+// A non-urgent transport patient: a durable, months-long relationship, unlike
+// `EventReportVictim` which is scoped to a single incident — and the most
+// sensitive data this Feature persists. Identity is sealed the same way as
+// `LiveRun`'s victim fields, one `IdentityCipher` blob (scope `'patient'`,
+// backend), bound to the row id as additional authenticated data.
+
+export enum PatientMobility {
+  AMBULATORY = 'AMBULATORY',
+  WHEELCHAIR = 'WHEELCHAIR',
+  STRETCHER = 'STRETCHER',
+}
+
+/**
+ * What the sealed blob holds: full name, telephone, home address and the
+ * reference contact's own name/relationship/telephone. Everything a planner
+ * needs *without* opening it — mobility, coordinates, `Patient.localityId` —
+ * lives unsealed on `Patient` itself; see that model's schema comments for why.
+ *
+ * Written and read as one unit, never field-by-field: an edit that touches one
+ * name replaces the whole blob, the same "whole document" contract
+ * `LiveRunInput` uses for its own identity, rather than a decrypt-merge-reseal
+ * that would risk half-corrupting it.
+ */
+export interface PatientIdentity {
+  fullName: string;
+  telephone: string;
+  /** Street and number. */
+  homeAddressLine: string;
+  homePostalCode: string;
+  /**
+   * Free text, as given at intake — distinct from `Patient.localityId`, the
+   * FK every planning query reads without opening this blob at all.
+   */
+  homeLocality: string;
+  /** Not necessarily the patient — frequently a family member, or (see
+   * `referenceContactIsOrganisation`) the institution they live in. */
+  referenceContactName: string;
+  referenceContactRelationship: string;
+  referenceContactTelephone: string;
+}
+
+export const PATIENT_IDENTITY_FIELDS = [
+  'fullName',
+  'telephone',
+  'homeAddressLine',
+  'homePostalCode',
+  'homeLocality',
+  'referenceContactName',
+  'referenceContactRelationship',
+  'referenceContactTelephone',
+] as const;
+
+export const MAX_PATIENT_NAME_LENGTH = 160;
+export const MAX_PATIENT_ADDRESS_LENGTH = 300;
+export const MAX_PATIENT_TELEPHONE_LENGTH = 30;
+export const MAX_PATIENT_CONTACT_NOTE_LENGTH = 500;
+
+/**
+ * The unsealed part of a patient record — what `MANAGE_PATIENTS` alone can
+ * write. `identity` is included too, because a caller who also holds
+ * `VIEW_PATIENT_IDENTITY` writes it through the same payload; the backend is
+ * what refuses the field for everyone else (see `PatientsService`).
+ */
+export interface PatientInput {
+  mobility: PatientMobility;
+  needsOxygen?: boolean;
+  escortRequired?: boolean;
+  isBariatric?: boolean;
+  /**
+   * The geocoded home, coordinates only. Personal data, and kept unsealed
+   * anyway — a decision, not an oversight: every planning/routing query needs
+   * them, and sealing them would make routing impossible.
+   */
+  defaultLatitude?: number | null;
+  defaultLongitude?: number | null;
+  /** For traffic-corridor lookups — kept unsealed for the same reason as the
+   * coordinates above. */
+  localityId?: string | null;
+  /** The reference contact may be an institution — e.g. the care home a
+   * patient lives in — rather than a person; one contact, never a list. */
+  referenceContactIsOrganisation?: boolean;
+  /**
+   * Whether the patient authorised naming this contact — a recorded fact,
+   * never an assumption: telling a third party about a transport can
+   * disclose the fact of the patient's treatment.
+   */
+  contactAuthorisationRecorded?: boolean;
+  contactAuthorisationNote?: string | null;
+  isActive?: boolean;
+  /** Omitted (not merely emptied) for a caller without `VIEW_PATIENT_IDENTITY`,
+   * on both read and write. */
+  identity?: PatientIdentity | null;
+}
+
+export interface Patient extends PatientInput {
+  id: string;
+  locality?: Locality | null;
+  /** Set when the blob was destroyed, so "never had identity" and "had it,
+   * purged" stay distinct facts — the same split as `LiveRun.identityPurgedAt`. */
+  identityPurgedAt?: string | null;
+  /**
+   * The blob is present but no key in this environment opens it. Not an
+   * error: a key retired an hour early must not take a patient record down,
+   * the same `identityUnavailable` state `LiveRun` uses.
+   */
+  identityUnavailable?: boolean;
+  createdById: string;
+  createdBy?: { id: string; firstName: string; lastName: string };
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * How long an untouched patient's identity outlives its last edit before the
+ * sweep destroys it, absent an explicit `PATIENT_IDENTITY_RETENTION_DAYS`
+ * (backend env var). Retention policy is still an open question on the
+ * Feature (see the data-protection spike) — this default is deliberately
+ * conservative pending an answer: long enough that an active patient's
+ * identity is never destroyed out from under daily use, not a considered
+ * policy value.
+ */
+export const DEFAULT_PATIENT_IDENTITY_RETENTION_DAYS = 365;
+
+/**
+ * Whether a sealed identity payload is coherent enough to save — same
+ * "message or null" shape as `validateFacility`. Every field is required
+ * together: there is no partial identity, per `PatientIdentity`'s doc comment.
+ */
+export function validatePatientIdentity(identity: PatientIdentity): string | null {
+  const fullName = identity.fullName?.trim() ?? '';
+  if (!fullName) return 'A patient needs a full name.';
+  if (fullName.length > MAX_PATIENT_NAME_LENGTH) {
+    return `A patient's name may be at most ${MAX_PATIENT_NAME_LENGTH} characters (got ${fullName.length}).`;
+  }
+  if (!identity.telephone?.trim()) return 'A patient needs a telephone number.';
+  if (identity.telephone.trim().length > MAX_PATIENT_TELEPHONE_LENGTH) {
+    return `A telephone number may be at most ${MAX_PATIENT_TELEPHONE_LENGTH} characters.`;
+  }
+  if (!identity.homeAddressLine?.trim()) return 'A patient needs a home address.';
+  if (identity.homeAddressLine.trim().length > MAX_PATIENT_ADDRESS_LENGTH) {
+    return `A home address may be at most ${MAX_PATIENT_ADDRESS_LENGTH} characters.`;
+  }
+  if (!identity.homePostalCode?.trim()) return 'A patient needs a home postal code.';
+  if (!identity.homeLocality?.trim()) return 'A patient needs a home locality.';
+  if (!identity.referenceContactName?.trim()) return 'The reference contact needs a name.';
+  if (!identity.referenceContactRelationship?.trim()) {
+    return 'The reference contact needs a relationship to the patient.';
+  }
+  if (!identity.referenceContactTelephone?.trim()) {
+    return 'The reference contact needs a telephone number.';
+  }
+  if (identity.referenceContactTelephone.trim().length > MAX_PATIENT_TELEPHONE_LENGTH) {
+    return `A telephone number may be at most ${MAX_PATIENT_TELEPHONE_LENGTH} characters.`;
+  }
+  return null;
+}
+
+/**
+ * Whether a patient record is coherent — same "message or null" shape as
+ * `validateFacility`. `identity`, when present, is validated by
+ * `validatePatientIdentity` — its absence here is never itself an error, since
+ * a `MANAGE_PATIENTS`-only caller can create and edit a patient without ever
+ * being able to write it.
+ */
+export function validatePatient(input: PatientInput): string | null {
+  if (!Object.values(PatientMobility).includes(input.mobility)) {
+    return 'Choose the patient\'s mobility profile.';
+  }
+
+  const hasLatitude = input.defaultLatitude !== null && input.defaultLatitude !== undefined;
+  const hasLongitude = input.defaultLongitude !== null && input.defaultLongitude !== undefined;
+  if (hasLatitude !== hasLongitude) {
+    return 'Give both the default latitude and longitude, or neither.';
+  }
+  if (hasLatitude) {
+    if (
+      !Number.isFinite(input.defaultLatitude!) ||
+      input.defaultLatitude! < -90 ||
+      input.defaultLatitude! > 90
+    ) {
+      return 'Default latitude must be between -90 and 90.';
+    }
+    if (
+      !Number.isFinite(input.defaultLongitude!) ||
+      input.defaultLongitude! < -180 ||
+      input.defaultLongitude! > 180
+    ) {
+      return 'Default longitude must be between -180 and 180.';
+    }
+  }
+
+  if (
+    input.contactAuthorisationNote &&
+    input.contactAuthorisationNote.length > MAX_PATIENT_CONTACT_NOTE_LENGTH
+  ) {
+    return `The authorisation note may be at most ${MAX_PATIENT_CONTACT_NOTE_LENGTH} characters.`;
+  }
+
+  if (input.identity) {
+    const identityError = validatePatientIdentity(input.identity);
+    if (identityError) return identityError;
+  }
+
+  return null;
+}
+
 // ─── API error codes (#180 phase 4) ───────────────────────────────────────────
 //
 // A machine code for the business-rule failures that are genuinely worth a

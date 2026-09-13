@@ -523,6 +523,7 @@ const MESSAGES = {
   'nav.materialItems': { pt: 'Catálogo de materiais', en: 'Material Catalogue' },
   'nav.inemStatus': { pt: 'Estado INEM', en: 'INEM Status' },
   'nav.facilities': { pt: 'Unidades de Saúde', en: 'Health Facilities' },
+  'nav.patients': { pt: 'Doentes', en: 'Patients' },
   'nav.holidays': { pt: 'Feriados', en: 'Holidays' },
   'nav.myProfile': { pt: 'O meu perfil', en: 'My Profile' },
   'nav.myNotices': { pt: 'Avisos', en: 'Notices' },
@@ -2520,6 +2521,80 @@ const MESSAGES = {
     pt: 'Destino de transporte (precisa de coordenadas próprias)',
     en: 'Transport destination (needs its own coordinates)',
   },
+
+  // ── Patients (#219, #226) — non-urgent transport ──
+  'resources.patients.fields.mobility': { pt: 'Mobilidade', en: 'Mobility' },
+  'resources.patients.fields.needsOxygen': { pt: 'Necessita de oxigénio', en: 'Needs oxygen' },
+  'resources.patients.fields.escortRequired': { pt: 'Necessita de acompanhante', en: 'Escort required' },
+  'resources.patients.fields.isBariatric': { pt: 'Doente bariátrico', en: 'Bariatric' },
+  'resources.patients.fields.defaultLatitude': { pt: 'Latitude (opcional)', en: 'Latitude (optional)' },
+  'resources.patients.fields.defaultLongitude': { pt: 'Longitude (opcional)', en: 'Longitude (optional)' },
+  'resources.patients.fields.localityId': { pt: 'Localidade', en: 'Locality' },
+  'resources.patients.fields.referenceContactIsOrganisation': {
+    pt: 'O contacto de referência é uma instituição',
+    en: 'The reference contact is an institution',
+  },
+  'resources.patients.fields.contactAuthorisationRecorded': {
+    pt: 'O doente autorizou contactar esta pessoa',
+    en: 'The patient authorised naming this contact',
+  },
+  'resources.patients.fields.contactAuthorisationNote': {
+    pt: 'Nota sobre a autorização (opcional)',
+    en: 'Authorisation note (optional)',
+  },
+  'resources.patients.fields.isActive': { pt: 'Estado', en: 'Status' },
+
+  'patientMobility.AMBULATORY': { pt: 'Deambulante', en: 'Ambulatory' },
+  'patientMobility.WHEELCHAIR': { pt: 'Cadeira de rodas', en: 'Wheelchair' },
+  'patientMobility.STRETCHER': { pt: 'Maca', en: 'Stretcher' },
+
+  'patientList.addPatient': { pt: 'Adicionar doente', en: 'Add patient' },
+  'patientList.active': { pt: 'Ativo', en: 'Active' },
+  'patientList.retired': { pt: 'Inativo', en: 'Inactive' },
+  'patientList.colLocality': { pt: 'Localidade', en: 'Locality' },
+  'patientList.colMobility': { pt: 'Mobilidade', en: 'Mobility' },
+  'patientList.colName': { pt: 'Nome', en: 'Name' },
+  'patientList.identityRestricted': {
+    pt: 'A tua função não permite ver a identidade dos doentes.',
+    en: 'Your role does not permit viewing patient identity.',
+  },
+  'patientList.identityUnavailable': {
+    pt: 'A identidade está selada mas nenhuma chave configurada a consegue abrir.',
+    en: 'Identity is sealed but no configured key can open it.',
+  },
+  'patientList.identityPurged': {
+    pt: 'A identidade deste doente foi destruída em %{date}.',
+    en: 'This patient’s identity was destroyed on %{date}.',
+  },
+  'patientList.noIdentityYet': {
+    pt: 'Ainda não foi registada identidade para este doente.',
+    en: 'No identity has been recorded for this patient yet.',
+  },
+  'patientList.helpText': {
+    pt: 'O perfil de mobilidade, as coordenadas e a localidade ficam sempre visíveis — o planeamento de viagens precisa deles. O nome, telefone, morada e contacto de referência ficam selados e só aparecem para quem tem permissão para ver a identidade do doente.',
+    en: 'The mobility profile, coordinates and locality always stay visible — ' +
+      'trip planning needs them. Name, telephone, address and the reference ' +
+      'contact stay sealed and only appear for someone permitted to view ' +
+      'patient identity.',
+  },
+  'patientForm.sectionProfile': { pt: 'Perfil de transporte', en: 'Transport profile' },
+  'patientForm.sectionIdentity': { pt: 'Identidade', en: 'Identity' },
+  'patientForm.fullName': { pt: 'Nome completo', en: 'Full name' },
+  'patientForm.telephone': { pt: 'Telefone', en: 'Telephone' },
+  'patientForm.homeAddressLine': { pt: 'Morada (rua e número)', en: 'Address (street and number)' },
+  'patientForm.homePostalCode': { pt: 'Código postal', en: 'Postal code' },
+  'patientForm.homeLocality': { pt: 'Localidade (texto livre)', en: 'Locality (free text)' },
+  'patientForm.referenceContactName': { pt: 'Nome do contacto de referência', en: 'Reference contact name' },
+  'patientForm.referenceContactRelationship': {
+    pt: 'Relação com o doente',
+    en: 'Relationship to the patient',
+  },
+  'patientForm.referenceContactTelephone': {
+    pt: 'Telefone do contacto de referência',
+    en: 'Reference contact telephone',
+  },
+  'patientForm.pickLocality': { pt: 'Escolher localidade', en: 'Choose locality' },
+  'patientForm.noLocalityChosen': { pt: 'Nenhuma localidade escolhida', en: 'No locality chosen' },
 
   // ── Rich text editor (#180 phase 3) — shared by crew and coordinator forms ──
   'richText.bold': { pt: 'Negrito', en: 'Bold' },

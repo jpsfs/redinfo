@@ -148,6 +148,7 @@ describe('RedInfoMenu', () => {
       '/volunteer-hours/review',
       '/statistics',
       '/notices',
+      '/patients',
       '/users',
       '/staff-absences',
       '/vehicles',
