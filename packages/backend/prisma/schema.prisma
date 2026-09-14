@@ -1260,6 +1260,9 @@ model Locality {
   users        User[]
   patients     Patient[]
 
+  trafficFactorsAsOrigin      TrafficCorridorFactor[] @relation("TrafficFactorOriginLocality")
+  trafficFactorsAsDestination TrafficCorridorFactor[] @relation("TrafficFactorDestinationLocality")
+
   @@unique([municipalityId, name])
   @@index([searchName])
   @@index([municipalityId])
@@ -1328,6 +1331,9 @@ model Facility {
   originLegs        TransportLeg[] @relation("TransportLegOrigin")
   destinationLegs   TransportLeg[] @relation("TransportLegDestination")
 
+  trafficFactorsAsOrigin      TrafficCorridorFactor[] @relation("TrafficFactorOriginFacility")
+  trafficFactorsAsDestination TrafficCorridorFactor[] @relation("TrafficFactorDestinationFacility")
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
@@ -1336,6 +1342,89 @@ model Facility {
   @@index([municipalityId])
   @@index([isEmergencyDestination])
   @@index([isTransportDestination])
+}
+
+// ─── Traffic ─────────────────────────────────────────────────────────────────
+
+/// Where a stored `TrafficCorridorFactor` came from (#232). Both sources
+/// write the exact same table shape, which is the point: swapping a
+/// corridor from bought factors to ones measured from the delegation's own
+/// captured actual times later is a data-loading change, never a schema or
+/// code change.
+enum TrafficFactorSource {
+  PURCHASED
+  MEASURED
+}
+
+/// The three traffic rhythms that matter for planning (#232) — a Saturday
+/// isn't a weekday and isn't a Sunday either, and a public holiday behaves
+/// like a Sunday regardless of which weekday it lands on, so it folds in
+/// rather than getting a fourth bucket.
+enum TrafficDayType {
+  WEEKDAY
+  SATURDAY
+  SUNDAY_HOLIDAY
+}
+
+/// Planning traffic and dispatch traffic are different problems (#232, off
+/// Feature #219's split): planning recomputes a full stop-by-stop matrix
+/// every time the planner moves something, so it needs traffic knowledge
+/// that costs nothing per lookup — the opposite of a live, per-request
+/// traffic API's pricing. This table is that knowledge, sampled quarterly:
+/// the ratio of a traffic-aware duration to OSRM's free-flow duration for
+/// one corridor/departure-hour/day-type. A planned duration is always
+/// `OSRM free-flow duration × factor` (`PlannedDurationService`); a missing
+/// row means factor `1.0`, resolved explicitly by
+/// `TrafficCorridorFactorService.lookup` (which also reports `source: null`)
+/// rather than left for a caller to infer from absence.
+///
+/// A corridor endpoint is a `Locality` centroid or a `Facility`'s own
+/// coordinates — public geography already sitting in this schema, never a
+/// patient's address; see `routing.module.ts`'s doc comment for why that
+/// boundary matters.
+model TrafficCorridorFactor {
+  id String @id @default(cuid())
+
+  originLocalityId String?
+  originLocality   Locality? @relation("TrafficFactorOriginLocality", fields: [originLocalityId], references: [id], onDelete: Restrict)
+  originFacilityId String?
+  originFacility   Facility? @relation("TrafficFactorOriginFacility", fields: [originFacilityId], references: [id], onDelete: Restrict)
+
+  destinationLocalityId String?
+  destinationLocality   Locality? @relation("TrafficFactorDestinationLocality", fields: [destinationLocalityId], references: [id], onDelete: Restrict)
+  destinationFacilityId String?
+  destinationFacility   Facility? @relation("TrafficFactorDestinationFacility", fields: [destinationFacilityId], references: [id], onDelete: Restrict)
+
+  /// A dedup key, not a domain field — `TrafficCorridorFactorService` alone
+  /// computes and writes it. Exists because Postgres treats `NULL` as
+  /// distinct from `NULL` inside a unique index, so a compound unique
+  /// straight over the four nullable endpoint columns above would silently
+  /// let a re-sample insert a duplicate row instead of updating the
+  /// existing one — every row here has two of those four columns null by
+  /// construction (an endpoint is a locality *or* a facility, never both).
+  corridorKey String
+
+  /// Hour of departure in delegation-local time, 0–23.
+  departureBucket Int
+  dayType         TrafficDayType
+
+  /// Traffic-aware duration ÷ OSRM free-flow duration for this
+  /// corridor/hour/day type. `1.0` is free-flow; slower than free-flow is
+  /// `> 1.0`.
+  factor Float
+  source TrafficFactorSource
+  /// When the sample behind this factor was taken — not a write-audit
+  /// timestamp, `createdAt`/`updatedAt` already cover that.
+  sampledAt DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// No `source` in the key: replacing this corridor's PURCHASED factors
+  /// with MEASURED ones is an upsert against the same row, never a second
+  /// row competing with the first (#232's "swappable source" requirement).
+  @@unique([corridorKey, departureBucket, dayType])
+  @@index([departureBucket, dayType])
 }
 
 // ─── Event Reports ────────────────────────────────────────────────────────────

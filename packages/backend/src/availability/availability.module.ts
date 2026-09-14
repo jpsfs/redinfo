@@ -19,6 +19,9 @@ import { AuditInterceptor } from '../auth/interceptors/audit.interceptor';
     AuditInterceptor,
   ],
   controllers: [HolidaysController, AvailabilityWindowsController, AvailabilityController],
-  exports: [ShiftScheduleService, AvailabilityWindowsService, AvailabilityService],
+  // HolidaysService is also exported for RoutingModule's traffic-day-type
+  // resolution (#232) — a departure date needs to know whether it's a
+  // holiday, not just what weekday it falls on.
+  exports: [ShiftScheduleService, AvailabilityWindowsService, AvailabilityService, HolidaysService],
 })
 export class AvailabilityModule {}

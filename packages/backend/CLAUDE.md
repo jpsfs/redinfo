@@ -77,6 +77,25 @@ estimate (`estimated: true`) for any pair OSRM can't route (out-of-region) — s
 posture as `RouteDistanceService`. See `scripts/prepare-osrm-data.sh` for the one-off extract
 step and `OsrmRoutingService`'s banner comment for why OSRM over Valhalla.
 
+The same module's traffic correction table (#232) layers planning-time traffic onto that
+free-flow engine: `PlannedDurationService.plan` returns OSRM free-flow duration × a corridor's
+`TrafficCorridorFactor` (a quarterly-sampled ratio, keyed by locality/facility endpoint pair,
+hour-of-day, and `TrafficDayType`) — a missing factor defaults to `1.0` visibly
+(`corridorFactorSource: null`), never silently. `TrafficCorridorFactorService` owns the table's
+`corridorKey` trick (a computed dedup key, because Postgres treats `NULL` as distinct from
+`NULL` in a unique index and every row here has two of its four nullable endpoint columns null
+by construction) — callers always work in `CorridorEndpoint` terms, never the key directly.
+`TrafficCorridorSamplerService` is the quarterly pg-boss job (`TrafficQueueService`, plain cron,
+not a self-perpetuating chain — a few thousand calls a quarter, not a continuous loop): its
+corridor set is deliberately narrow, `Patient.localityId` (public, unsealed) joined through
+`TransportRequest.destinationFacilityId` — never the ~3,500-row national `Locality` table, and
+never the sealed `PatientIdentity` blob. `TrafficSamplingClient` (DI token
+`TRAFFIC_SAMPLING_CLIENT`) is the swappable commercial-vendor boundary both the sampler and the
+day-of-dispatch escape hatch (`LiveTrafficRoutingService`, deliberately *not* bound to
+`ROUTING_SERVICE` — planning must never reach a live, per-request, priced API for its full
+stop-by-stop matrix) call; it defaults to `DisabledTrafficSamplingClient` until a real vendor is
+chosen — check the free tier's licence terms first, some restrict commercial use.
+
 ## Controller pattern
 
 - Class-level `@UseGuards(JwtAuthGuard, RolesGuard)` + `@UseInterceptors(AuditInterceptor)`.
@@ -139,6 +158,9 @@ Model index by domain (names only — grep for fields/relations):
 - **Geography**: `Municipality`, `Locality`, `GeocodedAddress` (#231) — the self-hosted
   geocoder's cache, keyed by a hash of the folded address, never the patient/facility row that
   asked for it
+- **Traffic** (#232): `TrafficCorridorFactor`, `TrafficFactorSource`, `TrafficDayType` — a
+  quarterly-sampled ratio of traffic-aware to OSRM free-flow duration, per locality/facility
+  corridor, hour-of-day and day type; see `routing`'s entry above
 - **Facilities** (#220): `Facility` — hospitals, clinics and private medical facilities, one
   table with independent `isEmergencyDestination`/`isTransportDestination` flags
 - **Event reports**: `EventReport`, `EventReportAssessment`, `EventReportCrewMember`, `EventReportVehicle`, `EventReportMaterial`, `EventReportVictim`, `EventReportInemSupportUnit`, `EventReportAttachment`
