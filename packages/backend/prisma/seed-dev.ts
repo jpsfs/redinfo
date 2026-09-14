@@ -14,8 +14,13 @@ import {
   EventReportType,
   Gender,
   InemSupportUnitType,
+  LegCancellationSource,
   LiveRunState,
+  PatientMobility,
   StaffAbsenceKind,
+  TransportRequestDecision,
+  TransportRequestOccurrenceType,
+  TransportRequestVehicleType,
   UserRole,
   VehicleType,
   VictimDestinationKind,
@@ -40,6 +45,22 @@ import { StaffAbsencesService } from '../src/staff-absences/staff-absences.servi
 import { EventReportsService } from '../src/event-reports/event-reports.service';
 import { EventReportNumbering } from '../src/event-reports/event-report-numbering';
 import { StockMovementsService } from '../src/inventory/stock-movements.service';
+import { IdentityCipher } from '../src/common/identity-cipher';
+import { PatientsService } from '../src/patients/patients.service';
+import { CreatePatientDto } from '../src/patients/dto/create-patient.dto';
+import { DelegationSettingsService } from '../src/live-runs/delegation-settings.service';
+import { GeographyService } from '../src/geography/geography.service';
+import { FacilitiesService } from '../src/facilities/facilities.service';
+import { VehicleOccupancyService } from '../src/vehicle-occupancy/vehicle-occupancy.service';
+import { OrganisationsService } from '../src/organisations/organisations.service';
+import { AgreementsService } from '../src/organisations/agreements.service';
+import { CreateOrganisationDto } from '../src/organisations/dto/create-organisation.dto';
+import { CreateAgreementDto } from '../src/organisations/dto/create-agreement.dto';
+import { TransportRequestsService } from '../src/transport-requests/transport-requests.service';
+import { CreateTransportRequestDto } from '../src/transport-requests/dto/create-transport-request.dto';
+import { TransportRequestLegsService } from '../src/transport-requests/transport-request-legs.service';
+import { TransportRequestTreatmentPlansService } from '../src/transport-requests/transport-request-treatment-plans.service';
+import { CreateTreatmentPlanDto } from '../src/transport-requests/dto/create-treatment-plan.dto';
 
 /**
  * Rich fixtures for manual testing against the running dev stack — the
@@ -215,7 +236,11 @@ async function main() {
       key: 'ricardo',
       firstName: 'Ricardo',
       lastName: 'Gonçalves',
-      roles: [UserRole.LOGISTICS_COORDINATOR],
+      // Third dual-role dev fixture: logistics, and now non-urgent transport
+      // too — the delegation's transports coordinator, exercising
+      // `MANAGE_TRANSPORT_REQUESTS`/`MANAGE_PATIENTS`/`VIEW_PATIENT_IDENTITY`/
+      // `MANAGE_TRANSPORT_CONFIG` for the fixtures built below.
+      roles: [UserRole.LOGISTICS_COORDINATOR, UserRole.TRANSPORT_COORDINATOR],
       phone: '+351 914 567 890',
       birthDate: '1979-11-02',
       joinedOn: '2009-09-01',
@@ -984,6 +1009,314 @@ async function main() {
     },
   });
   console.log('✅ One live run in progress, for the coordinator board.');
+
+  // ── Non-urgent transport (#219, #226-231) ────────────────────────────────
+  // Ricardo (now also TRANSPORT_COORDINATOR, see his fixture above) plays
+  // the transports coordinator throughout: he creates the destinations,
+  // parties, patients and referrals below, the same way one real person
+  // would work the queue.
+  const transportsCoordinator = users.ricardo;
+
+  // Two transport destinations: `Hospital de Braga` already exists as an
+  // emergency destination (seed-geography) and gains the second flag plus
+  // the coordinates/address a transport destination requires; the dialysis
+  // clinic is transport-only and dev-only, so it is created here rather than
+  // in the base seed.
+  await prisma.facility.update({
+    where: { id: hospitalBraga.id },
+    data: {
+      isTransportDestination: true,
+      addressLine: 'Sete Fontes, São Victor',
+      postalCode: '4710-243',
+      latitude: 41.5669,
+      longitude: -8.4003,
+    },
+  });
+  const dialysisClinic = await prisma.facility.create({
+    data: {
+      name: 'Clínica de Hemodiálise de Barcelos',
+      municipalityId: barcelos.municipalityId,
+      addressLine: 'Avenida Dr. Sidónio Pais, 210',
+      postalCode: '4750-333',
+      latitude: 41.5305,
+      longitude: -8.618,
+      isTransportDestination: true,
+    },
+  });
+  console.log('✅ Two transport destinations: Hospital de Braga (upgraded) and a dedicated dialysis clinic.');
+
+  // Organisations: a requesting health unit, the SNS as payer, and an
+  // insurer that both requests and pays for its own referrals — the same
+  // "one body, two roles" case the schema's own banner comment calls out.
+  const identityCipher = new IdentityCipher();
+  const patients = new PatientsService(prisma, identityCipher);
+  const organisations = new OrganisationsService(prisma);
+  const agreements = new AgreementsService(prisma);
+  const delegationSettingsForFacilities = new DelegationSettingsService(prisma);
+  const geography = new GeographyService(prisma, delegationSettingsForFacilities);
+  const facilitiesForTransport = new FacilitiesService(prisma, geography);
+  const vehicleOccupancy = new VehicleOccupancyService(prisma);
+  const transportRequests = new TransportRequestsService(
+    prisma,
+    facilitiesForTransport,
+    staffAbsences,
+    vehicleOccupancy,
+  );
+  const transportLegs = new TransportRequestLegsService(prisma);
+  const treatmentPlans = new TransportRequestTreatmentPlansService(prisma, transportLegs);
+
+  const orgUls = await organisations.create({
+    name: 'ULS de Braga',
+    taxId: '509876543',
+    contactEmail: 'transportes@ulsbraga.min-saude.pt',
+    contactPhone: '+351253027000',
+    isRequester: true,
+    references: [{ code: 'ULSB-0007', description: 'Código de cliente — envelope de referenciação' }],
+  } satisfies CreateOrganisationDto);
+  const orgArsNorte = await organisations.create({
+    name: 'ARS Norte — Serviço Nacional de Saúde',
+    taxId: '600054979',
+    contactEmail: 'transportenaourgente@arsnorte.min-saude.pt',
+    isPayer: true,
+    references: [{ code: 'SNS-NORTE', description: 'Acordo de transporte não urgente' }],
+  } satisfies CreateOrganisationDto);
+  const orgAxa = await organisations.create({
+    name: 'AXA Assistance',
+    taxId: '980123456',
+    contactEmail: 'transportes.pt@axa-assistance.com',
+    contactPhone: '+351210000000',
+    isRequester: true,
+    isPayer: true,
+    references: [{ code: 'AXA-PT-778', description: 'Código de conta — apólices Portugal' }],
+  } satisfies CreateOrganisationDto);
+  console.log('✅ Three organisations: ULS de Braga (requester), ARS Norte (payer), AXA Assistance (both).');
+
+  const agreementSns = await agreements.create({
+    payerOrganisationId: orgArsNorte.id,
+    name: 'SNS — Serviço Nacional de Saúde',
+    externalReference: 'ARSN-2026-014',
+    validFrom: '2026-01-01',
+    notes: 'Acordo-quadro de transporte não urgente, doentes crónicos.',
+  } satisfies CreateAgreementDto);
+  const agreementAxa = await agreements.create({
+    payerOrganisationId: orgAxa.id,
+    name: 'AXA Assistance — Transporte Não Urgente',
+    externalReference: 'AXA-PT-2025-778',
+    validFrom: '2025-09-01',
+    validTo: '2026-12-31',
+  } satisfies CreateAgreementDto);
+  console.log('✅ Two agreements, one per payer.');
+
+  // Patients: one of each mobility, so the vehicle-type/feasibility logic has
+  // something to actually discriminate on. Identity is sealed for two of the
+  // three, exercising `VIEW_PATIENT_IDENTITY` in the patients list/detail.
+  const airo = await locality('Airó', 'Barcelos');
+  const manhente = await locality('Manhente', 'Barcelos');
+
+  const patientAna = await patients.create(
+    {
+      mobility: PatientMobility.WHEELCHAIR,
+      defaultLatitude: aldreu.latitude ?? undefined,
+      defaultLongitude: aldreu.longitude ?? undefined,
+      localityId: aldreu.id,
+      contactAuthorisationRecorded: true,
+      contactAuthorisationNote: 'Autorizado pelo doente em ficha de admissão.',
+      identity: {
+        fullName: 'Ana Beatriz Fonseca',
+        telephone: '+351917123456',
+        homeAddressLine: 'Rua de Aldreu, 118',
+        homePostalCode: '4750-215',
+        homeLocality: 'Aldreu',
+        referenceContactName: 'Rui Fonseca',
+        referenceContactRelationship: 'Filho',
+        referenceContactTelephone: '+351917123457',
+      },
+    } satisfies CreatePatientDto,
+    transportsCoordinator,
+  );
+  const patientCarlos = await patients.create(
+    {
+      mobility: PatientMobility.STRETCHER,
+      needsOxygen: true,
+      escortRequired: true,
+      defaultLatitude: airo.latitude ?? undefined,
+      defaultLongitude: airo.longitude ?? undefined,
+      localityId: airo.id,
+      referenceContactIsOrganisation: true,
+      contactAuthorisationRecorded: false,
+      contactAuthorisationNote: 'Aguarda autorização do doente para contactar o lar.',
+      identity: {
+        fullName: 'Carlos Manuel Oliveira',
+        telephone: '+351918234567',
+        homeAddressLine: 'Rua de Airó, 60',
+        homePostalCode: '4750-222',
+        homeLocality: 'Airó',
+        referenceContactName: 'Lar de Santa Rita',
+        referenceContactRelationship: 'Instituição de acolhimento',
+        referenceContactTelephone: '+351253987654',
+      },
+    } satisfies CreatePatientDto,
+    transportsCoordinator,
+  );
+  const patientFernanda = await patients.create(
+    {
+      mobility: PatientMobility.AMBULATORY,
+      defaultLatitude: manhente.latitude ?? undefined,
+      defaultLongitude: manhente.longitude ?? undefined,
+      localityId: manhente.id,
+    } satisfies CreatePatientDto,
+    transportsCoordinator,
+  );
+  console.log('✅ Three patients: wheelchair, stretcher + oxygen + escort, and ambulatory.');
+
+  // Four referrals, covering every decision state plus the recurring plan:
+  // pending, accepted-awaiting-external-registration, rejected, and
+  // accepted-and-registered-with-a-treatment-plan.
+  await transportRequests.create(
+    {
+      batchReference: 'EMAIL-2026-0341',
+      communicatedAt: `${isoAgo(3)}T09:00:00.000Z`,
+      requesterAccountCode: 'ULSB-0007',
+      responseDueAt: `${isoAhead(4)}T17:00:00.000Z`,
+      externalServiceNumber: 'ULSB-0341-01',
+      appointmentAt: `${isoAhead(6)}T10:00:00.000Z`,
+      requestingOrganisationId: orgUls.id,
+      payingOrganisationId: orgArsNorte.id,
+      agreementId: agreementSns.id,
+      patientId: patientFernanda.id,
+      occurrenceType: TransportRequestOccurrenceType.CONSULTA,
+      requestedVehicleType: TransportRequestVehicleType.TRANSPORTE,
+      originAddress: 'Rua de Manhente, 41, 4750-241 Manhente',
+      originLatitude: manhente.latitude,
+      originLongitude: manhente.longitude,
+      destinationFacilityId: hospitalBraga.id,
+      freeTextMessage: 'Consulta de cardiologia, 1ª vez.',
+    } satisfies CreateTransportRequestDto,
+    transportsCoordinator,
+  );
+
+  const requestAwaitingRegistration = await transportRequests.create(
+    {
+      batchReference: 'AXA-OUT-2026-0119',
+      communicatedAt: `${isoAgo(2)}T14:30:00.000Z`,
+      requesterAccountCode: 'AXA-PT-778',
+      responseDueAt: `${isoAhead(1)}T12:00:00.000Z`,
+      externalServiceNumber: 'AXA-0119-07',
+      appointmentAt: `${isoAhead(2)}T08:00:00.000Z`,
+      requestingOrganisationId: orgAxa.id,
+      payingOrganisationId: orgAxa.id,
+      agreementId: agreementAxa.id,
+      patientId: patientCarlos.id,
+      occurrenceType: TransportRequestOccurrenceType.ALTA,
+      requestedVehicleType: TransportRequestVehicleType.AMBULANCIA,
+      escortTravels: true,
+      originAddress: 'Hospital de Braga — Serviço de Ortopedia',
+      destinationFacilityId: hospitalBraga.id,
+      freeTextMessage: 'Alta hospitalar, doente acamado, precisa de oxigénio durante o transporte.',
+    } satisfies CreateTransportRequestDto,
+    transportsCoordinator,
+  );
+  await transportRequests.decide(
+    requestAwaitingRegistration.id,
+    { decision: TransportRequestDecision.ACCEPTED },
+    transportsCoordinator,
+  );
+  await transportLegs.generateOneOff(requestAwaitingRegistration.id);
+
+  const requestRejected = await transportRequests.create(
+    {
+      batchReference: 'EMAIL-2026-0298',
+      communicatedAt: `${isoAgo(10)}T09:00:00.000Z`,
+      requesterAccountCode: 'ULSB-0007',
+      responseDueAt: `${isoAgo(1)}T17:00:00.000Z`,
+      externalServiceNumber: 'ULSB-0298-04',
+      appointmentAt: `${isoAhead(3)}T09:30:00.000Z`,
+      requestingOrganisationId: orgUls.id,
+      payingOrganisationId: orgArsNorte.id,
+      agreementId: agreementSns.id,
+      patientId: patientFernanda.id,
+      occurrenceType: TransportRequestOccurrenceType.EXAME,
+      requestedVehicleType: TransportRequestVehicleType.TRANSPORTE,
+      originAddress: 'Rua de Manhente, 41, 4750-241 Manhente',
+      originLatitude: manhente.latitude,
+      originLongitude: manhente.longitude,
+      destinationFacilityId: hospitalBraga.id,
+    } satisfies CreateTransportRequestDto,
+    transportsCoordinator,
+  );
+  await transportRequests.decide(
+    requestRejected.id,
+    {
+      decision: TransportRequestDecision.REJECTED,
+      rejectionReason: 'Doente foi transportado por um familiar antes de recebermos resposta.',
+    },
+    transportsCoordinator,
+  );
+
+  const requestDialysis = await transportRequests.create(
+    {
+      batchReference: 'EMAIL-2026-0250',
+      communicatedAt: `${isoAgo(20)}T09:00:00.000Z`,
+      requesterAccountCode: 'ULSB-0007',
+      responseDueAt: `${isoAgo(15)}T17:00:00.000Z`,
+      externalServiceNumber: 'ULSB-0250-02',
+      appointmentAt: `${isoAgo(14)}T08:30:00.000Z`,
+      requestingOrganisationId: orgUls.id,
+      payingOrganisationId: orgArsNorte.id,
+      agreementId: agreementSns.id,
+      patientId: patientAna.id,
+      occurrenceType: TransportRequestOccurrenceType.TRATAMENTO,
+      requestedVehicleType: TransportRequestVehicleType.TRANSPORTE,
+      isRoundTrip: true,
+      originAddress: 'Rua de Aldreu, 118, 4750-215 Aldreu',
+      originLatitude: aldreu.latitude,
+      originLongitude: aldreu.longitude,
+      destinationFacilityId: dialysisClinic.id,
+      freeTextMessage: 'Hemodiálise, 3x/semana até indicação em contrário.',
+    } satisfies CreateTransportRequestDto,
+    transportsCoordinator,
+  );
+  await transportRequests.decide(
+    requestDialysis.id,
+    { decision: TransportRequestDecision.ACCEPTED },
+    transportsCoordinator,
+  );
+  await transportRequests.registerExternally(requestDialysis.id);
+  console.log(
+    '✅ Four referrals: pending, accepted (awaiting external registration), rejected, and accepted+registered.',
+  );
+
+  // The dialysis referral's recurring series — `treatmentPlans.create`
+  // materialises every leg the validity period + `daysOfWeek` implies, past
+  // and future alike, the same call the plan's own edit screen makes.
+  await treatmentPlans.create(requestDialysis.id, {
+    destinationFacilityId: dialysisClinic.id,
+    daysOfWeek: [1, 3, 5], // Monday, Wednesday, Friday
+    treatmentStartTime: '08:30',
+    treatmentEndTime: '12:30',
+    validFrom: isoAgo(14),
+    validTo: isoAhead(21),
+    notes: 'Hemodiálise, 3x/semana, HD Barcelos.',
+  } satisfies CreateTreatmentPlanDto);
+
+  // A little history on the generated legs, through the same actions a
+  // coordinator would actually take — never `status` written by hand.
+  const dialysisLegs = await transportLegs.findAllForRequest(requestDialysis.id);
+  const today = toIsoDate(now);
+  // Sorted date, then direction (OUTBOUND before RETURN) — so index 0/1 are
+  // one day's pair and index 2/3 the next day's, keeping the cancelled day
+  // and the no-show day distinct rather than the same round trip.
+  const pastLegs = dialysisLegs.filter((leg) => leg.date < today).sort((a, b) => a.date.localeCompare(b.date));
+  if (pastLegs[0]) {
+    await transportLegs.cancel(pastLegs[0].id, {
+      reason: 'Doente hospitalizado nesse dia.',
+      source: LegCancellationSource.PATIENT,
+    });
+  }
+  if (pastLegs[2]) {
+    await transportLegs.markNoShow(pastLegs[2].id);
+  }
+  console.log('✅ Treatment plan generated its legs; one cancelled, one no-show, for the legs list to show history.');
 
   console.log(`\n🎉 Dev fixtures loaded. Everyone above logs in with the password: ${DEV_PASSWORD}`);
 }
