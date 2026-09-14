@@ -40,6 +40,9 @@ type FacilityRow = {
   isEmergencyDestination: boolean;
   isTransportDestination: boolean;
   isActive: boolean;
+  arrivalWindowEarliestMinutesOverride: number | null;
+  arrivalWindowLatestMinutesOverride: number | null;
+  arrivalToleranceMinutesOverride: number | null;
   createdAt: Date;
   updatedAt: Date;
   municipality?: {
@@ -65,6 +68,9 @@ export function serializeFacility(row: FacilityRow): Facility {
     isEmergencyDestination: row.isEmergencyDestination,
     isTransportDestination: row.isTransportDestination,
     isActive: row.isActive,
+    arrivalWindowEarliestMinutesOverride: row.arrivalWindowEarliestMinutesOverride,
+    arrivalWindowLatestMinutesOverride: row.arrivalWindowLatestMinutesOverride,
+    arrivalToleranceMinutesOverride: row.arrivalToleranceMinutesOverride,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };
@@ -273,6 +279,9 @@ export class FacilitiesService {
         isEmergencyDestination: input.isEmergencyDestination ?? false,
         isTransportDestination: input.isTransportDestination ?? false,
         isActive: input.isActive ?? true,
+        arrivalWindowEarliestMinutesOverride: input.arrivalWindowEarliestMinutesOverride ?? null,
+        arrivalWindowLatestMinutesOverride: input.arrivalWindowLatestMinutesOverride ?? null,
+        arrivalToleranceMinutesOverride: input.arrivalToleranceMinutesOverride ?? null,
       },
       include: FACILITY_INCLUDE,
     });
@@ -300,6 +309,18 @@ export class FacilitiesService {
           ? dto.isTransportDestination
           : current.isTransportDestination,
       isActive: dto.isActive !== undefined ? dto.isActive : current.isActive,
+      arrivalWindowEarliestMinutesOverride:
+        dto.arrivalWindowEarliestMinutesOverride !== undefined
+          ? dto.arrivalWindowEarliestMinutesOverride
+          : current.arrivalWindowEarliestMinutesOverride,
+      arrivalWindowLatestMinutesOverride:
+        dto.arrivalWindowLatestMinutesOverride !== undefined
+          ? dto.arrivalWindowLatestMinutesOverride
+          : current.arrivalWindowLatestMinutesOverride,
+      arrivalToleranceMinutesOverride:
+        dto.arrivalToleranceMinutesOverride !== undefined
+          ? dto.arrivalToleranceMinutesOverride
+          : current.arrivalToleranceMinutesOverride,
     });
 
     const error = validateFacility(merged);
@@ -324,6 +345,9 @@ export class FacilitiesService {
         isEmergencyDestination: merged.isEmergencyDestination ?? false,
         isTransportDestination: merged.isTransportDestination ?? false,
         isActive: merged.isActive ?? true,
+        arrivalWindowEarliestMinutesOverride: merged.arrivalWindowEarliestMinutesOverride ?? null,
+        arrivalWindowLatestMinutesOverride: merged.arrivalWindowLatestMinutesOverride ?? null,
+        arrivalToleranceMinutesOverride: merged.arrivalToleranceMinutesOverride ?? null,
       },
       include: FACILITY_INCLUDE,
     });
@@ -370,6 +394,9 @@ export class FacilitiesService {
     isEmergencyDestination?: boolean;
     isTransportDestination?: boolean;
     isActive?: boolean;
+    arrivalWindowEarliestMinutesOverride?: number | null;
+    arrivalWindowLatestMinutesOverride?: number | null;
+    arrivalToleranceMinutesOverride?: number | null;
   }) {
     return {
       name: dto.name?.trim() ?? '',
@@ -381,6 +408,9 @@ export class FacilitiesService {
       isEmergencyDestination: dto.isEmergencyDestination,
       isTransportDestination: dto.isTransportDestination,
       isActive: dto.isActive,
+      arrivalWindowEarliestMinutesOverride: dto.arrivalWindowEarliestMinutesOverride ?? null,
+      arrivalWindowLatestMinutesOverride: dto.arrivalWindowLatestMinutesOverride ?? null,
+      arrivalToleranceMinutesOverride: dto.arrivalToleranceMinutesOverride ?? null,
     };
   }
 

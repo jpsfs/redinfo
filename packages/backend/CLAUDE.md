@@ -15,8 +15,9 @@ NestJS + Prisma. Read `../shared/CLAUDE.md` first if the feature touches shared 
 
 Current modules: `auth`, `availability`, `event-reports`, `facilities`, `geography`, `health`,
 `inem`, `inventory`, `live-runs`, `notices`, `notifications`, `organisations`, `paid-staff-schedule`,
-`patients`, `routing`, `schedules`, `staff-absences`, `statistics`, `storage`, `transport-requests`,
-`users`, `vehicles`, `vehicle-occupancy`, `volunteer-hours`, `employment-contracts`, `prisma`.
+`patients`, `routing`, `schedules`, `staff-absences`, `statistics`, `storage`, `transport-config`,
+`transport-requests`, `users`, `vehicles`, `vehicle-occupancy`, `volunteer-hours`,
+`employment-contracts`, `prisma`.
 New modules are wired into `src/app.module.ts`.
 Bootstrap (global `ValidationPipe`, global `ApiErrorFilter`, port 3000) is in `src/main.ts`.
 
@@ -96,6 +97,18 @@ day-of-dispatch escape hatch (`LiveTrafficRoutingService`, deliberately *not* bo
 stop-by-stop matrix) call; it defaults to `DisabledTrafficSamplingClient` until a real vendor is
 chosen — check the free tier's licence terms first, some restrict commercial use.
 
+`transport-config` (#233) is planning policy for non-urgent transport, not physics: arrival
+window thresholds (`DelegationSettingsService` — reused, not a table of its own, since the
+thresholds live on the same singleton row `live-runs` writes its base/CODU fields to) and
+occurrence-type duration floors/defaults (`OccurrenceTypePoliciesService`, the
+`OccurrenceTypePolicy` table, one row per `TransportRequestOccurrenceType`). Both routes gated
+`MANAGE_TRANSPORT_CONFIG`. `transport-requests` imports this module (and `live-runs`) so
+`TransportRequestLegsService` can resolve `TransportLeg.effectiveEstimatedEndAt`/
+`arrivalWindowWarning` — batch-loaded once per call via `loadPolicyContext`, never per row. A
+per-facility override of the thresholds lives on `Facility` itself
+(`arrivalWindow*Override`/`arrivalToleranceMinutesOverride`), not here — see
+`resolveArrivalWindowThresholds` in shared.
+
 ## Controller pattern
 
 - Class-level `@UseGuards(JwtAuthGuard, RolesGuard)` + `@UseInterceptors(AuditInterceptor)`.
@@ -162,7 +175,9 @@ Model index by domain (names only — grep for fields/relations):
   quarterly-sampled ratio of traffic-aware to OSRM free-flow duration, per locality/facility
   corridor, hour-of-day and day type; see `routing`'s entry above
 - **Facilities** (#220): `Facility` — hospitals, clinics and private medical facilities, one
-  table with independent `isEmergencyDestination`/`isTransportDestination` flags
+  table with independent `isEmergencyDestination`/`isTransportDestination` flags.
+  `arrivalWindow*Override`/`arrivalToleranceMinutesOverride` (#233), each independently
+  nullable, override `DelegationSettings`' delegation-wide arrival window thresholds per facility
 - **Event reports**: `EventReport`, `EventReportAssessment`, `EventReportCrewMember`, `EventReportVehicle`, `EventReportMaterial`, `EventReportVictim`, `EventReportInemSupportUnit`, `EventReportAttachment`
 - **Live**: `LiveRun`, `LiveRunCrewMember`
 - **Patients** (#219, #226): `Patient` — non-urgent transport patient, a durable months-long
@@ -173,7 +188,9 @@ Model index by domain (names only — grep for fields/relations):
   `PATIENT_IDENTITY_RETENTION_DAYS` (env var, conservative default pending a data-protection
   spike) — no inline purge-on-read like `LiveRun`'s, since a patient is read constantly for as
   long as they remain one
-- **Config**: `DelegationSettings`
+- **Config**: `DelegationSettings` — incl. `arrivalWindow*Minutes`/`arrivalToleranceMinutes`
+  (#233), the delegation-wide arrival window threshold defaults; `OccurrenceTypePolicy` (#233) —
+  duration floor/default per `TransportRequestOccurrenceType`, one row each, seeded by migration
 - **Notices & notifications** (#165): `Notice`, `NoticeTargetRole`, `NoticeChannel`,
   `NoticeReceipt`, `NotificationDelivery`, `PushSubscription`, `NotificationTypeSetting`,
   `UserNotificationPreference`
@@ -197,7 +214,10 @@ Model index by domain (names only — grep for fields/relations):
   A leg carries its own origin/destination rather than deriving them, so a return trip can target
   somewhere other than the patient's pickup address without touching the plan. `generatedForDate`
   is frozen at creation and never touched by an edit — it's the generator's idempotency key,
-  immune to a later reschedule of `date` (`TransportRequestLegsService.generateForPlan`)
+  immune to a later reschedule of `date` (`TransportRequestLegsService.generateForPlan`).
+  `estimatedEndAt`/`estimatedEndSource` (#233) — a leg's own supplied end time and who supplied
+  it, editable and internal; never blank at read time, see `effectiveEstimatedEndAt`/
+  `arrivalWindowWarning` in shared and `transport-config`'s module entry above
 
 Migrations: `prisma:migrate` (dev, interactive) / `prisma:migrate:deploy` (non-interactive —
 prefer this in scripts/CI, per `.github/AI-GOVERNANCE.md`). Run `prisma:generate` after every

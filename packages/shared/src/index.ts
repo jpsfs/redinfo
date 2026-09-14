@@ -3856,6 +3856,16 @@ export interface Facility {
   isEmergencyDestination: boolean;
   isTransportDestination: boolean;
   isActive: boolean;
+  /**
+   * Arrival-window overrides (#233) — each independently nullable. A facility
+   * with no override on a given field inherits the delegation-wide default
+   * for it; see `resolveArrivalWindowThresholds`. Facilities differ in how
+   * strictly they hold their appointment times, hence per-facility rather
+   * than one global rule.
+   */
+  arrivalWindowEarliestMinutesOverride?: number | null;
+  arrivalWindowLatestMinutesOverride?: number | null;
+  arrivalToleranceMinutesOverride?: number | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -3887,6 +3897,9 @@ export interface FacilityInput {
   isEmergencyDestination?: boolean;
   isTransportDestination?: boolean;
   isActive?: boolean;
+  arrivalWindowEarliestMinutesOverride?: number | null;
+  arrivalWindowLatestMinutesOverride?: number | null;
+  arrivalToleranceMinutesOverride?: number | null;
 }
 
 /**
@@ -3927,6 +3940,12 @@ export function validateFacility(input: FacilityInput): string | null {
   if (input.isTransportDestination && !hasLatitude) {
     return 'A transport destination needs its own latitude and longitude.';
   }
+  const overrideError = validateArrivalWindowThresholds({
+    arrivalWindowEarliestMinutes: input.arrivalWindowEarliestMinutesOverride,
+    arrivalWindowLatestMinutes: input.arrivalWindowLatestMinutesOverride,
+    arrivalToleranceMinutes: input.arrivalToleranceMinutesOverride,
+  });
+  if (overrideError) return overrideError;
   return null;
 }
 
@@ -5745,13 +5764,108 @@ export interface ReportRenumber {
 // ─── The delegation's own configuration ───────────────────────────────────────
 
 /**
+ * Planning policy, not physics (#233): a soft customer-experience read of how
+ * a planned arrival lands against a treatment's start time. The hard
+ * constraint the planning board must never violate is delivering by
+ * `appointmentAt`; a coordinator routinely trades the early bound away on
+ * purpose (two patients at the same facility an hour apart sharing one
+ * route), so this is advisory, never a block.
+ */
+export interface ArrivalWindowThresholds {
+  /** Do not arrive more than this many minutes before treatment start. */
+  arrivalWindowEarliestMinutes: number;
+  /** Do not arrive later than this many minutes before treatment start. */
+  arrivalWindowLatestMinutes: number;
+  /** The late arrival that may be tolerated as a last resort, in minutes
+   * past `arrivalWindowLatestMinutes`. */
+  arrivalToleranceMinutes: number;
+}
+
+export const DEFAULT_ARRIVAL_WINDOW_THRESHOLDS: ArrivalWindowThresholds = {
+  arrivalWindowEarliestMinutes: 30,
+  arrivalWindowLatestMinutes: 5,
+  arrivalToleranceMinutes: 10,
+};
+
+/** The nullable slice of `Facility` that can override the delegation-wide
+ * thresholds — field by field, not all-or-nothing. */
+export type ArrivalWindowThresholdsOverride = {
+  arrivalWindowEarliestMinutesOverride?: number | null;
+  arrivalWindowLatestMinutesOverride?: number | null;
+  arrivalToleranceMinutesOverride?: number | null;
+};
+
+/**
+ * A per-facility override wins, field by field; a facility with no override
+ * on a given field inherits the delegation-wide default for it (#233).
+ */
+export function resolveArrivalWindowThresholds(
+  defaults: ArrivalWindowThresholds,
+  override?: ArrivalWindowThresholdsOverride | null,
+): ArrivalWindowThresholds {
+  return {
+    arrivalWindowEarliestMinutes:
+      override?.arrivalWindowEarliestMinutesOverride ?? defaults.arrivalWindowEarliestMinutes,
+    arrivalWindowLatestMinutes:
+      override?.arrivalWindowLatestMinutesOverride ?? defaults.arrivalWindowLatestMinutes,
+    arrivalToleranceMinutes: override?.arrivalToleranceMinutesOverride ?? defaults.arrivalToleranceMinutes,
+  };
+}
+
+/** Same "message or null" shape as every other validator here. Every field is
+ * optional and nullable so it doubles as the per-facility override's
+ * validator — a facility patch supplies only the fields it overrides, and
+ * `null` clears one back to inheriting the default. */
+export function validateArrivalWindowThresholds(
+  input: Partial<Record<keyof ArrivalWindowThresholds, number | null | undefined>>,
+): string | null {
+  for (const value of Object.values(input)) {
+    if (value === null || value === undefined) continue;
+    if (!Number.isInteger(value) || value < 0) {
+      return 'Arrival window thresholds must be whole numbers of minutes, zero or more.';
+    }
+  }
+  if (
+    input.arrivalWindowEarliestMinutes != null &&
+    input.arrivalWindowLatestMinutes != null &&
+    input.arrivalWindowEarliestMinutes < input.arrivalWindowLatestMinutes
+  ) {
+    return 'The earliest-arrival threshold cannot be lower than the latest-arrival threshold.';
+  }
+  return null;
+}
+
+/**
+ * A planned arrival's timing read against a leg's effective thresholds — for
+ * the planning board Feature #219 will build. `null` means on time: no
+ * earlier than `arrivalWindowEarliestMinutes` before treatment start, no
+ * later than `arrivalWindowLatestMinutes` before it.
+ */
+export type ArrivalWindowWarning = 'TOO_EARLY' | 'LATE_WITHIN_TOLERANCE' | 'LATE_BEYOND_TOLERANCE' | null;
+
+export function arrivalWindowWarning(
+  plannedArrivalAt: string,
+  appointmentAt: string,
+  thresholds: ArrivalWindowThresholds,
+): ArrivalWindowWarning {
+  const minutesBeforeAppointment =
+    (new Date(appointmentAt).getTime() - new Date(plannedArrivalAt).getTime()) / 60_000;
+  if (minutesBeforeAppointment > thresholds.arrivalWindowEarliestMinutes) return 'TOO_EARLY';
+  if (minutesBeforeAppointment >= thresholds.arrivalWindowLatestMinutes) return null;
+  if (minutesBeforeAppointment >= thresholds.arrivalWindowLatestMinutes - thresholds.arrivalToleranceMinutes) {
+    return 'LATE_WITHIN_TOLERANCE';
+  }
+  return 'LATE_BEYOND_TOLERANCE';
+}
+
+/**
  * The handful of values that are the same for every run of this delegation.
  *
  * Configuration rather than constants in code: one place, identical for every
  * run, and changeable without a deploy when the delegation moves or the
  * freephone number changes.
  */
-export interface DelegationSettings {
+export interface DelegationSettings extends ArrivalWindowThresholds {
   baseName: string;
   baseLatitude: number;
   baseLongitude: number;
@@ -5770,6 +5884,7 @@ export const DEFAULT_DELEGATION_SETTINGS: DelegationSettings = {
   baseLatitude: 41.5923783,
   baseLongitude: -8.6117829,
   coduDadosPhone: '+351800203264',
+  ...DEFAULT_ARRIVAL_WINDOW_THRESHOLDS,
 };
 
 // ─── Live emergency runs ──────────────────────────────────────────────────────
@@ -7349,6 +7464,51 @@ export enum TransportRequestOccurrenceType {
   OUTRO = 'OUTRO',
 }
 
+/**
+ * A duration floor per occurrence type (#233) — policy, not physics, kept a
+ * table rather than constants so a coordinator can change it without a
+ * deploy. `minimumDurationMinutes` is what stops a leg's estimated end from
+ * ever being blank: even the softest case has an earliest-possible-ready
+ * time of appointment plus this floor (see `resolveEstimatedEnd`).
+ * `defaultDurationMinutes` is a softer planning suggestion — actual treatment
+ * duration is a per-patient input that varies far more than this table
+ * models, from about 20 minutes to over 4 hours.
+ */
+export interface OccurrenceTypePolicyInput {
+  minimumDurationMinutes: number;
+  defaultDurationMinutes: number;
+}
+
+export interface OccurrenceTypePolicy extends OccurrenceTypePolicyInput {
+  occurrenceType: TransportRequestOccurrenceType;
+  updatedAt: string;
+}
+
+/** Seed values, and the fallback `resolveEstimatedEnd`'s callers use for any
+ * occurrence type not yet in the table (a fresh `db push` test database, see
+ * `DEFAULT_DELEGATION_SETTINGS`'s own fallback for the same reason). */
+export const DEFAULT_OCCURRENCE_TYPE_POLICIES: Record<TransportRequestOccurrenceType, OccurrenceTypePolicyInput> = {
+  [TransportRequestOccurrenceType.CONSULTA]: { minimumDurationMinutes: 30, defaultDurationMinutes: 30 },
+  [TransportRequestOccurrenceType.TRATAMENTO]: { minimumDurationMinutes: 30, defaultDurationMinutes: 60 },
+  [TransportRequestOccurrenceType.ALTA]: { minimumDurationMinutes: 15, defaultDurationMinutes: 20 },
+  [TransportRequestOccurrenceType.EXAME]: { minimumDurationMinutes: 30, defaultDurationMinutes: 45 },
+  [TransportRequestOccurrenceType.OUTRO]: { minimumDurationMinutes: 30, defaultDurationMinutes: 30 },
+};
+
+/** Same "message or null" shape as every other validator here. */
+export function validateOccurrenceTypePolicy(input: OccurrenceTypePolicyInput): string | null {
+  if (!Number.isInteger(input.minimumDurationMinutes) || input.minimumDurationMinutes <= 0) {
+    return 'The minimum duration must be a positive whole number of minutes.';
+  }
+  if (!Number.isInteger(input.defaultDurationMinutes) || input.defaultDurationMinutes <= 0) {
+    return 'The default duration must be a positive whole number of minutes.';
+  }
+  if (input.defaultDurationMinutes < input.minimumDurationMinutes) {
+    return 'The default duration cannot be shorter than the minimum.';
+  }
+  return null;
+}
+
 /** Transporte on the referral — the vehicle type the requester is asking
  * for, which constrains vehicle choice at planning time. Same "seeded, not
  * final" caveat as `TransportRequestOccurrenceType`. Deliberately distinct
@@ -7652,6 +7812,19 @@ export enum LegCancellationSource {
   DELEGATION = 'DELEGATION',
 }
 
+/**
+ * Who supplied a leg's `estimatedEndAt` (#233) — provenance, not confidence.
+ * An earlier draft of Feature #219 proposed grading end times firm against
+ * soft; that's deliberately dropped. Every estimate is of broadly similar
+ * quality, so there is no reliability field anywhere alongside this — keep
+ * source for later calibration against actuals, not a score nobody could
+ * fill in honestly.
+ */
+export enum EstimatedEndSource {
+  FACILITY_SUPPLIED = 'FACILITY_SUPPLIED',
+  COORDINATOR_JUDGED = 'COORDINATOR_JUDGED',
+}
+
 export const MAX_TREATMENT_PLAN_NOTES_LENGTH = 2000;
 export const MAX_LEG_ADDRESS_LENGTH = 300;
 export const MAX_LEG_CANCELLATION_REASON_LENGTH = 500;
@@ -7752,6 +7925,20 @@ export interface TransportLeg {
   /** Placeholder for a future dispatch/live-run integration. */
   tripStopId: string | null;
 
+  /** ISO datetime — when the facility said, or the coordinator judged, the
+   * occurrence will end (#233). Editable and internal; never stored as
+   * though the referral had stated it as fact. Null until someone supplies
+   * one — see `effectiveEstimatedEndAt` for what to plan against instead. */
+  estimatedEndAt: string | null;
+  estimatedEndSource: EstimatedEndSource | null;
+  /** ISO datetime — `estimatedEndAt` when supplied, or appointment-plus-floor
+   * otherwise (#233): never blank. See `resolveEstimatedEnd`. */
+  effectiveEstimatedEndAt: string;
+  /** The leg's own arrival-timing read (#233), `null` when nothing is
+   * planned yet or there is nothing to warn about. Only meaningful for an
+   * `OUTBOUND` leg — a return trip has no treatment start to be on time for. */
+  arrivalWindowWarning: ArrivalWindowWarning;
+
   createdAt: string;
   updatedAt: string;
 }
@@ -7772,6 +7959,8 @@ export interface UpdateTransportLegInput {
   destinationFacilityId?: string | null;
   plannedPickupAt?: string | null;
   plannedDropoffAt?: string | null;
+  estimatedEndAt?: string | null;
+  estimatedEndSource?: EstimatedEndSource | null;
 }
 
 export function validateUpdateTransportLeg(input: UpdateTransportLegInput): string | null {
@@ -7790,7 +7979,30 @@ export function validateUpdateTransportLeg(input: UpdateTransportLegInput): stri
   if (hasDestinationLatitude !== hasDestinationLongitude) {
     return 'Give both the destination latitude and longitude, or neither.';
   }
+  const hasEstimatedEndAt = input.estimatedEndAt !== null && input.estimatedEndAt !== undefined;
+  const hasEstimatedEndSource = input.estimatedEndSource !== null && input.estimatedEndSource !== undefined;
+  if (hasEstimatedEndAt !== hasEstimatedEndSource) {
+    return 'Give both an estimated end time and who supplied it, or neither.';
+  }
   return null;
+}
+
+/**
+ * The end time to plan against for a leg (#233) — its own supplied estimate
+ * when it has one, or appointment-plus-floor otherwise. Never blank: this is
+ * what stops the planning board showing nothing where a time should be. Uses
+ * the occurrence type's *minimum* duration deliberately, not its softer
+ * default — the earliest the vehicle can possibly be released.
+ */
+export function resolveEstimatedEnd(
+  appointmentAt: string,
+  occurrenceType: TransportRequestOccurrenceType,
+  policies: Record<TransportRequestOccurrenceType, OccurrenceTypePolicyInput>,
+  leg: { estimatedEndAt: string | null },
+): string {
+  if (leg.estimatedEndAt) return leg.estimatedEndAt;
+  const floorMinutes = policies[occurrenceType].minimumDurationMinutes;
+  return new Date(new Date(appointmentAt).getTime() + floorMinutes * 60_000).toISOString();
 }
 
 /** Cancelling a leg (#230) never touches the plan above it. `source` is a

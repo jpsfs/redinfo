@@ -250,6 +250,28 @@ const FacilityFormFields = () => {
         source="isTransportDestination"
         label={t('facilityList.isTransportDestination')}
       />
+      {/* Per-facility override of the delegation-wide arrival window
+          thresholds (#233), each independently nullable — a facility with a
+          field left blank inherits that field's default. See
+          `resolveArrivalWindowThresholds` in shared. */}
+      <Typography variant="subtitle2" sx={{ mt: 1 }}>
+        {t('facilityList.arrivalWindowOverridesHeading')}
+      </Typography>
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+        {t('facilityList.arrivalWindowOverridesHelp')}
+      </Typography>
+      <NumberInput
+        source="arrivalWindowEarliestMinutesOverride"
+        label={t('facilityList.arrivalWindowEarliestMinutesOverride')}
+      />
+      <NumberInput
+        source="arrivalWindowLatestMinutesOverride"
+        label={t('facilityList.arrivalWindowLatestMinutesOverride')}
+      />
+      <NumberInput
+        source="arrivalToleranceMinutesOverride"
+        label={t('facilityList.arrivalToleranceMinutesOverride')}
+      />
     </>
   );
 };

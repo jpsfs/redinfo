@@ -19,6 +19,7 @@ import { GeographyService } from '../geography/geography.service';
 import { DelegationSettingsService } from '../live-runs/delegation-settings.service';
 import { StaffAbsencesService } from '../staff-absences/staff-absences.service';
 import { VehicleOccupancyService } from '../vehicle-occupancy/vehicle-occupancy.service';
+import { OccurrenceTypePoliciesService } from '../transport-config/occurrence-type-policies.service';
 import { TransportRequestsService } from './transport-requests.service';
 import { TransportRequestLegsService } from './transport-request-legs.service';
 import { TransportRequestTreatmentPlansService } from './transport-request-treatment-plans.service';
@@ -41,14 +42,12 @@ const email = (local: string) => `${local}.${RUN}@transport-requests.test`;
 
 describeIntegration('TransportRequestsService (integration)', () => {
   const prisma = new PrismaClient() as unknown as PrismaService;
-  const facilities = new FacilitiesService(
-    prisma,
-    new GeographyService(prisma, new DelegationSettingsService(prisma)),
-  );
+  const delegationSettings = new DelegationSettingsService(prisma);
+  const facilities = new FacilitiesService(prisma, new GeographyService(prisma, delegationSettings));
   const staffAbsences = new StaffAbsencesService(prisma);
   const vehicleOccupancy = new VehicleOccupancyService(prisma);
   const transportRequests = new TransportRequestsService(prisma, facilities, staffAbsences, vehicleOccupancy);
-  const legs = new TransportRequestLegsService(prisma);
+  const legs = new TransportRequestLegsService(prisma, delegationSettings, new OccurrenceTypePoliciesService(prisma));
   const treatmentPlans = new TransportRequestTreatmentPlansService(prisma, legs);
 
   let coordinator: { id: string };

@@ -70,6 +70,7 @@ import { NotificationConfigPage } from './pages/NotificationConfigPage';
 import { INEMStatusPage } from './pages/INEMStatusPage';
 import { StaffAbsencesPage } from './pages/StaffAbsencesPage';
 import { TransportReferralsPage } from './pages/TransportReferralsPage';
+import { TransportConfigPage } from './pages/TransportConfigPage';
 import PeopleIcon from '@mui/icons-material/People';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import BuildIcon from '@mui/icons-material/Build';
@@ -197,6 +198,10 @@ export default function App() {
             and the feasibility panel side by side, gated by
             MANAGE_TRANSPORT_REQUESTS in the drawer manifest. */}
         <Route path="/transport-referrals" element={<TransportReferralsPage />} />
+        {/* Arrival window thresholds and occurrence-type duration floors
+            (#233), gated by MANAGE_TRANSPORT_CONFIG in the drawer manifest —
+            same gating as organisations/agreements. */}
+        <Route path="/transport-config" element={<TransportConfigPage />} />
         {/* The delegation's INEM units — availability toggle, INOP reason,
             syncing badge and degraded-session banner (#216), gated by
             MANAGE_INEM_STATUS in the drawer manifest. Not react-admin CRUD:

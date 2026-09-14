@@ -102,13 +102,18 @@ export type FacilityRow = {
   isEmergencyDestination: boolean;
   isTransportDestination: boolean;
   isActive: boolean;
+  arrivalWindowEarliestMinutesOverride: number | null;
+  arrivalWindowLatestMinutesOverride: number | null;
+  arrivalToleranceMinutesOverride: number | null;
   createdAt: Date;
   updatedAt: Date;
 };
 
 /** Exported so `treatment-plan-leg.serializer.ts` (#230) doesn't duplicate
  * this shape — a leg/plan reuses the same `Facility` reference-serialization
- * this module already had for `TransportRequest.destinationFacility`. */
+ * this module already had for `TransportRequest.destinationFacility`. Also
+ * `resolveArrivalWindowThresholds`'s override input (#233): its 3 fields are
+ * a subset of this one, read straight off the row. */
 export function serializeFacilityRef(row: FacilityRow): Facility {
   return {
     id: row.id,
@@ -121,6 +126,9 @@ export function serializeFacilityRef(row: FacilityRow): Facility {
     isEmergencyDestination: row.isEmergencyDestination,
     isTransportDestination: row.isTransportDestination,
     isActive: row.isActive,
+    arrivalWindowEarliestMinutesOverride: row.arrivalWindowEarliestMinutesOverride,
+    arrivalWindowLatestMinutesOverride: row.arrivalWindowLatestMinutesOverride,
+    arrivalToleranceMinutesOverride: row.arrivalToleranceMinutesOverride,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

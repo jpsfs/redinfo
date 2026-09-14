@@ -26,6 +26,7 @@ import { McpModule } from './mcp/mcp.module';
 import { PatientsModule } from './patients/patients.module';
 import { OrganisationsModule } from './organisations/organisations.module';
 import { TransportRequestsModule } from './transport-requests/transport-requests.module';
+import { TransportConfigModule } from './transport-config/transport-config.module';
 import { RoutingModule } from './routing/routing.module';
 
 @Module({
@@ -60,6 +61,7 @@ import { RoutingModule } from './routing/routing.module';
     PatientsModule,
     OrganisationsModule,
     TransportRequestsModule,
+    TransportConfigModule,
     RoutingModule,
   ],
 })

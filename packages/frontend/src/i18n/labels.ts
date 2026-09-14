@@ -528,6 +528,7 @@ const MESSAGES = {
   'nav.agreements': { pt: 'Acordos', en: 'Agreements' },
   'nav.transportRequests': { pt: 'Pedidos', en: 'Referrals' },
   'nav.transportReferrals': { pt: 'Decidir', en: 'Decide' },
+  'nav.transportConfig': { pt: 'Política de planeamento', en: 'Planning policy' },
   'nav.holidays': { pt: 'Feriados', en: 'Holidays' },
   'nav.myProfile': { pt: 'O meu perfil', en: 'My Profile' },
   'nav.myNotices': { pt: 'Avisos', en: 'Notices' },
@@ -1818,6 +1819,30 @@ const MESSAGES = {
   'notificationConfig.saved': { pt: 'Configuração guardada.', en: 'Configuration saved.' },
   'notificationConfig.noticeType': { pt: 'Avisos operacionais', en: 'Operational notices' },
 
+  // ── Transport planning policy (#233) — arrival window thresholds and
+  // occurrence-type duration floors, both changeable without a deploy ──
+  'transportConfig.pageTitle': { pt: 'Política de planeamento', en: 'Planning policy' },
+  'transportConfig.loadFailed': { pt: 'Não foi possível carregar a configuração.', en: 'Could not load the configuration.' },
+  'transportConfig.saveFailed': { pt: 'Não foi possível guardar a configuração.', en: 'Could not save the configuration.' },
+  'transportConfig.saved': { pt: 'Configuração guardada.', en: 'Configuration saved.' },
+  'transportConfig.save': { pt: 'Guardar', en: 'Save' },
+  'transportConfig.thresholdsHeading': { pt: 'Janela de chegada', en: 'Arrival window' },
+  'transportConfig.thresholdsSubheading': {
+    pt: 'Um objetivo de conforto para o doente, não uma regra rígida — a única obrigação é chegar até à hora do tratamento. Uma unidade de saúde pode ter os seus próprios limiares na respetiva ficha.',
+    en: 'A soft customer-experience goal, not a hard rule — the only obligation is delivering by treatment start. A facility can carry its own thresholds on its own form.',
+  },
+  'transportConfig.arrivalWindowEarliestMinutes': { pt: 'Não chegar mais de X minutos antes', en: 'Do not arrive more than X minutes early' },
+  'transportConfig.arrivalWindowLatestMinutes': { pt: 'Não chegar depois de X minutos antes', en: 'Do not arrive later than X minutes before' },
+  'transportConfig.arrivalToleranceMinutes': { pt: 'Tolerância de atraso', en: 'Late-arrival tolerance' },
+  'transportConfig.policiesHeading': { pt: 'Duração por tipo de ocorrência', en: 'Duration by occurrence type' },
+  'transportConfig.policiesSubheading': {
+    pt: 'O mínimo é o tempo mais cedo em que o veículo pode ficar livre quando não há uma hora de fim indicada para a viagem; o valor por omissão é apenas uma sugestão de planeamento.',
+    en: 'The minimum is the earliest a vehicle can be freed when a leg has no supplied end time; the default is a planning suggestion only.',
+  },
+  'transportConfig.occurrenceType': { pt: 'Tipo de ocorrência', en: 'Occurrence type' },
+  'transportConfig.minimumDurationMinutes': { pt: 'Mínimo (min)', en: 'Minimum (min)' },
+  'transportConfig.defaultDurationMinutes': { pt: 'Por omissão (min)', en: 'Default (min)' },
+
   // ── INEM unit status (#216) — the delegation's ambulances on INEM's own portal ──
   'inem.pageTitle': { pt: 'Estado dos meios INEM', en: 'INEM unit status' },
   'inem.heading': { pt: 'Estado dos meios INEM', en: 'INEM unit status' },
@@ -2527,6 +2552,26 @@ const MESSAGES = {
   'facilityList.isTransportDestination': {
     pt: 'Destino de transporte (precisa de coordenadas próprias)',
     en: 'Transport destination (needs its own coordinates)',
+  },
+  'facilityList.arrivalWindowOverridesHeading': {
+    pt: 'Janela de chegada (#233)',
+    en: 'Arrival window (#233)',
+  },
+  'facilityList.arrivalWindowOverridesHelp': {
+    pt: 'Substitui, campo a campo, os limiares definidos para toda a delegação. Deixar um campo em branco significa herdar o valor por omissão.',
+    en: 'Overrides the delegation-wide thresholds, field by field. Leaving a field blank means inheriting the default.',
+  },
+  'facilityList.arrivalWindowEarliestMinutesOverride': {
+    pt: 'Não chegar mais de X minutos antes (opcional)',
+    en: 'Do not arrive more than X minutes early (optional)',
+  },
+  'facilityList.arrivalWindowLatestMinutesOverride': {
+    pt: 'Não chegar depois de X minutos antes (opcional)',
+    en: 'Do not arrive later than X minutes before (optional)',
+  },
+  'facilityList.arrivalToleranceMinutesOverride': {
+    pt: 'Tolerância de atraso (opcional)',
+    en: 'Late-arrival tolerance (optional)',
   },
 
   // ── Patients (#219, #226) — non-urgent transport ──

@@ -1,7 +1,16 @@
 import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
-import { LegCancellationSource, LegDirection, LegStatus } from '@redinfo/shared';
+import {
+  DEFAULT_DELEGATION_SETTINGS,
+  DEFAULT_OCCURRENCE_TYPE_POLICIES,
+  LegCancellationSource,
+  LegDirection,
+  LegStatus,
+  TransportRequestOccurrenceType,
+} from '@redinfo/shared';
 import { TransportRequestLegsService } from './transport-request-legs.service';
 import { PrismaService } from '../prisma/prisma.service';
+import { DelegationSettingsService } from '../live-runs/delegation-settings.service';
+import { OccurrenceTypePoliciesService } from '../transport-config/occurrence-type-policies.service';
 
 // ── Treatment plans & transport legs (#230) ─────────────────────────────────
 //
@@ -56,9 +65,13 @@ const legRow = (overrides: Partial<Record<string, unknown>> = {}) => ({
   status: LegStatus.PLANNED as string,
   cancellationReason: null,
   cancellationSource: null,
+  estimatedEndAt: null,
+  estimatedEndSource: null,
   tripStopId: null,
   createdAt: new Date('2026-09-01T00:00:00.000Z'),
   updatedAt: new Date('2026-09-01T00:00:00.000Z'),
+  transportRequest: { occurrenceType: TransportRequestOccurrenceType.CONSULTA, appointmentAt: REQUEST.appointmentAt },
+  treatmentPlan: null,
   ...overrides,
 });
 
@@ -86,7 +99,17 @@ function makeService(prismaOverrides: Record<string, unknown> = {}) {
     ...prismaOverrides,
   } as unknown as PrismaService;
 
-  return { service: new TransportRequestLegsService(prisma), prisma };
+  const delegationSettings = {
+    get: jest.fn(() => Promise.resolve(DEFAULT_DELEGATION_SETTINGS)),
+  } as unknown as DelegationSettingsService;
+  const occurrenceTypePolicies = {
+    getEffectiveMap: jest.fn(() => Promise.resolve(DEFAULT_OCCURRENCE_TYPE_POLICIES)),
+  } as unknown as OccurrenceTypePoliciesService;
+
+  return {
+    service: new TransportRequestLegsService(prisma, delegationSettings, occurrenceTypePolicies),
+    prisma,
+  };
 }
 
 describe('TransportRequestLegsService', () => {
@@ -210,6 +233,93 @@ describe('TransportRequestLegsService', () => {
     it('throws NotFoundException for an unknown request', async () => {
       const { service } = makeService({ transportRequest: { findUnique: jest.fn(() => Promise.resolve(null)) } });
       await expect(service.generateOneOff('missing')).rejects.toBeInstanceOf(NotFoundException);
+    });
+  });
+
+  describe('findAllForRequest — effective policy (#233)', () => {
+    it('falls back to appointment-plus-floor when no end time is supplied', async () => {
+      const { service } = makeService({
+        transportLeg: { findMany: jest.fn(() => Promise.resolve([legRow()])) },
+      });
+
+      const [leg] = await service.findAllForRequest(REQUEST.id);
+
+      // CONSULTA's minimum is 30 minutes; the request's appointment is 09:00Z.
+      expect(leg.estimatedEndAt).toBeNull();
+      expect(leg.effectiveEstimatedEndAt).toBe('2026-09-14T09:30:00.000Z');
+    });
+
+    it("uses the leg's own supplied estimate over the floor", async () => {
+      const { service } = makeService({
+        transportLeg: {
+          findMany: jest.fn(() =>
+            Promise.resolve([legRow({ estimatedEndAt: new Date('2026-09-14T11:00:00.000Z') })]),
+          ),
+        },
+      });
+
+      const [leg] = await service.findAllForRequest(REQUEST.id);
+
+      expect(leg.effectiveEstimatedEndAt).toBe('2026-09-14T11:00:00.000Z');
+    });
+
+    it('flags an outbound leg planned too early against the delegation default', async () => {
+      const { service } = makeService({
+        transportLeg: {
+          findMany: jest.fn(() =>
+            // 61 minutes before the 09:00Z appointment — over the 30-minute default.
+            Promise.resolve([legRow({ plannedDropoffAt: new Date('2026-09-14T07:59:00.000Z') })]),
+          ),
+        },
+      });
+
+      const [leg] = await service.findAllForRequest(REQUEST.id);
+
+      expect(leg.arrivalWindowWarning).toBe('TOO_EARLY');
+    });
+
+    it("a facility override wins over the delegation default, so the same plan is no longer flagged", async () => {
+      const { service } = makeService({
+        transportLeg: {
+          findMany: jest.fn(() =>
+            Promise.resolve([
+              legRow({
+                plannedDropoffAt: new Date('2026-09-14T07:59:00.000Z'),
+                destinationFacility: {
+                  arrivalWindowEarliestMinutesOverride: 90,
+                  arrivalWindowLatestMinutesOverride: null,
+                  arrivalToleranceMinutesOverride: null,
+                  createdAt: new Date('2026-09-01T00:00:00.000Z'),
+                  updatedAt: new Date('2026-09-01T00:00:00.000Z'),
+                },
+              }),
+            ]),
+          ),
+        },
+      });
+
+      const [leg] = await service.findAllForRequest(REQUEST.id);
+
+      expect(leg.arrivalWindowWarning).toBeNull();
+    });
+
+    it('never flags a return leg — there is no treatment start to be on time for', async () => {
+      const { service } = makeService({
+        transportLeg: {
+          findMany: jest.fn(() =>
+            Promise.resolve([
+              legRow({
+                direction: LegDirection.RETURN,
+                plannedDropoffAt: new Date('2026-09-14T07:59:00.000Z'),
+              }),
+            ]),
+          ),
+        },
+      });
+
+      const [leg] = await service.findAllForRequest(REQUEST.id);
+
+      expect(leg.arrivalWindowWarning).toBeNull();
     });
   });
 

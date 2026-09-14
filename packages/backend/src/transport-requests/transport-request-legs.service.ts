@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, NotFoundException }
 import { Prisma } from '@prisma/client';
 import {
   CancelTransportLegInput,
+  EstimatedEndSource,
   LegDirection,
   LegStatus,
   TransportLeg,
@@ -11,9 +12,11 @@ import {
 } from '@redinfo/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { isoDateRange, isoDayOfWeek, parseIsoDate, toIsoDate } from '../utils/date.util';
+import { DelegationSettingsService } from '../live-runs/delegation-settings.service';
+import { OccurrenceTypePoliciesService } from '../transport-config/occurrence-type-policies.service';
 import { CancelTransportLegDto } from './dto/cancel-transport-leg.dto';
 import { UpdateTransportLegDto } from './dto/update-transport-leg.dto';
-import { TRANSPORT_LEG_INCLUDE, TransportLegRow, serializeTransportLeg } from './treatment-plan-leg.serializer';
+import { LegPolicyContext, TRANSPORT_LEG_INCLUDE, TransportLegRow, serializeTransportLeg } from './treatment-plan-leg.serializer';
 
 /** The minimum a leg needs to be generated for — shared by a plan's own
  * `transportRequest` and by `generateOneOff`'s freestanding lookup, so
@@ -37,16 +40,33 @@ interface RequestForGeneration {
  */
 @Injectable()
 export class TransportRequestLegsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly delegationSettings: DelegationSettingsService,
+    private readonly occurrenceTypePolicies: OccurrenceTypePoliciesService,
+  ) {}
+
+  /** Batch-loaded once per call, never per row — every leg in one response
+   * shares the same delegation-wide config (#233). */
+  private async loadPolicyContext(): Promise<LegPolicyContext> {
+    const [thresholds, policies] = await Promise.all([
+      this.delegationSettings.get(),
+      this.occurrenceTypePolicies.getEffectiveMap(),
+    ]);
+    return { thresholds, policies };
+  }
 
   async findAllForRequest(transportRequestId: string): Promise<TransportLeg[]> {
     await this.assertRequestExists(transportRequestId);
-    const rows = await this.prisma.transportLeg.findMany({
-      where: { transportRequestId },
-      include: TRANSPORT_LEG_INCLUDE,
-      orderBy: [{ date: 'asc' }, { direction: 'asc' }],
-    });
-    return rows.map((row) => serializeTransportLeg(row as TransportLegRow));
+    const [rows, context] = await Promise.all([
+      this.prisma.transportLeg.findMany({
+        where: { transportRequestId },
+        include: TRANSPORT_LEG_INCLUDE,
+        orderBy: [{ date: 'asc' }, { direction: 'asc' }],
+      }),
+      this.loadPolicyContext(),
+    ]);
+    return rows.map((row) => serializeTransportLeg(row as TransportLegRow, context));
   }
 
   /**
@@ -154,6 +174,12 @@ export class TransportRequestLegsService {
         dto.plannedPickupAt !== undefined ? dto.plannedPickupAt : (current.plannedPickupAt?.toISOString() ?? null),
       plannedDropoffAt:
         dto.plannedDropoffAt !== undefined ? dto.plannedDropoffAt : (current.plannedDropoffAt?.toISOString() ?? null),
+      estimatedEndAt:
+        dto.estimatedEndAt !== undefined ? dto.estimatedEndAt : (current.estimatedEndAt?.toISOString() ?? null),
+      estimatedEndSource:
+        dto.estimatedEndSource !== undefined
+          ? dto.estimatedEndSource
+          : ((current.estimatedEndSource as EstimatedEndSource | null) ?? null),
     };
     const error = validateUpdateTransportLeg(input);
     if (error) throw new BadRequestException(error);
@@ -161,24 +187,29 @@ export class TransportRequestLegsService {
     if (input.originFacilityId) await this.assertFacilityExists(input.originFacilityId);
     if (input.destinationFacilityId) await this.assertFacilityExists(input.destinationFacilityId);
 
-    const updated = await this.prisma.transportLeg.update({
-      where: { id },
-      data: {
-        date: input.date ? parseIsoDate(input.date) : undefined,
-        originAddress: input.originAddress,
-        originLatitude: input.originLatitude,
-        originLongitude: input.originLongitude,
-        originFacilityId: input.originFacilityId,
-        destinationAddress: input.destinationAddress,
-        destinationLatitude: input.destinationLatitude,
-        destinationLongitude: input.destinationLongitude,
-        destinationFacilityId: input.destinationFacilityId,
-        plannedPickupAt: input.plannedPickupAt ? new Date(input.plannedPickupAt) : null,
-        plannedDropoffAt: input.plannedDropoffAt ? new Date(input.plannedDropoffAt) : null,
-      },
-      include: TRANSPORT_LEG_INCLUDE,
-    });
-    return serializeTransportLeg(updated as TransportLegRow);
+    const [updated, context] = await Promise.all([
+      this.prisma.transportLeg.update({
+        where: { id },
+        data: {
+          date: input.date ? parseIsoDate(input.date) : undefined,
+          originAddress: input.originAddress,
+          originLatitude: input.originLatitude,
+          originLongitude: input.originLongitude,
+          originFacilityId: input.originFacilityId,
+          destinationAddress: input.destinationAddress,
+          destinationLatitude: input.destinationLatitude,
+          destinationLongitude: input.destinationLongitude,
+          destinationFacilityId: input.destinationFacilityId,
+          plannedPickupAt: input.plannedPickupAt ? new Date(input.plannedPickupAt) : null,
+          plannedDropoffAt: input.plannedDropoffAt ? new Date(input.plannedDropoffAt) : null,
+          estimatedEndAt: input.estimatedEndAt ? new Date(input.estimatedEndAt) : null,
+          estimatedEndSource: (input.estimatedEndSource ?? null) as never,
+        },
+        include: TRANSPORT_LEG_INCLUDE,
+      }),
+      this.loadPolicyContext(),
+    ]);
+    return serializeTransportLeg(updated as TransportLegRow, context);
   }
 
   /** Never touches the plan above the leg — see the module banner comment. */
@@ -194,16 +225,19 @@ export class TransportRequestLegsService {
     const error = validateCancelTransportLeg(input);
     if (error) throw new BadRequestException(error);
 
-    const updated = await this.prisma.transportLeg.update({
-      where: { id },
-      data: {
-        status: LegStatus.CANCELLED as never,
-        cancellationReason: input.reason.trim(),
-        cancellationSource: input.source as never,
-      },
-      include: TRANSPORT_LEG_INCLUDE,
-    });
-    return serializeTransportLeg(updated as TransportLegRow);
+    const [updated, context] = await Promise.all([
+      this.prisma.transportLeg.update({
+        where: { id },
+        data: {
+          status: LegStatus.CANCELLED as never,
+          cancellationReason: input.reason.trim(),
+          cancellationSource: input.source as never,
+        },
+        include: TRANSPORT_LEG_INCLUDE,
+      }),
+      this.loadPolicyContext(),
+    ]);
+    return serializeTransportLeg(updated as TransportLegRow, context);
   }
 
   async markNoShow(id: string): Promise<TransportLeg> {
@@ -213,12 +247,15 @@ export class TransportRequestLegsService {
       throw new ConflictException('Only a planned or assigned leg can be marked as a no-show.');
     }
 
-    const updated = await this.prisma.transportLeg.update({
-      where: { id },
-      data: { status: LegStatus.NO_SHOW as never },
-      include: TRANSPORT_LEG_INCLUDE,
-    });
-    return serializeTransportLeg(updated as TransportLegRow);
+    const [updated, context] = await Promise.all([
+      this.prisma.transportLeg.update({
+        where: { id },
+        data: { status: LegStatus.NO_SHOW as never },
+        include: TRANSPORT_LEG_INCLUDE,
+      }),
+      this.loadPolicyContext(),
+    ]);
+    return serializeTransportLeg(updated as TransportLegRow, context);
   }
 
   /**

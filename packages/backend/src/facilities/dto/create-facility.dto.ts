@@ -1,12 +1,14 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   IsBoolean,
+  IsInt,
   IsLatitude,
   IsLongitude,
   IsNotEmpty,
   IsOptional,
   IsString,
   MaxLength,
+  Min,
 } from 'class-validator';
 import { MAX_FACILITY_NAME_LENGTH } from '@redinfo/shared';
 
@@ -61,4 +63,27 @@ export class CreateFacilityDto {
   @IsOptional()
   @IsBoolean()
   isActive?: boolean;
+
+  /**
+   * Arrival window overrides (#233) — null-able the same way latitude/
+   * longitude are, so a coordinator can take one back out to inherit the
+   * delegation-wide default again.
+   */
+  @ApiPropertyOptional({ example: 30, nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  arrivalWindowEarliestMinutesOverride?: number | null;
+
+  @ApiPropertyOptional({ example: 5, nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  arrivalWindowLatestMinutesOverride?: number | null;
+
+  @ApiPropertyOptional({ example: 10, nullable: true })
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  arrivalToleranceMinutesOverride?: number | null;
 }

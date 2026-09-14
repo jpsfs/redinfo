@@ -1323,6 +1323,15 @@ model Facility {
   /// must keep naming it. False hides it from new pickers only.
   isActive Boolean @default(true)
 
+  /// Arrival window overrides (#233), each independently nullable — a
+  /// facility with no override on a given field inherits
+  /// `DelegationSettings`' delegation-wide default for it. Facilities differ
+  /// in how strictly they hold their appointment times: plan tightly against
+  /// a strict one, take liberties with a relaxed one.
+  arrivalWindowEarliestMinutesOverride Int?
+  arrivalWindowLatestMinutesOverride   Int?
+  arrivalToleranceMinutesOverride      Int?
+
   victims           EventReportVictim[]
   inemSupportUnits  EventReportInemSupportUnit[]
   liveRuns          LiveRun[]
@@ -2021,7 +2030,35 @@ model DelegationSettings {
   baseLongitude  Float
   /// Dialled from the live-run overflow menu; the dial time is stamped on the run.
   coduDadosPhone String
-  updatedAt      DateTime @updatedAt
+
+  /// Arrival window thresholds (#233) — policy, not physics, hence a table a
+  /// coordinator can change without a deploy. Delegation-wide defaults,
+  /// overridable per facility (see `Facility`'s own override columns). The
+  /// hard constraint is delivering by treatment start; these are a softer
+  /// customer-experience goal routinely traded away on purpose.
+  arrivalWindowEarliestMinutes Int @default(30)
+  arrivalWindowLatestMinutes   Int @default(5)
+  arrivalToleranceMinutes      Int @default(10)
+
+  updatedAt DateTime @updatedAt
+}
+
+/// A duration floor and a softer default per occurrence type (#233) — the
+/// argument that keeps a leg's estimated end from ever being blank (see
+/// `TransportLeg.estimatedEndAt`). One row per `TransportRequestOccurrenceType`
+/// value, seeded by the migration the same way `DelegationSettings` is.
+model OccurrenceTypePolicy {
+  occurrenceType TransportRequestOccurrenceType @id
+
+  /// The earliest-possible-ready time is appointment plus this floor —
+  /// deliberately the minimum, not the softer default below.
+  minimumDurationMinutes Int
+  /// A planning suggestion only. Actual treatment duration is a per-patient
+  /// input that varies far more than this table models (about 20 minutes to
+  /// over 4 hours), so this is never used as a floor.
+  defaultDurationMinutes Int
+
+  updatedAt DateTime @updatedAt
 }
 
 // ─── Legacy migration ─────────────────────────────────────────────────────────
@@ -2720,6 +2757,16 @@ enum LegCancellationSource {
   DELEGATION
 }
 
+/// Who supplied `TransportLeg.estimatedEndAt` (#233) — provenance, not
+/// confidence. No reliability/firm-vs-soft grading field exists anywhere
+/// alongside this on purpose: every estimate is of broadly similar quality,
+/// so keep the source for later calibration against actuals, not a score
+/// nobody could fill in honestly.
+enum EstimatedEndSource {
+  FACILITY_SUPPLIED
+  COORDINATOR_JUDGED
+}
+
 /// A recurring treatment series (e.g. dialysis three times a week) — the
 /// generator, never the durable record. Optional: a one-off referral has no
 /// row here at all.
@@ -2800,6 +2847,14 @@ model TransportLeg {
 
   cancellationReason String?
   cancellationSource LegCancellationSource?
+
+  /// When the facility said, or the coordinator judged, the occurrence will
+  /// end (#233) — editable and internal, never stored as though the referral
+  /// had stated it as fact. Null until someone supplies one; a leg with no
+  /// supplied end time still gets appointment-plus-floor at read time (see
+  /// `resolveEstimatedEnd` in shared) rather than a blank.
+  estimatedEndAt       DateTime?
+  estimatedEndSource   EstimatedEndSource?
 
   /// Placeholder for a future dispatch/live-run integration — no `TripStop`
   /// model exists yet, so this stays a bare id rather than a relation.

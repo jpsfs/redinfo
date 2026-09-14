@@ -1,6 +1,6 @@
 import { ApiPropertyOptional } from '@nestjs/swagger';
-import { IsISO8601, IsLatitude, IsLongitude, IsOptional, IsString, MaxLength } from 'class-validator';
-import { MAX_LEG_ADDRESS_LENGTH } from '@redinfo/shared';
+import { IsEnum, IsISO8601, IsLatitude, IsLongitude, IsOptional, IsString, MaxLength } from 'class-validator';
+import { EstimatedEndSource, MAX_LEG_ADDRESS_LENGTH } from '@redinfo/shared';
 
 /**
  * The editable slice of a leg (#230) — address/facility/time detail and,
@@ -65,4 +65,19 @@ export class UpdateTransportLegDto {
   @IsOptional()
   @IsISO8601()
   plannedDropoffAt?: string | null;
+
+  /**
+   * When the facility said, or the coordinator judged, the occurrence will
+   * end (#233) — always given together with `estimatedEndSource`, or not at
+   * all; see `validateUpdateTransportLeg`.
+   */
+  @ApiPropertyOptional({ nullable: true, description: 'ISO datetime' })
+  @IsOptional()
+  @IsISO8601()
+  estimatedEndAt?: string | null;
+
+  @ApiPropertyOptional({ enum: EstimatedEndSource, nullable: true })
+  @IsOptional()
+  @IsEnum(EstimatedEndSource)
+  estimatedEndSource?: EstimatedEndSource | null;
 }

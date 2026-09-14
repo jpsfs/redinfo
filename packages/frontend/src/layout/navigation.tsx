@@ -27,6 +27,7 @@ import BusinessIcon from '@mui/icons-material/Business';
 import HandshakeIcon from '@mui/icons-material/Handshake';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import RuleIcon from '@mui/icons-material/Rule';
+import TuneIcon from '@mui/icons-material/Tune';
 import { Action } from '@redinfo/shared';
 import { MessageKey } from '../i18n/labels';
 
@@ -212,6 +213,15 @@ export const NAV_SECTIONS: NavSection[] = [
         label: 'nav.transportReferrals',
         icon: <RuleIcon />,
         requires: [Action.MANAGE_TRANSPORT_REQUESTS],
+      },
+      {
+        // Arrival window thresholds and occurrence-type duration floors
+        // (#233) — planning policy a coordinator can change without a
+        // deploy, same gating as organisations/agreements above.
+        to: '/transport-config',
+        label: 'nav.transportConfig',
+        icon: <TuneIcon />,
+        requires: [Action.MANAGE_TRANSPORT_CONFIG],
       },
     ],
   },
