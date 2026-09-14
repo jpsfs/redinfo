@@ -118,16 +118,6 @@ export interface AdoptOrCreateParams {
   update: (existingId: string) => Promise<void>;
 }
 
-/** True for exactly the `P2002` this module's own `@@unique([entity, newId])` throws — nothing else. */
-function isNewIdCollision(err: unknown): boolean {
-  return (
-    err instanceof Prisma.PrismaClientKnownRequestError &&
-    err.code === 'P2002' &&
-    Array.isArray(err.meta?.target) &&
-    (err.meta!.target as string[]).includes('newId')
-  );
-}
-
 export async function adoptOrCreate(params: AdoptOrCreateParams): Promise<UpsertResult> {
   const { tx, entity, legacyId, sourceHash: hash, runId } = params;
   const legacyIdMap = (tx as LegacyIdMapClient).legacyIdMap;
@@ -145,19 +135,24 @@ export async function adoptOrCreate(params: AdoptOrCreateParams): Promise<Upsert
 
   const adoptedId = await params.naturalKeyLookup();
   if (adoptedId) {
-    try {
-      await legacyIdMap.create({
-        data: { entity, legacyId, newId: adoptedId, sourceHash: hash, firstRunId: runId, lastRunId: runId },
-      });
-      return { newId: adoptedId, outcome: 'adopted' };
-    } catch (err) {
-      if (!isNewIdCollision(err)) throw err;
+    // Checked *before* attempting `create()`, not caught as a `P2002` after:
+    // Postgres aborts the entire surrounding transaction the instant one
+    // statement violates a constraint, so every later statement — including
+    // `params.update()` below — would fail with `25P02` even inside a
+    // `catch`. A plain `findFirst` never fails, so it can't take the
+    // transaction down with it.
+    const claimedByOther = await legacyIdMap.findFirst({ where: { entity, newId: adoptedId } });
+    if (claimedByOther) {
       // See the module doc: another legacyId already holds this target's
       // mapping. Legacy still wins — apply this row's values to the shared
       // target — but it doesn't get a `LegacyIdMap` row of its own.
       await params.update(adoptedId);
       return { newId: adoptedId, outcome: 'duplicate' };
     }
+    await legacyIdMap.create({
+      data: { entity, legacyId, newId: adoptedId, sourceHash: hash, firstRunId: runId, lastRunId: runId },
+    });
+    return { newId: adoptedId, outcome: 'adopted' };
   }
 
   const newId = await params.create();

@@ -3,12 +3,15 @@ import { LegacyIdMapClient, adoptOrCreate, legacyKey, sourceHash } from './upser
 
 /**
  * A minimal in-memory stand-in for `prisma.legacyIdMap`, covering exactly the
- * three calls `adoptOrCreate` makes. Keeps this spec a `jest`-only unit test
- * with no database, per `packages/backend/CLAUDE.md`'s test-triad split.
+ * calls `adoptOrCreate` makes. Keeps this spec a `jest`-only unit test with
+ * no database, per `packages/backend/CLAUDE.md`'s test-triad split.
  *
  * `create` also enforces `@@unique([entity, newId])`, throwing the same
- * shape of `P2002` the real database would — `adoptOrCreate`'s collision
- * branch is only reachable if the fake mirrors that constraint.
+ * shape of `P2002` the real database would if `adoptOrCreate` ever called it
+ * without checking first — a regression guard, since a real Postgres
+ * transaction aborts entirely on that error (see `adoptOrCreate`'s own
+ * comment), so catching it there is not an option `findFirst` can be skipped
+ * in favour of.
  */
 function fakeLegacyIdMapClient(): LegacyIdMapClient {
   const rows = new Map<string, { id: string; entity: string; legacyId: string; newId: string; sourceHash: string }>();
@@ -20,6 +23,9 @@ function fakeLegacyIdMapClient(): LegacyIdMapClient {
       findUnique: async ({ where }: any) => {
         const key = `${where.entity_legacyId.entity}::${where.entity_legacyId.legacyId}`;
         return rows.get(key) ?? null;
+      },
+      findFirst: async ({ where }: any) => {
+        return [...rows.values()].find((r) => r.entity === where.entity && r.newId === where.newId) ?? null;
       },
       create: async ({ data }: any) => {
         const newIdKey = `${data.entity}::${data.newId}`;
@@ -198,32 +204,5 @@ describe('adoptOrCreate', () => {
     expect(result).toEqual({ newId: 'assignment-1', outcome: 'duplicate' });
     expect(update).toHaveBeenCalledWith('assignment-1');
     expect(create).not.toHaveBeenCalled();
-  });
-
-  it('still throws a P2002 that is not the (entity, newId) collision', async () => {
-    const tx: LegacyIdMapClient = {
-      legacyIdMap: {
-        findUnique: async () => null,
-        create: async () => {
-          throw new Prisma.PrismaClientKnownRequestError('Unique constraint failed on the fields: (`id`)', {
-            code: 'P2002',
-            clientVersion: '5.22.0',
-            meta: { modelName: 'LegacyIdMap', target: ['id'] },
-          });
-        },
-        update: async () => ({}) as any,
-      },
-    } as unknown as LegacyIdMapClient;
-
-    await expect(
-      adoptOrCreate({
-        ...baseParams,
-        tx,
-        sourceHash: 'hash-1',
-        naturalKeyLookup: async () => 'existing-id',
-        create: async () => 'unused',
-        update: async () => {},
-      }),
-    ).rejects.toThrow('Unique constraint failed');
   });
 });
