@@ -47,13 +47,92 @@ services:
       # Event report attachments, certification documents, profile photos.
       # A named volume so they survive a redeploy — see docker-compose.prod.yml.
       ATTACHMENTS_DIR: /app/uploads
+      # Self-hosted routing/geocoding (#231) — always the compose-network
+      # service names below, never overridable to a real host through
+      # `environment:` here; `RoutingModule`'s host guard refuses to start
+      # against anything else anyway. Set explicitly (rather than relying on
+      # the client's own default) for the same reason DATABASE_URL is spelled
+      # out above rather than left implicit.
+      ROUTING_BASE_URL: http://osrm:5000
+      GEOCODING_BASE_URL: http://nominatim:8080
     volumes:
       - backend_uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
+      # Not `condition: service_healthy` for either — `RoutingService` is
+      # fail-soft (same posture as `RouteDistanceService`/`InemSessionService`):
+      # a not-yet-imported Nominatim must never block the whole API from
+      # starting, it should just make geocoding answer "not found" until it's
+      # ready.
+      osrm:
+        condition: service_started
+      nominatim:
+        condition: service_started
     ports:
       - "3000:3000"
+
+  # ── OSRM (#231) ──────────────────────────────────────────────────────────────
+  # Self-hosted routing over an OpenStreetMap Portugal extract — see the banner
+  # comment on `OsrmRoutingService` for why OSRM over Valhalla. Serves the
+  # `.osrm*` files `scripts/prepare-osrm-data.sh` produces into
+  # `./data/routing/osrm`; that script is a one-off, run by hand (or once per
+  # fresh checkout), not part of `up` itself.
+  osrm:
+    image: ghcr.io/project-osrm/osrm-backend:v5.27.1
+    command: osrm-routed --algorithm mld /data/portugal-latest.osrm
+    restart: unless-stopped
+    volumes:
+      - ./data/routing/osrm:/data:ro
+    healthcheck:
+      # The image (Debian, minimal) has neither curl nor wget — `/route`
+      # with two arbitrary well-formed coordinates always answers 200
+      # regardless of whether they're routable, so it works as a plain
+      # "the server is up" probe without depending on the loaded region.
+      # Perl is the one scripting language the image does ship with.
+      test:
+        - CMD-SHELL
+        - >-
+          perl -MIO::Socket::INET -e
+          '$$s = IO::Socket::INET->new(PeerAddr => "127.0.0.1:5000", Timeout => 3) or exit 1;
+          print $$s "GET /route/v1/driving/0,0;0,1 HTTP/1.0\r\n\r\n";
+          local $$/; $$r = <$$s>;
+          exit(($$r =~ /^HTTP\/1\.[01] 200/) ? 0 : 1);'
+      interval: 15s
+      # Perl's interpreter startup + IO::Socket::INET's module compile is
+      # slow enough under load (host also running Nominatim's import) to
+      # blow past a 5s timeout even when OSRM itself answers instantly.
+      timeout: 15s
+      retries: 5
+      # `.osrm*` files may not exist yet on a fresh checkout (before the
+      # prepare script has run) — give it room to keep restarting rather than
+      # report unhealthy immediately.
+      start_period: 30s
+
+  # ── Nominatim (#231) ─────────────────────────────────────────────────────────
+  # Self-hosted geocoding, same extract as `osrm` above. Unlike OSRM, the
+  # image manages its own import: first start downloads `PBF_URL` and builds
+  # its Postgres from scratch into the `nominatim_data` volume — genuinely
+  # slow for a whole country (tens of minutes to a couple of hours) — and
+  # every start after that reuses what's already imported. Patient addresses
+  # never leave the building: everything here stays inside the compose
+  # network, never published to the host.
+  nominatim:
+    image: mediagis/nominatim:4.5
+    restart: unless-stopped
+    environment:
+      PBF_URL: https://download.geofabrik.de/europe/portugal-latest.osm.pbf
+      REPLICATION_URL: https://download.geofabrik.de/europe/portugal-updates/
+      IMPORT_WIKIPEDIA: "false"
+      NOMINATIM_PASSWORD: ${NOMINATIM_PASSWORD:-redinfo_dev_password}
+    volumes:
+      - nominatim_data:/var/lib/postgresql/14
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/status.php"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 2h
 
   # ── INEM worker (#215) ──────────────────────────────────────────────────────
   # Stateless Playwright session-minter — see packages/inem-worker/README.md.
@@ -92,3 +171,4 @@ services:
 volumes:
   postgres_data:
   backend_uploads:
+  nominatim_data:

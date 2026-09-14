@@ -15,8 +15,8 @@ NestJS + Prisma. Read `../shared/CLAUDE.md` first if the feature touches shared 
 
 Current modules: `auth`, `availability`, `event-reports`, `facilities`, `geography`, `health`,
 `inem`, `inventory`, `live-runs`, `notices`, `notifications`, `organisations`, `paid-staff-schedule`,
-`patients`, `schedules`, `staff-absences`, `statistics`, `storage`, `transport-requests`, `users`,
-`vehicles`, `vehicle-occupancy`, `volunteer-hours`, `employment-contracts`, `prisma`.
+`patients`, `routing`, `schedules`, `staff-absences`, `statistics`, `storage`, `transport-requests`,
+`users`, `vehicles`, `vehicle-occupancy`, `volunteer-hours`, `employment-contracts`, `prisma`.
 New modules are wired into `src/app.module.ts`.
 Bootstrap (global `ValidationPipe`, global `ApiErrorFilter`, port 3000) is in `src/main.ts`.
 
@@ -61,6 +61,21 @@ this day" list; absences and vehicle occupancy go through `StaffAbsencesService`
 :id/register-external`, stamps `externallyRegisteredAt` — a separate action from `decide`, since
 accepting in redinfo and registering on the requester's own platform are different facts made
 at different times).
+
+`routing` (#231) is the self-hosted routing/geocoding foundation Feature #219's trip planner
+depends on — no controller, nothing outside the backend calls it yet. Consumers depend on the
+`ROUTING_SERVICE` DI token (the `RoutingService` interface — `geocode`/`distanceMatrix`), never
+on `OsrmRoutingService` directly, which is what keeps the engine swappable (Valhalla, later, if
+ever). Backed by self-hosted OSRM (`/table`) + Nominatim over an OpenStreetMap Portugal extract
+— **never a third-party API**: a patient address must never leave the building. Both clients'
+base URLs are checked at construction by `assertInternalRoutingHost`
+(`routing-host-guard.ts`) against an allowlist of the compose service names plus loopback, so a
+bad `ROUTING_BASE_URL`/`GEOCODING_BASE_URL` fails at boot rather than silently leaking data.
+`GeocodeCacheService` (the `GeocodedAddress` model) caches every found geocode forever; a miss
+is never cached, so it stays retryable. `distanceMatrix` falls back to a flagged straight-line
+estimate (`estimated: true`) for any pair OSRM can't route (out-of-region) — same fail-soft
+posture as `RouteDistanceService`. See `scripts/prepare-osrm-data.sh` for the one-off extract
+step and `OsrmRoutingService`'s banner comment for why OSRM over Valhalla.
 
 ## Controller pattern
 
@@ -121,7 +136,9 @@ Model index by domain (names only — grep for fields/relations):
   warning to the roster (`SchedulesService`'s board, `ScheduleAbsenceWarning`) and the future
   trip planner, never a block — same override precedent as `VehicleOccupancy`
 - **Volunteer hours**: `VolunteerHoursEntry`
-- **Geography**: `Municipality`, `Locality`
+- **Geography**: `Municipality`, `Locality`, `GeocodedAddress` (#231) — the self-hosted
+  geocoder's cache, keyed by a hash of the folded address, never the patient/facility row that
+  asked for it
 - **Facilities** (#220): `Facility` — hospitals, clinics and private medical facilities, one
   table with independent `isEmergencyDestination`/`isTransportDestination` flags
 - **Event reports**: `EventReport`, `EventReportAssessment`, `EventReportCrewMember`, `EventReportVehicle`, `EventReportMaterial`, `EventReportVictim`, `EventReportInemSupportUnit`, `EventReportAttachment`

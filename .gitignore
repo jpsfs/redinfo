@@ -180,3 +180,8 @@ migration/out/
 # docs/manual-operador/capture-screenshots.mjs and generate-pdf.mjs — never commit the output.
 docs/manual-operador/images/
 docs/manual-operador/manual_emergencyoperator.pdf
+
+# Routing/geocoding (#231): the OSM extract and OSRM's pre-processed `.osrm*`
+# files. Multi-hundred-MB, reproducible from scripts/prepare-osrm-data.sh —
+# never committed.
+/data/routing/

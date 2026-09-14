@@ -26,6 +26,7 @@ import { McpModule } from './mcp/mcp.module';
 import { PatientsModule } from './patients/patients.module';
 import { OrganisationsModule } from './organisations/organisations.module';
 import { TransportRequestsModule } from './transport-requests/transport-requests.module';
+import { RoutingModule } from './routing/routing.module';
 
 @Module({
   imports: [
@@ -59,6 +60,7 @@ import { TransportRequestsModule } from './transport-requests/transport-requests
     PatientsModule,
     OrganisationsModule,
     TransportRequestsModule,
+    RoutingModule,
   ],
 })
 export class AppModule {}

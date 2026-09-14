@@ -1265,6 +1265,21 @@ model Locality {
   @@index([municipalityId])
 }
 
+/// The self-hosted geocoder's answer for one address, cached forever (#231) —
+/// there is no volume argument for re-asking Nominatim the same question
+/// twice. `addressHash` is the lookup key, a sha256 of the address folded
+/// through shared's `foldForSearch`, so two spellings of the same street
+/// share a row; `rawAddress` is kept only so a bad geocode can be spotted by
+/// eye, never used to look one up.
+model GeocodedAddress {
+  id          String   @id @default(cuid())
+  addressHash String   @unique
+  rawAddress  String
+  latitude    Float
+  longitude   Float
+  createdAt   DateTime @default(now())
+}
+
 // ─── Facilities ─────────────────────────────────────────────────────────────
 
 /// A hospital, clinic or private medical facility — somewhere a victim can be
