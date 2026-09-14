@@ -1,6 +1,6 @@
 /**
- * Per-entity created/adopted/updated/unchanged/rejected/deleted counts — the
- * "overwrite summary" `report.md` leads with, and the numbers
+ * Per-entity created/adopted/updated/unchanged/duplicate/rejected/deleted
+ * counts — the "overwrite summary" `report.md` leads with, and the numbers
  * `--fail-on-reject` inspects. One instance per run, threaded through every
  * loader via `RunContext`.
  */
@@ -11,12 +11,14 @@ export interface EntityCounts {
   adopted: number;
   updated: number;
   unchanged: number;
+  /** Two distinct legacy rows resolved to the same target — see `upsert-engine.ts`'s `@@unique([entity, newId])` note. */
+  duplicate: number;
   rejected: number;
   /** Rows removed because legacy no longer produces their key — see `prune.ts`. */
   deleted: number;
 }
 
-const EMPTY: EntityCounts = { created: 0, adopted: 0, updated: 0, unchanged: 0, rejected: 0, deleted: 0 };
+const EMPTY: EntityCounts = { created: 0, adopted: 0, updated: 0, unchanged: 0, duplicate: 0, rejected: 0, deleted: 0 };
 
 export class Counters {
   private readonly byEntity = new Map<string, EntityCounts>();

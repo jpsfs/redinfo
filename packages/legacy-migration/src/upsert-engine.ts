@@ -17,6 +17,18 @@
  *
  * `LegacyIdMap` is written on every branch, keyed by `(entity, legacyId)`.
  *
+ * **The adopt path can itself collide on `@@unique([entity, newId])`** —
+ * two distinct legacy rows whose natural key resolves to the same target
+ * (e.g. an `escala` row with `mes: "9"` and one with `mes: "Setembro"` for
+ * the same day/turno/crew: same date, same slot, same user, different
+ * `legacyId` string). Only one legacy row may hold that target's mapping —
+ * that's the whole point of the constraint — so whichever row got there
+ * first in this run keeps it. The later row is not dropped, though: legacy
+ * still wins, so its values are still applied via `update()`, just without
+ * a second `LegacyIdMap` row of its own. Outcome `'duplicate'` marks this
+ * case so it is visible in `report.md` rather than indistinguishable from an
+ * ordinary re-run `'updated'`.
+ *
  * **`update()` runs on every re-run of an already-mapped row, whether or not
  * `sourceHash` changed.** This is "legacy always wins" as a hard guarantee,
  * not an optimisation: a coordinator's edit made directly in the app between
@@ -78,7 +90,7 @@ export function sourceHash(tuple: unknown): string {
   return createHash('sha256').update(stableStringify(tuple)).digest('hex');
 }
 
-export type UpsertOutcome = 'created' | 'adopted' | 'updated' | 'unchanged';
+export type UpsertOutcome = 'created' | 'adopted' | 'updated' | 'unchanged' | 'duplicate';
 
 export interface UpsertResult {
   newId: string;
@@ -106,6 +118,16 @@ export interface AdoptOrCreateParams {
   update: (existingId: string) => Promise<void>;
 }
 
+/** True for exactly the `P2002` this module's own `@@unique([entity, newId])` throws — nothing else. */
+function isNewIdCollision(err: unknown): boolean {
+  return (
+    err instanceof Prisma.PrismaClientKnownRequestError &&
+    err.code === 'P2002' &&
+    Array.isArray(err.meta?.target) &&
+    (err.meta!.target as string[]).includes('newId')
+  );
+}
+
 export async function adoptOrCreate(params: AdoptOrCreateParams): Promise<UpsertResult> {
   const { tx, entity, legacyId, sourceHash: hash, runId } = params;
   const legacyIdMap = (tx as LegacyIdMapClient).legacyIdMap;
@@ -123,10 +145,19 @@ export async function adoptOrCreate(params: AdoptOrCreateParams): Promise<Upsert
 
   const adoptedId = await params.naturalKeyLookup();
   if (adoptedId) {
-    await legacyIdMap.create({
-      data: { entity, legacyId, newId: adoptedId, sourceHash: hash, firstRunId: runId, lastRunId: runId },
-    });
-    return { newId: adoptedId, outcome: 'adopted' };
+    try {
+      await legacyIdMap.create({
+        data: { entity, legacyId, newId: adoptedId, sourceHash: hash, firstRunId: runId, lastRunId: runId },
+      });
+      return { newId: adoptedId, outcome: 'adopted' };
+    } catch (err) {
+      if (!isNewIdCollision(err)) throw err;
+      // See the module doc: another legacyId already holds this target's
+      // mapping. Legacy still wins — apply this row's values to the shared
+      // target — but it doesn't get a `LegacyIdMap` row of its own.
+      await params.update(adoptedId);
+      return { newId: adoptedId, outcome: 'duplicate' };
+    }
   }
 
   const newId = await params.create();

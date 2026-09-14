@@ -8,6 +8,7 @@ describe('Counters', () => {
       adopted: 0,
       updated: 0,
       unchanged: 0,
+      duplicate: 0,
       rejected: 0,
       deleted: 0,
     });
