@@ -91,7 +91,7 @@ function serializeAgreementRef(row: AgreementRow): Agreement {
   };
 }
 
-type FacilityRow = {
+export type FacilityRow = {
   id: string;
   name: string;
   municipalityId: string;
@@ -106,7 +106,10 @@ type FacilityRow = {
   updatedAt: Date;
 };
 
-function serializeFacilityRef(row: FacilityRow): Facility {
+/** Exported so `treatment-plan-leg.serializer.ts` (#230) doesn't duplicate
+ * this shape — a leg/plan reuses the same `Facility` reference-serialization
+ * this module already had for `TransportRequest.destinationFacility`. */
+export function serializeFacilityRef(row: FacilityRow): Facility {
   return {
     id: row.id,
     name: row.name,

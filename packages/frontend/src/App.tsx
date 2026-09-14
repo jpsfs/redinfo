@@ -54,6 +54,7 @@ import {
   TransportRequestCreate,
   TransportRequestEdit,
 } from './resources/transportRequests';
+import { TransportRequestShow } from './resources/transportRequests/TransportRequestShow';
 import { LiveEntryPage, LiveRunGate, LiveRunPage } from './resources/liveRuns';
 import { MyAvailabilityPage } from './pages/MyAvailabilityPage';
 import { MyDutiesPage } from './pages/MyDutiesPage';
@@ -321,6 +322,7 @@ export default function App() {
         list={TransportRequestList}
         create={TransportRequestCreate}
         edit={TransportRequestEdit}
+        show={TransportRequestShow}
       />
 
       {/* Read-only reference data, reached only by the pickers that need it —

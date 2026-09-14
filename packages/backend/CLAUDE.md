@@ -152,6 +152,13 @@ Model index by domain (names only — grep for fields/relations):
   rather than split into a batch table. `decision` (`PENDING`/`ACCEPTED`/`REJECTED`) is terminal;
   `externallyRegisteredAt` is a shadow of a decision made on the requester's own platform and is
   never set by accepting in redinfo
+- **Treatment plans & transport legs** (#230): `TreatmentPlan` — an optional recurrence rule
+  (days of week, time-of-day, validity range) hanging off a `TransportRequest`; `TransportLeg` —
+  the durable, billable, dated occurrence, `treatmentPlanId` null for a one-off referral's leg.
+  A leg carries its own origin/destination rather than deriving them, so a return trip can target
+  somewhere other than the patient's pickup address without touching the plan. `generatedForDate`
+  is frozen at creation and never touched by an edit — it's the generator's idempotency key,
+  immune to a later reschedule of `date` (`TransportRequestLegsService.generateForPlan`)
 
 Migrations: `prisma:migrate` (dev, interactive) / `prisma:migrate:deploy` (non-interactive —
 prefer this in scripts/CI, per `.github/AI-GOVERNANCE.md`). Run `prisma:generate` after every

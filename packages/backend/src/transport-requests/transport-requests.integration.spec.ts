@@ -1,6 +1,9 @@
 import { PrismaClient } from '@prisma/client';
 import { ConflictException } from '@nestjs/common';
 import {
+  LegCancellationSource,
+  LegDirection,
+  LegStatus,
   PatientMobility,
   StaffAbsenceKind,
   TransportRequestDecision,
@@ -17,6 +20,8 @@ import { DelegationSettingsService } from '../live-runs/delegation-settings.serv
 import { StaffAbsencesService } from '../staff-absences/staff-absences.service';
 import { VehicleOccupancyService } from '../vehicle-occupancy/vehicle-occupancy.service';
 import { TransportRequestsService } from './transport-requests.service';
+import { TransportRequestLegsService } from './transport-request-legs.service';
+import { TransportRequestTreatmentPlansService } from './transport-request-treatment-plans.service';
 
 /**
  * Integration coverage for referral intake (#228), against a real Postgres —
@@ -43,6 +48,8 @@ describeIntegration('TransportRequestsService (integration)', () => {
   const staffAbsences = new StaffAbsencesService(prisma);
   const vehicleOccupancy = new VehicleOccupancyService(prisma);
   const transportRequests = new TransportRequestsService(prisma, facilities, staffAbsences, vehicleOccupancy);
+  const legs = new TransportRequestLegsService(prisma);
+  const treatmentPlans = new TransportRequestTreatmentPlansService(prisma, legs);
 
   let coordinator: { id: string };
   let municipality: { id: string };
@@ -371,5 +378,124 @@ describeIntegration('TransportRequestsService (integration)', () => {
 
     await prisma.vehicleOccupancy.deleteMany({ where: { vehicleId: { in: [freeVehicle.id, committedVehicle.id] } } });
     await prisma.user.delete({ where: { id: absentUser.id } });
+  });
+
+  // ── Treatment plans & transport legs (#230) ────────────────────────────────
+  //
+  // `TreatmentPlan`/`TransportLeg` cascade-delete off `TransportRequest`
+  // (`onDelete: Cascade` in the schema), so `track()`'s cleanup of the parent
+  // request is enough — no separate id-tracking arrays needed here.
+
+  it('integration: a recurring plan materialises legs on exactly the right dates, outbound and return', async () => {
+    const facility = await facilities.findOrCreateTransportDestination(`Hosp Plan A ${RUN}`, municipality.id);
+    createdFacilityIds.push(facility.id);
+    const request = track(
+      await transportRequests.create(
+        { ...workedExample(), externalServiceNumber: `PLAN-A-${RUN}`, destinationFacilityId: facility.id },
+        { id: coordinator.id },
+      ),
+    );
+
+    // 2026-09-14 and 2026-09-21 are both Mondays.
+    const plan = await treatmentPlans.create(request.id, {
+      destinationFacilityId: facility.id,
+      daysOfWeek: [1],
+      treatmentStartTime: '09:00',
+      treatmentEndTime: '11:00',
+      validFrom: '2026-09-14',
+      validTo: '2026-09-21',
+    } as never);
+
+    const legRows = await legs.findAllForRequest(request.id);
+    expect(legRows).toHaveLength(4);
+    expect(legRows.every((leg) => leg.treatmentPlanId === plan.id)).toBe(true);
+    const dates = legRows.map((leg) => leg.date).sort();
+    expect(dates).toEqual(['2026-09-14', '2026-09-14', '2026-09-21', '2026-09-21']);
+    expect(legRows.filter((leg) => leg.direction === LegDirection.OUTBOUND)).toHaveLength(2);
+    expect(legRows.filter((leg) => leg.direction === LegDirection.RETURN)).toHaveLength(2);
+  });
+
+  it('integration: cancelling one leg leaves the rest untouched, and regenerating neither resurrects nor duplicates it', async () => {
+    const facility = await facilities.findOrCreateTransportDestination(`Hosp Plan B ${RUN}`, municipality.id);
+    createdFacilityIds.push(facility.id);
+    const request = track(
+      await transportRequests.create(
+        { ...workedExample(), externalServiceNumber: `PLAN-B-${RUN}`, destinationFacilityId: facility.id },
+        { id: coordinator.id },
+      ),
+    );
+    const plan = await treatmentPlans.create(request.id, {
+      destinationFacilityId: facility.id,
+      daysOfWeek: [1],
+      treatmentStartTime: '09:00',
+      validFrom: '2026-09-14',
+      validTo: '2026-09-21',
+    } as never);
+
+    const before = await legs.findAllForRequest(request.id);
+    const toCancel = before.find((leg) => leg.date === '2026-09-14' && leg.direction === LegDirection.OUTBOUND)!;
+    await legs.cancel(toCancel.id, { reason: 'Doente hospitalizado', source: LegCancellationSource.PATIENT });
+
+    // Widening the plan re-runs the generator — the cancelled leg's slot must
+    // not be resurrected, and every other leg must be untouched.
+    await treatmentPlans.update(plan.id, { validTo: '2026-09-28' } as never);
+
+    const after = await legs.findAllForRequest(request.id);
+    expect(after).toHaveLength(6); // one more Monday (09-28) added, nothing duplicated
+    const cancelled = after.find((leg) => leg.id === toCancel.id)!;
+    expect(cancelled.status).toBe(LegStatus.CANCELLED);
+    expect(cancelled.date).toBe('2026-09-14');
+    const stillPlannedOn14th = after.filter(
+      (leg) => leg.generatedForDate === '2026-09-14' && leg.direction === LegDirection.OUTBOUND,
+    );
+    expect(stillPlannedOn14th).toHaveLength(1); // the cancelled one, not a fresh duplicate
+  });
+
+  it('integration: a one-off request produces legs with treatmentPlanId null and no plan row exists', async () => {
+    const facility = await facilities.findOrCreateTransportDestination(`Hosp OneOff ${RUN}`, municipality.id);
+    createdFacilityIds.push(facility.id);
+    const request = track(
+      await transportRequests.create(
+        { ...workedExample(), externalServiceNumber: `ONEOFF-${RUN}`, destinationFacilityId: facility.id },
+        { id: coordinator.id },
+      ),
+    );
+
+    const created = await legs.generateOneOff(request.id);
+    expect(created).toBe(2);
+
+    const plans = await treatmentPlans.findAllForRequest(request.id);
+    expect(plans).toHaveLength(0);
+    const legRows = await legs.findAllForRequest(request.id);
+    expect(legRows.every((leg) => leg.treatmentPlanId === null)).toBe(true);
+  });
+
+  it('integration: a return leg can be given a destination other than the patient’s default address, without touching the plan', async () => {
+    const facility = await facilities.findOrCreateTransportDestination(`Hosp Return ${RUN}`, municipality.id);
+    const otherAddressFacility = await facilities.findOrCreateTransportDestination(`Care Home ${RUN}`, municipality.id);
+    createdFacilityIds.push(facility.id, otherAddressFacility.id);
+    const request = track(
+      await transportRequests.create(
+        { ...workedExample(), externalServiceNumber: `RETURN-${RUN}`, destinationFacilityId: facility.id },
+        { id: coordinator.id },
+      ),
+    );
+    const plan = await treatmentPlans.create(request.id, {
+      destinationFacilityId: facility.id,
+      daysOfWeek: [1],
+      treatmentStartTime: '09:00',
+      validFrom: '2026-09-14',
+      validTo: '2026-09-14',
+    } as never);
+
+    const before = await legs.findAllForRequest(request.id);
+    const returnLeg = before.find((leg) => leg.direction === LegDirection.RETURN)!;
+    await legs.update(returnLeg.id, { destinationFacilityId: otherAddressFacility.id, destinationAddress: null });
+
+    const after = await legs.findAllForRequest(request.id);
+    const updatedReturn = after.find((leg) => leg.id === returnLeg.id)!;
+    expect(updatedReturn.destinationFacility?.id).toBe(otherAddressFacility.id);
+    const unchangedPlan = await treatmentPlans.findAllForRequest(request.id);
+    expect(unchangedPlan.find((p) => p.id === plan.id)?.destinationFacilityId).toBe(facility.id);
   });
 });

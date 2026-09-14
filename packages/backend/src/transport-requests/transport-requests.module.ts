@@ -4,6 +4,8 @@ import { FacilitiesModule } from '../facilities/facilities.module';
 import { StaffAbsencesModule } from '../staff-absences/staff-absences.module';
 import { VehicleOccupancyModule } from '../vehicle-occupancy/vehicle-occupancy.module';
 import { TransportRequestsService } from './transport-requests.service';
+import { TransportRequestTreatmentPlansService } from './transport-request-treatment-plans.service';
+import { TransportRequestLegsService } from './transport-request-legs.service';
 import { TransportRequestsController } from './transport-requests.controller';
 
 /**
@@ -17,7 +19,7 @@ import { TransportRequestsController } from './transport-requests.controller';
  */
 @Module({
   imports: [FacilitiesModule, StaffAbsencesModule, VehicleOccupancyModule],
-  providers: [TransportRequestsService, AuditInterceptor],
+  providers: [TransportRequestsService, TransportRequestTreatmentPlansService, TransportRequestLegsService, AuditInterceptor],
   controllers: [TransportRequestsController],
   exports: [TransportRequestsService],
 })

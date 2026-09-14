@@ -7616,6 +7616,201 @@ export interface TransportRequestFeasibility {
   requestedVehicleTypeFree: boolean | null;
 }
 
+// ─── Treatment plans & transport legs (#230) ───────────────────────────────────
+//
+// The central modelling decision for recurring non-urgent transport (#219):
+// the recurrence rule (`TreatmentPlan`) stays separate from the materialised
+// occurrences (`TransportLeg`) — the leg is the durable, billable unit, the
+// plan only a generator. A one-off referral produces legs with no plan above
+// them at all; building it the other way round (plan as a mandatory parent)
+// would force every ad-hoc journey to invent a series of one.
+//
+// The leg carries its own origin and destination rather than deriving them
+// from the plan/request on every read — the return trip is usually the
+// patient's own pickup address, but occasionally isn't, and that exception
+// must be representable per leg without editing the plan.
+
+export enum LegDirection {
+  OUTBOUND = 'OUTBOUND',
+  RETURN = 'RETURN',
+}
+
+export enum LegStatus {
+  PLANNED = 'PLANNED',
+  ASSIGNED = 'ASSIGNED',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED',
+  NO_SHOW = 'NO_SHOW',
+}
+
+/** Who/what caused a cancellation — a fixed vocabulary rather than free
+ * text, since it's the fact billing/support actually filters and reports
+ * on. `cancellationReason` stays free text alongside it for the detail. */
+export enum LegCancellationSource {
+  PATIENT = 'PATIENT',
+  FACILITY = 'FACILITY',
+  DELEGATION = 'DELEGATION',
+}
+
+export const MAX_TREATMENT_PLAN_NOTES_LENGTH = 2000;
+export const MAX_LEG_ADDRESS_LENGTH = 300;
+export const MAX_LEG_CANCELLATION_REASON_LENGTH = 500;
+
+const TIME_OF_DAY_REGEX = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** The writable shape of a treatment plan. */
+export interface TreatmentPlanInput {
+  destinationFacilityId: string;
+  /** `Date#getDay()` convention (0 = Sunday … 6 = Saturday), matching
+   * `PaidStaffSchedule.dayOfWeek`/`isoDayOfWeek` — not the 1..7 numbering a
+   * referral form might use. */
+  daysOfWeek: number[];
+  /** `HH:mm`, 24h, local time-of-day — a recurring wall-clock time, not one instant. */
+  treatmentStartTime: string;
+  treatmentEndTime?: string | null;
+  /** ISO date. */
+  validFrom: string;
+  /** ISO date, inclusive. */
+  validTo: string;
+  notes?: string | null;
+}
+
+export interface TreatmentPlan extends TreatmentPlanInput {
+  id: string;
+  transportRequestId: string;
+  destinationFacility?: Facility;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** Same "message or null" shape as `validateTransportRequest`. */
+export function validateTreatmentPlan(input: TreatmentPlanInput): string | null {
+  if (!input.destinationFacilityId) return 'Choose the treatment facility.';
+  if (!input.daysOfWeek?.length) return 'Choose at least one day of the week.';
+  if (new Set(input.daysOfWeek).size !== input.daysOfWeek.length) {
+    return 'Each day of the week may be chosen only once.';
+  }
+  if (input.daysOfWeek.some((day) => !Number.isInteger(day) || day < 0 || day > 6)) {
+    return 'Days of the week must be between 0 (Sunday) and 6 (Saturday).';
+  }
+  if (!TIME_OF_DAY_REGEX.test(input.treatmentStartTime ?? '')) return 'Give the treatment start time.';
+  if (input.treatmentEndTime && !TIME_OF_DAY_REGEX.test(input.treatmentEndTime)) {
+    return 'Give a valid treatment end time.';
+  }
+  if (input.treatmentEndTime && input.treatmentEndTime <= input.treatmentStartTime) {
+    return 'The treatment end time must be after the start time.';
+  }
+  if (!input.validFrom) return 'Give when the plan starts.';
+  if (!input.validTo) return 'Give when the plan ends.';
+  if (input.validTo < input.validFrom) return 'The plan cannot end before it starts.';
+  if (input.notes && input.notes.length > MAX_TREATMENT_PLAN_NOTES_LENGTH) {
+    return `Notes may be at most ${MAX_TREATMENT_PLAN_NOTES_LENGTH} characters.`;
+  }
+  return null;
+}
+
+/** One materialised, dated, direction-specific journey. See the banner
+ * comment above for why this — not `TreatmentPlan` — is the durable unit. */
+export interface TransportLeg {
+  id: string;
+  transportRequestId: string;
+  /** Null for a one-off referral's leg. */
+  treatmentPlanId: string | null;
+  /** ISO date — the day this leg actually serves. Editable: rescheduling a
+   * leg means changing this, never its identity. */
+  date: string;
+  /** ISO date — the recurrence slot this leg was generated for, frozen at
+   * creation. See the field's own doc comment in `schema.prisma` for why it
+   * exists: it's the generator's idempotency key, immune to a later reschedule. */
+  generatedForDate: string;
+  direction: LegDirection;
+
+  originAddress: string | null;
+  originLatitude: number | null;
+  originLongitude: number | null;
+  originFacilityId: string | null;
+  originFacility?: Facility | null;
+
+  destinationAddress: string | null;
+  destinationLatitude: number | null;
+  destinationLongitude: number | null;
+  destinationFacilityId: string | null;
+  destinationFacility?: Facility | null;
+
+  /** ISO datetime. */
+  plannedPickupAt: string | null;
+  /** ISO datetime. */
+  plannedDropoffAt: string | null;
+  /** ISO datetime. */
+  actualPickupAt: string | null;
+  /** ISO datetime. */
+  actualDropoffAt: string | null;
+
+  status: LegStatus;
+  cancellationReason: string | null;
+  cancellationSource: LegCancellationSource | null;
+  /** Placeholder for a future dispatch/live-run integration. */
+  tripStopId: string | null;
+
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** The editable slice of a leg — address/facility/time detail and, per the
+ * reschedule case above, `date` itself. Cancelling and marking no-show go
+ * through their own dedicated actions instead (see below), the same
+ * separation `TransportRequestsService.decide` keeps from `update`. */
+export interface UpdateTransportLegInput {
+  date?: string;
+  originAddress?: string | null;
+  originLatitude?: number | null;
+  originLongitude?: number | null;
+  originFacilityId?: string | null;
+  destinationAddress?: string | null;
+  destinationLatitude?: number | null;
+  destinationLongitude?: number | null;
+  destinationFacilityId?: string | null;
+  plannedPickupAt?: string | null;
+  plannedDropoffAt?: string | null;
+}
+
+export function validateUpdateTransportLeg(input: UpdateTransportLegInput): string | null {
+  if (input.date !== undefined && !input.date) return 'Give the date the leg serves.';
+  if (input.originAddress && input.originAddress.length > MAX_LEG_ADDRESS_LENGTH) {
+    return `The pickup address may be at most ${MAX_LEG_ADDRESS_LENGTH} characters.`;
+  }
+  if (input.destinationAddress && input.destinationAddress.length > MAX_LEG_ADDRESS_LENGTH) {
+    return `The destination address may be at most ${MAX_LEG_ADDRESS_LENGTH} characters.`;
+  }
+  const hasOriginLatitude = input.originLatitude !== null && input.originLatitude !== undefined;
+  const hasOriginLongitude = input.originLongitude !== null && input.originLongitude !== undefined;
+  if (hasOriginLatitude !== hasOriginLongitude) return 'Give both the pickup latitude and longitude, or neither.';
+  const hasDestinationLatitude = input.destinationLatitude !== null && input.destinationLatitude !== undefined;
+  const hasDestinationLongitude = input.destinationLongitude !== null && input.destinationLongitude !== undefined;
+  if (hasDestinationLatitude !== hasDestinationLongitude) {
+    return 'Give both the destination latitude and longitude, or neither.';
+  }
+  return null;
+}
+
+/** Cancelling a leg (#230) never touches the plan above it. `source` is a
+ * fixed vocabulary (see `LegCancellationSource`); `reason` is the free-text detail. */
+export interface CancelTransportLegInput {
+  reason: string;
+  source: LegCancellationSource;
+}
+
+export function validateCancelTransportLeg(input: CancelTransportLegInput): string | null {
+  if (!input.reason?.trim()) return 'Give a reason for cancelling the leg.';
+  if (input.reason.trim().length > MAX_LEG_CANCELLATION_REASON_LENGTH) {
+    return `The cancellation reason may be at most ${MAX_LEG_CANCELLATION_REASON_LENGTH} characters.`;
+  }
+  if (!Object.values(LegCancellationSource).includes(input.source)) {
+    return 'Choose who or what caused the cancellation.';
+  }
+  return null;
+}
+
 // ─── API error codes (#180 phase 4) ───────────────────────────────────────────
 //
 // A machine code for the business-rule failures that are genuinely worth a

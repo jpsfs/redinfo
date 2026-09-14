@@ -20,9 +20,15 @@ import { Actions } from '../auth/decorators/roles.decorator';
 import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuditInterceptor } from '../auth/interceptors/audit.interceptor';
 import { TransportRequestsService, RequestUser } from './transport-requests.service';
+import { TransportRequestTreatmentPlansService } from './transport-request-treatment-plans.service';
+import { TransportRequestLegsService } from './transport-request-legs.service';
 import { CreateTransportRequestDto } from './dto/create-transport-request.dto';
 import { UpdateTransportRequestDto } from './dto/update-transport-request.dto';
 import { DecideTransportRequestDto } from './dto/decide-transport-request.dto';
+import { CreateTreatmentPlanDto } from './dto/create-treatment-plan.dto';
+import { UpdateTreatmentPlanDto } from './dto/update-treatment-plan.dto';
+import { UpdateTransportLegDto } from './dto/update-transport-leg.dto';
+import { CancelTransportLegDto } from './dto/cancel-transport-leg.dto';
 
 /**
  * Referral intake (#228). Every route is gated `MANAGE_TRANSPORT_REQUESTS` —
@@ -35,7 +41,11 @@ import { DecideTransportRequestDto } from './dto/decide-transport-request.dto';
 @UseInterceptors(AuditInterceptor)
 @Controller('transport-requests')
 export class TransportRequestsController {
-  constructor(private readonly transportRequests: TransportRequestsService) {}
+  constructor(
+    private readonly transportRequests: TransportRequestsService,
+    private readonly treatmentPlans: TransportRequestTreatmentPlansService,
+    private readonly legs: TransportRequestLegsService,
+  ) {}
 
   @Get()
   @Actions(Action.MANAGE_TRANSPORT_REQUESTS)
@@ -105,5 +115,65 @@ export class TransportRequestsController {
   @Actions(Action.MANAGE_TRANSPORT_REQUESTS)
   remove(@Param('id') id: string) {
     return this.transportRequests.remove(id);
+  }
+
+  // ─── Treatment plans (#230) ──────────────────────────────────────────────
+
+  @Get(':id/treatment-plans')
+  @Actions(Action.MANAGE_TRANSPORT_REQUESTS)
+  findTreatmentPlans(@Param('id') id: string) {
+    return this.treatmentPlans.findAllForRequest(id);
+  }
+
+  /** Creating a plan materialises its legs immediately — see
+   * `TransportRequestTreatmentPlansService.create`. */
+  @Post(':id/treatment-plans')
+  @Actions(Action.MANAGE_TRANSPORT_REQUESTS)
+  createTreatmentPlan(@Param('id') id: string, @Body() dto: CreateTreatmentPlanDto) {
+    return this.treatmentPlans.create(id, dto);
+  }
+
+  /** Re-runs the generator afterwards — see
+   * `TransportRequestTreatmentPlansService.update`. */
+  @Patch('treatment-plans/:planId')
+  @Actions(Action.MANAGE_TRANSPORT_REQUESTS)
+  updateTreatmentPlan(@Param('planId') planId: string, @Body() dto: UpdateTreatmentPlanDto) {
+    return this.treatmentPlans.update(planId, dto);
+  }
+
+  // ─── Transport legs (#230) ───────────────────────────────────────────────
+
+  @Get(':id/legs')
+  @Actions(Action.MANAGE_TRANSPORT_REQUESTS)
+  findLegs(@Param('id') id: string) {
+    return this.legs.findAllForRequest(id);
+  }
+
+  /** For a referral with no `TreatmentPlan` at all — see
+   * `TransportRequestLegsService.generateOneOff`. */
+  @Post(':id/legs/generate-one-off')
+  @Actions(Action.MANAGE_TRANSPORT_REQUESTS)
+  generateOneOffLegs(@Param('id') id: string) {
+    return this.legs.generateOneOff(id);
+  }
+
+  /** Address/facility/time detail, plus a reschedule via `date` — never
+   * touches the plan above the leg. */
+  @Patch('legs/:legId')
+  @Actions(Action.MANAGE_TRANSPORT_REQUESTS)
+  updateLeg(@Param('legId') legId: string, @Body() dto: UpdateTransportLegDto) {
+    return this.legs.update(legId, dto);
+  }
+
+  @Post('legs/:legId/cancel')
+  @Actions(Action.MANAGE_TRANSPORT_REQUESTS)
+  cancelLeg(@Param('legId') legId: string, @Body() dto: CancelTransportLegDto) {
+    return this.legs.cancel(legId, dto);
+  }
+
+  @Post('legs/:legId/no-show')
+  @Actions(Action.MANAGE_TRANSPORT_REQUESTS)
+  markLegNoShow(@Param('legId') legId: string) {
+    return this.legs.markNoShow(legId);
   }
 }
