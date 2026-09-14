@@ -59,7 +59,7 @@ export function renderReport(data: ReportData): string {
   sections.push(`**${data.counters.totalDeleted()} existing row(s) would be deleted** — see Retractions below.\n`);
   sections.push(
     table(
-      ['Entity', 'Created', 'Adopted', 'Updated', 'Unchanged', 'Rejected', 'Deleted'],
+      ['Entity', 'Created', 'Adopted', 'Updated', 'Unchanged', 'Duplicate', 'Rejected', 'Deleted'],
       data.counters
         .entities()
         .sort()
@@ -71,6 +71,7 @@ export function renderReport(data: ReportData): string {
             String(c.adopted),
             String(c.updated),
             String(c.unchanged),
+            String(c.duplicate),
             String(c.rejected),
             String(c.deleted),
           ];

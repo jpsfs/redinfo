@@ -1,12 +1,18 @@
+import { Prisma } from '@prisma/client';
 import { LegacyIdMapClient, adoptOrCreate, legacyKey, sourceHash } from './upsert-engine';
 
 /**
  * A minimal in-memory stand-in for `prisma.legacyIdMap`, covering exactly the
  * three calls `adoptOrCreate` makes. Keeps this spec a `jest`-only unit test
  * with no database, per `packages/backend/CLAUDE.md`'s test-triad split.
+ *
+ * `create` also enforces `@@unique([entity, newId])`, throwing the same
+ * shape of `P2002` the real database would — `adoptOrCreate`'s collision
+ * branch is only reachable if the fake mirrors that constraint.
  */
 function fakeLegacyIdMapClient(): LegacyIdMapClient {
   const rows = new Map<string, { id: string; entity: string; legacyId: string; newId: string; sourceHash: string }>();
+  const newIdsTaken = new Set<string>();
   let nextId = 1;
 
   return {
@@ -16,9 +22,18 @@ function fakeLegacyIdMapClient(): LegacyIdMapClient {
         return rows.get(key) ?? null;
       },
       create: async ({ data }: any) => {
+        const newIdKey = `${data.entity}::${data.newId}`;
+        if (newIdsTaken.has(newIdKey)) {
+          throw new Prisma.PrismaClientKnownRequestError('Unique constraint failed on the fields: (`entity`,`newId`)', {
+            code: 'P2002',
+            clientVersion: '5.22.0',
+            meta: { modelName: 'LegacyIdMap', target: ['entity', 'newId'] },
+          });
+        }
         const id = `map-${nextId++}`;
         const row = { id, entity: data.entity, legacyId: data.legacyId, newId: data.newId, sourceHash: data.sourceHash };
         rows.set(`${data.entity}::${data.legacyId}`, row);
+        newIdsTaken.add(newIdKey);
         return row;
       },
       update: async ({ where, data }: any) => {
@@ -149,5 +164,66 @@ describe('adoptOrCreate', () => {
     });
     expect(result).toEqual({ newId: 'row-id', outcome: 'updated' });
     expect(update).toHaveBeenCalledWith('row-id');
+  });
+
+  it('when a second legacy row adopts a target another legacyId already mapped, keeps the first mapping and applies legacy\'s values instead of throwing', async () => {
+    // Mirrors the real incident: an `escala` row with mes "9" and one with
+    // mes "Setembro" for the same day/turno/crew resolve to the same
+    // ScheduleAssignment natural key, but carry different `legacyId`s.
+    const tx = fakeLegacyIdMapClient();
+    await adoptOrCreate({
+      ...baseParams,
+      legacyId: 'escala:9|manha|2026|3|condutor',
+      tx,
+      sourceHash: 'hash-1',
+      naturalKeyLookup: async () => null,
+      create: async () => 'assignment-1',
+      update: async () => {},
+    });
+
+    const update = jest.fn();
+    const create = jest.fn(() => {
+      throw new Error('must not create a second row for the same target');
+    });
+    const result = await adoptOrCreate({
+      ...baseParams,
+      legacyId: 'escala:Setembro|manha|2026|3|condutor',
+      tx,
+      sourceHash: 'hash-2',
+      naturalKeyLookup: async () => 'assignment-1',
+      create,
+      update,
+    });
+
+    expect(result).toEqual({ newId: 'assignment-1', outcome: 'duplicate' });
+    expect(update).toHaveBeenCalledWith('assignment-1');
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it('still throws a P2002 that is not the (entity, newId) collision', async () => {
+    const tx: LegacyIdMapClient = {
+      legacyIdMap: {
+        findUnique: async () => null,
+        create: async () => {
+          throw new Prisma.PrismaClientKnownRequestError('Unique constraint failed on the fields: (`id`)', {
+            code: 'P2002',
+            clientVersion: '5.22.0',
+            meta: { modelName: 'LegacyIdMap', target: ['id'] },
+          });
+        },
+        update: async () => ({}) as any,
+      },
+    } as unknown as LegacyIdMapClient;
+
+    await expect(
+      adoptOrCreate({
+        ...baseParams,
+        tx,
+        sourceHash: 'hash-1',
+        naturalKeyLookup: async () => 'existing-id',
+        create: async () => 'unused',
+        update: async () => {},
+      }),
+    ).rejects.toThrow('Unique constraint failed');
   });
 });
