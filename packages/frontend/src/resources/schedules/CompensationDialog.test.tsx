@@ -24,7 +24,6 @@ const mockApiFetch = apiFetch as unknown as Mock;
 const i18nProvider = polyglotI18nProvider(messages, 'en');
 
 const assignment = (overrides: Partial<ScheduleAssignment> & { id: string }): ScheduleAssignment => ({
-  id: overrides.id,
   scheduleId: SCHEDULE_ID,
   date: '2026-10-03',
   slot: 1,
@@ -154,8 +153,8 @@ describe('CompensationDialog', () => {
     });
   });
 
-  it('surfaces a coded API error in translation', async () => {
-    mockApiFetch.mockRejectedValue(new ApiError('Refused', 400, 'API_ERROR', {}));
+  it('falls back to the raw message for an API error with no code', async () => {
+    mockApiFetch.mockRejectedValue(new ApiError('Refused', 400, undefined, {}));
     renderDialog({
       target: target({
         shift: shift({
