@@ -96,6 +96,17 @@ describe('INEMStatusPage', () => {
     expect(screen.getByText('No crew')).toBeInTheDocument();
   });
 
+  it('shows "Dispatched" over "Available" when INEM reports the unit acted on a call, even though redinfo\'s own desired/reported codes both say available', async () => {
+    mockApiFetch.mockResolvedValue(
+      overview([unit({ desiredInopCode: '00', reportedInopCode: '00', reportedActive: 'Acionado' })]),
+    );
+    renderPage();
+
+    await screen.findByText('12-AB-34 – CV1');
+    expect(screen.getByText('Dispatched')).toBeInTheDocument();
+    expect(screen.queryByText('Available')).not.toBeInTheDocument();
+  });
+
   it('shows a neutral "not set" chip when no one has ever chosen a status for the unit', async () => {
     mockApiFetch.mockResolvedValue(overview([unit({ desiredInopCode: null })]));
     renderPage();
