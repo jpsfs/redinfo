@@ -69,6 +69,36 @@ export class TransportRequestLegsService {
     return rows.map((row) => serializeTransportLeg(row as TransportLegRow, context));
   }
 
+  /** Every leg due on `date` with no `TripStop` yet — the planning board's
+   * (#235) unassigned-legs rail. A cancelled/no-show leg never needs
+   * planning, whatever the date. */
+  async findUnassignedForDate(date: string): Promise<TransportLeg[]> {
+    const [rows, context] = await Promise.all([
+      this.prisma.transportLeg.findMany({
+        where: {
+          date: parseIsoDate(date),
+          status: { notIn: [LegStatus.CANCELLED, LegStatus.NO_SHOW] },
+          tripStops: { none: {} },
+        },
+        include: TRANSPORT_LEG_INCLUDE,
+        orderBy: [{ direction: 'asc' }, { plannedPickupAt: 'asc' }],
+      }),
+      this.loadPolicyContext(),
+    ]);
+    return rows.map((row) => serializeTransportLeg(row as TransportLegRow, context));
+  }
+
+  /** Batch lookup for the board's already-assigned stops (#235) — one call
+   * for every leg referenced across every lane, never one per stop. */
+  async findByIds(ids: string[]): Promise<TransportLeg[]> {
+    if (ids.length === 0) return [];
+    const [rows, context] = await Promise.all([
+      this.prisma.transportLeg.findMany({ where: { id: { in: ids } }, include: TRANSPORT_LEG_INCLUDE }),
+      this.loadPolicyContext(),
+    ]);
+    return rows.map((row) => serializeTransportLeg(row as TransportLegRow, context));
+  }
+
   /**
    * Materialises every leg a plan's validity period + `daysOfWeek` implies
    * that doesn't exist yet — outbound always, return only when the parent

@@ -5,6 +5,8 @@ import { StaffAbsencesModule } from '../staff-absences/staff-absences.module';
 import { VehicleOccupancyModule } from '../vehicle-occupancy/vehicle-occupancy.module';
 import { TransportConfigModule } from '../transport-config/transport-config.module';
 import { RoutingModule } from '../routing/routing.module';
+import { TransportRequestsModule } from '../transport-requests/transport-requests.module';
+import { PatientsModule } from '../patients/patients.module';
 import { TripsService } from './trips.service';
 import { TripCrewService } from './trip-crew.service';
 import { TripStopsService } from './trip-stops.service';
@@ -19,9 +21,20 @@ import { TripsController } from './trips.controller';
  * occupancy interval, `TransportConfigModule` for the occurrence-type
  * duration floors the break-even helper resolves a leg's estimated end
  * against, `RoutingModule` for that same helper's travel-to-base call.
+ * `TransportRequestsModule` (`TransportRequestLegsService`) and
+ * `PatientsModule` feed `getBoard` (#235) — the planning board's leg cards,
+ * assigned and unassigned alike.
  */
 @Module({
-  imports: [LiveRunsModule, StaffAbsencesModule, VehicleOccupancyModule, TransportConfigModule, RoutingModule],
+  imports: [
+    LiveRunsModule,
+    StaffAbsencesModule,
+    VehicleOccupancyModule,
+    TransportConfigModule,
+    RoutingModule,
+    TransportRequestsModule,
+    PatientsModule,
+  ],
   providers: [TripsService, TripCrewService, TripStopsService, TripBreakEvenService, AuditInterceptor],
   controllers: [TripsController],
 })

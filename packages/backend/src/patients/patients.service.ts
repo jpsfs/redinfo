@@ -150,6 +150,36 @@ export class PatientsService {
     return serializePatient(row, false);
   }
 
+  /**
+   * Batched name+mobility lookup for a caller that needs many patients at
+   * once — the transport planning board's leg cards (#235), one call for
+   * every patient referenced across a whole day rather than one per leg.
+   * Degrades the same way `findOne` does: a caller without
+   * `VIEW_PATIENT_IDENTITY` gets mobility only.
+   */
+  async findManyForDisplay(
+    ids: string[],
+    user: RequestUser,
+  ): Promise<Map<string, { mobility: PatientMobility; fullName: string | null }>> {
+    if (ids.length === 0) return new Map();
+    const seeIdentity = canSeeIdentity(user);
+    const rows = await this.prisma.patient.findMany({
+      where: { id: { in: ids } },
+      select: seeIdentity ? PATIENT_SELECT_WITH_IDENTITY : PATIENT_SELECT,
+    });
+    return new Map(
+      rows.map((row) => [
+        row.id,
+        {
+          mobility: row.mobility as PatientMobility,
+          fullName: seeIdentity
+            ? (this.openIdentity(row as PatientRowWithIdentity).identity?.fullName ?? null)
+            : null,
+        },
+      ]),
+    );
+  }
+
   async create(dto: CreatePatientDto, user: RequestUser): Promise<Patient> {
     const seeIdentity = canSeeIdentity(user);
     if (dto.identity !== undefined && dto.identity !== null && !seeIdentity) {

@@ -27,6 +27,8 @@ import { TransportRequestsController } from './transport-requests.controller';
   imports: [FacilitiesModule, StaffAbsencesModule, VehicleOccupancyModule, LiveRunsModule, TransportConfigModule],
   providers: [TransportRequestsService, TransportRequestTreatmentPlansService, TransportRequestLegsService, AuditInterceptor],
   controllers: [TransportRequestsController],
-  exports: [TransportRequestsService],
+  // `TransportRequestLegsService` is also exported for `TripsModule`'s
+  // planning board (#235), which needs its unassigned-legs-by-date query.
+  exports: [TransportRequestsService, TransportRequestLegsService],
 })
 export class TransportRequestsModule {}

@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto';
 import { PrismaClient } from '@prisma/client';
 import { ConflictException } from '@nestjs/common';
 import {
@@ -16,6 +17,10 @@ import { PrismaService } from '../prisma/prisma.service';
 import { DelegationSettingsService } from '../live-runs/delegation-settings.service';
 import { StaffAbsencesService } from '../staff-absences/staff-absences.service';
 import { VehicleOccupancyService } from '../vehicle-occupancy/vehicle-occupancy.service';
+import { OccurrenceTypePoliciesService } from '../transport-config/occurrence-type-policies.service';
+import { TransportRequestLegsService } from '../transport-requests/transport-request-legs.service';
+import { PatientsService } from '../patients/patients.service';
+import { IdentityCipher } from '../common/identity-cipher';
 import { TripsService } from './trips.service';
 import { TripCrewService } from './trip-crew.service';
 import { TripStopsService } from './trip-stops.service';
@@ -41,7 +46,17 @@ describeIntegration('TripsService/TripStopsService/TripCrewService (integration)
   const delegationSettings = new DelegationSettingsService(prisma);
   const staffAbsences = new StaffAbsencesService(prisma);
   const vehicleOccupancy = new VehicleOccupancyService(prisma);
-  const trips = new TripsService(prisma, delegationSettings, staffAbsences, vehicleOccupancy);
+  const occurrenceTypePolicies = new OccurrenceTypePoliciesService(prisma);
+  const transportRequestLegs = new TransportRequestLegsService(prisma, delegationSettings, occurrenceTypePolicies);
+  const patients = new PatientsService(prisma, new IdentityCipher(`it-${RUN}:${randomBytes(32).toString('base64')}`));
+  const trips = new TripsService(
+    prisma,
+    delegationSettings,
+    staffAbsences,
+    vehicleOccupancy,
+    transportRequestLegs,
+    patients,
+  );
   const crew = new TripCrewService(prisma, staffAbsences);
   const stops = new TripStopsService(prisma, delegationSettings, vehicleOccupancy);
 

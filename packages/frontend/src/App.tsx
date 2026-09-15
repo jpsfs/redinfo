@@ -71,6 +71,7 @@ import { INEMStatusPage } from './pages/INEMStatusPage';
 import { StaffAbsencesPage } from './pages/StaffAbsencesPage';
 import { TransportReferralsPage } from './pages/TransportReferralsPage';
 import { TransportConfigPage } from './pages/TransportConfigPage';
+import { TransportPlanningPage } from './pages/TransportPlanningPage';
 import PeopleIcon from '@mui/icons-material/People';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import BuildIcon from '@mui/icons-material/Build';
@@ -202,6 +203,10 @@ export default function App() {
             (#233), gated by MANAGE_TRANSPORT_CONFIG in the drawer manifest —
             same gating as organisations/agreements. */}
         <Route path="/transport-config" element={<TransportConfigPage />} />
+        {/* Timeline lanes with drag assignment (#235) — the manual planning
+            board Feature #219 builds ahead of any route optimisation, gated
+            by PLAN_TRANSPORT_TRIPS in the drawer manifest. */}
+        <Route path="/transport-planning" element={<TransportPlanningPage />} />
         {/* The delegation's INEM units — availability toggle, INOP reason,
             syncing badge and degraded-session banner (#216), gated by
             MANAGE_INEM_STATUS in the drawer manifest. Not react-admin CRUD:

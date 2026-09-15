@@ -4,7 +4,9 @@ import { Action } from '@redinfo/shared';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Actions } from '../auth/decorators/roles.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuditInterceptor } from '../auth/interceptors/audit.interceptor';
+import { RequestUser } from '../patients/patients.service';
 import { TripsService } from './trips.service';
 import { TripCrewService } from './trip-crew.service';
 import { TripStopsService } from './trip-stops.service';
@@ -41,6 +43,16 @@ export class TripsController {
   @ApiQuery({ name: 'vehicleId', required: false })
   list(@Query('date') date?: string, @Query('vehicleId') vehicleId?: string) {
     return this.trips.list({ date, vehicleId });
+  }
+
+  /** Every lane for `date` plus the legs still waiting to be dragged onto
+   * one (#235) — `TransportPlanningPage`'s one call. Declared before `:id`
+   * so `board` is never swallowed as an id. */
+  @Get('board')
+  @Actions(Action.PLAN_TRANSPORT_TRIPS)
+  @ApiQuery({ name: 'date', required: true, description: 'ISO date' })
+  getBoard(@Query('date') date: string, @CurrentUser() user: RequestUser) {
+    return this.trips.getBoard(date, user);
   }
 
   @Get(':id')

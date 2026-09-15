@@ -8392,6 +8392,64 @@ export function computeDwellBreakEven(expectedDwellMinutes: number, travelToBase
   };
 }
 
+// ─── Planning board (#235) ──────────────────────────────────────────────────
+//
+// `GET /trips/board?date=` — everything `TransportPlanningPage` needs for one
+// date in a single call. The board never re-derives `TripsService.getDetail`'s
+// ranked validation; it only adds the patient-facing facts a leg card needs
+// (`TransportPlanningLeg`) and the vehicle header a lane needs
+// (`TransportPlanningLane.vehicle`). Maintenance and shift commitments are
+// deliberately absent here — the board fetches those straight off
+// `VehicleOccupancy` itself, so this module never has to know they exist.
+
+/**
+ * One leg as a board card needs to see it — every `TransportLeg` field
+ * (addresses, arrival-window warning, effective estimated end) plus the
+ * patient facts the card displays. `patientName` is omitted for a caller
+ * without `VIEW_PATIENT_IDENTITY`, the same degrade `PatientIdentity` itself
+ * uses.
+ */
+export interface TransportPlanningLeg extends TransportLeg {
+  patientId: string;
+  patientMobility: PatientMobility;
+  patientName?: string;
+}
+
+/** One vehicle's lane for a day — a `Trip` plus everything
+ * `TripsService.getDetail` already computes for it, so the board never
+ * re-derives capacity/availability/arrival-timing issues itself. */
+export interface TransportPlanningLane {
+  trip: Trip;
+  vehicle: {
+    id: string;
+    licensePlate: string;
+    numeroCauda: string;
+    vehicleType: VehicleType;
+    seatedCapacity: number;
+    wheelchairPositions: number;
+    stretcherPositions: number;
+  };
+  crewMembers: TripCrewMember[];
+  stops: TripStop[];
+  /** Null when the lane has no stops yet. */
+  occupancyWindow: { startsAt: string; endsAt: string } | null;
+  emptyLegs: TripStopSegment[];
+  issues: TripPlanIssue[];
+}
+
+/**
+ * `legsById` covers both an assigned stop (looked up by its
+ * `transportLegId`) and the rail (`unassignedLegIds`, in display order) —
+ * one lookup table rather than two differently-shaped leg lists.
+ */
+export interface TransportPlanningBoard {
+  /** ISO date. */
+  date: string;
+  lanes: TransportPlanningLane[];
+  legsById: Record<string, TransportPlanningLeg>;
+  unassignedLegIds: string[];
+}
+
 // ─── API error codes (#180 phase 4) ───────────────────────────────────────────
 //
 // A machine code for the business-rule failures that are genuinely worth a

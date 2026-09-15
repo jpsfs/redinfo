@@ -24,6 +24,7 @@ import NotificationsIcon from '@mui/icons-material/Notifications';
 import CampaignIcon from '@mui/icons-material/Campaign';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import BusinessIcon from '@mui/icons-material/Business';
+import AltRouteIcon from '@mui/icons-material/AltRoute';
 import HandshakeIcon from '@mui/icons-material/Handshake';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import RuleIcon from '@mui/icons-material/Rule';
@@ -213,6 +214,14 @@ export const NAV_SECTIONS: NavSection[] = [
         label: 'nav.transportReferrals',
         icon: <RuleIcon />,
         requires: [Action.MANAGE_TRANSPORT_REQUESTS],
+      },
+      {
+        // The manual planning board (#235) — legs, vehicles and capacity for
+        // one day, same gating as the trips API itself (no new Action).
+        to: '/transport-planning',
+        label: 'nav.transportPlanning',
+        icon: <AltRouteIcon />,
+        requires: [Action.PLAN_TRANSPORT_TRIPS],
       },
       {
         // Arrival window thresholds and occurrence-type duration floors
