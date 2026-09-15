@@ -67,7 +67,6 @@ const legRow = (overrides: Partial<Record<string, unknown>> = {}) => ({
   cancellationSource: null,
   estimatedEndAt: null,
   estimatedEndSource: null,
-  tripStopId: null,
   createdAt: new Date('2026-09-01T00:00:00.000Z'),
   updatedAt: new Date('2026-09-01T00:00:00.000Z'),
   transportRequest: { occurrenceType: TransportRequestOccurrenceType.CONSULTA, appointmentAt: REQUEST.appointmentAt },

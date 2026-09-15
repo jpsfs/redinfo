@@ -142,6 +142,8 @@ model User {
   transportRequestsCreated TransportRequest[] @relation("TransportRequestCreatedBy")
   transportRequestsDecided TransportRequest[] @relation("TransportRequestDecidedBy")
 
+  tripCrewMemberships TripCrewMember[]
+
   certifications        UserCertification[] @relation("UserCertifications")
   certificationsCreated UserCertification[] @relation("UserCertificationCreatedBy")
   profileAudits         UserProfileAudit[]  @relation("UserProfileAuditSubject")
@@ -362,6 +364,7 @@ model Vehicle {
   liveRuns              LiveRun[]
   inemUnits             INEMUnit[]
   occupancies           VehicleOccupancy[]
+  trips                 Trip[]
 
   @@index([vehicleType])
   @@index([isDeleted])
@@ -1339,6 +1342,7 @@ model Facility {
   treatmentPlans    TreatmentPlan[]
   originLegs        TransportLeg[] @relation("TransportLegOrigin")
   destinationLegs   TransportLeg[] @relation("TransportLegDestination")
+  tripStops         TripStop[]
 
   trafficFactorsAsOrigin      TrafficCorridorFactor[] @relation("TrafficFactorOriginFacility")
   trafficFactorsAsDestination TrafficCorridorFactor[] @relation("TrafficFactorDestinationFacility")
@@ -2856,12 +2860,14 @@ model TransportLeg {
   estimatedEndAt       DateTime?
   estimatedEndSource   EstimatedEndSource?
 
-  /// Placeholder for a future dispatch/live-run integration — no `TripStop`
-  /// model exists yet, so this stays a bare id rather than a relation.
-  tripStopId String?
-
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  /// A leg maps to at most two stops (one `PICKUP`, one `DROPOFF`) on
+  /// whichever `Trip` it's currently assigned to — see `TripStop` (#234).
+  /// Superseded the old bare `tripStopId` placeholder, which was never
+  /// written by anything.
+  tripStops TripStop[]
 
   @@index([transportRequestId])
   @@index([treatmentPlanId])
@@ -2869,4 +2875,110 @@ model TransportLeg {
   @@index([status])
   /// The generator's idempotency query: "which slots does this plan already cover".
   @@index([treatmentPlanId, generatedForDate, direction])
+}
+
+// ─── Trips (#234) ───────────────────────────────────────────────────────────
+//
+// The model and API behind the planning board (#235 builds the board itself).
+// A trip is not a patient's round journey: a leg's `PICKUP`+`DROPOFF` pair
+// moves between trips in one call, so the outbound and return legs of the
+// same patient on the same day may sit on different trips, with different
+// vehicles and different crews. `WAIT`/`RETURN_TO_BASE` stops carry no leg.
+
+enum TripStatus {
+  PLANNED
+  COMPLETED
+  CANCELLED
+}
+
+enum TripStopKind {
+  PICKUP
+  DROPOFF
+  WAIT
+  RETURN_TO_BASE
+}
+
+/// Decided in advance and recorded, never inferred after the fact — the two
+/// choices produce completely different vehicle occupancy. Only meaningful
+/// on a `WAIT` stop.
+enum TripStopDwell {
+  WAIT
+  RELEASE
+}
+
+model Trip {
+  id        String     @id @default(cuid())
+  date      DateTime   @db.Date
+  vehicleId String
+  vehicle   Vehicle    @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  status    TripStatus @default(PLANNED)
+  notes     String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  crewMembers TripCrewMember[]
+  stops       TripStop[]
+
+  @@index([date])
+  @@index([vehicleId])
+}
+
+model TripCrewMember {
+  id     String            @id @default(cuid())
+  tripId String
+  trip   Trip              @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  userId String
+  user   User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  /// Reuses the platform's existing crew-role vocabulary
+  /// (`UserCertification.type`) rather than inventing a second one.
+  role   CertificationType
+
+  /// Set when added despite a `StaffAbsence` covering the trip's date —
+  /// mirrors `ScheduleAssignment.certificationOverrideReason`: a recorded
+  /// reason, never a block.
+  overrideReason String?
+  createdAt      DateTime @default(now())
+
+  @@unique([tripId, userId])
+}
+
+/// One stop in a trip's ordered sequence. `PICKUP`/`DROPOFF` always arrive as
+/// a pair for the same leg — see `TransportLeg.tripStops` — created or moved
+/// together by the leg-assignment call, never one without the other.
+model TripStop {
+  id     String       @id @default(cuid())
+  tripId String
+  trip   Trip         @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  /// Assignment always appends (`max(sequence)+1`); reordering goes through
+  /// a dedicated full-list renumbering call, so this is never written to a
+  /// caller-chosen value that could collide.
+  sequence Int
+  kind     TripStopKind
+
+  /// Null for `WAIT`/`RETURN_TO_BASE` — those carry no leg.
+  transportLegId String?
+  transportLeg   TransportLeg? @relation(fields: [transportLegId], references: [id], onDelete: SetNull)
+  /// The facility being waited at (`WAIT`) — not used for `RETURN_TO_BASE`,
+  /// which always targets `DelegationSettings`' own base.
+  facilityId     String?
+  facility       Facility?     @relation(fields: [facilityId], references: [id], onDelete: SetNull)
+  address        String?
+  latitude       Float?
+  longitude      Float?
+
+  /// The crew's instruction, stored once planned — never recomputed on read.
+  plannedAt DateTime
+  actualAt  DateTime?
+
+  /// Only meaningful on a `WAIT` stop. `dwellMinutes` is what makes the
+  /// dwell real vehicle occupancy: see `computeTripOccupancyWindow` (shared).
+  dwellDecision TripStopDwell?
+  dwellMinutes  Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tripId, sequence])
+  @@index([transportLegId])
+  @@index([facilityId])
 }

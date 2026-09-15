@@ -83,7 +83,6 @@ export type TransportLegRow = {
   cancellationSource: string | null;
   estimatedEndAt: Date | null;
   estimatedEndSource: string | null;
-  tripStopId: string | null;
   createdAt: Date;
   updatedAt: Date;
   transportRequest: { occurrenceType: string; appointmentAt: Date };
@@ -148,7 +147,6 @@ export function serializeTransportLeg(row: TransportLegRow, context: LegPolicyCo
       row.direction === LegDirection.OUTBOUND && plannedDropoffAt
         ? arrivalWindowWarning(plannedDropoffAt, appointmentAt, effectiveThresholds)
         : null,
-    tripStopId: row.tripStopId,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
   };

@@ -114,7 +114,6 @@ const LEG: TransportLeg = {
   estimatedEndSource: null,
   effectiveEstimatedEndAt: '2026-09-14T09:30:00.000Z',
   arrivalWindowWarning: null,
-  tripStopId: null,
   createdAt: '2026-09-01T00:00:00.000Z',
   updatedAt: '2026-09-01T00:00:00.000Z',
 };

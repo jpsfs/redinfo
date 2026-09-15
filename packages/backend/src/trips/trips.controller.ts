@@ -1,0 +1,127 @@
+import { Body, Controller, Delete, Get, Param, Patch, Post, Put, Query, UseGuards, UseInterceptors } from '@nestjs/common';
+import { ApiBearerAuth, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { Action } from '@redinfo/shared';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RolesGuard } from '../auth/guards/roles.guard';
+import { Actions } from '../auth/decorators/roles.decorator';
+import { AuditInterceptor } from '../auth/interceptors/audit.interceptor';
+import { TripsService } from './trips.service';
+import { TripCrewService } from './trip-crew.service';
+import { TripStopsService } from './trip-stops.service';
+import { TripBreakEvenService } from './trip-break-even.service';
+import { CreateTripDto } from './dto/create-trip.dto';
+import { UpdateTripDto } from './dto/update-trip.dto';
+import { AddTripCrewMemberDto } from './dto/add-trip-crew-member.dto';
+import { AssignTransportLegDto } from './dto/assign-transport-leg.dto';
+import { CreateTripStopDto } from './dto/create-trip-stop.dto';
+import { UpdateTripStopDto } from './dto/update-trip-stop.dto';
+import { ReorderTripStopsDto } from './dto/reorder-trip-stops.dto';
+
+/**
+ * The model and API behind the planning board (#234) — the board itself is
+ * #235. Every route is gated `PLAN_TRANSPORT_TRIPS` (#225): "build the day's
+ * trips — assign legs to a vehicle and crew, sequence stops."
+ */
+@ApiTags('Trips')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, RolesGuard)
+@UseInterceptors(AuditInterceptor)
+@Controller('trips')
+export class TripsController {
+  constructor(
+    private readonly trips: TripsService,
+    private readonly crew: TripCrewService,
+    private readonly stops: TripStopsService,
+    private readonly breakEven: TripBreakEvenService,
+  ) {}
+
+  @Get()
+  @Actions(Action.PLAN_TRANSPORT_TRIPS)
+  @ApiQuery({ name: 'date', required: false, description: 'ISO date' })
+  @ApiQuery({ name: 'vehicleId', required: false })
+  list(@Query('date') date?: string, @Query('vehicleId') vehicleId?: string) {
+    return this.trips.list({ date, vehicleId });
+  }
+
+  @Get(':id')
+  @Actions(Action.PLAN_TRANSPORT_TRIPS)
+  getDetail(@Param('id') id: string) {
+    return this.trips.getDetail(id);
+  }
+
+  @Post()
+  @Actions(Action.PLAN_TRANSPORT_TRIPS)
+  create(@Body() dto: CreateTripDto) {
+    return this.trips.create(dto);
+  }
+
+  @Patch(':id')
+  @Actions(Action.PLAN_TRANSPORT_TRIPS)
+  update(@Param('id') id: string, @Body() dto: UpdateTripDto) {
+    return this.trips.update(id, dto);
+  }
+
+  @Delete(':id')
+  @Actions(Action.PLAN_TRANSPORT_TRIPS)
+  remove(@Param('id') id: string) {
+    return this.trips.remove(id);
+  }
+
+  @Post(':id/crew')
+  @Actions(Action.PLAN_TRANSPORT_TRIPS)
+  addCrewMember(@Param('id') tripId: string, @Body() dto: AddTripCrewMemberDto) {
+    return this.crew.add(tripId, dto);
+  }
+
+  @Delete(':id/crew/:crewMemberId')
+  @Actions(Action.PLAN_TRANSPORT_TRIPS)
+  removeCrewMember(@Param('id') tripId: string, @Param('crewMemberId') crewMemberId: string) {
+    return this.crew.remove(tripId, crewMemberId);
+  }
+
+  /** Creates or moves the leg's `PICKUP`+`DROPOFF` pair onto this trip —
+   * see `TripStopsService.assignLegToTrip`. */
+  @Post(':id/legs')
+  @Actions(Action.PLAN_TRANSPORT_TRIPS)
+  assignLeg(@Param('id') tripId: string, @Body() dto: AssignTransportLegDto) {
+    return this.stops.assignLegToTrip(tripId, dto);
+  }
+
+  @Delete(':id/legs/:legId')
+  @Actions(Action.PLAN_TRANSPORT_TRIPS)
+  unassignLeg(@Param('id') tripId: string, @Param('legId') legId: string) {
+    return this.stops.unassignLeg(tripId, legId);
+  }
+
+  /** A `WAIT`/`RETURN_TO_BASE` stop — see `TripStopsService.addStop`. */
+  @Post(':id/stops')
+  @Actions(Action.PLAN_TRANSPORT_TRIPS)
+  addStop(@Param('id') tripId: string, @Body() dto: CreateTripStopDto) {
+    return this.stops.addStop(tripId, dto);
+  }
+
+  @Put(':id/stops/order')
+  @Actions(Action.PLAN_TRANSPORT_TRIPS)
+  reorderStops(@Param('id') tripId: string, @Body() dto: ReorderTripStopsDto) {
+    return this.stops.reorderStops(tripId, dto);
+  }
+
+  @Patch(':id/stops/:stopId')
+  @Actions(Action.PLAN_TRANSPORT_TRIPS)
+  updateStop(@Param('id') tripId: string, @Param('stopId') stopId: string, @Body() dto: UpdateTripStopDto) {
+    return this.stops.updateStop(tripId, stopId, dto);
+  }
+
+  @Delete(':id/stops/:stopId')
+  @Actions(Action.PLAN_TRANSPORT_TRIPS)
+  deleteStop(@Param('id') tripId: string, @Param('stopId') stopId: string) {
+    return this.stops.deleteStop(tripId, stopId);
+  }
+
+  /** Wait-vs-release as data — see `TripBreakEvenService`. */
+  @Get(':id/stops/:stopId/break-even')
+  @Actions(Action.PLAN_TRANSPORT_TRIPS)
+  getBreakEven(@Param('id') tripId: string, @Param('stopId') stopId: string) {
+    return this.breakEven.getBreakEven(tripId, stopId);
+  }
+}

@@ -28,6 +28,7 @@ import { OrganisationsModule } from './organisations/organisations.module';
 import { TransportRequestsModule } from './transport-requests/transport-requests.module';
 import { TransportConfigModule } from './transport-config/transport-config.module';
 import { RoutingModule } from './routing/routing.module';
+import { TripsModule } from './trips/trips.module';
 
 @Module({
   imports: [
@@ -63,6 +64,7 @@ import { RoutingModule } from './routing/routing.module';
     TransportRequestsModule,
     TransportConfigModule,
     RoutingModule,
+    TripsModule,
   ],
 })
 export class AppModule {}

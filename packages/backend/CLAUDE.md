@@ -16,7 +16,7 @@ NestJS + Prisma. Read `../shared/CLAUDE.md` first if the feature touches shared 
 Current modules: `auth`, `availability`, `event-reports`, `facilities`, `geography`, `health`,
 `inem`, `inventory`, `live-runs`, `notices`, `notifications`, `organisations`, `paid-staff-schedule`,
 `patients`, `routing`, `schedules`, `staff-absences`, `statistics`, `storage`, `transport-config`,
-`transport-requests`, `users`, `vehicles`, `vehicle-occupancy`, `volunteer-hours`,
+`transport-requests`, `trips`, `users`, `vehicles`, `vehicle-occupancy`, `volunteer-hours`,
 `employment-contracts`, `prisma`.
 New modules are wired into `src/app.module.ts`.
 Bootstrap (global `ValidationPipe`, global `ApiErrorFilter`, port 3000) is in `src/main.ts`.
@@ -108,6 +108,18 @@ occurrence-type duration floors/defaults (`OccurrenceTypePoliciesService`, the
 per-facility override of the thresholds lives on `Facility` itself
 (`arrivalWindow*Override`/`arrivalToleranceMinutesOverride`), not here — see
 `resolveArrivalWindowThresholds` in shared.
+
+`trips` (#234) is the model/API behind the planning board — the board itself is #235. Split by
+concern: `TripsService` (CRUD + `getDetail`'s read-time ranked validation), `TripCrewService`
+(crew assignment), `TripStopsService` (assign/unassign a leg's `PICKUP`+`DROPOFF` pair, `WAIT`/
+`RETURN_TO_BASE` stops, reordering), `TripBreakEvenService` (the wait-vs-release helper). Hard
+constraints throw unless overridden at write time (capacity has **no** override — a physical
+limit, not a judgement call; crew/vehicle availability mirror `ScheduleAssignment`'s override
+precedent); arrival timing is soft and only ever surfaced on read, never blocking. A trip owns
+exactly one `VehicleOccupancy` interval, recomputed via a new `rebookForSource` method on
+`VehicleOccupancyService` every time the stop set changes — see that service's own doc comment
+for why neither `book` nor `syncForSource` fit alone. Every route gated `PLAN_TRANSPORT_TRIPS`
+(#225), no new `Action`.
 
 ## Controller pattern
 
@@ -218,6 +230,13 @@ Model index by domain (names only — grep for fields/relations):
   `estimatedEndAt`/`estimatedEndSource` (#233) — a leg's own supplied end time and who supplied
   it, editable and internal; never blank at read time, see `effectiveEstimatedEndAt`/
   `arrivalWindowWarning` in shared and `transport-config`'s module entry above
+- **Trips** (#234): `Trip` — a vehicle and crew on a date, not a patient's round journey;
+  `TripCrewMember` — reuses `CertificationType` for `role`, `overrideReason` for an absence
+  accepted anyway; `TripStop` — an ordered sequence, `PICKUP`/`DROPOFF` always a pair for the
+  same leg (`transportLegId`), `WAIT`/`RETURN_TO_BASE` carry none. `sequence` is manifest/display
+  order only; capacity and occupancy are computed off `plannedAt` (calendar time), not sequence
+  — see `walkTripStops` in shared. Superseded `TransportLeg.tripStopId`, a placeholder column
+  nothing ever wrote to
 
 Migrations: `prisma:migrate` (dev, interactive) / `prisma:migrate:deploy` (non-interactive —
 prefer this in scripts/CI, per `.github/AI-GOVERNANCE.md`). Run `prisma:generate` after every

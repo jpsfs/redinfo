@@ -7922,8 +7922,6 @@ export interface TransportLeg {
   status: LegStatus;
   cancellationReason: string | null;
   cancellationSource: LegCancellationSource | null;
-  /** Placeholder for a future dispatch/live-run integration. */
-  tripStopId: string | null;
 
   /** ISO datetime — when the facility said, or the coordinator judged, the
    * occurrence will end (#233). Editable and internal; never stored as
@@ -8021,6 +8019,377 @@ export function validateCancelTransportLeg(input: CancelTransportLegInput): stri
     return 'Choose who or what caused the cancellation.';
   }
   return null;
+}
+
+// ─── Trips (#234) ───────────────────────────────────────────────────────────
+//
+// The model and API behind the planning board — the board itself is #235. A
+// `Trip` is a vehicle and crew on a date, carrying an ordered `TripStop`
+// sequence that serves several patients' `TransportLeg`s. A trip is **not**
+// a patient's round journey: a leg's `PICKUP`/`DROPOFF` pair moves between
+// trips in one call (`AssignTransportLegInput`), so the outbound and return
+// legs of the same patient on the same day may sit on different trips, with
+// different vehicles and different crews. `WAIT`/`RETURN_TO_BASE` stops
+// carry no leg at all.
+//
+// Validation follows the override precedent used everywhere else in this
+// schema (`ScheduleAssignment.isOverride`/`certificationOverrideReason`,
+// `VehicleOccupancy.overrideReason`): a hard constraint throws unless a
+// recorded reason is supplied in the same call. Vehicle capacity is the one
+// exception with **no** override field — it's a physical limit, not a
+// judgement call. Arrival timing is soft and never throws; it's exposed as
+// data for the board to rank (`TripPlanIssue`), never a block.
+
+export enum TripStatus {
+  PLANNED = 'PLANNED',
+  COMPLETED = 'COMPLETED',
+  CANCELLED = 'CANCELLED',
+}
+
+export enum TripStopKind {
+  PICKUP = 'PICKUP',
+  DROPOFF = 'DROPOFF',
+  WAIT = 'WAIT',
+  RETURN_TO_BASE = 'RETURN_TO_BASE',
+}
+
+/**
+ * Decided in advance and recorded, never inferred after the fact — the two
+ * choices produce completely different vehicle occupancy. Only meaningful on
+ * a `WAIT` stop.
+ */
+export enum TripStopDwell {
+  WAIT = 'WAIT',
+  RELEASE = 'RELEASE',
+}
+
+export const MAX_TRIP_NOTES_LENGTH = 2000;
+export const MAX_OVERRIDE_REASON_LENGTH = 500;
+
+export interface Trip {
+  id: string;
+  /** ISO date. */
+  date: string;
+  vehicleId: string;
+  status: TripStatus;
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateTripInput {
+  date: string;
+  vehicleId: string;
+  notes?: string | null;
+}
+
+export function validateCreateTrip(input: CreateTripInput): string | null {
+  if (!input.date) return 'Give the date the trip serves.';
+  if (!input.vehicleId) return 'Choose a vehicle.';
+  if (input.notes && input.notes.length > MAX_TRIP_NOTES_LENGTH) {
+    return `Notes may be at most ${MAX_TRIP_NOTES_LENGTH} characters.`;
+  }
+  return null;
+}
+
+export interface TripCrewMember {
+  id: string;
+  tripId: string;
+  userId: string;
+  role: CertificationType;
+  /** Set when added despite a `StaffAbsence` covering the trip's date —
+   * mirrors `ScheduleAssignment.certificationOverrideReason`. */
+  overrideReason: string | null;
+  createdAt: string;
+}
+
+export interface AddTripCrewMemberInput {
+  userId: string;
+  role: CertificationType;
+  overrideReason?: string | null;
+}
+
+export function validateAddTripCrewMember(input: AddTripCrewMemberInput): string | null {
+  if (!input.userId) return 'Choose a crew member.';
+  if (!Object.values(CertificationType).includes(input.role)) return 'Choose the role they are filling.';
+  if (input.overrideReason && input.overrideReason.length > MAX_OVERRIDE_REASON_LENGTH) {
+    return `The override reason may be at most ${MAX_OVERRIDE_REASON_LENGTH} characters.`;
+  }
+  return null;
+}
+
+export interface TripStop {
+  id: string;
+  tripId: string;
+  sequence: number;
+  kind: TripStopKind;
+  transportLegId: string | null;
+  facilityId: string | null;
+  address: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  /** ISO datetime. */
+  plannedAt: string;
+  /** ISO datetime. */
+  actualAt: string | null;
+  dwellDecision: TripStopDwell | null;
+  dwellMinutes: number | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/** `POST /trips/:id/legs` — creates or moves the leg's `PICKUP`+`DROPOFF`
+ * pair onto this trip in one call; re-assigning a leg from one trip to
+ * another is this same call, not a delete-and-recreate. */
+export interface AssignTransportLegInput {
+  transportLegId: string;
+  pickupPlannedAt: string;
+  dropoffPlannedAt: string;
+}
+
+export function validateAssignTransportLeg(input: AssignTransportLegInput): string | null {
+  if (!input.transportLegId) return 'Choose a leg to assign.';
+  if (!input.pickupPlannedAt) return 'Give the planned pickup time.';
+  if (!input.dropoffPlannedAt) return 'Give the planned dropoff time.';
+  if (new Date(input.dropoffPlannedAt) < new Date(input.pickupPlannedAt)) {
+    return 'The dropoff cannot be planned before the pickup.';
+  }
+  return null;
+}
+
+/** `POST /trips/:id/stops` — a `WAIT` or `RETURN_TO_BASE` stop, the only two
+ * kinds ever added directly; `PICKUP`/`DROPOFF` only ever arrive as a pair,
+ * via `AssignTransportLegInput`. */
+export interface CreateTripStopInput {
+  kind: TripStopKind.WAIT | TripStopKind.RETURN_TO_BASE;
+  plannedAt: string;
+  /** Required for `WAIT` — the facility being waited at. Ignored for
+   * `RETURN_TO_BASE`, which always targets the delegation's own base. */
+  facilityId?: string | null;
+  dwellDecision?: TripStopDwell | null;
+  dwellMinutes?: number | null;
+}
+
+export function validateCreateTripStop(input: CreateTripStopInput): string | null {
+  if (input.kind !== TripStopKind.WAIT && input.kind !== TripStopKind.RETURN_TO_BASE) {
+    return 'Only a WAIT or RETURN_TO_BASE stop may be added directly.';
+  }
+  if (!input.plannedAt) return 'Give the planned time.';
+  if (input.kind === TripStopKind.WAIT && !input.facilityId) {
+    return 'A WAIT stop needs the facility being waited at.';
+  }
+  if (input.dwellMinutes != null && input.dwellMinutes < 0) {
+    return 'Dwell minutes cannot be negative.';
+  }
+  return null;
+}
+
+export interface UpdateTripStopInput {
+  plannedAt?: string;
+  actualAt?: string | null;
+  dwellDecision?: TripStopDwell | null;
+  dwellMinutes?: number | null;
+}
+
+export function validateUpdateTripStop(input: UpdateTripStopInput): string | null {
+  if (input.dwellMinutes != null && input.dwellMinutes < 0) {
+    return 'Dwell minutes cannot be negative.';
+  }
+  return null;
+}
+
+// ─── Ranked validation ──────────────────────────────────────────────────────
+
+export type TripPlanIssueLevel = 'ERROR' | 'WARNING' | 'NOTE';
+
+/** One ranked finding for the planning board — never a block, see the banner
+ * comment above. A human decides what to do about it. */
+export interface TripPlanIssue {
+  level: TripPlanIssueLevel;
+  code: string;
+  message: string;
+  tripStopId?: string;
+  transportLegId?: string;
+}
+
+export interface VehicleCapacityInput {
+  seatedCapacity: number;
+  wheelchairPositions: number;
+  stretcherPositions: number;
+}
+
+/** What one leg's patient adds to the vehicle while onboard — an ambulatory
+ * passenger and their escort (if any) each take a seat; a wheelchair or
+ * stretcher user takes the matching position instead. */
+export interface PassengerCapacityRequirement {
+  wheelchairPositions: number;
+  seats: number;
+  stretcherPositions: number;
+}
+
+const EMPTY_PASSENGER_DEMAND: PassengerCapacityRequirement = {
+  wheelchairPositions: 0,
+  seats: 0,
+  stretcherPositions: 0,
+};
+
+function addPassengerDemand(
+  a: PassengerCapacityRequirement,
+  b: PassengerCapacityRequirement,
+): PassengerCapacityRequirement {
+  return {
+    wheelchairPositions: a.wheelchairPositions + b.wheelchairPositions,
+    seats: a.seats + b.seats,
+    stretcherPositions: a.stretcherPositions + b.stretcherPositions,
+  };
+}
+
+/** One stop as the onboard walk needs to see it — enough to add/remove a
+ * leg's passengers and to know when the vehicle is due somewhere.
+ * `sequence` is manifest/display order only, set by whoever plans the
+ * route; the walk itself orders by `plannedAt`; see `walkTripStops`. */
+export interface TripStopWalkInput {
+  id: string;
+  sequence: number;
+  kind: TripStopKind;
+  transportLegId: string | null;
+  plannedAt: string;
+  dwellMinutes?: number | null;
+  /** Only meaningful on a `PICKUP` stop — what boards the vehicle here. */
+  passengerRequirement?: PassengerCapacityRequirement;
+}
+
+/** The vehicle's state on the stretch between two consecutive stops. */
+export interface TripStopSegment {
+  fromStopId: string;
+  toStopId: string;
+  onboardLegIds: string[];
+  demand: PassengerCapacityRequirement;
+}
+
+/**
+ * The one onboard-tracking pass every other trip computation is a map over:
+ * walks the stops **in calendar-time order**, adding a leg's passengers at
+ * its `PICKUP` and removing them at its matching `DROPOFF`. Capacity
+ * checking and empty-leg detection are both simple filters over the result
+ * — see `checkTripCapacity`/`computeEmptyLegs`.
+ *
+ * Deliberately sorted by `plannedAt`, not `sequence`: whether two
+ * wheelchair passengers are physically in the vehicle at the same moment is
+ * a fact about calendar time, independent of the manifest order a
+ * coordinator happens to have set for display. `sequence` is a tiebreaker
+ * only, for two stops planned at the same instant.
+ */
+export function walkTripStops(stops: TripStopWalkInput[]): TripStopSegment[] {
+  const ordered = [...stops].sort(
+    (a, b) => new Date(a.plannedAt).getTime() - new Date(b.plannedAt).getTime() || a.sequence - b.sequence,
+  );
+  const onboard = new Map<string, PassengerCapacityRequirement>();
+  const segments: TripStopSegment[] = [];
+
+  for (let i = 0; i < ordered.length; i++) {
+    const stop = ordered[i];
+    if (stop.kind === TripStopKind.PICKUP && stop.transportLegId) {
+      onboard.set(stop.transportLegId, stop.passengerRequirement ?? EMPTY_PASSENGER_DEMAND);
+    } else if (stop.kind === TripStopKind.DROPOFF && stop.transportLegId) {
+      onboard.delete(stop.transportLegId);
+    }
+
+    // One segment per stop, not per pair: the vehicle's state immediately
+    // after this stop, lasting until the next one — or, for the last stop,
+    // for the rest of the trip. Without a trailing self-referencing segment
+    // here, an overload created by the very last stop (a `PICKUP` with no
+    // `DROPOFF` after it yet) would never be caught by anything.
+    const next = ordered[i + 1];
+    segments.push({
+      fromStopId: stop.id,
+      toStopId: next ? next.id : stop.id,
+      onboardLegIds: [...onboard.keys()],
+      demand: [...onboard.values()].reduce(addPassengerDemand, EMPTY_PASSENGER_DEMAND),
+    });
+  }
+
+  return segments;
+}
+
+/** Over capacity for the passenger mix is a hard constraint with no override
+ * — a vehicle cannot physically seat more wheelchairs than it has positions
+ * for, whatever reason is on file. */
+export function checkTripCapacity(segments: TripStopSegment[], vehicle: VehicleCapacityInput): TripPlanIssue[] {
+  const issues: TripPlanIssue[] = [];
+  for (const segment of segments) {
+    if (segment.demand.wheelchairPositions > vehicle.wheelchairPositions) {
+      issues.push({
+        level: 'ERROR',
+        code: 'OVER_CAPACITY_WHEELCHAIR',
+        message: `${segment.demand.wheelchairPositions} wheelchair passengers exceeds the vehicle's ${vehicle.wheelchairPositions} positions.`,
+        tripStopId: segment.toStopId,
+      });
+    }
+    if (segment.demand.stretcherPositions > vehicle.stretcherPositions) {
+      issues.push({
+        level: 'ERROR',
+        code: 'OVER_CAPACITY_STRETCHER',
+        message: `${segment.demand.stretcherPositions} stretcher passengers exceeds the vehicle's ${vehicle.stretcherPositions} positions.`,
+        tripStopId: segment.toStopId,
+      });
+    }
+    if (segment.demand.seats > vehicle.seatedCapacity) {
+      issues.push({
+        level: 'ERROR',
+        code: 'OVER_CAPACITY_SEATS',
+        message: `${segment.demand.seats} seated passengers exceeds the vehicle's ${vehicle.seatedCapacity} seats.`,
+        tripStopId: segment.toStopId,
+      });
+    }
+  }
+  return issues;
+}
+
+/** The stretches where the vehicle moves with nobody in it — waste the
+ * planner is trying to squeeze out, and otherwise invisible: nobody is in
+ * the vehicle to notice. */
+export function computeEmptyLegs(segments: TripStopSegment[]): TripStopSegment[] {
+  return segments.filter((segment) => segment.onboardLegIds.length === 0);
+}
+
+/** A trip owns exactly one `VehicleOccupancy` interval, spanning every stop
+ * including a `WAIT` stop's full dwell — the interval a gap-treating model
+ * would miss, offering a vehicle that's actually standing in a hospital car
+ * park sixty kilometres away. */
+export function computeTripOccupancyWindow(
+  stops: { plannedAt: string; dwellMinutes?: number | null }[],
+): { startsAt: string; endsAt: string } {
+  if (stops.length === 0) throw new Error('A trip needs at least one stop to have an occupancy window.');
+  let startsAt = Infinity;
+  let endsAt = -Infinity;
+  for (const stop of stops) {
+    const at = new Date(stop.plannedAt).getTime();
+    startsAt = Math.min(startsAt, at);
+    endsAt = Math.max(endsAt, at + (stop.dwellMinutes ?? 0) * 60_000);
+  }
+  return { startsAt: new Date(startsAt).toISOString(), endsAt: new Date(endsAt).toISOString() };
+}
+
+/**
+ * Wait when the round trip back to base exceeds the expected dwell — exposed
+ * as data for the planning board, never decided here. Whether a crew waits
+ * or a different driver collects the patient later depends on how many
+ * drivers are free and how much work the day holds, which this function has
+ * no visibility into on purpose.
+ */
+export interface DwellBreakEven {
+  expectedDwellMinutes: number;
+  travelToBaseMinutes: number;
+  roundTripToBaseMinutes: number;
+}
+
+export function computeDwellBreakEven(expectedDwellMinutes: number, travelToBaseMinutes: number): DwellBreakEven {
+  return {
+    expectedDwellMinutes,
+    travelToBaseMinutes,
+    roundTripToBaseMinutes: travelToBaseMinutes * 2,
+  };
 }
 
 // ─── API error codes (#180 phase 4) ───────────────────────────────────────────

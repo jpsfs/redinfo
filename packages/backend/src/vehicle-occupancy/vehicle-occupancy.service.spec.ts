@@ -120,6 +120,47 @@ describe('VehicleOccupancyService', () => {
     });
   });
 
+  describe('rebookForSource', () => {
+    it('creates a new interval when none exists yet, with no conflicts', async () => {
+      const result = await service.rebookForSource(VehicleOccupancySource.TRANSPORT_TRIP, 'trip1', {
+        vehicleId: 'v1',
+        ...interval,
+      });
+      expect(prisma.vehicleOccupancy.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({ source: VehicleOccupancySource.TRANSPORT_TRIP, sourceId: 'trip1' }),
+      });
+      expect(result).toBeDefined();
+    });
+
+    it('updates the existing interval in place, excluding itself from the conflict check', async () => {
+      prisma.vehicleOccupancy.findFirst.mockResolvedValue({ id: 'vo1' });
+      await service.rebookForSource(VehicleOccupancySource.TRANSPORT_TRIP, 'trip1', { vehicleId: 'v1', ...interval });
+      expect(prisma.vehicleOccupancy.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: expect.objectContaining({ NOT: { id: 'vo1' } }) }),
+      );
+      expect(prisma.vehicleOccupancy.update).toHaveBeenCalledWith(expect.objectContaining({ where: { id: 'vo1' } }));
+      expect(prisma.vehicleOccupancy.create).not.toHaveBeenCalled();
+    });
+
+    it('rejects an overlapping window without an overrideReason', async () => {
+      prisma.vehicleOccupancy.findMany.mockResolvedValue([{ id: 'other' }]);
+      await expect(
+        service.rebookForSource(VehicleOccupancySource.TRANSPORT_TRIP, 'trip1', { vehicleId: 'v1', ...interval }),
+      ).rejects.toThrow(ConflictException);
+    });
+
+    it('accepts an overlapping window with an overrideReason, and persists it', async () => {
+      prisma.vehicleOccupancy.findMany.mockResolvedValue([{ id: 'other' }]);
+      const result = await service.rebookForSource(
+        VehicleOccupancySource.TRANSPORT_TRIP,
+        'trip1',
+        { vehicleId: 'v1', ...interval },
+        'Overlap accepted, short handover window',
+      );
+      expect(result.overrideReason).toBe('Overlap accepted, short handover window');
+    });
+  });
+
   describe('removeForSource', () => {
     it('deletes every interval matching the source row', async () => {
       await service.removeForSource(VehicleOccupancySource.MAINTENANCE, 'me1');

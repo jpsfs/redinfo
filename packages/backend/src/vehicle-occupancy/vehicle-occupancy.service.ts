@@ -109,4 +109,50 @@ export class VehicleOccupancyService {
   async removeForSource(source: VehicleOccupancySource, sourceId: string) {
     await this.prisma.vehicleOccupancy.deleteMany({ where: { source, sourceId } });
   }
+
+  /** The one interval a source row that owns exactly one occupancy interval
+   * currently has, if any — what a fresh read (e.g. a trip re-checking
+   * whether its vehicle is still clear) starts from. */
+  async findForSource(source: VehicleOccupancySource, sourceId: string) {
+    return this.prisma.vehicleOccupancy.findFirst({ where: { source, sourceId } });
+  }
+
+  /**
+   * `book`'s conflict-check-unless-overridden logic, upserting by
+   * `(source, sourceId)` like `syncForSource` — for a source row that owns
+   * exactly one interval but, unlike `MaintenanceEntry`, has that interval
+   * move over its own life (a `Trip`'s window grows and shrinks as stops are
+   * added, moved or removed) while conflicts still matter every time it
+   * does. Neither existing method fits alone: `book` has no notion of "the
+   * same commitment, updated", and `syncForSource` never checks for
+   * conflicts at all.
+   */
+  async rebookForSource(
+    source: VehicleOccupancySource,
+    sourceId: string,
+    fields: { vehicleId: string; startsAt: Date; endsAt: Date; notes?: string | null },
+    overrideReason?: string,
+  ) {
+    const existing = await this.prisma.vehicleOccupancy.findFirst({ where: { source, sourceId } });
+
+    const conflicts = await this.findConflicts(fields.vehicleId, fields.startsAt, fields.endsAt, existing?.id);
+    if (conflicts.length > 0 && !overrideReason) {
+      throw new ConflictException(
+        `Vehicle ${fields.vehicleId} is already committed for an overlapping interval`,
+      );
+    }
+
+    const data = {
+      vehicleId: fields.vehicleId,
+      startsAt: fields.startsAt,
+      endsAt: fields.endsAt,
+      overrideReason: overrideReason ?? null,
+      notes: fields.notes ?? null,
+    };
+
+    if (existing) {
+      return this.prisma.vehicleOccupancy.update({ where: { id: existing.id }, data });
+    }
+    return this.prisma.vehicleOccupancy.create({ data: { ...data, source, sourceId } });
+  }
 }
