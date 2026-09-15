@@ -69,7 +69,7 @@ export async function assertSeedHasRun(prisma: PrismaClient): Promise<PreflightI
   const [municipalities, localities, hospitals, templates] = await Promise.all([
     prisma.municipality.count(),
     prisma.locality.count(),
-    prisma.hospital.count(),
+    prisma.facility.count(),
     prisma.inventoryTemplate.findMany({ select: { vehicleType: true } }),
   ]);
 
@@ -99,11 +99,11 @@ export async function assertMappedHospitalsResolve(prisma: PrismaClient): Promis
   }
 
   for (const [name, municipality] of named) {
-    const matches = await prisma.hospital.findMany({ where: { name, municipality: { name: municipality } } });
+    const matches = await prisma.facility.findMany({ where: { name, municipality: { name: municipality } } });
     if (matches.length !== 1) {
       issues.push({
         id: 'hospital-mapping',
-        message: `"${name}" (${municipality}) resolves to ${matches.length} Hospital rows, expected exactly 1 — a seed rename would turn this into silent rejects.`,
+        message: `"${name}" (${municipality}) resolves to ${matches.length} Facility rows, expected exactly 1 — a seed rename would turn this into silent rejects.`,
       });
     }
   }

@@ -286,15 +286,15 @@ async function loadOneEventReport(
   if (ageNote) droppedNotes.push(ageNote);
 
   // ── INEM support unit (Q1, resolved) ──
-  const inemUnits: Array<{ unitType: InemSupportUnitType; hospitalId: string }> = [];
+  const inemUnits: Array<{ unitType: InemSupportUnitType; facilityId: string }> = [];
   const inemMapping = mapInemUnit(row.inem);
   if (inemMapping === NO_STRUCTURED_INEM_ROW || inemMapping === undefined) {
     const label = preload.apoioInemLabels.get(row.inem) ?? row.inem;
     droppedNotes.push(`Apoio INEM: ${label}`);
   } else if (inemMapping) {
-    const hospitalId = await resolveMappedId(tx, 'Hospital', legacyKey('hospital', inemMapping.hospitalName, inemMapping.hospitalMunicipality));
-    if (hospitalId) {
-      inemUnits.push({ unitType: inemMapping.unitType, hospitalId });
+    const facilityId = await resolveMappedId(tx, 'Hospital', legacyKey('hospital', inemMapping.hospitalName, inemMapping.hospitalMunicipality));
+    if (facilityId) {
+      inemUnits.push({ unitType: inemMapping.unitType, facilityId });
     } else {
       // Defensive only — loader 07 + preflight assertion 4 should already
       // guarantee this resolves. Never blocks the import (Q1's whole point).
@@ -304,16 +304,16 @@ async function loadOneEventReport(
 
   // ── Victim row itself (destination resolved above, before chronology) ──
   const victims: EventReportInput['victims'] = [];
-  let destinationHospitalId: string | null = null;
+  let destinationFacilityId: string | null = null;
   if (destination !== 'NO_VICTIM') {
     if (destination.narrativeNote) droppedNotes.push(destination.narrativeNote);
     if (destination.hospitalName) {
-      destinationHospitalId = await resolveMappedId(
+      destinationFacilityId = await resolveMappedId(
         tx,
         'Hospital',
         legacyKey('hospital', destination.hospitalName, destination.hospitalMunicipality!),
       );
-      if (!destinationHospitalId) {
+      if (!destinationFacilityId) {
         return reject({ reasonCode: 'UNRESOLVED_HOSPITAL', reason: `Destination hospital "${destination.hospitalName}" did not resolve.`, field: 'transporte' });
       }
     }
@@ -321,7 +321,7 @@ async function loadOneEventReport(
       gender: mapGender(row.sexo) as unknown as EventReportInput['victims'][number]['gender'],
       age,
       destinationKind: destination.kind as unknown as EventReportInput['victims'][number]['destinationKind'],
-      destinationHospitalId,
+      destinationFacilityId,
     });
   }
 
@@ -363,7 +363,7 @@ async function loadOneEventReport(
     victims,
     inemSupportUnits: inemUnits.map((u) => ({
       unitType: u.unitType as unknown as NonNullable<EventReportInput['inemSupportUnits']>[number]['unitType'],
-      hospitalId: u.hospitalId,
+      facilityId: u.facilityId,
     })),
     materials,
   };
@@ -452,13 +452,13 @@ async function loadOneEventReport(
           gender: v.gender as unknown as Gender,
           age: v.age,
           destinationKind: v.destinationKind as unknown as VictimDestinationKind,
-          destinationHospitalId: v.destinationHospitalId ?? null,
+          destinationFacilityId: v.destinationFacilityId ?? null,
         })),
       });
     }
     if (inemUnits.length > 0) {
       await tx.eventReportInemSupportUnit.createMany({
-        data: inemUnits.map((u, position) => ({ reportId, unitType: u.unitType, hospitalId: u.hospitalId, position })),
+        data: inemUnits.map((u, position) => ({ reportId, unitType: u.unitType, facilityId: u.facilityId, position })),
       });
     }
   }

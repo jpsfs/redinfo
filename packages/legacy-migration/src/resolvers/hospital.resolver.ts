@@ -34,7 +34,7 @@ export class HospitalResolver {
       return null;
     }
 
-    const existing = await client.hospital.findFirst({ where: { name, municipalityId: municipality.id } });
+    const existing = await client.facility.findFirst({ where: { name, municipalityId: municipality.id } });
     if (existing) {
       this.cache.set(key, existing.id);
       return existing.id;
@@ -45,7 +45,9 @@ export class HospitalResolver {
       return null;
     }
 
-    const created = await client.hospital.create({ data: { name, municipalityId: municipality.id } });
+    const created = await client.facility.create({
+      data: { name, municipalityId: municipality.id, isEmergencyDestination: true },
+    });
     this.cache.set(key, created.id);
     return created.id;
   }
