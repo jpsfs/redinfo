@@ -5,6 +5,7 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import SyncIcon from '@mui/icons-material/Sync';
+import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import { INEM_AVAILABLE_INOP_CODE, INEMSessionStatus, INEMStatusOverview, INEMUnit } from '@redinfo/shared';
 import { apiFetch, ApiError } from '../api';
 import { apiErrorLabel, inemReasonLabel } from '../i18n/labels';
@@ -202,6 +203,13 @@ interface UnitCardProps {
  * out of here and into `SetUnitStatusDialog`. Status reads off the *desired*
  * code (what the crew last asked for), same as before; the syncing chip is
  * what tells a reader whether INEM has actually confirmed it yet.
+ *
+ * That desired/reported pair only tracks the INOP toggle redinfo itself
+ * drives — it has no way to represent a unit INEM's own dispatch has sent on
+ * a call, which is neither "desired available" nor an INOP reason. `dispatched`
+ * reads that off `reportedActive` (INEM's own live label) instead, and takes
+ * priority: a unit actually out on a call must never read as "Available"
+ * just because nobody has told INEM to mark it INOP.
  */
 const UnitCard = ({ unit, reasons, onChangeStatus }: UnitCardProps) => {
   const t = useT();
@@ -209,6 +217,7 @@ const UnitCard = ({ unit, reasons, onChangeStatus }: UnitCardProps) => {
 
   const code = unit.desiredInopCode;
   const syncing = code !== null && code !== unit.reportedInopCode;
+  const dispatched = isDispatchedActiveLabel(unit.reportedActive);
 
   const vehicleLabel = unit.vehicle
     ? `${unit.vehicle.licensePlate} – ${unit.vehicle.numeroCauda}`
@@ -239,7 +248,7 @@ const UnitCard = ({ unit, reasons, onChangeStatus }: UnitCardProps) => {
         </Stack>
 
         <Box sx={{ mt: 1.5 }}>
-          <StatusChip code={code} reasons={reasons} />
+          <StatusChip code={code} reasons={reasons} dispatched={dispatched} />
         </Box>
 
         <Button size="small" variant="outlined" onClick={onChangeStatus} sx={{ mt: 1.5 }}>
@@ -262,13 +271,39 @@ const UnitCard = ({ unit, reasons, onChangeStatus }: UnitCardProps) => {
 };
 
 /**
- * The whole point of this pass: a status a non-tech crew member reads at a
- * glance, not one they have to infer from a switch's position. Three states —
- * available, INOP-with-reason, or "nobody's told INEM anything yet" — never
- * a bare toggle.
+ * The Portuguese `Active` labels INEM's own portal uses for a unit currently
+ * out on a call — observed on the portal as "Acionados" (see #post-#216
+ * follow-up). Not confirmed against a live `GET /api/unit` capture of a unit
+ * in this state (docs/inem-portal-contract.md's open questions) — matched
+ * case-insensitively against both the singular and the portal's plural
+ * heading so a near-miss doesn't silently fall through to "Available".
  */
-const StatusChip = ({ code, reasons }: { code: string | null; reasons: Record<string, string> }) => {
+const DISPATCHED_ACTIVE_LABELS = ['acionado', 'acionados'];
+
+function isDispatchedActiveLabel(reportedActive: string | null): boolean {
+  return reportedActive !== null && DISPATCHED_ACTIVE_LABELS.includes(reportedActive.trim().toLowerCase());
+}
+
+/**
+ * The whole point of this pass: a status a non-tech crew member reads at a
+ * glance, not one they have to infer from a switch's position. Four states —
+ * dispatched, available, INOP-with-reason, or "nobody's told INEM anything
+ * yet" — never a bare toggle.
+ */
+const StatusChip = ({
+  code,
+  reasons,
+  dispatched,
+}: {
+  code: string | null;
+  reasons: Record<string, string>;
+  dispatched: boolean;
+}) => {
   const t = useT();
+
+  if (dispatched) {
+    return <Chip size="small" icon={<DirectionsCarIcon fontSize="small" />} label={t('inem.dispatched')} color="warning" />;
+  }
 
   if (code === null) {
     return <Chip size="small" icon={<HelpOutlineIcon fontSize="small" />} label={t('inem.statusUnset')} variant="outlined" />;

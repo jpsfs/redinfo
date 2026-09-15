@@ -1859,6 +1859,7 @@ const MESSAGES = {
   'inem.syncNowSuccess': { pt: 'Sincronizado com o INEM.', en: 'Synced with INEM.' },
   'inem.syncNowFailed': { pt: 'Não foi possível sincronizar agora.', en: 'Could not sync right now.' },
   'inem.available': { pt: 'Disponível', en: 'Available' },
+  'inem.dispatched': { pt: 'Acionado', en: 'Dispatched' },
   'inem.statusUnavailable': { pt: 'Indisponível', en: 'Unavailable' },
   'inem.statusUnset': { pt: 'Estado por definir', en: 'Status not set' },
   'inem.changeStatus': { pt: 'Alterar estado', en: 'Change status' },
