@@ -112,6 +112,7 @@ const LEG: TransportLeg = {
   cancellationSource: null,
   estimatedEndAt: null,
   estimatedEndSource: null,
+  appointmentAt: '2026-09-14T09:00:00.000Z',
   effectiveEstimatedEndAt: '2026-09-14T09:30:00.000Z',
   arrivalWindowWarning: null,
   createdAt: '2026-09-01T00:00:00.000Z',

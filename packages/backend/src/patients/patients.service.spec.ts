@@ -287,7 +287,12 @@ describe('findManyForDisplay', () => {
 
     const result = await service.findManyForDisplay(['pat-1'], MANAGER_ONLY);
 
-    expect(result.get('pat-1')).toEqual({ mobility: PatientMobility.WHEELCHAIR, fullName: null });
+    // `objectContaining`, because this asserts the identity gate, not the
+    // whole row — the map also carries the unsealed planning fields
+    // (locality, home point) that `TripLegTravelService` routes from.
+    expect(result.get('pat-1')).toEqual(
+      expect.objectContaining({ mobility: PatientMobility.WHEELCHAIR, fullName: null }),
+    );
   });
 
   it('includes fullName for a caller with VIEW_PATIENT_IDENTITY', async () => {
@@ -300,7 +305,9 @@ describe('findManyForDisplay', () => {
 
     const result = await service.findManyForDisplay(['pat-1'], COORDINATOR);
 
-    expect(result.get('pat-1')).toEqual({ mobility: PatientMobility.AMBULATORY, fullName: identity.fullName });
+    expect(result.get('pat-1')).toEqual(
+      expect.objectContaining({ mobility: PatientMobility.AMBULATORY, fullName: identity.fullName }),
+    );
   });
 
   it('short-circuits to an empty map without touching the database', async () => {

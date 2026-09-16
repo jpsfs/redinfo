@@ -25,6 +25,7 @@ import { TripsService } from './trips.service';
 import { TripCrewService } from './trip-crew.service';
 import { TripStopsService } from './trip-stops.service';
 import { TripCrewManifestService } from './trip-crew-manifest.service';
+import { TripLegTravelService } from './trip-leg-travel.service';
 
 /**
  * Integration coverage for #234's model/API against a real Postgres — the
@@ -50,6 +51,19 @@ describeIntegration('TripsService/TripStopsService/TripCrewService (integration)
   const occurrenceTypePolicies = new OccurrenceTypePoliciesService(prisma);
   const transportRequestLegs = new TransportRequestLegsService(prisma, delegationSettings, occurrenceTypePolicies);
   const patients = new PatientsService(prisma, new IdentityCipher(`it-${RUN}:${randomBytes(32).toString('base64')}`));
+  // A fixed 15-minute planned duration rather than the real routing stack:
+  // this suite is about what the database does, and standing up OSRM,
+  // Nominatim and the corridor-factor table to assert a trip's stop rows
+  // would be testing someone else's integration.
+  const legTravel = new TripLegTravelService({
+    planBetweenPoints: async () => ({
+      durationSeconds: 15 * 60,
+      distanceMeters: 12_000,
+      estimated: false,
+      corridorFactor: 1,
+      corridorFactorSource: null,
+    }),
+  } as never);
   const trips = new TripsService(
     prisma,
     delegationSettings,
@@ -57,6 +71,7 @@ describeIntegration('TripsService/TripStopsService/TripCrewService (integration)
     vehicleOccupancy,
     transportRequestLegs,
     patients,
+    legTravel,
   );
   const crew = new TripCrewService(prisma, staffAbsences);
   const stops = new TripStopsService(prisma, delegationSettings, vehicleOccupancy);

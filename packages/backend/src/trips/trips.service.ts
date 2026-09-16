@@ -31,6 +31,7 @@ import { CreateTripDto } from './dto/create-trip.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
 import { TripRow, TripStopRow, serializeTrip, serializeTripCrewMember, serializeTripStop } from './trip.serializer';
 import { loadPassengerRequirements, pickupLegIds } from './trip-passenger-requirements.util';
+import { TripLegTravelService } from './trip-leg-travel.service';
 
 const TRIP_INCLUDE = {
   vehicle: {
@@ -85,6 +86,7 @@ export class TripsService {
     private readonly vehicleOccupancy: VehicleOccupancyService,
     private readonly transportRequestLegs: TransportRequestLegsService,
     private readonly patients: PatientsService,
+    private readonly legTravel: TripLegTravelService,
   ) {}
 
   async create(dto: CreateTripDto) {
@@ -180,15 +182,40 @@ export class TripsService {
     const patientIds = [...new Set([...patientIdByRequestId.values()])];
     const patientDisplay = await this.patients.findManyForDisplay(patientIds, user);
 
+    // The pickup and home-arrival times the crew infers by experience today
+    // (#219) — advisory only, and never allowed to fail the board: see
+    // `TripLegTravelService`.
+    const travel = await this.legTravel.estimateMany(
+      allLegs,
+      new Map(
+        allLegs.map((leg) => {
+          const patient = patientDisplay.get(patientIdByRequestId.get(leg.transportRequestId) ?? '');
+          return [
+            leg.id,
+            {
+              localityId: patient?.localityId ?? null,
+              latitude: patient?.latitude ?? null,
+              longitude: patient?.longitude ?? null,
+            },
+          ];
+        }),
+      ),
+      await this.delegationSettings.get(),
+    );
+
     const legsById: Record<string, TransportPlanningLeg> = {};
     for (const leg of allLegs) {
       const patientId = patientIdByRequestId.get(leg.transportRequestId) ?? '';
       const display = patientDisplay.get(patientId);
+      const estimate = travel.get(leg.id);
       legsById[leg.id] = {
         ...leg,
         patientId,
         patientMobility: display?.mobility ?? PatientMobility.AMBULATORY,
         ...(display?.fullName ? { patientName: display.fullName } : {}),
+        travelMinutes: estimate?.travelMinutes ?? null,
+        travelEstimated: estimate?.travelEstimated ?? false,
+        suggested: estimate?.suggested ?? { pickupAt: null, dropoffAt: null },
       };
     }
 

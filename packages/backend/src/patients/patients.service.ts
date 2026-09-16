@@ -160,7 +160,18 @@ export class PatientsService {
   async findManyForDisplay(
     ids: string[],
     user: RequestUser,
-  ): Promise<Map<string, { mobility: PatientMobility; fullName: string | null }>> {
+  ): Promise<
+    Map<
+      string,
+      {
+        mobility: PatientMobility;
+        fullName: string | null;
+        localityId: string | null;
+        latitude: number | null;
+        longitude: number | null;
+      }
+    >
+  > {
     if (ids.length === 0) return new Map();
     const seeIdentity = canSeeIdentity(user);
     const rows = await this.prisma.patient.findMany({
@@ -175,6 +186,14 @@ export class PatientsService {
           fullName: seeIdentity
             ? (this.openIdentity(row as PatientRowWithIdentity).identity?.fullName ?? null)
             : null,
+          // Unsealed on purpose (see `Patient`'s schema comment): planning
+          // routes from the patient's home and factors traffic over their
+          // locality, and must not have to open the identity blob — or hold
+          // `VIEW_PATIENT_IDENTITY` — to price a journey. The address these
+          // coordinates came from stays sealed; only the point is readable.
+          localityId: row.localityId,
+          latitude: row.defaultLatitude,
+          longitude: row.defaultLongitude,
         },
       ]),
     );

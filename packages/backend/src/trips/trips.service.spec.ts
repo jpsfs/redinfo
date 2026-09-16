@@ -82,6 +82,7 @@ function buildDeps(overrides: Record<string, unknown> = {}) {
       findUnassignedForDate: jest.fn().mockResolvedValue([]),
     },
     patients: { findManyForDisplay: jest.fn().mockResolvedValue(new Map()) },
+    legTravel: { estimateMany: jest.fn().mockResolvedValue(new Map()) },
     ...overrides,
   };
 }
@@ -95,6 +96,7 @@ function makeService(prisma: ReturnType<typeof buildPrismaStub>, deps: ReturnTyp
     deps.vehicleOccupancy as never,
     deps.transportRequestLegs as never,
     deps.patients as never,
+    deps.legTravel as never,
   );
 }
 

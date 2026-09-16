@@ -2963,6 +2963,38 @@ const MESSAGES = {
   'transportPlanning.occupancyLegend.SUPPORT_EVENT': { pt: 'Evento de apoio', en: 'Support event' },
   'transportPlanning.occupancyLegend.TRANSPORT_TRIP': { pt: 'Viagem', en: 'Trip' },
 
+  // The board's own vocabulary. "Jornada" is the delegation's word for one
+  // round of the vehicle's day — the sections the printed daily sheet
+  // separates with a heavy rule, one `Trip` each.
+  'transportPlanning.journeyLabel': { pt: 'Jornada %{number}', en: 'Journey %{number}' },
+  'transportPlanning.addJourneyButton': { pt: 'Nova jornada', en: 'New journey' },
+  'transportPlanning.journeyEmpty': { pt: 'Jornada vazia — arraste uma viagem para aqui.', en: 'Empty journey — drag a leg here.' },
+  'transportPlanning.noCrew': { pt: 'Sem tripulação', en: 'No crew' },
+  'transportPlanning.dropHere': { pt: 'Largar às %{time}', en: 'Drop at %{time}' },
+  'transportPlanning.zoomIn': { pt: 'Aproximar', en: 'Zoom in' },
+  'transportPlanning.zoomOut': { pt: 'Afastar', en: 'Zoom out' },
+  'transportPlanning.zoomFit': { pt: 'Dia inteiro', en: 'Whole day' },
+
+  // H.I. and H.F. as they are printed on the delegation's daily service sheet
+  // — kept as the crews' own abbreviations rather than renamed, since the
+  // board is read alongside the paper it replaces.
+  'transportPlanning.treatmentStartShort': { pt: 'H.I.', en: 'H.I.' },
+  'transportPlanning.treatmentEndShort': { pt: 'H.F.', en: 'H.F.' },
+  'transportPlanning.treatmentStartLabel': { pt: 'Entrada no tratamento', en: 'Treatment start' },
+  'transportPlanning.treatmentEndLabel': { pt: 'Previsão de estar pronto', en: 'Expected ready for pickup' },
+  'transportPlanning.pickupLabel': { pt: 'Recolher', en: 'Collect' },
+  'transportPlanning.homeArrivalLabel': { pt: 'Chegada a casa', en: 'Home arrival' },
+  'transportPlanning.suggestedHint': { pt: 'sugerido', en: 'suggested' },
+  'transportPlanning.travelLabel': { pt: 'Viagem', en: 'Travel' },
+  'transportPlanning.treatmentDurationLabel': { pt: 'Tratamento', en: 'Treatment' },
+  'transportPlanning.travelUnknown': { pt: 'Sem estimativa de percurso', en: 'No travel estimate' },
+  'transportPlanning.travelEstimatedHint': {
+    pt: 'Estimativa em linha reta — fora da área com rotas.',
+    en: 'Straight-line estimate — outside the routed area.',
+  },
+  'transportPlanning.destinationUnknown': { pt: 'Sem destino', en: 'No destination' },
+  'transportPlanning.returnToBaseLabel': { pt: 'Regresso à base', en: 'Return to base' },
+
   // Assign/reassign dialog — also the keyboard equivalent to dragging (#235's
   // own accessibility requirement) and the override-reason prompt after a
   // vehicle conflict.

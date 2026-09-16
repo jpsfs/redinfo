@@ -37,6 +37,14 @@ vi.mock('react-admin', async (importOriginal) => ({
 
 const mockApiFetch = apiFetch as unknown as Mock;
 
+const FACILITY = { id: 'fac-1', name: 'Hospital de São João' };
+
+/**
+ * A leg as the rail actually receives one: nothing planned yet, so the times
+ * on the card are the board's own suggestions. The pickup and the home
+ * arrival are precisely what the crew works out by experience today, which is
+ * why they are the fields these tests care about.
+ */
 const LEG_UNASSIGNED = {
   id: 'leg-unassigned',
   transportRequestId: 'req-1',
@@ -45,15 +53,16 @@ const LEG_UNASSIGNED = {
   generatedForDate: '2026-09-15',
   direction: LegDirection.OUTBOUND,
   originAddress: 'Rua A, 1',
-  originLatitude: null,
-  originLongitude: null,
+  originLatitude: 41.5,
+  originLongitude: -8.6,
   originFacilityId: null,
   destinationAddress: null,
-  destinationLatitude: null,
-  destinationLongitude: null,
-  destinationFacilityId: 'fac-1',
-  plannedPickupAt: '2026-09-15T08:00:00.000Z',
-  plannedDropoffAt: '2026-09-15T08:30:00.000Z',
+  destinationLatitude: 41.18,
+  destinationLongitude: -8.6,
+  destinationFacilityId: FACILITY.id,
+  destinationFacility: FACILITY,
+  plannedPickupAt: null,
+  plannedDropoffAt: null,
   actualPickupAt: null,
   actualDropoffAt: null,
   status: LegStatus.PLANNED,
@@ -61,44 +70,48 @@ const LEG_UNASSIGNED = {
   cancellationSource: null,
   estimatedEndAt: null,
   estimatedEndSource: null,
-  effectiveEstimatedEndAt: '2026-09-15T09:00:00.000Z',
+  appointmentAt: '2026-09-15T09:00:00.000Z',
+  effectiveEstimatedEndAt: '2026-09-15T10:30:00.000Z',
   arrivalWindowWarning: null,
   createdAt: '2026-09-01T00:00:00.000Z',
   updatedAt: '2026-09-01T00:00:00.000Z',
   patientId: 'pat-1',
   patientMobility: PatientMobility.WHEELCHAIR,
   patientName: 'Maria Costa',
+  travelMinutes: 45,
+  travelEstimated: false,
+  suggested: { pickupAt: '2026-09-15T07:57:30.000Z', dropoffAt: '2026-09-15T08:42:30.000Z' },
 };
+
+const lane = (id: string, vehicle: { id: string; numeroCauda: string; licensePlate: string }) => ({
+  trip: {
+    id,
+    date: '2026-09-15',
+    vehicleId: vehicle.id,
+    status: TripStatus.PLANNED,
+    notes: null,
+    createdAt: '2026-09-01T00:00:00.000Z',
+    updatedAt: '2026-09-01T00:00:00.000Z',
+  },
+  vehicle: {
+    ...vehicle,
+    vehicleType: VehicleType.TRANSPORT,
+    seatedCapacity: 3,
+    wheelchairPositions: 1,
+    stretcherPositions: 0,
+  },
+  crewMembers: [],
+  stops: [],
+  occupancyWindow: null,
+  emptyLegs: [],
+  issues: [],
+});
+
+const VEHICLE_101 = { id: 'veh-1', licensePlate: 'AA-11-BB', numeroCauda: '101' };
 
 const board = (overrides: Partial<TransportPlanningBoard> = {}): TransportPlanningBoard => ({
   date: '2026-09-15',
-  lanes: [
-    {
-      trip: {
-        id: 'trip-1',
-        date: '2026-09-15',
-        vehicleId: 'veh-1',
-        status: TripStatus.PLANNED,
-        notes: null,
-        createdAt: '2026-09-01T00:00:00.000Z',
-        updatedAt: '2026-09-01T00:00:00.000Z',
-      },
-      vehicle: {
-        id: 'veh-1',
-        licensePlate: 'AA-11-BB',
-        numeroCauda: '101',
-        vehicleType: VehicleType.TRANSPORT,
-        seatedCapacity: 3,
-        wheelchairPositions: 1,
-        stretcherPositions: 0,
-      },
-      crewMembers: [],
-      stops: [],
-      occupancyWindow: null,
-      emptyLegs: [],
-      issues: [],
-    },
-  ],
+  lanes: [lane('trip-1', VEHICLE_101) as never],
   legsById: { [LEG_UNASSIGNED.id]: LEG_UNASSIGNED as never },
   unassignedLegIds: [LEG_UNASSIGNED.id],
   ...overrides,
@@ -125,6 +138,88 @@ describe('TransportPlanningPage', () => {
     expect(await screen.findByText('Maria Costa')).toBeInTheDocument();
     expect(screen.getByText('101')).toBeInTheDocument();
     expect(screen.getByText('AA-11-BB')).toBeInTheDocument();
+  });
+
+  it('shows the destination on the unassigned card, since it decides which legs can share a journey', async () => {
+    mockApiFetch.mockImplementation((path: string) =>
+      Promise.resolve(path.startsWith('/trips/board') ? board() : []),
+    );
+    renderPage();
+
+    expect(await screen.findByText('Hospital de São João')).toBeInTheDocument();
+  });
+
+  it('shows H.I., H.F. and the collection time, marking the collection as a suggestion until it is planned', async () => {
+    mockApiFetch.mockImplementation((path: string) =>
+      Promise.resolve(path.startsWith('/trips/board') ? board() : []),
+    );
+    renderPage();
+
+    // The two times the referral states, under the delegation's own headings.
+    expect(await screen.findByText('H.I.')).toBeInTheDocument();
+    expect(screen.getByText('H.F.')).toBeInTheDocument();
+    // And the one the crew infers today — never presented as a commitment.
+    expect(screen.getByText('Collect')).toBeInTheDocument();
+    expect(screen.getByText(/\(suggested\)/)).toBeInTheDocument();
+  });
+
+  it('shows the travel and treatment durations, the two different questions a planner asks', async () => {
+    mockApiFetch.mockImplementation((path: string) =>
+      Promise.resolve(path.startsWith('/trips/board') ? board() : []),
+    );
+    renderPage();
+
+    expect(await screen.findByText('Travel 45 min')).toBeInTheDocument();
+    expect(screen.getByText('Treatment 1h 30')).toBeInTheDocument();
+  });
+
+  it('draws an hour axis, so a block position can be read as a time at all', async () => {
+    mockApiFetch.mockImplementation((path: string) =>
+      Promise.resolve(path.startsWith('/trips/board') ? board() : []),
+    );
+    renderPage();
+
+    await screen.findByText('Maria Costa');
+    // Asserted as a run of whole-hour labels rather than specific hours: the
+    // span now fits the day's own times, which are local to whatever zone the
+    // suite happens to run in.
+    const hourLabels = screen.getAllByText(/^([01]\d|2[0-4]):00$/);
+    expect(hourLabels.length).toBeGreaterThanOrEqual(6);
+  });
+
+  it('numbers a vehicle’s trips as its journeys, the sections the printed sheet separates', async () => {
+    mockApiFetch.mockImplementation((path: string) =>
+      Promise.resolve(
+        path.startsWith('/trips/board')
+          ? board({ lanes: [lane('trip-1', VEHICLE_101), lane('trip-2', VEHICLE_101)] as never })
+          : [],
+      ),
+    );
+    renderPage();
+
+    expect(await screen.findByText('Journey 1')).toBeInTheDocument();
+    expect(screen.getByText('Journey 2')).toBeInTheDocument();
+    // One vehicle header for the two journeys, not one per trip.
+    expect(screen.getAllByText('101')).toHaveLength(1);
+  });
+
+  it('adds another journey to a vehicle already on the board, without a second vehicle row', async () => {
+    const user = userEvent.setup();
+    mockApiFetch.mockImplementation((path: string, options?: { method?: string }) => {
+      if (path.startsWith('/trips/board')) return Promise.resolve(board());
+      if (path === '/trips' && options?.method === 'POST') return Promise.resolve({});
+      return Promise.resolve([]);
+    });
+    renderPage();
+
+    await user.click(await screen.findByRole('button', { name: 'New journey' }));
+
+    await waitFor(() =>
+      expect(mockApiFetch).toHaveBeenCalledWith(
+        '/trips',
+        expect.objectContaining({ method: 'POST', body: expect.objectContaining({ vehicleId: 'veh-1' }) }),
+      ),
+    );
   });
 
   it('assigns a leg to a lane through the keyboard-accessible dialog', async () => {

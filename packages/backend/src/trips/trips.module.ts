@@ -12,6 +12,7 @@ import { TripCrewService } from './trip-crew.service';
 import { TripStopsService } from './trip-stops.service';
 import { TripBreakEvenService } from './trip-break-even.service';
 import { TripCrewManifestService } from './trip-crew-manifest.service';
+import { TripLegTravelService } from './trip-leg-travel.service';
 import { TripsController } from './trips.controller';
 
 /**
@@ -24,7 +25,8 @@ import { TripsController } from './trips.controller';
  * against, `RoutingModule` for that same helper's travel-to-base call.
  * `TransportRequestsModule` (`TransportRequestLegsService`) and
  * `PatientsModule` feed `getBoard` (#235) — the planning board's leg cards,
- * assigned and unassigned alike.
+ * assigned and unassigned alike. `RoutingModule` serves `TripLegTravelService`
+ * on that same path, for the pickup and home-arrival times the board suggests.
  */
 @Module({
   imports: [
@@ -42,6 +44,7 @@ import { TripsController } from './trips.controller';
     TripStopsService,
     TripBreakEvenService,
     TripCrewManifestService,
+    TripLegTravelService,
     AuditInterceptor,
   ],
   controllers: [TripsController],
