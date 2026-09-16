@@ -35,6 +35,8 @@ describe('NAV_SECTIONS', () => {
       '/',
       '/my-availability',
       '/my-duties',
+      // The crew manifest (#236) — ungated, like /my-duties above.
+      '/my-transport-trips',
       '/my-hours',
       '/my-reports',
       '/my-notices',
@@ -51,14 +53,16 @@ describe('NAV_SECTIONS', () => {
     ]);
   });
 
-  it('gives a Logistics Coordinator exactly thirteen entries and no live mode', () => {
-    // Thirteen: #165's /my-notices, /notices and /notification-config (seven
+  it('gives a Logistics Coordinator exactly fourteen entries and no live mode', () => {
+    // Fourteen: #165's /my-notices, /notices and /notification-config (seven
     // to ten), plus /event-reports and /schedules — both org-wide reading
-    // now (ten to twelve) — plus /ai-connections, ungated for every role.
+    // now (ten to twelve) — plus /ai-connections, ungated for every role
+    // (twelve to thirteen), plus /my-transport-trips (#236), also ungated.
     const routes = visibleRoutes(UserRole.LOGISTICS_COORDINATOR);
     expect(routes).toEqual([
       '/',
       '/my-duties',
+      '/my-transport-trips',
       '/my-hours',
       '/my-notices',
       '/ai-connections',

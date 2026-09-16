@@ -61,6 +61,8 @@ describe('RedInfoMenu', () => {
       '/',
       '/my-availability',
       '/my-duties',
+      // The crew manifest (#236) — ungated, like /my-duties above.
+      '/my-transport-trips',
       '/my-hours',
       '/my-reports',
       '/my-notices',
@@ -75,12 +77,13 @@ describe('RedInfoMenu', () => {
     ]);
   });
 
-  it('gives a Logistics Coordinator exactly thirteen entries and no live mode', async () => {
-    // Thirteen, not seven — see the matching note in navigation.test.tsx.
+  it('gives a Logistics Coordinator exactly fourteen entries and no live mode', async () => {
+    // Fourteen, not seven — see the matching note in navigation.test.tsx.
     const links = await renderMenuAs([UserRole.LOGISTICS_COORDINATOR]);
     expect(links).toEqual([
       '/',
       '/my-duties',
+      '/my-transport-trips',
       '/my-hours',
       '/my-notices',
       '/ai-connections',
@@ -102,6 +105,8 @@ describe('RedInfoMenu', () => {
       '/',
       '/my-availability',
       '/my-duties',
+      // The crew manifest (#236) — ungated, like /my-duties above.
+      '/my-transport-trips',
       '/my-hours',
       '/my-reports',
       '/my-notices',
@@ -137,6 +142,8 @@ describe('RedInfoMenu', () => {
       '/',
       '/my-availability',
       '/my-duties',
+      // The crew manifest (#236) — ungated, like /my-duties above.
+      '/my-transport-trips',
       '/my-hours',
       '/my-reports',
       '/my-notices',

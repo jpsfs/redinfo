@@ -149,8 +149,15 @@ export default defineConfig(({ mode }) => {
        * competing for the same cores. The default 5s made those fail on a busy
        * machine and pass on a quiet one, which is the least useful kind of test
        * result — a genuinely hung test still fails, just later.
+       *
+       * Bumped 20s → 30s (2026-09): the heaviest file (AvailabilityWindowCreate,
+       * dozens of real userEvent keystrokes across a full react-admin+MUI tree
+       * per case) was observed clocking 18-23s under a genuinely busy full-suite
+       * run — different case timing out each run, never the same one, never a
+       * failed assertion. That's contention eating the margin, not a hang; 20s
+       * left too little headroom on a loaded machine.
        */
-      testTimeout: 20_000,
+      testTimeout: 30_000,
       include: ['src/**/*.{test,spec}.{ts,tsx}'],
       server: {
         deps: {
