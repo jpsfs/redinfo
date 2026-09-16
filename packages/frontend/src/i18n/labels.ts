@@ -2973,7 +2973,12 @@ const MESSAGES = {
   // The board's own vocabulary. "Jornada" is the delegation's word for one
   // round of the vehicle's day — the sections the printed daily sheet
   // separates with a heavy rule, one `Trip` each.
-  'transportPlanning.journeyLabel': { pt: 'Jornada %{number}', en: 'Journey %{number}' },
+  // The lane prints the ordinal as a badge beside this word rather than
+  // interpolating it into one string — the number is a landmark you scan for,
+  // the word is context you read once.
+  'transportPlanning.journeyWord': { pt: 'Jornada', en: 'Journey' },
+  'transportPlanning.vehicleType.EMERGENCY': { pt: 'Ambulância de socorro', en: 'Emergency ambulance' },
+  'transportPlanning.vehicleType.TRANSPORT': { pt: 'Viatura de transporte', en: 'Transport vehicle' },
   'transportPlanning.addJourneyButton': { pt: 'Nova jornada', en: 'New journey' },
   'transportPlanning.journeyEmpty': { pt: 'Jornada vazia — arraste uma viagem para aqui.', en: 'Empty journey — drag a leg here.' },
   'transportPlanning.noCrew': { pt: 'Sem tripulação', en: 'No crew' },

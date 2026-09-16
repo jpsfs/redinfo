@@ -255,8 +255,12 @@ describe('TransportPlanningPage', () => {
     );
     renderPage();
 
-    expect(await screen.findByText('Journey 1')).toBeInTheDocument();
-    expect(screen.getByText('Journey 2')).toBeInTheDocument();
+    // Two journey rows, each numbered. The ordinal is a badge beside the
+    // word, so the numbering is asserted through the per-journey crew
+    // control, which names the journey it belongs to.
+    expect(await screen.findAllByText('Journey')).toHaveLength(2);
+    expect(screen.getByRole('button', { name: 'Crew for journey 1' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Crew for journey 2' })).toBeInTheDocument();
     // One vehicle header for the two journeys, not one per trip.
     expect(screen.getAllByText('101')).toHaveLength(1);
   });

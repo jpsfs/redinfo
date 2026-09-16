@@ -8,6 +8,7 @@ import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 import HomeIcon from '@mui/icons-material/Home';
 import PersonOutlineIcon from '@mui/icons-material/PersonOutline';
 import PlaceOutlinedIcon from '@mui/icons-material/PlaceOutlined';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import {
   CERTIFICATION_LABEL,
   LegDirection,
@@ -162,6 +163,7 @@ function needsWaitReleaseDecision(stop: TripStop, allStops: TripStop[], leg: Tra
 export const PlanningLane = ({
   lane,
   journeyNumber,
+  showDividerAbove = false,
   legsById,
   timelineWindow,
   occupancy,
@@ -173,6 +175,9 @@ export const PlanningLane = ({
 }: {
   lane: TransportPlanningLane;
   journeyNumber: number;
+  /** Hairline above this journey — set for every journey of a vehicle except
+   * the first, which the vehicle header already separates. */
+  showDividerAbove?: boolean;
   legsById: Record<string, TransportPlanningLeg>;
   timelineWindow: TimelineWindow;
   occupancy: VehicleOccupancy[];
@@ -208,7 +213,13 @@ export const PlanningLane = ({
   };
 
   return (
-    <Box sx={{ display: 'flex', alignItems: 'stretch', borderBottom: 1, borderColor: 'divider' }}>
+    <Box
+      sx={{
+        display: 'flex',
+        alignItems: 'stretch',
+        ...(showDividerAbove ? { borderTop: 1, borderColor: 'divider' } : {}),
+      }}
+    >
       <Box
         sx={{
           width: LANE_LABEL_WIDTH,
@@ -220,36 +231,78 @@ export const PlanningLane = ({
           display: 'flex',
           flexDirection: 'column',
           justifyContent: 'center',
-          gap: 0.25,
+          gap: 0.5,
           px: 1,
-          py: 0.5,
+          py: 0.75,
           borderRight: 1,
           borderColor: 'divider',
         }}
       >
         <Stack direction="row" spacing={0.5} alignItems="center">
-          <Chip
-            size="small"
-            color="primary"
-            variant="outlined"
-            label={t('transportPlanning.journeyLabel', { number: journeyNumber })}
-            sx={{ height: 20, fontWeight: 700 }}
-          />
-          {errorCount > 0 && <Chip size="small" color="error" label={errorCount} sx={{ height: 20 }} />}
-          {warningCount > 0 && <Chip size="small" color="warning" label={warningCount} sx={{ height: 20 }} />}
+          {/* A quiet numbered token, not a filled pill. Red is reserved for
+              a patient being carried; a journey's ordinal is navigation. */}
+          <Box
+            sx={{
+              minWidth: 18,
+              height: 18,
+              px: 0.5,
+              borderRadius: 0.75,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              fontSize: 11,
+              fontWeight: 800,
+              color: 'text.secondary',
+              bgcolor: (theme) => alpha(theme.palette.text.primary, 0.08),
+            }}
+          >
+            {journeyNumber}
+          </Box>
+          <Typography variant="caption" color="text.secondary" sx={{ fontWeight: 600, letterSpacing: 0.3 }}>
+            {t('transportPlanning.journeyWord')}
+          </Typography>
+          {errorCount > 0 && (
+            <Box sx={{ ml: 'auto', display: 'flex', alignItems: 'center', gap: 0.25, color: 'error.main' }}>
+              <ErrorOutlineIcon sx={{ fontSize: 14 }} />
+              <Typography variant="caption" fontWeight={700}>
+                {errorCount}
+              </Typography>
+            </Box>
+          )}
+          {warningCount > 0 && (
+            <Box
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 0.25,
+                color: 'warning.main',
+                ...(errorCount > 0 ? {} : { ml: 'auto' }),
+              }}
+            >
+              <WarningAmberIcon sx={{ fontSize: 14 }} />
+              <Typography variant="caption" fontWeight={700}>
+                {warningCount}
+              </Typography>
+            </Box>
+          )}
         </Stack>
 
-        {/* Where this journey is going. The single most-asked question of a
-            row on the printed sheet, and until now only reachable by hovering
-            an individual block. */}
-        <Stack direction="row" spacing={0.25} alignItems="center" sx={{ minWidth: 0 }}>
-          <PlaceOutlinedIcon sx={{ fontSize: 14, color: 'action.disabled', flexShrink: 0 }} />
+        {/* Where this journey is going — the single most-asked question of a
+            row on the printed sheet. Wrapped rather than truncated: a
+            delegation's destinations are long ("Clínica de Hemodiálise de
+            Barcelos") and differ in their last word, so an ellipsis hides
+            exactly the part that tells two of them apart. */}
+        <Stack direction="row" spacing={0.5} sx={{ minWidth: 0 }}>
+          <PlaceOutlinedIcon sx={{ fontSize: 14, color: 'action.disabled', flexShrink: 0, mt: '2px' }} />
           <Typography
             variant="caption"
             color={destinations.length ? 'text.primary' : 'text.disabled'}
-            fontWeight={destinations.length ? 600 : 400}
-            noWrap
-            title={destinations.join(', ')}
+            sx={{
+              fontWeight: destinations.length ? 700 : 400,
+              lineHeight: 1.3,
+              minWidth: 0,
+              overflowWrap: 'anywhere',
+            }}
           >
             {destinations.length === 0
               ? t('transportPlanning.destinationUnknown')
@@ -288,19 +341,34 @@ export const PlanningLane = ({
             variant="caption"
             color={crewNames.length ? 'text.secondary' : 'text.disabled'}
             noWrap
-            sx={{ minWidth: 0 }}
+            sx={{ minWidth: 0, flexShrink: 1 }}
             title={crewNames.join(', ')}
           >
             {crewNames.length ? crewNames.join(', ') : t('transportPlanning.noCrew')}
           </Typography>
           <Tooltip title={t('transportPlanning.crewRequirementHint', { requirement: requirementLabel })}>
-            <Chip
-              size="small"
-              variant={crewShortfall ? 'filled' : 'outlined'}
-              color={crewShortfall ? 'error' : 'default'}
-              label={requirementLabel}
-              sx={{ height: 16, fontSize: 10, ml: 'auto', flexShrink: 0 }}
-            />
+            <Box
+              sx={{
+                ml: 'auto',
+                flexShrink: 0,
+                px: 0.625,
+                py: 0.125,
+                borderRadius: 5,
+                fontSize: 10,
+                fontWeight: 700,
+                letterSpacing: 0.2,
+                whiteSpace: 'nowrap',
+                border: 1,
+                // Met: a quiet outline that recedes. Short: solid, because a
+                // journey that cannot legally run should not look like a
+                // detail.
+                ...(crewShortfall
+                  ? { bgcolor: 'error.main', color: 'error.contrastText', borderColor: 'error.main' }
+                  : { color: 'text.secondary', borderColor: 'divider', bgcolor: 'transparent' }),
+              }}
+            >
+              {requirementLabel}
+            </Box>
           </Tooltip>
         </Stack>
       </Box>
@@ -308,7 +376,11 @@ export const PlanningLane = ({
       <Box
         sx={{
           position: 'relative',
-          height: laneHeight(legBlocks.length),
+          // `minHeight`, not `height`: a long destination wraps to two or
+          // three lines in the sticky column beside this, and the row has to
+          // be free to grow with it. Blocks are positioned from the top, so
+          // extra height below them changes nothing about where they sit.
+          minHeight: laneHeight(legBlocks.length),
           flexGrow: 1,
           minWidth: 0,
           // Drop affordance: every lane lifts while a drag is in flight, and
@@ -489,11 +561,17 @@ export const PlanningLane = ({
                     width,
                     top: rowTop,
                     height: RIDE_HEIGHT,
-                    bgcolor: isOutbound ? 'primary.main' : 'secondary.main',
                     color: isOutbound ? 'primary.contrastText' : 'secondary.contrastText',
-                    // Square on the boarding edge, round on the alighting one:
-                    // at a glance the bar reads as a direction of travel, not
-                    // as an anonymous span.
+                    // A soft vertical gradient rather than a flat fill, and a
+                    // solid edge where the patient boards. Square on that
+                    // edge, round on the alighting one: at a glance the bar
+                    // reads as a direction of travel, not an anonymous span.
+                    background: (theme) => {
+                      const base = isOutbound ? theme.palette.primary : theme.palette.secondary;
+                      return `linear-gradient(180deg, ${alpha(base.light, 0.96)} 0%, ${base.main} 100%)`;
+                    },
+                    borderLeft: 3,
+                    borderColor: isOutbound ? 'primary.dark' : 'secondary.dark',
                     borderRadius: '2px 10px 10px 2px',
                     px: 0.25,
                     display: 'flex',
