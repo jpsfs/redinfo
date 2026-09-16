@@ -180,6 +180,41 @@ export class PatientsService {
     );
   }
 
+  /**
+   * Batched name+mobility lookup for a crew member's own manifest (#236) —
+   * deliberately bypasses `canSeeIdentity`/`VIEW_PATIENT_IDENTITY`.
+   *
+   * The identity decision recorded here, per #236's acceptance criteria: a
+   * crew member collecting a patient has to know who they're collecting and
+   * where, capability or not — `VIEW_PATIENT_IDENTITY` is aimed at
+   * coordinators managing the patient record generally, and requiring it of
+   * every crew role would just widen that capability until it means nothing.
+   * The narrower, correct scope is structural rather than a capability: this
+   * method has exactly one caller, `TripCrewManifestService.getMyTrips`,
+   * which already filters to trips *this* caller is crewing before any id
+   * reaches here — nobody can use it to read a patient outside their own
+   * assigned stops. Never call this from anywhere that isn't already scoped
+   * that way.
+   */
+  async findManyForCrewManifest(
+    ids: string[],
+  ): Promise<Map<string, { mobility: PatientMobility; fullName: string | null }>> {
+    if (ids.length === 0) return new Map();
+    const rows = await this.prisma.patient.findMany({
+      where: { id: { in: ids } },
+      select: PATIENT_SELECT_WITH_IDENTITY,
+    });
+    return new Map(
+      rows.map((row) => [
+        row.id,
+        {
+          mobility: row.mobility as PatientMobility,
+          fullName: this.openIdentity(row).identity?.fullName ?? null,
+        },
+      ]),
+    );
+  }
+
   async create(dto: CreatePatientDto, user: RequestUser): Promise<Patient> {
     const seeIdentity = canSeeIdentity(user);
     if (dto.identity !== undefined && dto.identity !== null && !seeIdentity) {

@@ -3,6 +3,7 @@ import BoltIcon from '@mui/icons-material/Bolt';
 import HomeIcon from '@mui/icons-material/Home';
 import EventAvailableIcon from '@mui/icons-material/EventAvailable';
 import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
+import AirportShuttleIcon from '@mui/icons-material/AirportShuttle';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import FactCheckIcon from '@mui/icons-material/FactCheck';
 import ArticleIcon from '@mui/icons-material/Article';
@@ -92,6 +93,14 @@ export const NAV_SECTIONS: NavSection[] = [
         to: '/my-duties',
         label: 'nav.myDuties',
         icon: <AssignmentIndIcon />,
+      },
+      {
+        // The crew manifest (#236) — ungated like /my-duties above:
+        // `GET /trips/me` scopes to the caller's own crew membership, so
+        // whoever has no trips today just sees an empty page.
+        to: '/my-transport-trips',
+        label: 'nav.myTransportTrips',
+        icon: <AirportShuttleIcon />,
       },
       {
         to: '/my-hours',

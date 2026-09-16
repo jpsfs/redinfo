@@ -121,6 +121,15 @@ exactly one `VehicleOccupancy` interval, recomputed via a new `rebookForSource` 
 for why neither `book` nor `syncForSource` fit alone. Every route gated `PLAN_TRANSPORT_TRIPS`
 (#225), no new `Action`.
 
+The crew manifest (#236, `GET /trips/me?date=`) is the one route in this module with no
+`@Actions` at all — `TripCrewManifestService`, following `SchedulesController.getMyDuties`'s
+precedent: ungated, scoped to the caller inside the service (trips where they're a
+`TripCrewMember`), so any authenticated crew member reads their own day without holding
+`PLAN_TRANSPORT_TRIPS`. Patient identity on it goes through
+`PatientsService.findManyForCrewManifest`, not `findManyForDisplay` — see that method's doc
+comment for why the crew executing a trip see the patient's name regardless of
+`VIEW_PATIENT_IDENTITY`, structurally scoped rather than capability-gated.
+
 ## Controller pattern
 
 - Class-level `@UseGuards(JwtAuthGuard, RolesGuard)` + `@UseInterceptors(AuditInterceptor)`.

@@ -508,6 +508,7 @@ const MESSAGES = {
   'nav.home': { pt: 'Início', en: 'Home' },
   'nav.myAvailability': { pt: 'A minha disponibilidade', en: 'My Availability' },
   'nav.myDuties': { pt: 'As minhas escalas', en: 'My Duties' },
+  'nav.myTransportTrips': { pt: 'As minhas viagens', en: 'My Trips' },
   'nav.myHours': { pt: 'As minhas horas', en: 'My Hours' },
   'nav.myReports': { pt: 'Os meus relatórios', en: 'My Reports' },
   'nav.volunteerHoursReview': { pt: 'Rever horas de voluntariado', en: 'Review Volunteer Hours' },
@@ -1709,6 +1710,36 @@ const MESSAGES = {
     pt: 'Este turno ainda não tem o mínimo de pessoas necessário — pode não se realizar.',
     en: "This shift hasn't reached its minimum crew yet — it may not run.",
   },
+
+  // ── My transport trips (#236) — the crew manifest, live and print ──
+  'myTransportTrips.pageTitle': { pt: 'As minhas viagens', en: 'My Trips' },
+  'myTransportTrips.heading': { pt: 'As minhas viagens', en: 'My Trips' },
+  'myTransportTrips.subheading': {
+    pt: 'As tuas paragens de transporte para o dia escolhido, pela ordem em que as vais fazer.',
+    en: 'Your transport stops for the chosen day, in the order you work them.',
+  },
+  'myTransportTrips.loadFailed': { pt: 'Não foi possível carregar as tuas viagens.', en: 'Could not load your trips.' },
+  'myTransportTrips.previousDay': { pt: 'Dia anterior', en: 'Previous day' },
+  'myTransportTrips.nextDay': { pt: 'Dia seguinte', en: 'Next day' },
+  'myTransportTrips.today': { pt: 'Hoje', en: 'Today' },
+  'myTransportTrips.printButton': { pt: 'Imprimir', en: 'Print' },
+  'myTransportTrips.noTrips': {
+    pt: 'Não tens viagens de transporte planeadas para este dia.',
+    en: 'No transport trips planned for you this day.',
+  },
+  'myTransportTrips.vehicleLabel': { pt: 'Viatura %{plate}', en: 'Vehicle %{plate}' },
+  'myTransportTrips.stopKind.PICKUP': { pt: 'Recolha', en: 'Pickup' },
+  'myTransportTrips.stopKind.DROPOFF': { pt: 'Entrega', en: 'Drop-off' },
+  'myTransportTrips.stopKind.WAIT': { pt: 'Espera', en: 'Wait' },
+  'myTransportTrips.stopKind.RETURN_TO_BASE': { pt: 'Regresso à base', en: 'Return to base' },
+  'myTransportTrips.waitsHere': { pt: 'A equipa espera aqui', en: 'Crew waits here' },
+  'myTransportTrips.treatmentWindow': {
+    pt: 'Tratamento: %{start} – %{end}',
+    en: 'Treatment: %{start} – %{end}',
+  },
+  'myTransportTrips.readyAwaiting': { pt: 'A aguardar chamada de pronto', en: 'Awaiting ready call' },
+  'myTransportTrips.readyAt': { pt: 'Pronto às %{time}', en: 'Ready at %{time}' },
+  'myTransportTrips.generatedAt': { pt: 'Gerado em %{date}', en: 'Generated %{date}' },
 
   // ── Notification channels — shared across the notices/settings screens below ──
   'notificationChannel.IN_APP': { pt: 'Na aplicação', en: 'In-app' },

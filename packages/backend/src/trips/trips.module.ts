@@ -11,6 +11,7 @@ import { TripsService } from './trips.service';
 import { TripCrewService } from './trip-crew.service';
 import { TripStopsService } from './trip-stops.service';
 import { TripBreakEvenService } from './trip-break-even.service';
+import { TripCrewManifestService } from './trip-crew-manifest.service';
 import { TripsController } from './trips.controller';
 
 /**
@@ -35,7 +36,14 @@ import { TripsController } from './trips.controller';
     TransportRequestsModule,
     PatientsModule,
   ],
-  providers: [TripsService, TripCrewService, TripStopsService, TripBreakEvenService, AuditInterceptor],
+  providers: [
+    TripsService,
+    TripCrewService,
+    TripStopsService,
+    TripBreakEvenService,
+    TripCrewManifestService,
+    AuditInterceptor,
+  ],
   controllers: [TripsController],
 })
 export class TripsModule {}

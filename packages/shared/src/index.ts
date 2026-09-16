@@ -8450,6 +8450,53 @@ export interface TransportPlanningBoard {
   unassignedLegIds: string[];
 }
 
+// ─── Crew manifest (#236) ───────────────────────────────────────────────────
+//
+// `GET /trips/me?date=` — a crew member's own trips for a date, the artefact
+// a driver actually works from: ordered stops with planned times, the
+// patient, the facility and the treatment window. Self-scoped like
+// `GET /schedules/me`: the service filters to trips *this* caller is
+// crewing, so unlike `TransportPlanningLeg`, `patientName` is never omitted
+// here — see `PatientsService.findManyForCrewManifest`'s doc comment for why
+// that's not a `VIEW_PATIENT_IDENTITY` check.
+
+/** One stop as the crew manifest needs to see it — `TripStop` plus the
+ * facility name (rather than just its id) and, for a `PICKUP`/`DROPOFF`
+ * carrying a leg, the patient and the treatment window it's planned against. */
+export interface CrewManifestStop extends TripStop {
+  facilityName: string | null;
+  legDirection: LegDirection | null;
+  patientId: string | null;
+  patientName: string | null;
+  patientMobility: PatientMobility | null;
+  /** ISO datetime — the referral's own appointment time, the thing an
+   * `OUTBOUND` dropoff is planned against. Null for a stop with no leg. */
+  appointmentAt: string | null;
+  /** ISO datetime — `TransportLeg.effectiveEstimatedEndAt`, never blank once
+   * a leg exists. On a `RETURN` leg's `PICKUP` stop this is the earliest the
+   * patient could be ready; `actualAt` on that same stop is the ready call
+   * itself once it's happened — "awaiting the ready call" is simply
+   * `actualAt === null`. */
+  treatmentEndAt: string | null;
+}
+
+export interface CrewManifestTrip {
+  trip: Trip;
+  vehicle: {
+    id: string;
+    licensePlate: string;
+    numeroCauda: string;
+    vehicleType: VehicleType;
+  };
+  stops: CrewManifestStop[];
+}
+
+export interface MyTransportTripsResponse {
+  /** ISO date. */
+  date: string;
+  trips: CrewManifestTrip[];
+}
+
 // ─── API error codes (#180 phase 4) ───────────────────────────────────────────
 //
 // A machine code for the business-rule failures that are genuinely worth a
