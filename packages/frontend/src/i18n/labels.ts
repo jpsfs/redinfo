@@ -1891,6 +1891,7 @@ const MESSAGES = {
   'inem.syncNowSuccess': { pt: 'Sincronizado com o INEM.', en: 'Synced with INEM.' },
   'inem.syncNowFailed': { pt: 'Não foi possível sincronizar agora.', en: 'Could not sync right now.' },
   'inem.available': { pt: 'Disponível', en: 'Available' },
+  'inem.dispatched': { pt: 'Acionado', en: 'Dispatched' },
   'inem.statusUnavailable': { pt: 'Indisponível', en: 'Unavailable' },
   'inem.statusUnset': { pt: 'Estado por definir', en: 'Status not set' },
   'inem.changeStatus': { pt: 'Alterar estado', en: 'Change status' },
@@ -1910,6 +1911,12 @@ const MESSAGES = {
     pt: 'O redinfo não consegue neste momento contactar o portal do INEM. Define o estado deste meio diretamente no portal do INEM.',
     en: 'redinfo cannot currently reach the INEM portal. Set this unit’s status directly in the INEM portal instead.',
   },
+  'inem.resetSession': { pt: 'Restabelecer ligação', en: 'Reset connection' },
+  'inem.resetSessionSuccess': {
+    pt: 'Ligação restabelecida — a validar com o portal do INEM.',
+    en: 'Connection reset — validating with the INEM portal.',
+  },
+  'inem.resetSessionFailed': { pt: 'Não foi possível restabelecer a ligação.', en: 'Could not reset the connection.' },
 
   // Reason codes: `pt` is INEM's own display label, copied verbatim from
   // `GET /api/INOP` (docs/inem-portal-contract.md) — so a Portuguese-speaking
