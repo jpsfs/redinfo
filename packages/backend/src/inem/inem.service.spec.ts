@@ -39,6 +39,8 @@ function buildSessionStub(overrides: Record<string, unknown> = {}) {
   return {
     getOverview: jest.fn().mockResolvedValue({ status: INEMSessionStatus.ACTIVE, lastError: null }),
     getCachedInopReasons: jest.fn().mockReturnValue(null),
+    resetCircuitBreaker: jest.fn().mockResolvedValue(undefined),
+    proactiveReMint: jest.fn().mockResolvedValue(undefined),
     ...overrides,
   };
 }
@@ -192,6 +194,41 @@ describe('InemService', () => {
 
       await expect(service.syncNow()).rejects.toMatchObject({ code: 'INEM_SESSION_NOT_ACTIVE' });
       expect(reconciler.reconcile).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('resetCircuitBreaker', () => {
+    it('resets the session and kicks a warm re-mint attempt in the background', async () => {
+      const prisma = buildPrismaStub();
+      const session = buildSessionStub();
+      const service = new InemService(prisma as never, session as never, buildReconcilerStub() as never);
+
+      await service.resetCircuitBreaker();
+
+      expect(session.resetCircuitBreaker).toHaveBeenCalledTimes(1);
+      expect(session.proactiveReMint).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not await the re-mint attempt — a slow/failing one must not block the response', async () => {
+      const prisma = buildPrismaStub();
+      let resolveReMint!: () => void;
+      const session = buildSessionStub({
+        proactiveReMint: jest.fn().mockReturnValue(new Promise<void>((resolve) => (resolveReMint = resolve))),
+      });
+      const service = new InemService(prisma as never, session as never, buildReconcilerStub() as never);
+
+      await expect(service.resetCircuitBreaker()).resolves.toBeUndefined();
+      resolveReMint();
+    });
+
+    it('never talks to INEM directly — only the session/reconciler paths do', async () => {
+      const prisma = buildPrismaStub();
+      const session = buildSessionStub();
+      const service = new InemService(prisma as never, session as never, buildReconcilerStub() as never);
+
+      await service.resetCircuitBreaker();
+
+      expect(prisma.iNEMUnit.update).not.toHaveBeenCalled();
     });
   });
 });

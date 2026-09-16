@@ -246,6 +246,52 @@ describe('InemSessionService', () => {
     });
   });
 
+  // The status page's "Reset" button (only reachable once `sessionStatus` is
+  // `FAILED`) lands here — codifies the manual database reset performed by
+  // hand for the 2026-09-15 incident.
+  describe('resetCircuitBreaker', () => {
+    it('never touches the database when disabled', async () => {
+      delete process.env.INEM_USERNAME;
+      const { stub } = buildPrismaStub();
+      const service = new InemSessionService(stub as never, cipher, client);
+      await service.resetCircuitBreaker();
+      expect(stub.iNEMSession.findUniqueOrThrow).not.toHaveBeenCalled();
+    });
+
+    it('reopens a tripped breaker to EXPIRED, not ACTIVE — the next re-mint must still prove it works', async () => {
+      const { stub, sessionRow } = buildPrismaStub(
+        inemSessionRow({ status: INEMSessionStatus.FAILED, failureCount: 2, lastError: 'circuit breaker tripped' }),
+      );
+      const service = new InemSessionService(stub as never, cipher, client);
+
+      await service.resetCircuitBreaker();
+
+      expect(sessionRow.status).toBe(INEMSessionStatus.EXPIRED);
+      expect(sessionRow.failureCount).toBe(0);
+      expect(sessionRow.lastError).toBeNull();
+    });
+
+    it('is a no-op when the breaker is not tripped — nothing to reset', async () => {
+      const { stub, sessionRow } = buildPrismaStub(inemSessionRow({ status: INEMSessionStatus.ACTIVE }));
+      const service = new InemSessionService(stub as never, cipher, client);
+
+      await service.resetCircuitBreaker();
+
+      expect(sessionRow.status).toBe(INEMSessionStatus.ACTIVE);
+      expect(stub.iNEMSession.update).not.toHaveBeenCalled();
+    });
+
+    it('is a no-op mid-LOGGING_IN — must never clobber a login already in flight', async () => {
+      const { stub, sessionRow } = buildPrismaStub(inemSessionRow({ status: INEMSessionStatus.LOGGING_IN }));
+      const service = new InemSessionService(stub as never, cipher, client);
+
+      await service.resetCircuitBreaker();
+
+      expect(sessionRow.status).toBe(INEMSessionStatus.LOGGING_IN);
+      expect(stub.iNEMSession.update).not.toHaveBeenCalled();
+    });
+  });
+
   describe('pingStatistics', () => {
     it('marks the session healthy once the statistics call succeeds', async () => {
       const cookies: InemCookieJar = { alAuth: 'a1', samlsessionid: 's1', deviceId: null };

@@ -155,6 +155,15 @@ export enum Action {
    */
   MANAGE_INEM_STATUS = 'MANAGE_INEM_STATUS',
   /**
+   * Clear a tripped INEM session circuit breaker (#211) — the manual
+   * recovery step a `FAILED` session otherwise needs done by hand against
+   * the database. Deliberately narrower than `MANAGE_INEM_STATUS`: every
+   * crew member sets their own unit's status, but re-arming the one shared
+   * INEM identity after INEM itself rejected a request is a coordinator/admin
+   * call, not a field one.
+   */
+  RESET_INEM_SESSION = 'RESET_INEM_SESSION',
+  /**
    * See or set who is paid vs. volunteering for a shift — employment
    * contracts, and `ScheduleAssignment.compensation` (the rework that
    * replaced #223's blanket `User.isPaidStaff` flag and #245's
@@ -239,6 +248,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Action[]> = {
     Action.VIEW_VOLUNTEER_HOURS,
     Action.MANAGE_NOTICES,
     Action.MANAGE_INEM_STATUS,
+    Action.RESET_INEM_SESSION,
     // The coordinator who assigns the crew is the one who decides whether an
     // off-clock assignment was paid extra.
     Action.MANAGE_COMPENSATION,
@@ -5859,6 +5869,88 @@ export function arrivalWindowWarning(
 }
 
 /**
+ * The arrival time to aim a plan at: the midpoint of the preferred window,
+ * i.e. halfway between `arrivalWindowEarliestMinutes` and
+ * `arrivalWindowLatestMinutes` before treatment start.
+ *
+ * The midpoint rather than either bound, because both bounds are the wrong
+ * target for the same reason — they leave no slack on the side that matters.
+ * Aiming at `arrivalWindowLatestMinutes` makes every minute of traffic error
+ * a late arrival, which is the hard constraint; aiming at
+ * `arrivalWindowEarliestMinutes` maximises the patient's wait, which is the
+ * soft one the delegation genuinely values. With the defaults (30 and 5) this
+ * targets 17.5 minutes before, leaving ~12 minutes of absorbable delay before
+ * `arrivalWindowWarning` reads anything at all.
+ *
+ * Only a suggestion: the planner moves the block and the stored planned times
+ * win, exactly as #235 requires ("the board never chooses for the planner").
+ */
+export function targetArrivalAt(appointmentAt: string, thresholds: ArrivalWindowThresholds): string {
+  const midpointMinutesBefore =
+    (thresholds.arrivalWindowEarliestMinutes + thresholds.arrivalWindowLatestMinutes) / 2;
+  return new Date(new Date(appointmentAt).getTime() - midpointMinutesBefore * 60_000).toISOString();
+}
+
+/**
+ * The two times the crew currently works out from experience, and the reason
+ * the planning board exists: when to collect the patient, and when they get
+ * home again. Neither is on the delegation's printed daily sheet today — it
+ * carries only H.I. (treatment start) and H.F. (expected ready-for-pickup),
+ * and the driver infers the rest.
+ *
+ * Direction decides which end is anchored, because only one end of each leg
+ * is a fact given to the delegation:
+ *
+ * - `OUTBOUND` is anchored at its *destination*. Treatment start is the hard
+ *   constraint, so the facility arrival is `targetArrivalAt` and the pickup
+ *   is that minus the travel time — the plan is built backwards from the
+ *   appointment.
+ * - `RETURN` is anchored at its *origin*. The patient cannot leave before
+ *   they are ready, so the facility pickup is `effectiveEstimatedEndAt` (H.F.,
+ *   never blank by #233) and the home arrival is that plus the travel time —
+ *   built forwards from the estimated end.
+ *
+ * `null` travel time (no route, no coordinates) yields `null` times rather
+ * than a fabricated guess: a blank the planner fills in is honest, a made-up
+ * time is not.
+ */
+export interface SuggestedLegTimes {
+  /** ISO datetime — leaving the origin. Home for `OUTBOUND`, the facility for `RETURN`. */
+  pickupAt: string | null;
+  /** ISO datetime — reaching the destination. The facility for `OUTBOUND`, home for `RETURN`. */
+  dropoffAt: string | null;
+}
+
+export function suggestLegTimes(input: {
+  direction: LegDirection;
+  /** H.I. — treatment start. */
+  appointmentAt: string;
+  /** H.F. — `TransportLeg.effectiveEstimatedEndAt`, never blank. */
+  effectiveEstimatedEndAt: string;
+  /** Planned travel time for this leg, traffic-corrected. Null when unroutable. */
+  travelMinutes: number | null;
+  thresholds: ArrivalWindowThresholds;
+}): SuggestedLegTimes {
+  const { direction, appointmentAt, effectiveEstimatedEndAt, travelMinutes, thresholds } = input;
+  if (travelMinutes == null) return { pickupAt: null, dropoffAt: null };
+  const travelMs = travelMinutes * 60_000;
+
+  if (direction === LegDirection.RETURN) {
+    const pickup = new Date(effectiveEstimatedEndAt);
+    return {
+      pickupAt: pickup.toISOString(),
+      dropoffAt: new Date(pickup.getTime() + travelMs).toISOString(),
+    };
+  }
+
+  const dropoff = new Date(targetArrivalAt(appointmentAt, thresholds));
+  return {
+    pickupAt: new Date(dropoff.getTime() - travelMs).toISOString(),
+    dropoffAt: dropoff.toISOString(),
+  };
+}
+
+/**
  * The handful of values that are the same for every run of this delegation.
  *
  * Configuration rather than constants in code: one place, identical for every
@@ -7929,8 +8021,21 @@ export interface TransportLeg {
    * one — see `effectiveEstimatedEndAt` for what to plan against instead. */
   estimatedEndAt: string | null;
   estimatedEndSource: EstimatedEndSource | null;
-  /** ISO datetime — `estimatedEndAt` when supplied, or appointment-plus-floor
-   * otherwise (#233): never blank. See `resolveEstimatedEnd`. */
+  /**
+   * ISO datetime — H.I. on the delegation's printed sheet: the treatment
+   * start the patient must be at the facility for, resolved from the
+   * referral's own appointment time or the treatment plan's time-of-day —
+   * never blank, since a referral without one is not a referral.
+   *
+   * The hard constraint of the whole feature, and the anchor an `OUTBOUND`
+   * leg's times are computed backwards from — see `suggestLegTimes`. Exposed
+   * because the planning board cannot rank an arrival warning, or suggest a
+   * pickup time, against a time it cannot see.
+   */
+  appointmentAt: string;
+  /** ISO datetime — H.F. on the printed sheet: `estimatedEndAt` when
+   * supplied, or appointment-plus-floor otherwise (#233): never blank. See
+   * `resolveEstimatedEnd`. */
   effectiveEstimatedEndAt: string;
   /** The leg's own arrival-timing read (#233), `null` when nothing is
    * planned yet or there is nothing to warn about. Only meaningful for an
@@ -8390,6 +8495,127 @@ export function computeDwellBreakEven(expectedDwellMinutes: number, travelToBase
     travelToBaseMinutes,
     roundTripToBaseMinutes: travelToBaseMinutes * 2,
   };
+}
+
+// ─── Planning board (#235) ──────────────────────────────────────────────────
+//
+// `GET /trips/board?date=` — everything `TransportPlanningPage` needs for one
+// date in a single call. The board never re-derives `TripsService.getDetail`'s
+// ranked validation; it only adds the patient-facing facts a leg card needs
+// (`TransportPlanningLeg`) and the vehicle header a lane needs
+// (`TransportPlanningLane.vehicle`). Maintenance and shift commitments are
+// deliberately absent here — the board fetches those straight off
+// `VehicleOccupancy` itself, so this module never has to know they exist.
+
+/**
+ * One leg as a board card needs to see it — every `TransportLeg` field
+ * (addresses, arrival-window warning, effective estimated end) plus the
+ * patient facts the card displays. `patientName` is omitted for a caller
+ * without `VIEW_PATIENT_IDENTITY`, the same degrade `PatientIdentity` itself
+ * uses.
+ */
+export interface TransportPlanningLeg extends TransportLeg {
+  patientId: string;
+  patientMobility: PatientMobility;
+  patientName?: string;
+  /**
+   * Planned travel time for this leg — OSRM free-flow between the leg's own
+   * geocoded endpoints, times the corridor's traffic factor (#232). Null when
+   * the pair could not be routed or an endpoint has no coordinates; consumers
+   * must show a blank rather than substitute a default, since a wrong travel
+   * time silently moves a pickup.
+   */
+  travelMinutes: number | null;
+  /** True when `travelMinutes` is a straight-line fallback rather than a
+   * routed one (out-of-region), so the board can say so instead of implying a
+   * precision it does not have. */
+  travelEstimated: boolean;
+  /** The pickup/dropoff times the crew infers by experience today, computed —
+   * see `suggestLegTimes`. Advisory: `plannedPickupAt`/`plannedDropoffAt` are
+   * what the plan actually commits to once the planner has placed the block. */
+  suggested: SuggestedLegTimes;
+}
+
+/** One vehicle's lane for a day — a `Trip` plus everything
+ * `TripsService.getDetail` already computes for it, so the board never
+ * re-derives capacity/availability/arrival-timing issues itself. */
+export interface TransportPlanningLane {
+  trip: Trip;
+  vehicle: {
+    id: string;
+    licensePlate: string;
+    numeroCauda: string;
+    vehicleType: VehicleType;
+    seatedCapacity: number;
+    wheelchairPositions: number;
+    stretcherPositions: number;
+  };
+  crewMembers: TripCrewMember[];
+  stops: TripStop[];
+  /** Null when the lane has no stops yet. */
+  occupancyWindow: { startsAt: string; endsAt: string } | null;
+  emptyLegs: TripStopSegment[];
+  issues: TripPlanIssue[];
+}
+
+/**
+ * `legsById` covers both an assigned stop (looked up by its
+ * `transportLegId`) and the rail (`unassignedLegIds`, in display order) —
+ * one lookup table rather than two differently-shaped leg lists.
+ */
+export interface TransportPlanningBoard {
+  /** ISO date. */
+  date: string;
+  lanes: TransportPlanningLane[];
+  legsById: Record<string, TransportPlanningLeg>;
+  unassignedLegIds: string[];
+}
+
+// ─── Crew manifest (#236) ───────────────────────────────────────────────────
+//
+// `GET /trips/me?date=` — a crew member's own trips for a date, the artefact
+// a driver actually works from: ordered stops with planned times, the
+// patient, the facility and the treatment window. Self-scoped like
+// `GET /schedules/me`: the service filters to trips *this* caller is
+// crewing, so unlike `TransportPlanningLeg`, `patientName` is never omitted
+// here — see `PatientsService.findManyForCrewManifest`'s doc comment for why
+// that's not a `VIEW_PATIENT_IDENTITY` check.
+
+/** One stop as the crew manifest needs to see it — `TripStop` plus the
+ * facility name (rather than just its id) and, for a `PICKUP`/`DROPOFF`
+ * carrying a leg, the patient and the treatment window it's planned against. */
+export interface CrewManifestStop extends TripStop {
+  facilityName: string | null;
+  legDirection: LegDirection | null;
+  patientId: string | null;
+  patientName: string | null;
+  patientMobility: PatientMobility | null;
+  /** ISO datetime — the referral's own appointment time, the thing an
+   * `OUTBOUND` dropoff is planned against. Null for a stop with no leg. */
+  appointmentAt: string | null;
+  /** ISO datetime — `TransportLeg.effectiveEstimatedEndAt`, never blank once
+   * a leg exists. On a `RETURN` leg's `PICKUP` stop this is the earliest the
+   * patient could be ready; `actualAt` on that same stop is the ready call
+   * itself once it's happened — "awaiting the ready call" is simply
+   * `actualAt === null`. */
+  treatmentEndAt: string | null;
+}
+
+export interface CrewManifestTrip {
+  trip: Trip;
+  vehicle: {
+    id: string;
+    licensePlate: string;
+    numeroCauda: string;
+    vehicleType: VehicleType;
+  };
+  stops: CrewManifestStop[];
+}
+
+export interface MyTransportTripsResponse {
+  /** ISO date. */
+  date: string;
+  trips: CrewManifestTrip[];
 }
 
 // ─── API error codes (#180 phase 4) ───────────────────────────────────────────

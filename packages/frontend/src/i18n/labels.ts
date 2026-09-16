@@ -508,6 +508,7 @@ const MESSAGES = {
   'nav.home': { pt: 'Início', en: 'Home' },
   'nav.myAvailability': { pt: 'A minha disponibilidade', en: 'My Availability' },
   'nav.myDuties': { pt: 'As minhas escalas', en: 'My Duties' },
+  'nav.myTransportTrips': { pt: 'As minhas viagens', en: 'My Trips' },
   'nav.myHours': { pt: 'As minhas horas', en: 'My Hours' },
   'nav.myReports': { pt: 'Os meus relatórios', en: 'My Reports' },
   'nav.volunteerHoursReview': { pt: 'Rever horas de voluntariado', en: 'Review Volunteer Hours' },
@@ -528,6 +529,7 @@ const MESSAGES = {
   'nav.agreements': { pt: 'Acordos', en: 'Agreements' },
   'nav.transportRequests': { pt: 'Pedidos', en: 'Referrals' },
   'nav.transportReferrals': { pt: 'Decidir', en: 'Decide' },
+  'nav.transportPlanning': { pt: 'Planeamento', en: 'Planning' },
   'nav.transportConfig': { pt: 'Política de planeamento', en: 'Planning policy' },
   'nav.holidays': { pt: 'Feriados', en: 'Holidays' },
   'nav.myProfile': { pt: 'O meu perfil', en: 'My Profile' },
@@ -1709,6 +1711,36 @@ const MESSAGES = {
     en: "This shift hasn't reached its minimum crew yet — it may not run.",
   },
 
+  // ── My transport trips (#236) — the crew manifest, live and print ──
+  'myTransportTrips.pageTitle': { pt: 'As minhas viagens', en: 'My Trips' },
+  'myTransportTrips.heading': { pt: 'As minhas viagens', en: 'My Trips' },
+  'myTransportTrips.subheading': {
+    pt: 'As tuas paragens de transporte para o dia escolhido, pela ordem em que as vais fazer.',
+    en: 'Your transport stops for the chosen day, in the order you work them.',
+  },
+  'myTransportTrips.loadFailed': { pt: 'Não foi possível carregar as tuas viagens.', en: 'Could not load your trips.' },
+  'myTransportTrips.previousDay': { pt: 'Dia anterior', en: 'Previous day' },
+  'myTransportTrips.nextDay': { pt: 'Dia seguinte', en: 'Next day' },
+  'myTransportTrips.today': { pt: 'Hoje', en: 'Today' },
+  'myTransportTrips.printButton': { pt: 'Imprimir', en: 'Print' },
+  'myTransportTrips.noTrips': {
+    pt: 'Não tens viagens de transporte planeadas para este dia.',
+    en: 'No transport trips planned for you this day.',
+  },
+  'myTransportTrips.vehicleLabel': { pt: 'Viatura %{plate}', en: 'Vehicle %{plate}' },
+  'myTransportTrips.stopKind.PICKUP': { pt: 'Recolha', en: 'Pickup' },
+  'myTransportTrips.stopKind.DROPOFF': { pt: 'Entrega', en: 'Drop-off' },
+  'myTransportTrips.stopKind.WAIT': { pt: 'Espera', en: 'Wait' },
+  'myTransportTrips.stopKind.RETURN_TO_BASE': { pt: 'Regresso à base', en: 'Return to base' },
+  'myTransportTrips.waitsHere': { pt: 'A equipa espera aqui', en: 'Crew waits here' },
+  'myTransportTrips.treatmentWindow': {
+    pt: 'Tratamento: %{start} – %{end}',
+    en: 'Treatment: %{start} – %{end}',
+  },
+  'myTransportTrips.readyAwaiting': { pt: 'A aguardar chamada de pronto', en: 'Awaiting ready call' },
+  'myTransportTrips.readyAt': { pt: 'Pronto às %{time}', en: 'Ready at %{time}' },
+  'myTransportTrips.generatedAt': { pt: 'Gerado em %{date}', en: 'Generated %{date}' },
+
   // ── Notification channels — shared across the notices/settings screens below ──
   'notificationChannel.IN_APP': { pt: 'Na aplicação', en: 'In-app' },
   'notificationChannel.EMAIL': { pt: 'Email', en: 'Email' },
@@ -1859,6 +1891,7 @@ const MESSAGES = {
   'inem.syncNowSuccess': { pt: 'Sincronizado com o INEM.', en: 'Synced with INEM.' },
   'inem.syncNowFailed': { pt: 'Não foi possível sincronizar agora.', en: 'Could not sync right now.' },
   'inem.available': { pt: 'Disponível', en: 'Available' },
+  'inem.dispatched': { pt: 'Acionado', en: 'Dispatched' },
   'inem.statusUnavailable': { pt: 'Indisponível', en: 'Unavailable' },
   'inem.statusUnset': { pt: 'Estado por definir', en: 'Status not set' },
   'inem.changeStatus': { pt: 'Alterar estado', en: 'Change status' },
@@ -1878,6 +1911,12 @@ const MESSAGES = {
     pt: 'O redinfo não consegue neste momento contactar o portal do INEM. Define o estado deste meio diretamente no portal do INEM.',
     en: 'redinfo cannot currently reach the INEM portal. Set this unit’s status directly in the INEM portal instead.',
   },
+  'inem.resetSession': { pt: 'Restabelecer ligação', en: 'Reset connection' },
+  'inem.resetSessionSuccess': {
+    pt: 'Ligação restabelecida — a validar com o portal do INEM.',
+    en: 'Connection reset — validating with the INEM portal.',
+  },
+  'inem.resetSessionFailed': { pt: 'Não foi possível restabelecer a ligação.', en: 'Could not reset the connection.' },
 
   // Reason codes: `pt` is INEM's own display label, copied verbatim from
   // `GET /api/INOP` (docs/inem-portal-contract.md) — so a Portuguese-speaking
@@ -2906,6 +2945,126 @@ const MESSAGES = {
   },
   'transportLeg.markedNoShow': { pt: 'Viagem marcada como falta.', en: 'Leg marked as a no-show.' },
   'transportLeg.noShowFailed': { pt: 'Não foi possível marcar a falta.', en: 'Could not mark the no-show.' },
+
+  // ── Transport planning board (#235) — timeline lanes, drag assignment,
+  // dwell and empty running. See TransportPlanningPage.tsx. ──
+  'transportPlanning.pageTitle': { pt: 'Planeamento de transportes', en: 'Transport planning' },
+  'transportPlanning.dateLabel': { pt: 'Data', en: 'Date' },
+  'transportPlanning.loadFailed': { pt: 'Não foi possível carregar o plano do dia.', en: "Could not load the day's plan." },
+  'transportPlanning.railTitle': { pt: 'Por atribuir', en: 'Unassigned' },
+  'transportPlanning.railEmpty': { pt: 'Nada por atribuir neste dia.', en: 'Nothing unassigned on this day.' },
+  'transportPlanning.assignButton': { pt: 'Atribuir', en: 'Assign' },
+  'transportPlanning.reassignButton': { pt: 'Reatribuir', en: 'Reassign' },
+  'transportPlanning.addVehicleButton': { pt: 'Adicionar viatura', en: 'Add vehicle' },
+  'transportPlanning.noLanes': {
+    pt: 'Sem viaturas neste dia — adicione uma para começar a planear.',
+    en: 'No vehicles on this day yet — add one to start planning.',
+  },
+  'transportPlanning.emptyLegLabel': { pt: 'Percurso vazio', en: 'Empty running' },
+  'transportPlanning.dwellLabel': { pt: 'Espera', en: 'Waiting' },
+  'transportPlanning.releaseLabel': { pt: 'Libertada', en: 'Released' },
+  'transportPlanning.issuesTitle': { pt: 'Avisos', en: 'Warnings' },
+  'transportPlanning.issuesEmpty': { pt: 'Sem avisos.', en: 'No warnings.' },
+  'transportPlanning.occupancyLegend.MAINTENANCE': { pt: 'Manutenção', en: 'Maintenance' },
+  'transportPlanning.occupancyLegend.SCHEDULE_SHIFT': { pt: 'Turno', en: 'Shift' },
+  'transportPlanning.occupancyLegend.SUPPORT_EVENT': { pt: 'Evento de apoio', en: 'Support event' },
+  'transportPlanning.occupancyLegend.TRANSPORT_TRIP': { pt: 'Viagem', en: 'Trip' },
+
+  // The board's own vocabulary. "Jornada" is the delegation's word for one
+  // round of the vehicle's day — the sections the printed daily sheet
+  // separates with a heavy rule, one `Trip` each.
+  'transportPlanning.journeyLabel': { pt: 'Jornada %{number}', en: 'Journey %{number}' },
+  'transportPlanning.addJourneyButton': { pt: 'Nova jornada', en: 'New journey' },
+  'transportPlanning.journeyEmpty': { pt: 'Jornada vazia — arraste uma viagem para aqui.', en: 'Empty journey — drag a leg here.' },
+  'transportPlanning.noCrew': { pt: 'Sem tripulação', en: 'No crew' },
+  'transportPlanning.dropHere': { pt: 'Largar às %{time}', en: 'Drop at %{time}' },
+  'transportPlanning.zoomIn': { pt: 'Aproximar', en: 'Zoom in' },
+  'transportPlanning.zoomOut': { pt: 'Afastar', en: 'Zoom out' },
+  'transportPlanning.zoomFit': { pt: 'Dia inteiro', en: 'Whole day' },
+
+  // H.I. and H.F. as they are printed on the delegation's daily service sheet
+  // — kept as the crews' own abbreviations rather than renamed, since the
+  // board is read alongside the paper it replaces.
+  'transportPlanning.treatmentStartShort': { pt: 'H.I.', en: 'H.I.' },
+  'transportPlanning.treatmentEndShort': { pt: 'H.F.', en: 'H.F.' },
+  'transportPlanning.treatmentStartLabel': { pt: 'Entrada no tratamento', en: 'Treatment start' },
+  'transportPlanning.treatmentEndLabel': { pt: 'Previsão de estar pronto', en: 'Expected ready for pickup' },
+  'transportPlanning.pickupLabel': { pt: 'Recolher', en: 'Collect' },
+  'transportPlanning.homeArrivalLabel': { pt: 'Chegada a casa', en: 'Home arrival' },
+  'transportPlanning.suggestedHint': { pt: 'sugerido', en: 'suggested' },
+  'transportPlanning.travelLabel': { pt: 'Viagem', en: 'Travel' },
+  'transportPlanning.treatmentDurationLabel': { pt: 'Tratamento', en: 'Treatment' },
+  'transportPlanning.travelUnknown': { pt: 'Sem estimativa de percurso', en: 'No travel estimate' },
+  'transportPlanning.travelEstimatedHint': {
+    pt: 'Estimativa em linha reta — fora da área com rotas.',
+    en: 'Straight-line estimate — outside the routed area.',
+  },
+  'transportPlanning.destinationUnknown': { pt: 'Sem destino', en: 'No destination' },
+  'transportPlanning.returnToBaseLabel': { pt: 'Regresso à base', en: 'Return to base' },
+
+  // Assign/reassign dialog — also the keyboard equivalent to dragging (#235's
+  // own accessibility requirement) and the override-reason prompt after a
+  // vehicle conflict.
+  'transportPlanning.assignDialogTitleNew': { pt: 'Atribuir a uma viatura', en: 'Assign to a vehicle' },
+  'transportPlanning.assignDialogTitleEdit': { pt: 'Reatribuir', en: 'Reassign' },
+  'transportPlanning.assignDialogLaneLabel': { pt: 'Viatura', en: 'Vehicle' },
+  'transportPlanning.assignDialogPickupLabel': { pt: 'Recolha planeada', en: 'Planned pickup' },
+  'transportPlanning.assignDialogDropoffLabel': { pt: 'Entrega planeada', en: 'Planned drop-off' },
+  'transportPlanning.assignDialogOverrideReasonLabel': { pt: 'Motivo da exceção', en: 'Override reason' },
+  'transportPlanning.assignDialogOverrideHint': {
+    pt: 'Esta viatura já está comprometida nesse intervalo. Indique o motivo para continuar mesmo assim.',
+    en: 'This vehicle is already committed for that interval. Give a reason to proceed anyway.',
+  },
+  'transportPlanning.assignDialogChooseLane': { pt: 'Escolha uma viatura.', en: 'Choose a vehicle.' },
+  'transportPlanning.assignDialogInvalidRange': {
+    pt: 'A entrega não pode ser antes da recolha.',
+    en: 'The drop-off cannot be before the pickup.',
+  },
+  'transportPlanning.assignDialogConfirm': { pt: 'Confirmar', en: 'Confirm' },
+  'transportPlanning.assignDialogCancel': { pt: 'Cancelar', en: 'Cancel' },
+  'transportPlanning.assignDialogUnassign': { pt: 'Remover atribuição', en: 'Unassign' },
+  'transportPlanning.assignFailed': { pt: 'Não foi possível atribuir a viagem.', en: 'Could not assign the leg.' },
+  'transportPlanning.assigned': { pt: 'Viagem atribuída.', en: 'Leg assigned.' },
+  'transportPlanning.unassigned': { pt: 'Atribuição removida.', en: 'Unassigned.' },
+  'transportPlanning.unassignFailed': { pt: 'Não foi possível remover a atribuição.', en: 'Could not remove the assignment.' },
+
+  // Add-vehicle dialog — creates the `Trip` a lane needs to exist before
+  // anything can be dragged onto it.
+  'transportPlanning.addVehicleDialogTitle': { pt: 'Adicionar viatura ao dia', en: "Add a vehicle to the day" },
+  'transportPlanning.addVehicleDialogVehicleLabel': { pt: 'Viatura', en: 'Vehicle' },
+  'transportPlanning.addVehicleDialogConfirm': { pt: 'Adicionar', en: 'Add' },
+  'transportPlanning.addVehicleFailed': { pt: 'Não foi possível adicionar a viatura.', en: 'Could not add the vehicle.' },
+
+  // Wait-or-release dialog (#219) — data only, the board never decides for
+  // the planner.
+  'transportPlanning.waitReleaseButton': { pt: 'Esperar ou libertar', en: 'Wait or release' },
+  'transportPlanning.waitReleaseDialogTitle': { pt: 'Esperar ou libertar a viatura', en: 'Wait or release the vehicle' },
+  'transportPlanning.waitReleaseHint': {
+    pt: 'Comparação apenas informativa — a decisão é sua.',
+    en: 'Comparison only — the decision is yours.',
+  },
+  'transportPlanning.waitReleaseExpectedDwell': { pt: 'Espera prevista', en: 'Expected dwell' },
+  'transportPlanning.waitReleaseRoundTrip': { pt: 'Ida e volta até à base', en: 'Round trip to base' },
+  'transportPlanning.waitOption': { pt: 'Esperar no local', en: 'Wait on site' },
+  'transportPlanning.releaseOption': { pt: 'Libertar a viatura', en: 'Release the vehicle' },
+  'transportPlanning.waitReleaseDwellMinutesLabel': { pt: 'Minutos de espera', en: 'Dwell minutes' },
+  'transportPlanning.waitReleaseConfirm': { pt: 'Gravar', en: 'Save' },
+  'transportPlanning.waitReleaseSaved': { pt: 'Decisão gravada.', en: 'Decision saved.' },
+  'transportPlanning.waitReleaseFailed': { pt: 'Não foi possível gravar a decisão.', en: 'Could not save the decision.' },
+  'transportPlanning.breakEvenFailed': {
+    pt: 'Não foi possível calcular a comparação.',
+    en: 'Could not compute the comparison.',
+  },
+  'transportPlanning.minutes': { pt: '%{count} min', en: '%{count} min' },
+  'transportPlanning.arrivalWarning.TOO_EARLY': { pt: 'Chegada mais cedo que o preferido', en: 'Arrival earlier than preferred' },
+  'transportPlanning.arrivalWarning.LATE_WITHIN_TOLERANCE': {
+    pt: 'Chegada atrasada, dentro da tolerância',
+    en: 'Arrival late, within tolerance',
+  },
+  'transportPlanning.arrivalWarning.LATE_BEYOND_TOLERANCE': {
+    pt: 'Chegada atrasada, fora da tolerância',
+    en: 'Arrival late, beyond tolerance',
+  },
 
   // ── Rich text editor (#180 phase 3) — shared by crew and coordinator forms ──
   'richText.bold': { pt: 'Negrito', en: 'Bold' },

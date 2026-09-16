@@ -5,11 +5,13 @@ import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import CancelIcon from '@mui/icons-material/Cancel';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import SyncIcon from '@mui/icons-material/Sync';
-import { INEM_AVAILABLE_INOP_CODE, INEMSessionStatus, INEMStatusOverview, INEMUnit } from '@redinfo/shared';
+import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
+import { Action, INEM_AVAILABLE_INOP_CODE, INEMSessionStatus, INEMStatusOverview, INEMUnit } from '@redinfo/shared';
 import { apiFetch, ApiError } from '../api';
 import { apiErrorLabel, inemReasonLabel } from '../i18n/labels';
 import { useT } from '../i18n/useT';
 import { useIntlLocale } from '../i18n/useIntlLocale';
+import { useCapabilities } from '../hooks/useCapabilities';
 import { SetUnitStatusDialog } from './inem/SetUnitStatusDialog';
 
 /**
@@ -43,10 +45,12 @@ const REFRESH_MS = 20_000;
 export const INEMStatusPage = () => {
   const t = useT();
   const notify = useNotify();
+  const capabilities = useCapabilities();
   const [overview, setOverview] = useState<INEMStatusOverview | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [savingUnitId, setSavingUnitId] = useState<string | null>(null);
   const [syncingNow, setSyncingNow] = useState(false);
+  const [resettingSession, setResettingSession] = useState(false);
   const [dialogUnitId, setDialogUnitId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -78,6 +82,23 @@ export const INEMStatusPage = () => {
       notify(e instanceof ApiError ? apiErrorLabel(t, e) : t('inem.syncNowFailed'), { type: 'warning' });
     } finally {
       setSyncingNow(false);
+    }
+  };
+
+  // Only reachable at all once the breaker is `FAILED` — the one state
+  // automated recovery refuses to touch on its own (see `InemSessionService`
+  // in the backend). Reopens the session and lets the app's own warm re-mint
+  // take it from there, so this never talks to INEM directly.
+  const handleResetSession = async () => {
+    setResettingSession(true);
+    try {
+      await apiFetch('/inem/reset-session', { method: 'POST' });
+      notify(t('inem.resetSessionSuccess'), { type: 'info' });
+      void load();
+    } catch (e) {
+      notify(e instanceof ApiError ? apiErrorLabel(t, e) : t('inem.resetSessionFailed'), { type: 'warning' });
+    } finally {
+      setResettingSession(false);
     }
   };
 
@@ -134,7 +155,12 @@ export const INEMStatusPage = () => {
       </Stack>
 
       {overview && overview.sessionStatus !== INEMSessionStatus.ACTIVE && (
-        <DegradedBanner status={overview.sessionStatus} />
+        <DegradedBanner
+          status={overview.sessionStatus}
+          canReset={capabilities.can([Action.RESET_INEM_SESSION])}
+          resetting={resettingSession}
+          onReset={handleResetSession}
+        />
       )}
 
       {!overview && !loadError && <CircularProgress size={24} />}
@@ -180,12 +206,43 @@ export const INEMStatusPage = () => {
   );
 };
 
-const DegradedBanner = ({ status }: { status: INEMSessionStatus }) => {
+interface DegradedBannerProps {
+  status: INEMSessionStatus;
+  /** Whether the viewer holds `RESET_INEM_SESSION` — only Admins/coordinators do. */
+  canReset: boolean;
+  resetting: boolean;
+  onReset: () => void;
+}
+
+/**
+ * `EXPIRED` self-heals on its own (a warm re-mint or cold-login is already in
+ * flight) — there is nothing for a human to click. `FAILED` is the one state
+ * that doesn't: the breaker only clears by hand, so the reset button only
+ * ever appears here, and only for someone who holds `RESET_INEM_SESSION`.
+ */
+const DegradedBanner = ({ status, canReset, resetting, onReset }: DegradedBannerProps) => {
   const t = useT();
   if (status !== INEMSessionStatus.FAILED && status !== INEMSessionStatus.EXPIRED) return null;
+  const isFailed = status === INEMSessionStatus.FAILED;
   return (
-    <Alert severity={status === INEMSessionStatus.FAILED ? 'error' : 'warning'} sx={{ mb: 2 }}>
-      {t(status === INEMSessionStatus.FAILED ? 'inem.degradedBanner.FAILED' : 'inem.degradedBanner.EXPIRED')}
+    <Alert
+      severity={isFailed ? 'error' : 'warning'}
+      sx={{ mb: 2 }}
+      action={
+        isFailed && canReset ? (
+          <Button
+            color="inherit"
+            size="small"
+            startIcon={resetting ? <CircularProgress size={16} color="inherit" /> : undefined}
+            disabled={resetting}
+            onClick={onReset}
+          >
+            {t('inem.resetSession')}
+          </Button>
+        ) : undefined
+      }
+    >
+      {t(isFailed ? 'inem.degradedBanner.FAILED' : 'inem.degradedBanner.EXPIRED')}
     </Alert>
   );
 };
@@ -202,6 +259,13 @@ interface UnitCardProps {
  * out of here and into `SetUnitStatusDialog`. Status reads off the *desired*
  * code (what the crew last asked for), same as before; the syncing chip is
  * what tells a reader whether INEM has actually confirmed it yet.
+ *
+ * That desired/reported pair only tracks the INOP toggle redinfo itself
+ * drives — it has no way to represent a unit INEM's own dispatch has sent on
+ * a call, which is neither "desired available" nor an INOP reason. `dispatched`
+ * reads that off `reportedActive` (INEM's own live label) instead, and takes
+ * priority: a unit actually out on a call must never read as "Available"
+ * just because nobody has told INEM to mark it INOP.
  */
 const UnitCard = ({ unit, reasons, onChangeStatus }: UnitCardProps) => {
   const t = useT();
@@ -209,6 +273,7 @@ const UnitCard = ({ unit, reasons, onChangeStatus }: UnitCardProps) => {
 
   const code = unit.desiredInopCode;
   const syncing = code !== null && code !== unit.reportedInopCode;
+  const dispatched = isDispatchedActiveLabel(unit.reportedActive);
 
   const vehicleLabel = unit.vehicle
     ? `${unit.vehicle.licensePlate} – ${unit.vehicle.numeroCauda}`
@@ -239,7 +304,7 @@ const UnitCard = ({ unit, reasons, onChangeStatus }: UnitCardProps) => {
         </Stack>
 
         <Box sx={{ mt: 1.5 }}>
-          <StatusChip code={code} reasons={reasons} />
+          <StatusChip code={code} reasons={reasons} dispatched={dispatched} />
         </Box>
 
         <Button size="small" variant="outlined" onClick={onChangeStatus} sx={{ mt: 1.5 }}>
@@ -262,13 +327,39 @@ const UnitCard = ({ unit, reasons, onChangeStatus }: UnitCardProps) => {
 };
 
 /**
- * The whole point of this pass: a status a non-tech crew member reads at a
- * glance, not one they have to infer from a switch's position. Three states —
- * available, INOP-with-reason, or "nobody's told INEM anything yet" — never
- * a bare toggle.
+ * The Portuguese `Active` labels INEM's own portal uses for a unit currently
+ * out on a call — observed on the portal as "Acionados" (see #post-#216
+ * follow-up). Not confirmed against a live `GET /api/unit` capture of a unit
+ * in this state (docs/inem-portal-contract.md's open questions) — matched
+ * case-insensitively against both the singular and the portal's plural
+ * heading so a near-miss doesn't silently fall through to "Available".
  */
-const StatusChip = ({ code, reasons }: { code: string | null; reasons: Record<string, string> }) => {
+const DISPATCHED_ACTIVE_LABELS = ['acionado', 'acionados'];
+
+function isDispatchedActiveLabel(reportedActive: string | null): boolean {
+  return reportedActive !== null && DISPATCHED_ACTIVE_LABELS.includes(reportedActive.trim().toLowerCase());
+}
+
+/**
+ * The whole point of this pass: a status a non-tech crew member reads at a
+ * glance, not one they have to infer from a switch's position. Four states —
+ * dispatched, available, INOP-with-reason, or "nobody's told INEM anything
+ * yet" — never a bare toggle.
+ */
+const StatusChip = ({
+  code,
+  reasons,
+  dispatched,
+}: {
+  code: string | null;
+  reasons: Record<string, string>;
+  dispatched: boolean;
+}) => {
   const t = useT();
+
+  if (dispatched) {
+    return <Chip size="small" icon={<DirectionsCarIcon fontSize="small" />} label={t('inem.dispatched')} color="warning" />;
+  }
 
   if (code === null) {
     return <Chip size="small" icon={<HelpOutlineIcon fontSize="small" />} label={t('inem.statusUnset')} variant="outlined" />;

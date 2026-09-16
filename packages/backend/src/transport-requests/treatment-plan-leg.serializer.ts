@@ -142,6 +142,7 @@ export function serializeTransportLeg(row: TransportLegRow, context: LegPolicyCo
     cancellationSource: row.cancellationSource as LegCancellationSource | null,
     estimatedEndAt,
     estimatedEndSource: row.estimatedEndSource as EstimatedEndSource | null,
+    appointmentAt,
     effectiveEstimatedEndAt: resolveEstimatedEnd(appointmentAt, occurrenceType, context.policies, { estimatedEndAt }),
     arrivalWindowWarning:
       row.direction === LegDirection.OUTBOUND && plannedDropoffAt

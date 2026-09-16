@@ -1,3 +1,4 @@
+import { randomBytes } from 'crypto';
 import { PrismaClient } from '@prisma/client';
 import { ConflictException } from '@nestjs/common';
 import {
@@ -16,9 +17,15 @@ import { PrismaService } from '../prisma/prisma.service';
 import { DelegationSettingsService } from '../live-runs/delegation-settings.service';
 import { StaffAbsencesService } from '../staff-absences/staff-absences.service';
 import { VehicleOccupancyService } from '../vehicle-occupancy/vehicle-occupancy.service';
+import { OccurrenceTypePoliciesService } from '../transport-config/occurrence-type-policies.service';
+import { TransportRequestLegsService } from '../transport-requests/transport-request-legs.service';
+import { PatientsService } from '../patients/patients.service';
+import { IdentityCipher } from '../common/identity-cipher';
 import { TripsService } from './trips.service';
 import { TripCrewService } from './trip-crew.service';
 import { TripStopsService } from './trip-stops.service';
+import { TripCrewManifestService } from './trip-crew-manifest.service';
+import { TripLegTravelService } from './trip-leg-travel.service';
 
 /**
  * Integration coverage for #234's model/API against a real Postgres — the
@@ -41,9 +48,34 @@ describeIntegration('TripsService/TripStopsService/TripCrewService (integration)
   const delegationSettings = new DelegationSettingsService(prisma);
   const staffAbsences = new StaffAbsencesService(prisma);
   const vehicleOccupancy = new VehicleOccupancyService(prisma);
-  const trips = new TripsService(prisma, delegationSettings, staffAbsences, vehicleOccupancy);
+  const occurrenceTypePolicies = new OccurrenceTypePoliciesService(prisma);
+  const transportRequestLegs = new TransportRequestLegsService(prisma, delegationSettings, occurrenceTypePolicies);
+  const patients = new PatientsService(prisma, new IdentityCipher(`it-${RUN}:${randomBytes(32).toString('base64')}`));
+  // A fixed 15-minute planned duration rather than the real routing stack:
+  // this suite is about what the database does, and standing up OSRM,
+  // Nominatim and the corridor-factor table to assert a trip's stop rows
+  // would be testing someone else's integration.
+  const legTravel = new TripLegTravelService({
+    planBetweenPoints: async () => ({
+      durationSeconds: 15 * 60,
+      distanceMeters: 12_000,
+      estimated: false,
+      corridorFactor: 1,
+      corridorFactorSource: null,
+    }),
+  } as never);
+  const trips = new TripsService(
+    prisma,
+    delegationSettings,
+    staffAbsences,
+    vehicleOccupancy,
+    transportRequestLegs,
+    patients,
+    legTravel,
+  );
   const crew = new TripCrewService(prisma, staffAbsences);
   const stops = new TripStopsService(prisma, delegationSettings, vehicleOccupancy);
+  const crewManifest = new TripCrewManifestService(prisma, transportRequestLegs, patients);
 
   let coordinator: { id: string };
   let crewMember: { id: string };
@@ -302,5 +334,34 @@ describeIntegration('TripsService/TripStopsService/TripCrewService (integration)
     });
 
     await prisma.vehicleOccupancy.delete({ where: { id: shift.id } });
+  });
+
+  it('integration: crew manifest (#236) is scoped to the caller and reads the real facility/leg/treatment-window joins', async () => {
+    const trip = await trips.create({ date: '2026-09-22', vehicleId: vehicleA.id });
+    tripIds.push(trip.id);
+    await crew.add(trip.id, { userId: crewMember.id, role: CertificationType.DRIVER });
+    const leg = await makeLeg('manifest-01');
+
+    await stops.assignLegToTrip(trip.id, {
+      transportLegId: leg.id,
+      pickupPlannedAt: '2026-09-22T08:00:00.000Z',
+      dropoffPlannedAt: '2026-09-22T08:30:00.000Z',
+    });
+
+    // The coordinator crews nothing that day — sees an empty manifest, not
+    // an error, same as `SchedulesController.getMyDuties` for someone off
+    // the rota.
+    const coordinatorManifest = await crewManifest.getMyTrips(coordinator.id, '2026-09-22');
+    expect(coordinatorManifest.trips).toHaveLength(0);
+
+    const manifest = await crewManifest.getMyTrips(crewMember.id, '2026-09-22');
+    expect(manifest.trips).toHaveLength(1);
+    const dropoffStop = manifest.trips[0].stops.find((s) => s.kind === TripStopKind.DROPOFF)!;
+    expect(dropoffStop.facilityName).toBe(`Hospital ${RUN}`);
+    expect(dropoffStop.legDirection).toBe(LegDirection.OUTBOUND);
+    expect(dropoffStop.appointmentAt).toBe('2026-09-16T09:00:00.000Z');
+    // No `estimatedEndAt` was ever supplied on this leg — `treatmentEndAt`
+    // still reads the appointment-plus-floor fallback, never blank.
+    expect(dropoffStop.treatmentEndAt).not.toBeNull();
   });
 });

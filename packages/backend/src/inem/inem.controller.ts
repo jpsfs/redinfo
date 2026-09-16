@@ -41,4 +41,17 @@ export class InemController {
   syncNow(): Promise<void> {
     return this.inem.syncNow();
   }
+
+  /**
+   * The status page's "Reset" button — clears a tripped session circuit
+   * breaker. Narrower than `MANAGE_INEM_STATUS`: every crew member can set
+   * their own unit's status, but re-arming the one shared INEM identity is a
+   * coordinator/admin call.
+   */
+  @Post('reset-session')
+  @Actions(Action.RESET_INEM_SESSION)
+  @HttpCode(204)
+  resetCircuitBreaker(): Promise<void> {
+    return this.inem.resetCircuitBreaker();
+  }
 }

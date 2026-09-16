@@ -267,3 +267,84 @@ describe('remove', () => {
     await expect(service.remove('missing', MANAGER_ONLY)).rejects.toBeInstanceOf(NotFoundException);
   });
 });
+
+// ── Batched name+mobility lookup (#235) ─────────────────────────────────────
+
+describe('findManyForDisplay', () => {
+  it('returns mobility only, no fullName, for a caller without VIEW_PATIENT_IDENTITY', async () => {
+    const cipher = new IdentityCipher(`k1:${KEY_A}`);
+    const sealed = cipher.seal('patient', 'pat-1', identity);
+    const { service } = makeService(
+      {
+        patient: {
+          findMany: jest.fn(() =>
+            Promise.resolve([patientRow({ id: 'pat-1', identity: sealed, mobility: 'WHEELCHAIR' })]),
+          ),
+        },
+      },
+      cipher,
+    );
+
+    const result = await service.findManyForDisplay(['pat-1'], MANAGER_ONLY);
+
+    // `objectContaining`, because this asserts the identity gate, not the
+    // whole row — the map also carries the unsealed planning fields
+    // (locality, home point) that `TripLegTravelService` routes from.
+    expect(result.get('pat-1')).toEqual(
+      expect.objectContaining({ mobility: PatientMobility.WHEELCHAIR, fullName: null }),
+    );
+  });
+
+  it('includes fullName for a caller with VIEW_PATIENT_IDENTITY', async () => {
+    const cipher = new IdentityCipher(`k1:${KEY_A}`);
+    const sealed = cipher.seal('patient', 'pat-1', identity);
+    const { service } = makeService(
+      { patient: { findMany: jest.fn(() => Promise.resolve([patientRow({ id: 'pat-1', identity: sealed })])) } },
+      cipher,
+    );
+
+    const result = await service.findManyForDisplay(['pat-1'], COORDINATOR);
+
+    expect(result.get('pat-1')).toEqual(
+      expect.objectContaining({ mobility: PatientMobility.AMBULATORY, fullName: identity.fullName }),
+    );
+  });
+
+  it('short-circuits to an empty map without touching the database', async () => {
+    const findMany = jest.fn();
+    const { service } = makeService({ patient: { findMany } });
+
+    const result = await service.findManyForDisplay([], COORDINATOR);
+
+    expect(result.size).toBe(0);
+    expect(findMany).not.toHaveBeenCalled();
+  });
+});
+
+// ── Batched name+mobility lookup for a crew member's own manifest (#236) ────
+
+describe('findManyForCrewManifest', () => {
+  it('includes fullName with no VIEW_PATIENT_IDENTITY check at all — see the method doc comment for why', async () => {
+    const cipher = new IdentityCipher(`k1:${KEY_A}`);
+    const sealed = cipher.seal('patient', 'pat-1', identity);
+    const { service } = makeService(
+      { patient: { findMany: jest.fn(() => Promise.resolve([patientRow({ id: 'pat-1', identity: sealed })])) } },
+      cipher,
+    );
+
+    // No `user`/capability argument at all — this method takes only ids.
+    const result = await service.findManyForCrewManifest(['pat-1']);
+
+    expect(result.get('pat-1')).toEqual({ mobility: PatientMobility.AMBULATORY, fullName: identity.fullName });
+  });
+
+  it('short-circuits to an empty map without touching the database', async () => {
+    const findMany = jest.fn();
+    const { service } = makeService({ patient: { findMany } });
+
+    const result = await service.findManyForCrewManifest([]);
+
+    expect(result.size).toBe(0);
+    expect(findMany).not.toHaveBeenCalled();
+  });
+});

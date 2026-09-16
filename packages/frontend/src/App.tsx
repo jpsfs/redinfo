@@ -58,6 +58,7 @@ import { TransportRequestShow } from './resources/transportRequests/TransportReq
 import { LiveEntryPage, LiveRunGate, LiveRunPage } from './resources/liveRuns';
 import { MyAvailabilityPage } from './pages/MyAvailabilityPage';
 import { MyDutiesPage } from './pages/MyDutiesPage';
+import { MyTransportTripsPage } from './pages/MyTransportTripsPage';
 import { MyHoursPage } from './pages/MyHoursPage';
 import { MyReportsPage } from './pages/MyReportsPage';
 import { MyProfilePage } from './pages/MyProfilePage';
@@ -71,6 +72,7 @@ import { INEMStatusPage } from './pages/INEMStatusPage';
 import { StaffAbsencesPage } from './pages/StaffAbsencesPage';
 import { TransportReferralsPage } from './pages/TransportReferralsPage';
 import { TransportConfigPage } from './pages/TransportConfigPage';
+import { TransportPlanningPage } from './pages/TransportPlanningPage';
 import PeopleIcon from '@mui/icons-material/People';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import BuildIcon from '@mui/icons-material/Build';
@@ -160,6 +162,10 @@ export default function App() {
         {/* Duties span every rota someone is on, so this is not scoped to a
             single window the way My Availability is. */}
         <Route path="/my-duties" element={<MyDutiesPage />} />
+        {/* The crew manifest (#236) — live and print in one screen (see that
+            page's own doc comment). Ungated, same reasoning as /my-duties:
+            `GET /trips/me` scopes to the caller's own crew membership. */}
+        <Route path="/my-transport-trips" element={<MyTransportTripsPage />} />
         {/* Hours generated from those duties, plus anything logged by hand
             (#164). Ungated, like /my-duties above — scoped to the caller by
             the API, not by capability. */}
@@ -202,6 +208,10 @@ export default function App() {
             (#233), gated by MANAGE_TRANSPORT_CONFIG in the drawer manifest —
             same gating as organisations/agreements. */}
         <Route path="/transport-config" element={<TransportConfigPage />} />
+        {/* Timeline lanes with drag assignment (#235) — the manual planning
+            board Feature #219 builds ahead of any route optimisation, gated
+            by PLAN_TRANSPORT_TRIPS in the drawer manifest. */}
+        <Route path="/transport-planning" element={<TransportPlanningPage />} />
         {/* The delegation's INEM units — availability toggle, INOP reason,
             syncing badge and degraded-session banner (#216), gated by
             MANAGE_INEM_STATUS in the drawer manifest. Not react-admin CRUD:

@@ -423,4 +423,40 @@ describe('TransportRequestLegsService', () => {
       },
     );
   });
+
+  // ── Planning board queries (#235) ───────────────────────────────────────
+
+  describe('findUnassignedForDate', () => {
+    it('asks Prisma to exclude cancelled/no-show legs and legs with any TripStop', async () => {
+      const findMany: jest.Mock = jest.fn(() => Promise.resolve([legRow()]));
+      const { service } = makeService({ transportLeg: { findMany } });
+
+      const legs = await service.findUnassignedForDate('2026-09-14');
+
+      expect(legs).toHaveLength(1);
+      const where = findMany.mock.calls[0][0].where;
+      expect(where.status).toEqual({ notIn: [LegStatus.CANCELLED, LegStatus.NO_SHOW] });
+      expect(where.tripStops).toEqual({ none: {} });
+    });
+  });
+
+  describe('findByIds', () => {
+    it('short-circuits to an empty array without touching the database', async () => {
+      const findMany = jest.fn();
+      const { service } = makeService({ transportLeg: { findMany } });
+
+      expect(await service.findByIds([])).toEqual([]);
+      expect(findMany).not.toHaveBeenCalled();
+    });
+
+    it('looks legs up by id', async () => {
+      const findMany: jest.Mock = jest.fn(() => Promise.resolve([legRow({ id: 'leg-9' })]));
+      const { service } = makeService({ transportLeg: { findMany } });
+
+      const [leg] = await service.findByIds(['leg-9']);
+
+      expect(leg.id).toBe('leg-9');
+      expect(findMany.mock.calls[0][0].where).toEqual({ id: { in: ['leg-9'] } });
+    });
+  });
 });

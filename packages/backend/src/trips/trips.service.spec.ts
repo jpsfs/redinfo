@@ -77,6 +77,12 @@ function buildDeps(overrides: Record<string, unknown> = {}) {
       findConflicts: jest.fn().mockResolvedValue([]),
       removeForSource: jest.fn().mockResolvedValue(undefined),
     },
+    transportRequestLegs: {
+      findByIds: jest.fn().mockResolvedValue([]),
+      findUnassignedForDate: jest.fn().mockResolvedValue([]),
+    },
+    patients: { findManyForDisplay: jest.fn().mockResolvedValue(new Map()) },
+    legTravel: { estimateMany: jest.fn().mockResolvedValue(new Map()) },
     ...overrides,
   };
 }
@@ -88,6 +94,9 @@ function makeService(prisma: ReturnType<typeof buildPrismaStub>, deps: ReturnTyp
     deps.delegationSettings as never,
     deps.staffAbsences as never,
     deps.vehicleOccupancy as never,
+    deps.transportRequestLegs as never,
+    deps.patients as never,
+    deps.legTravel as never,
   );
 }
 
@@ -276,6 +285,64 @@ describe('TripsService', () => {
       const result = await service.getDetail('trip-1');
       expect(result.occupancyWindow).toBeNull();
       expect(result.emptyLegs).toEqual([]);
+    });
+  });
+
+  // ── Planning board (#235) ─────────────────────────────────────────────────
+
+  describe('getBoard', () => {
+    const USER = { id: 'user-1', roles: [] as never[] };
+
+    it('composes lanes and a legsById map from batched leg/patient lookups', async () => {
+      const laneStops = [stop({ id: 'pickup-1', kind: TripStopKind.PICKUP, transportLegId: 'leg-1' })];
+      const prisma = buildPrismaStub({
+        trip: {
+          findMany: jest.fn().mockResolvedValue([
+            buildTripRow({
+              vehicle: { ...VEHICLE, licensePlate: 'AA-11-BB', numeroCauda: '101', vehicleType: 'AMBULANCE' },
+              stops: laneStops,
+            }),
+          ]),
+        },
+        transportRequest: {
+          findMany: jest
+            .fn()
+            .mockResolvedValue([
+              { id: 'req-1', patientId: 'pat-1' },
+              { id: 'req-2', patientId: 'pat-2' },
+            ]),
+        },
+      });
+      const deps = buildDeps({
+        transportRequestLegs: {
+          findByIds: jest.fn().mockResolvedValue([
+            { id: 'leg-1', transportRequestId: 'req-1', direction: LegDirection.OUTBOUND },
+          ]),
+          findUnassignedForDate: jest
+            .fn()
+            .mockResolvedValue([{ id: 'leg-2', transportRequestId: 'req-2', direction: LegDirection.OUTBOUND }]),
+        },
+        patients: {
+          findManyForDisplay: jest.fn().mockResolvedValue(
+            new Map([
+              ['pat-1', { mobility: PatientMobility.WHEELCHAIR, fullName: 'Ana Reis' }],
+              ['pat-2', { mobility: PatientMobility.AMBULATORY, fullName: null }],
+            ]),
+          ),
+        },
+      });
+      const service = makeService(prisma, deps);
+
+      const board = await service.getBoard('2026-09-15', USER);
+
+      expect(board.lanes).toHaveLength(1);
+      expect(board.lanes[0].vehicle.licensePlate).toBe('AA-11-BB');
+      expect(board.legsById['leg-1']).toMatchObject({ patientId: 'pat-1', patientMobility: PatientMobility.WHEELCHAIR, patientName: 'Ana Reis' });
+      expect(board.legsById['leg-2']).toMatchObject({ patientId: 'pat-2', patientMobility: PatientMobility.AMBULATORY });
+      expect(board.legsById['leg-2'].patientName).toBeUndefined();
+      expect(board.unassignedLegIds).toEqual(['leg-2']);
+      // The assigned leg is only ever looked up by id, never re-derived from the date.
+      expect(deps.transportRequestLegs.findByIds).toHaveBeenCalledWith(['leg-1']);
     });
   });
 });

@@ -1,7 +1,12 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import {
   ArrivalWindowWarning,
   LegDirection,
+  PatientMobility,
+  TransportPlanningBoard,
+  TransportPlanningLane,
+  TransportPlanningLeg,
   TripPlanIssue,
   TripStopKind,
   TripStopSegment,
@@ -20,16 +25,32 @@ import { shiftBoundaryToInstant } from '../utils/timezone.util';
 import { DelegationSettingsService } from '../live-runs/delegation-settings.service';
 import { StaffAbsencesService } from '../staff-absences/staff-absences.service';
 import { VehicleOccupancyService } from '../vehicle-occupancy/vehicle-occupancy.service';
+import { TransportRequestLegsService } from '../transport-requests/transport-request-legs.service';
+import { PatientsService, RequestUser } from '../patients/patients.service';
 import { CreateTripDto } from './dto/create-trip.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
 import { TripRow, TripStopRow, serializeTrip, serializeTripCrewMember, serializeTripStop } from './trip.serializer';
 import { loadPassengerRequirements, pickupLegIds } from './trip-passenger-requirements.util';
+import { TripLegTravelService } from './trip-leg-travel.service';
 
 const TRIP_INCLUDE = {
-  vehicle: { select: { seatedCapacity: true, wheelchairPositions: true, stretcherPositions: true } },
+  vehicle: {
+    select: {
+      seatedCapacity: true,
+      wheelchairPositions: true,
+      stretcherPositions: true,
+      licensePlate: true,
+      numeroCauda: true,
+      vehicleType: true,
+    },
+  },
   crewMembers: true,
   stops: { orderBy: { sequence: 'asc' as const } },
 } as const;
+
+/** What `buildDetail`/`getBoard` need off a trip row — shared by `getDetail`'s
+ * single-row load and `getBoard`'s per-date `findMany`. */
+type TripDetailRow = Prisma.TripGetPayload<{ include: typeof TRIP_INCLUDE }>;
 
 export interface TripDetail {
   trip: ReturnType<typeof serializeTrip>;
@@ -63,6 +84,9 @@ export class TripsService {
     private readonly delegationSettings: DelegationSettingsService,
     private readonly staffAbsences: StaffAbsencesService,
     private readonly vehicleOccupancy: VehicleOccupancyService,
+    private readonly transportRequestLegs: TransportRequestLegsService,
+    private readonly patients: PatientsService,
+    private readonly legTravel: TripLegTravelService,
   ) {}
 
   async create(dto: CreateTripDto) {
@@ -105,12 +129,110 @@ export class TripsService {
   async getDetail(id: string): Promise<TripDetail> {
     const row = await this.prisma.trip.findUnique({ where: { id }, include: TRIP_INCLUDE });
     if (!row) throw new NotFoundException(`Trip ${id} not found`);
+    return this.buildDetail(row);
+  }
 
+  /**
+   * `date` — every lane on it plus the legs still waiting to be dragged onto
+   * one (#235). Loads every trip's ranked validation via `buildDetail`
+   * exactly as `getDetail` does, one call per trip: a day's fleet is small
+   * enough (tens, not thousands) that this stays a non-issue. Leg/patient
+   * data is the one thing genuinely batched — once for the whole board,
+   * never once per stop.
+   */
+  async getBoard(date: string, user: RequestUser): Promise<TransportPlanningBoard> {
+    const rows = await this.prisma.trip.findMany({
+      where: { date: parseIsoDate(date) },
+      include: TRIP_INCLUDE,
+      orderBy: [{ createdAt: 'asc' }],
+    });
+
+    const lanes: TransportPlanningLane[] = await Promise.all(
+      rows.map(async (row) => ({
+        ...(await this.buildDetail(row)),
+        vehicle: {
+          id: row.vehicleId,
+          licensePlate: row.vehicle.licensePlate,
+          numeroCauda: row.vehicle.numeroCauda,
+          vehicleType: row.vehicle.vehicleType as never,
+          seatedCapacity: row.vehicle.seatedCapacity,
+          wheelchairPositions: row.vehicle.wheelchairPositions,
+          stretcherPositions: row.vehicle.stretcherPositions,
+        },
+      })),
+    );
+
+    const assignedLegIds = [
+      ...new Set(
+        rows.flatMap((row) => (row.stops as TripStopRow[]).map((stop) => stop.transportLegId).filter((id): id is string => !!id)),
+      ),
+    ];
+    const [assignedLegs, unassignedLegs] = await Promise.all([
+      this.transportRequestLegs.findByIds(assignedLegIds),
+      this.transportRequestLegs.findUnassignedForDate(date),
+    ]);
+    const allLegs = [...assignedLegs, ...unassignedLegs];
+
+    const requestIds = [...new Set(allLegs.map((leg) => leg.transportRequestId))];
+    const requests = await this.prisma.transportRequest.findMany({
+      where: { id: { in: requestIds } },
+      select: { id: true, patientId: true },
+    });
+    const patientIdByRequestId = new Map(requests.map((r) => [r.id, r.patientId]));
+    const patientIds = [...new Set([...patientIdByRequestId.values()])];
+    const patientDisplay = await this.patients.findManyForDisplay(patientIds, user);
+
+    // The pickup and home-arrival times the crew infers by experience today
+    // (#219) — advisory only, and never allowed to fail the board: see
+    // `TripLegTravelService`.
+    const travel = await this.legTravel.estimateMany(
+      allLegs,
+      new Map(
+        allLegs.map((leg) => {
+          const patient = patientDisplay.get(patientIdByRequestId.get(leg.transportRequestId) ?? '');
+          return [
+            leg.id,
+            {
+              localityId: patient?.localityId ?? null,
+              latitude: patient?.latitude ?? null,
+              longitude: patient?.longitude ?? null,
+            },
+          ];
+        }),
+      ),
+      await this.delegationSettings.get(),
+    );
+
+    const legsById: Record<string, TransportPlanningLeg> = {};
+    for (const leg of allLegs) {
+      const patientId = patientIdByRequestId.get(leg.transportRequestId) ?? '';
+      const display = patientDisplay.get(patientId);
+      const estimate = travel.get(leg.id);
+      legsById[leg.id] = {
+        ...leg,
+        patientId,
+        patientMobility: display?.mobility ?? PatientMobility.AMBULATORY,
+        ...(display?.fullName ? { patientName: display.fullName } : {}),
+        travelMinutes: estimate?.travelMinutes ?? null,
+        travelEstimated: estimate?.travelEstimated ?? false,
+        suggested: estimate?.suggested ?? { pickupAt: null, dropoffAt: null },
+      };
+    }
+
+    return {
+      date,
+      lanes,
+      legsById,
+      unassignedLegIds: unassignedLegs.map((leg) => leg.id),
+    };
+  }
+
+  private async buildDetail(row: TripDetailRow): Promise<TripDetail> {
     const stops = row.stops as TripStopRow[];
     const [passengerRequirements, absences, occupancyConflicts] = await Promise.all([
       loadPassengerRequirements(this.prisma, pickupLegIds(stops)),
       this.staffAbsences.findOverlapping(row.date.toISOString().slice(0, 10), row.date.toISOString().slice(0, 10)),
-      this.checkVehicleAvailability(id, row.vehicleId, stops),
+      this.checkVehicleAvailability(row.id, row.vehicleId, stops),
     ]);
 
     const walkInputs: TripStopWalkInput[] = stops.map((stop) => ({

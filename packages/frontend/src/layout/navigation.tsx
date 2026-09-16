@@ -3,6 +3,7 @@ import BoltIcon from '@mui/icons-material/Bolt';
 import HomeIcon from '@mui/icons-material/Home';
 import EventAvailableIcon from '@mui/icons-material/EventAvailable';
 import AssignmentIndIcon from '@mui/icons-material/AssignmentInd';
+import AirportShuttleIcon from '@mui/icons-material/AirportShuttle';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import FactCheckIcon from '@mui/icons-material/FactCheck';
 import ArticleIcon from '@mui/icons-material/Article';
@@ -24,6 +25,7 @@ import NotificationsIcon from '@mui/icons-material/Notifications';
 import CampaignIcon from '@mui/icons-material/Campaign';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import BusinessIcon from '@mui/icons-material/Business';
+import AltRouteIcon from '@mui/icons-material/AltRoute';
 import HandshakeIcon from '@mui/icons-material/Handshake';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import RuleIcon from '@mui/icons-material/Rule';
@@ -91,6 +93,14 @@ export const NAV_SECTIONS: NavSection[] = [
         to: '/my-duties',
         label: 'nav.myDuties',
         icon: <AssignmentIndIcon />,
+      },
+      {
+        // The crew manifest (#236) — ungated like /my-duties above:
+        // `GET /trips/me` scopes to the caller's own crew membership, so
+        // whoever has no trips today just sees an empty page.
+        to: '/my-transport-trips',
+        label: 'nav.myTransportTrips',
+        icon: <AirportShuttleIcon />,
       },
       {
         to: '/my-hours',
@@ -213,6 +223,14 @@ export const NAV_SECTIONS: NavSection[] = [
         label: 'nav.transportReferrals',
         icon: <RuleIcon />,
         requires: [Action.MANAGE_TRANSPORT_REQUESTS],
+      },
+      {
+        // The manual planning board (#235) — legs, vehicles and capacity for
+        // one day, same gating as the trips API itself (no new Action).
+        to: '/transport-planning',
+        label: 'nav.transportPlanning',
+        icon: <AltRouteIcon />,
+        requires: [Action.PLAN_TRANSPORT_TRIPS],
       },
       {
         // Arrival window thresholds and occurrence-type duration floors

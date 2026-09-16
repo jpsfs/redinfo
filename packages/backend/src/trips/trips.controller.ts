@@ -4,11 +4,14 @@ import { Action } from '@redinfo/shared';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
 import { Actions } from '../auth/decorators/roles.decorator';
+import { CurrentUser } from '../auth/decorators/current-user.decorator';
 import { AuditInterceptor } from '../auth/interceptors/audit.interceptor';
+import { RequestUser } from '../patients/patients.service';
 import { TripsService } from './trips.service';
 import { TripCrewService } from './trip-crew.service';
 import { TripStopsService } from './trip-stops.service';
 import { TripBreakEvenService } from './trip-break-even.service';
+import { TripCrewManifestService } from './trip-crew-manifest.service';
 import { CreateTripDto } from './dto/create-trip.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
 import { AddTripCrewMemberDto } from './dto/add-trip-crew-member.dto';
@@ -33,6 +36,7 @@ export class TripsController {
     private readonly crew: TripCrewService,
     private readonly stops: TripStopsService,
     private readonly breakEven: TripBreakEvenService,
+    private readonly crewManifest: TripCrewManifestService,
   ) {}
 
   @Get()
@@ -41,6 +45,29 @@ export class TripsController {
   @ApiQuery({ name: 'vehicleId', required: false })
   list(@Query('date') date?: string, @Query('vehicleId') vehicleId?: string) {
     return this.trips.list({ date, vehicleId });
+  }
+
+  /** Every lane for `date` plus the legs still waiting to be dragged onto
+   * one (#235) — `TransportPlanningPage`'s one call. Declared before `:id`
+   * so `board` is never swallowed as an id. */
+  @Get('board')
+  @Actions(Action.PLAN_TRANSPORT_TRIPS)
+  @ApiQuery({ name: 'date', required: true, description: 'ISO date' })
+  getBoard(@Query('date') date: string, @CurrentUser() user: RequestUser) {
+    return this.trips.getBoard(date, user);
+  }
+
+  /**
+   * A crew member's own manifest for `date` (#236) — `MyTransportTripsPage`'s
+   * one call. Ungated on purpose, same reasoning as `SchedulesController
+   * .getMyDuties`: scoped to the caller inside `TripCrewManifestService`, so
+   * a crew member reads their own day without holding `PLAN_TRANSPORT_TRIPS`.
+   * Declared before `:id` so `me` is never read as a trip id.
+   */
+  @Get('me')
+  @ApiQuery({ name: 'date', required: true, description: 'ISO date' })
+  getMyTrips(@Query('date') date: string, @CurrentUser() user: { id: string }) {
+    return this.crewManifest.getMyTrips(user.id, date);
   }
 
   @Get(':id')
