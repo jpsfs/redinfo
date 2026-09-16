@@ -39,7 +39,7 @@ const VEHICLE = {
 };
 
 const dataProvider = testDataProvider({
-  getList: () => Promise.resolve({ data: [VEHICLE], total: 1 }),
+  getList: (() => Promise.resolve({ data: [VEHICLE], total: 1 })) as never,
 });
 
 const renderDialog = (props: Partial<React.ComponentProps<typeof AddVehicleLaneDialog>> = {}) =>
