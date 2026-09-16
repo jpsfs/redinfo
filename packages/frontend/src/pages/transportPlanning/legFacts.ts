@@ -14,6 +14,21 @@ export function legFacilityName(leg: TransportPlanningLeg): string | null {
 }
 
 /**
+ * The distinct facilities a journey is about, in the order its legs are
+ * served. Almost always one — the whole point of sharing a journey is a shared
+ * destination — so the lane header prints it outright and only falls back to
+ * "+N" on the rare mixed round.
+ */
+export function journeyDestinations(legsInOrder: (TransportPlanningLeg | undefined)[]): string[] {
+  const names: string[] = [];
+  for (const leg of legsInOrder) {
+    const name = leg ? legFacilityName(leg) : null;
+    if (name && !names.includes(name)) names.push(name);
+  }
+  return names;
+}
+
+/**
  * How long the patient is expected to be at the facility — H.I. to H.F. on the
  * printed sheet. This is what decides whether the crew waits or leaves, so #219
  * requires it on the board rather than buried behind a click.

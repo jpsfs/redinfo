@@ -1,5 +1,13 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
-import { DEFAULT_ARRIVAL_WINDOW_THRESHOLDS, LegDirection, PatientMobility, TripStatus, TripStopKind } from '@redinfo/shared';
+import {
+  CertificationType,
+  DEFAULT_ARRIVAL_WINDOW_THRESHOLDS,
+  LegDirection,
+  PatientMobility,
+  TripStatus,
+  TripStopKind,
+  VehicleType,
+} from '@redinfo/shared';
 import { TripsService } from './trips.service';
 
 // ── Trip CRUD + read-time ranked validation (#234) ──────────────────────────
@@ -10,7 +18,22 @@ import { TripsService } from './trips.service';
 // `TripStopsService`/`TripCrewService`), and arrival timing (soft, never
 // blocks). See the shared banner comment above `walkTripStops`.
 
-const VEHICLE = { seatedCapacity: 3, wheelchairPositions: 1, stretcherPositions: 0 };
+const VEHICLE = {
+  seatedCapacity: 3,
+  wheelchairPositions: 1,
+  stretcherPositions: 0,
+  vehicleType: VehicleType.TRANSPORT,
+};
+
+/** A crew row as `TRIP_INCLUDE` yields it, paired with the `user` row
+ * `loadCrew` joins to it. */
+function crewMember(overrides: Record<string, unknown> = {}) {
+  return { id: 'cm1', tripId: 'trip-1', userId: 'u1', role: 'DRIVER', overrideReason: null, createdAt: new Date(), ...overrides };
+}
+
+function crewUser(id: string, certifications: { type: CertificationType; validUntil: Date | null }[] = []) {
+  return { id, firstName: 'Ana', lastName: 'Dias', certifications };
+}
 
 function buildTripRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -64,6 +87,7 @@ function buildPrismaStub(overrides: Record<string, unknown> = {}) {
     },
     vehicle: { count: jest.fn().mockResolvedValue(1) },
     transportLeg: { findMany: jest.fn().mockResolvedValue([]) },
+    user: { findMany: jest.fn().mockResolvedValue([crewUser('u1')]) },
     ...overrides,
   };
 }
@@ -159,32 +183,178 @@ describe('TripsService', () => {
       expect(result.issues).toContainEqual(expect.objectContaining({ level: 'ERROR', code: 'OVER_CAPACITY_WHEELCHAIR' }));
     });
 
-    it('flags an absent crew member with no override as an ERROR', async () => {
+    it('flags an absent crew member with no override as an ERROR, by name', async () => {
       const prisma = buildPrismaStub({
-        trip: {
-          findUnique: jest.fn().mockResolvedValue(
-            buildTripRow({ crewMembers: [{ id: 'cm1', userId: 'u1', role: 'DRIVER', overrideReason: null, createdAt: new Date() }] }),
-          ),
-        },
+        trip: { findUnique: jest.fn().mockResolvedValue(buildTripRow({ crewMembers: [crewMember()] })) },
       });
       const deps = buildDeps({ staffAbsences: { findOverlapping: jest.fn().mockResolvedValue([{ userId: 'u1' }]) } });
       const service = makeService(prisma, deps);
       const result = await service.getDetail('trip-1');
-      expect(result.issues).toContainEqual(expect.objectContaining({ level: 'ERROR', code: 'CREW_UNAVAILABLE' }));
+      expect(result.issues).toContainEqual(
+        expect.objectContaining({ level: 'ERROR', code: 'CREW_UNAVAILABLE', message: expect.stringContaining('Ana Dias') }),
+      );
     });
 
     it('suppresses the crew-unavailable ERROR once an override reason is on file', async () => {
       const prisma = buildPrismaStub({
         trip: {
-          findUnique: jest.fn().mockResolvedValue(
-            buildTripRow({ crewMembers: [{ id: 'cm1', userId: 'u1', role: 'DRIVER', overrideReason: 'Asked to come in', createdAt: new Date() }] }),
-          ),
+          findUnique: jest
+            .fn()
+            .mockResolvedValue(buildTripRow({ crewMembers: [crewMember({ overrideReason: 'Asked to come in' })] })),
         },
       });
       const deps = buildDeps({ staffAbsences: { findOverlapping: jest.fn().mockResolvedValue([{ userId: 'u1' }]) } });
       const service = makeService(prisma, deps);
       const result = await service.getDetail('trip-1');
       expect(result.issues.some((i) => i.code === 'CREW_UNAVAILABLE')).toBe(false);
+    });
+
+    // ── Crew composition (#235) ─────────────────────────────────────────────
+    //
+    // A "maca" transport — a `PatientMobility.STRETCHER` passenger — needs an
+    // emergency vehicle and two crew at TAT or above; anything else needs one
+    // with a valid SBV. Ranked on read, never thrown: a `Trip` is created
+    // empty and crewed a person at a time, so a write-time check would reject
+    // the first crew member for not yet being the second.
+
+    /** A trip actually carrying `mobility`'s patient, pickup through dropoff. */
+    function carryingTrip(mobility: PatientMobility, tripOverrides: Record<string, unknown> = {}) {
+      return {
+        trip: {
+          findUnique: jest.fn().mockResolvedValue(
+            buildTripRow({
+              stops: [
+                stop({ id: 's1', sequence: 1, kind: TripStopKind.PICKUP, transportLegId: 'leg-1' }),
+                stop({
+                  id: 's2',
+                  sequence: 2,
+                  kind: TripStopKind.DROPOFF,
+                  transportLegId: 'leg-1',
+                  plannedAt: new Date('2026-09-15T09:00:00.000Z'),
+                }),
+              ],
+              ...tripOverrides,
+            }),
+          ),
+        },
+        transportLeg: {
+          findMany: jest
+            .fn()
+            .mockResolvedValue([{ id: 'leg-1', transportRequest: { escortTravels: false, patient: { mobility } } }]),
+        },
+      };
+    }
+
+    const validTat = [{ type: CertificationType.TAT, validUntil: new Date('2027-01-01T00:00:00.000Z') }];
+    const validSbv = [{ type: CertificationType.SBV, validUntil: new Date('2027-01-01T00:00:00.000Z') }];
+
+    it('demands an emergency vehicle for a stretcher patient', async () => {
+      const prisma = buildPrismaStub(
+        carryingTrip(PatientMobility.STRETCHER, { vehicle: { ...VEHICLE, stretcherPositions: 1 } }),
+      );
+      const service = makeService(prisma);
+      const result = await service.getDetail('trip-1');
+      expect(result.issues).toContainEqual(expect.objectContaining({ level: 'ERROR', code: 'VEHICLE_NOT_EMERGENCY' }));
+      expect(result.crewRequirement).toMatchObject({ minimumCrew: 2, minimumCertification: CertificationType.TAT });
+    });
+
+    it('demands a second TAT for a stretcher patient', async () => {
+      const prisma = buildPrismaStub({
+        ...carryingTrip(PatientMobility.STRETCHER, {
+          vehicle: { ...VEHICLE, stretcherPositions: 1, vehicleType: VehicleType.EMERGENCY },
+          crewMembers: [crewMember()],
+        }),
+        user: { findMany: jest.fn().mockResolvedValue([crewUser('u1', validTat)]) },
+      });
+      const service = makeService(prisma);
+      const result = await service.getDetail('trip-1');
+      expect(result.issues).toContainEqual(expect.objectContaining({ code: 'CREW_TOO_FEW' }));
+      expect(result.issues.some((i) => i.code === 'VEHICLE_NOT_EMERGENCY')).toBe(false);
+    });
+
+    it('accepts two TAS on an emergency vehicle for a stretcher patient', async () => {
+      const prisma = buildPrismaStub({
+        ...carryingTrip(PatientMobility.STRETCHER, {
+          vehicle: { ...VEHICLE, stretcherPositions: 1, vehicleType: VehicleType.EMERGENCY },
+          crewMembers: [crewMember(), crewMember({ id: 'cm2', userId: 'u2' })],
+        }),
+        user: {
+          // TAS implies TAT — a fully-qualified crew must not read as short.
+          findMany: jest.fn().mockResolvedValue([
+            crewUser('u1', [{ type: CertificationType.TAS, validUntil: null }]),
+            crewUser('u2', [{ type: CertificationType.TAS, validUntil: null }]),
+          ]),
+        },
+      });
+      const service = makeService(prisma);
+      const result = await service.getDetail('trip-1');
+      expect(result.issues.filter((i) => i.code.startsWith('CREW_') || i.code === 'VEHICLE_NOT_EMERGENCY')).toEqual([]);
+    });
+
+    it('needs only one SBV for a non-stretcher patient', async () => {
+      const prisma = buildPrismaStub({
+        ...carryingTrip(PatientMobility.AMBULATORY, { crewMembers: [crewMember()] }),
+        user: { findMany: jest.fn().mockResolvedValue([crewUser('u1', validSbv)]) },
+      });
+      const service = makeService(prisma);
+      const result = await service.getDetail('trip-1');
+      expect(result.issues.filter((i) => i.code.startsWith('CREW_'))).toEqual([]);
+      expect(result.crewRequirement).toMatchObject({
+        minimumCrew: 1,
+        minimumCertification: CertificationType.SBV,
+        requiresEmergencyVehicle: false,
+      });
+    });
+
+    it('does not count a DRIVER-only crew member towards the SBV the journey needs', async () => {
+      const prisma = buildPrismaStub({
+        ...carryingTrip(PatientMobility.AMBULATORY, { crewMembers: [crewMember()] }),
+        user: { findMany: jest.fn().mockResolvedValue([crewUser('u1', [{ type: CertificationType.DRIVER, validUntil: null }])]) },
+      });
+      const service = makeService(prisma);
+      const result = await service.getDetail('trip-1');
+      expect(result.issues).toContainEqual(expect.objectContaining({ code: 'CREW_TOO_FEW' }));
+    });
+
+    it('accepts a driver riding along once the SBV requirement is already met', async () => {
+      const prisma = buildPrismaStub({
+        ...carryingTrip(PatientMobility.AMBULATORY, {
+          crewMembers: [crewMember(), crewMember({ id: 'cm2', userId: 'u2' })],
+        }),
+        // One SBV and one driver-only. The rule is "at least one SBV", not
+        // "everyone must hold SBV" — the second person must not be flagged.
+        user: {
+          findMany: jest.fn().mockResolvedValue([
+            crewUser('u1', validSbv),
+            crewUser('u2', [{ type: CertificationType.DRIVER, validUntil: null }]),
+          ]),
+        },
+      });
+      const service = makeService(prisma);
+      const result = await service.getDetail('trip-1');
+      expect(result.issues.filter((i) => i.code.startsWith('CREW_'))).toEqual([]);
+    });
+
+    it("checks certifications against the trip's date, not today", async () => {
+      const prisma = buildPrismaStub({
+        ...carryingTrip(PatientMobility.AMBULATORY, { crewMembers: [crewMember()] }),
+        // Valid as this is written, lapsed by the trip on 2026-09-15.
+        user: {
+          findMany: jest
+            .fn()
+            .mockResolvedValue([crewUser('u1', [{ type: CertificationType.SBV, validUntil: new Date('2026-09-01T00:00:00.000Z') }])]),
+        },
+      });
+      const service = makeService(prisma);
+      const result = await service.getDetail('trip-1');
+      expect(result.issues).toContainEqual(expect.objectContaining({ code: 'CREW_TOO_FEW' }));
+    });
+
+    it('says nothing about crew for a journey with nothing aboard yet', async () => {
+      const prisma = buildPrismaStub();
+      const service = makeService(prisma);
+      const result = await service.getDetail('trip-1');
+      expect(result.issues.filter((i) => i.code.startsWith('CREW_'))).toEqual([]);
     });
 
     it('flags a fresh vehicle conflict against a different booking as an ERROR', async () => {

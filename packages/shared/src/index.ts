@@ -8212,6 +8212,15 @@ export interface AddTripCrewMemberInput {
   userId: string;
   role: CertificationType;
   overrideReason?: string | null;
+  /**
+   * Add them to every journey this vehicle runs on this date, not just this
+   * one. The same crew normally works the same vehicle all day, so that is
+   * the default the dialog offers — but crew stays a per-`Trip` fact, because
+   * "all day" is a habit and not a rule, and the afternoon round genuinely
+   * does change hands. Journeys they are already on are skipped, never
+   * duplicated or treated as a conflict.
+   */
+  applyToVehicleDay?: boolean;
 }
 
 export function validateAddTripCrewMember(input: AddTripCrewMemberInput): string | null {
@@ -8497,6 +8506,148 @@ export function computeDwellBreakEven(expectedDwellMinutes: number, travelToBase
   };
 }
 
+// ─── Crew composition ───────────────────────────────────────────────────────
+//
+// What a journey's crew has to look like, decided by what is actually in the
+// vehicle rather than by what the referral asked for: a stretcher ("maca")
+// patient needs an emergency vehicle and two crew at TAT or above, anything
+// else needs one crew member with a valid SBV.
+//
+// Keyed on `PatientMobility.STRETCHER` — the physical fact that already drives
+// the stretcher-position capacity check — and not on
+// `TransportRequestVehicleType.AMBULANCIA`, which is the requesting hospital's
+// opinion and routinely disagrees with the patient in front of the crew.
+//
+// Ranked, never thrown. Unlike capacity or a double-booked vehicle, this is a
+// constraint a journey *grows into*: a `Trip` is created empty and crewed a
+// field at a time, so a write-time check would reject the first crew member
+// for not yet being the second. `TripsService.buildDetail` re-derives these on
+// every read instead, which also catches a certification that lapsed, or a
+// stretcher patient dragged onto a van, long after the crew was set.
+
+/** The crew a journey needs, given what it carries. */
+export interface TripCrewRequirement {
+  /** How many crew members must hold `minimumCertification`. */
+  minimumCrew: number;
+  /** The lowest certification each of those must hold. Implied grants count —
+   * a TAS satisfies a TAT requirement, see `CERTIFICATION_IMPLIES`. */
+  minimumCertification: CertificationType;
+  /** True when the journey must run on a `VehicleType.EMERGENCY` vehicle. */
+  requiresEmergencyVehicle: boolean;
+}
+
+/** A stretcher patient: emergency vehicle, two crew at TAT or above. */
+export const STRETCHER_TRIP_CREW_REQUIREMENT: TripCrewRequirement = {
+  minimumCrew: 2,
+  minimumCertification: CertificationType.TAT,
+  requiresEmergencyVehicle: true,
+};
+
+/** Everything else: one crew member with a valid SBV. */
+export const STANDARD_TRIP_CREW_REQUIREMENT: TripCrewRequirement = {
+  minimumCrew: 1,
+  minimumCertification: CertificationType.SBV,
+  requiresEmergencyVehicle: false,
+};
+
+export function tripCrewRequirement(carriesStretcher: boolean): TripCrewRequirement {
+  return carriesStretcher ? STRETCHER_TRIP_CREW_REQUIREMENT : STANDARD_TRIP_CREW_REQUIREMENT;
+}
+
+/**
+ * Whether any stretcher passenger is aboard at any point in the journey — the
+ * requirement applies to the whole trip, not to the stretch the patient is
+ * actually in the vehicle for. The same crew and the same vehicle serve the
+ * whole journey, so one maca leg sets the bar for all of it.
+ */
+export function carriesStretcherPassenger(segments: TripStopSegment[]): boolean {
+  return segments.some((segment) => segment.demand.stretcherPositions > 0);
+}
+
+/** One crew member as the composition check needs to see them. */
+export interface TripCrewCertifications {
+  userId: string;
+  certifications: HeldCertification[];
+}
+
+/**
+ * Ranked crew-composition findings for one journey. Certifications are
+ * checked against the **trip's own date**, not today: planning three weeks out
+ * must not accept a certificate that expires next Tuesday.
+ */
+export function checkTripCrew(input: {
+  crew: TripCrewCertifications[];
+  requirement: TripCrewRequirement;
+  vehicleType: VehicleType;
+  /** ISO date — the trip's date. */
+  date: string;
+  /** False for a journey with nothing aboard yet. An empty lane has no crew
+   * requirement to fall short of, and flagging one is pure noise on a board
+   * whose lanes are routinely created before anything is dragged onto them. */
+  hasPassengers: boolean;
+}): TripPlanIssue[] {
+  if (!input.hasPassengers) return [];
+
+  const { requirement } = input;
+  const required = CERTIFICATION_LABEL[requirement.minimumCertification];
+  const issues: TripPlanIssue[] = [];
+
+  if (requirement.requiresEmergencyVehicle && input.vehicleType !== VehicleType.EMERGENCY) {
+    issues.push({
+      level: 'ERROR',
+      code: 'VEHICLE_NOT_EMERGENCY',
+      message: 'A stretcher patient needs an emergency vehicle; this journey is planned on a transport vehicle.',
+    });
+  }
+
+  // "At least N holding X" — never "all of them". A standard transport needs
+  // one SBV; the second person in the vehicle may be a driver and nothing
+  // else, and flagging them would be wrong. Where the rule really does bind
+  // everyone (a maca's two TAT) the count says so on its own: with exactly two
+  // crew, "two must hold TAT" and "both must hold TAT" are the same sentence.
+  // Who specifically is short is a question the crew dialog answers, where
+  // every member is listed with the certifications they actually hold.
+  const qualified = input.crew.filter((member) =>
+    holdsCertification(member.certifications, requirement.minimumCertification, input.date),
+  ).length;
+
+  if (qualified < requirement.minimumCrew) {
+    issues.push({
+      level: 'ERROR',
+      code: 'CREW_TOO_FEW',
+      // Phrased as counts rather than a verb, so it stays grammatical at
+      // every combination of "0 of 1" through "2 of 3".
+      message:
+        `This journey needs ${requirement.minimumCrew} crew member${requirement.minimumCrew > 1 ? 's' : ''} ` +
+        `holding ${required}; ${qualified} qualified of ${input.crew.length} assigned.`,
+    });
+  }
+
+  return issues;
+}
+
+/**
+ * A person the crew dialog can offer for a journey (`GET
+ * /trips/crew-candidates?date=`). Nobody is filtered out here — an absent or
+ * already-committed person is still listed, flagged, and addable with a
+ * recorded reason, the same override precedent the rest of this schema uses.
+ */
+export interface TripCrewCandidate {
+  userId: string;
+  firstName: string;
+  lastName: string;
+  /** Effective certifications (held or implied) not expired on the date. */
+  certifications: CertificationType[];
+  /** A `StaffAbsence` covers the date — addable only with an override reason. */
+  absent: boolean;
+  /** Trips on the same date this person already crews, so the dialog can say
+   * "already on journey 1" rather than silently double-booking them. */
+  crewingTripIds: string[];
+  /** On a published `ScheduleAssignment` that date — the people a planner
+   * expects to reach for first, so they sort to the top. */
+  onRoster: boolean;
+}
+
 // ─── Planning board (#235) ──────────────────────────────────────────────────
 //
 // `GET /trips/board?date=` — everything `TransportPlanningPage` needs for one
@@ -8536,6 +8687,22 @@ export interface TransportPlanningLeg extends TransportLeg {
   suggested: SuggestedLegTimes;
 }
 
+/**
+ * A journey's crew member as the board shows them — `TripCrewMember` plus the
+ * name the lane header prints and the certifications the crew dialog ranks
+ * by.
+ *
+ * `TripsService.buildDetail` has to load both anyway to run `checkTripCrew`,
+ * so serving them costs nothing beyond the bytes and saves the board a second
+ * round trip to `users` purely to turn a set of ids into names.
+ */
+export interface TransportPlanningCrewMember extends TripCrewMember {
+  firstName: string;
+  lastName: string;
+  /** Effective certifications (held or implied) not expired on the trip's date. */
+  certifications: CertificationType[];
+}
+
 /** One vehicle's lane for a day — a `Trip` plus everything
  * `TripsService.getDetail` already computes for it, so the board never
  * re-derives capacity/availability/arrival-timing issues itself. */
@@ -8550,7 +8717,11 @@ export interface TransportPlanningLane {
     wheelchairPositions: number;
     stretcherPositions: number;
   };
-  crewMembers: TripCrewMember[];
+  crewMembers: TransportPlanningCrewMember[];
+  /** What this journey's crew must look like given what it carries — shown on
+   * the lane so a planner knows the bar *before* falling short of it, rather
+   * than only meeting it as an error afterwards. */
+  crewRequirement: TripCrewRequirement;
   stops: TripStop[];
   /** Null when the lane has no stops yet. */
   occupancyWindow: { startsAt: string; endsAt: string } | null;

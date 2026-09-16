@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Title, useGetMany, useNotify } from 'react-admin';
+import { Title, useNotify } from 'react-admin';
 import {
   Alert,
   Box,
@@ -22,7 +22,6 @@ import {
   TransportPlanningBoard,
   TransportPlanningLane,
   TripStopKind,
-  User,
   VehicleOccupancy,
   VehicleOccupancySource,
 } from '@redinfo/shared';
@@ -32,6 +31,7 @@ import { useT } from '../i18n/useT';
 import { toIsoDate } from '../utils/dates';
 import { AssignLegDialog, AssignLegDialogTarget } from './transportPlanning/AssignLegDialog';
 import { AddVehicleLaneDialog } from './transportPlanning/AddVehicleLaneDialog';
+import { CrewDialog, CrewDialogTarget } from './transportPlanning/CrewDialog';
 import { WaitReleaseDialog, WaitReleaseTarget } from './transportPlanning/WaitReleaseDialog';
 import { PlanningLegend } from './transportPlanning/PlanningLegend';
 import { UnassignedLegCard } from './transportPlanning/UnassignedLegCard';
@@ -105,6 +105,7 @@ export const TransportPlanningPage = () => {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [assignTarget, setAssignTarget] = useState<AssignLegDialogTarget | null>(null);
+  const [crewTarget, setCrewTarget] = useState<CrewDialogTarget | null>(null);
   const [waitReleaseTarget, setWaitReleaseTarget] = useState<WaitReleaseTarget | null>(null);
   const [addVehicleOpen, setAddVehicleOpen] = useState(false);
   const [zoomIndex, setZoomIndex] = useState(0);
@@ -177,23 +178,14 @@ export const TransportPlanningPage = () => {
 
   const vehicleGroups = useMemo(() => (board ? groupLanesByVehicle(board.lanes) : []), [board]);
 
-  // Crew names for the journey headers. `TripCrewMember` carries only the
-  // user id, and the manifest a driver works from leads with who is driving —
-  // so does the printed sheet this board replaces.
-  const crewUserIds = useMemo(
-    () => [...new Set((board?.lanes ?? []).flatMap((lane) => lane.crewMembers.map((member) => member.userId)))],
-    [board],
-  );
-  const { data: crewUsers } = useGetMany<User>('users', { ids: crewUserIds }, { enabled: crewUserIds.length > 0 });
-  const crewNamesByTripId = useMemo(() => {
-    const nameById = new Map((crewUsers ?? []).map((user) => [user.id, `${user.firstName} ${user.lastName}`.trim()]));
-    return Object.fromEntries(
-      (board?.lanes ?? []).map((lane) => [
-        lane.trip.id,
-        lane.crewMembers.map((member) => nameById.get(member.userId)).filter((name): name is string => !!name),
-      ]),
-    );
-  }, [board, crewUsers]);
+  // The dialog stays open across an add/remove, so it must read the lane from
+  // the board that was just reloaded rather than from the snapshot taken when
+  // it was opened — otherwise the crew list it shows is always one edit stale.
+  const crewDialogTarget = useMemo(() => {
+    if (!crewTarget || !board) return null;
+    const lane = board.lanes.find((candidate) => candidate.trip.id === crewTarget.lane.trip.id);
+    return lane ? { ...crewTarget, lane } : null;
+  }, [crewTarget, board]);
 
   const issues = useMemo(() => {
     if (!board) return [];
@@ -391,7 +383,6 @@ export const TransportPlanningPage = () => {
                       key={group.vehicle.id}
                       vehicle={group.vehicle}
                       lanes={group.lanes}
-                      crewNamesByTripId={crewNamesByTripId}
                       legsById={board.legsById}
                       timelineWindow={timelineWindow}
                       occupancy={occupancy.filter((block) => block.vehicleId === group.vehicle.id)}
@@ -406,6 +397,7 @@ export const TransportPlanningPage = () => {
                           dropoffPlannedAt: dropoff.plannedAt,
                         })
                       }
+                      onEditCrew={(lane, journeyNumber) => setCrewTarget({ lane, journeyNumber, date })}
                       onWaitRelease={(tripId, dropoffStop) =>
                         setWaitReleaseTarget({
                           tripId,
@@ -456,6 +448,14 @@ export const TransportPlanningPage = () => {
         onClose={() => setAssignTarget(null)}
         onSaved={() => {
           notify(t('transportPlanning.assigned'));
+          loadBoard();
+        }}
+      />
+      <CrewDialog
+        target={crewDialogTarget}
+        onClose={() => setCrewTarget(null)}
+        onSaved={() => {
+          notify(t('transportPlanning.crewSaved'));
           loadBoard();
         }}
       />

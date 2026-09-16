@@ -3000,7 +3000,9 @@ const MESSAGES = {
     en: 'Straight-line estimate — outside the routed area.',
   },
   'transportPlanning.destinationUnknown': { pt: 'Sem destino', en: 'No destination' },
+  'transportPlanning.destinationPlusMore': { pt: '%{name} +%{count}', en: '%{name} +%{count}' },
   'transportPlanning.returnToBaseLabel': { pt: 'Regresso à base', en: 'Return to base' },
+  'transportPlanning.onboardLabel': { pt: 'Na viatura', en: 'In the vehicle' },
 
   // Assign/reassign dialog — also the keyboard equivalent to dragging (#235's
   // own accessibility requirement) and the override-reason prompt after a
@@ -3034,6 +3036,46 @@ const MESSAGES = {
   'transportPlanning.addVehicleDialogVehicleLabel': { pt: 'Viatura', en: 'Vehicle' },
   'transportPlanning.addVehicleDialogConfirm': { pt: 'Adicionar', en: 'Add' },
   'transportPlanning.addVehicleFailed': { pt: 'Não foi possível adicionar a viatura.', en: 'Could not add the vehicle.' },
+
+  // Crew dialog (#235) — who crews one journey. Composition is ranked by the
+  // backend (`checkTripCrew`) and shown here, never enforced by this dialog:
+  // a journey is crewed one person at a time.
+  'transportPlanning.crewDialogTitle': { pt: 'Tripulação da jornada %{number}', en: 'Crew for journey %{number}' },
+  'transportPlanning.crewDialogClose': { pt: 'Fechar', en: 'Close' },
+  'transportPlanning.crewCurrentTitle': { pt: 'Tripulação atual', en: 'Current crew' },
+  'transportPlanning.crewAddTitle': { pt: 'Adicionar à tripulação', en: 'Add to the crew' },
+  'transportPlanning.crewAddButton': { pt: 'Adicionar', en: 'Add' },
+  'transportPlanning.crewRemoveButton': { pt: 'Remover da tripulação', en: 'Remove from the crew' },
+  'transportPlanning.crewPersonLabel': { pt: 'Pessoa', en: 'Person' },
+  'transportPlanning.crewRoleLabel': { pt: 'Função nesta jornada', en: 'Role on this journey' },
+  'transportPlanning.crewApplyToVehicleDay': {
+    pt: 'Aplicar a todas as jornadas desta viatura no dia',
+    en: "Apply to every journey of this vehicle on this day",
+  },
+  'transportPlanning.crewRequirementHint': { pt: 'Mínimo exigido: %{requirement}', en: 'Minimum required: %{requirement}' },
+  'transportPlanning.crewRequiresEmergencyVehicle': {
+    pt: 'Transporte em maca — exige ambulância de socorro.',
+    en: 'Stretcher transport — requires an emergency ambulance.',
+  },
+  'transportPlanning.crewAbsent': { pt: 'Ausente', en: 'Absent' },
+  'transportPlanning.crewAbsentHint': {
+    pt: 'Esta pessoa está registada como ausente neste dia. Indique o motivo para a adicionar mesmo assim.',
+    en: 'This person is recorded absent on this date. Give a reason to add them anyway.',
+  },
+  'transportPlanning.crewAlreadyCrewing': { pt: 'Já em %{count} jornada(s)', en: 'Already on %{count} journey(s)' },
+  'transportPlanning.crewOnRoster': { pt: 'De escala neste dia', en: 'On the roster this day' },
+  'transportPlanning.crewOffRoster': { pt: 'Restantes', en: 'Everyone else' },
+  'transportPlanning.crewNoCertifications': { pt: 'Sem certificações válidas', en: 'No valid certifications' },
+  'transportPlanning.crewCandidatesFailed': {
+    pt: 'Não foi possível carregar as pessoas disponíveis.',
+    en: 'Could not load the available people.',
+  },
+  'transportPlanning.crewAddFailed': { pt: 'Não foi possível adicionar à tripulação.', en: 'Could not add to the crew.' },
+  'transportPlanning.crewRemoveFailed': {
+    pt: 'Não foi possível remover da tripulação.',
+    en: 'Could not remove from the crew.',
+  },
+  'transportPlanning.crewSaved': { pt: 'Tripulação atualizada.', en: 'Crew updated.' },
 
   // Wait-or-release dialog (#219) — data only, the board never decides for
   // the planner.

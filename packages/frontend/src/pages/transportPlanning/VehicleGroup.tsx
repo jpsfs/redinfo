@@ -21,7 +21,6 @@ import { TimelineWindow } from './planningTime';
 export const VehicleGroup = ({
   vehicle,
   lanes,
-  crewNamesByTripId,
   legsById,
   timelineWindow,
   occupancy,
@@ -29,12 +28,12 @@ export const VehicleGroup = ({
   onAddJourney,
   onDropLeg,
   onEditAssignment,
+  onEditCrew,
   onWaitRelease,
 }: {
   vehicle: TransportPlanningLane['vehicle'];
   /** This vehicle's journeys, already in the order they run. */
   lanes: TransportPlanningLane[];
-  crewNamesByTripId: Record<string, string[]>;
   legsById: Record<string, TransportPlanningLeg>;
   timelineWindow: TimelineWindow;
   occupancy: VehicleOccupancy[];
@@ -42,6 +41,7 @@ export const VehicleGroup = ({
   onAddJourney: (vehicleId: string) => void;
   onDropLeg: (params: { tripId: string; legId: string; dropMinutes: number }) => void;
   onEditAssignment: (legId: string, tripId: string, pickup: TripStop, dropoff: TripStop) => void;
+  onEditCrew: (lane: TransportPlanningLane, journeyNumber: number) => void;
   onWaitRelease: (tripId: string, dropoffStop: TripStop) => void;
 }) => {
   const t = useT();
@@ -86,13 +86,13 @@ export const VehicleGroup = ({
           <PlanningLane
             lane={lane}
             journeyNumber={index + 1}
-            crewNames={crewNamesByTripId[lane.trip.id] ?? []}
             legsById={legsById}
             timelineWindow={timelineWindow}
             occupancy={occupancy}
             isDragActive={isDragActive}
             onDropLeg={onDropLeg}
             onEditAssignment={onEditAssignment}
+            onEditCrew={(target) => onEditCrew(target, index + 1)}
             onWaitRelease={onWaitRelease}
           />
         </Box>

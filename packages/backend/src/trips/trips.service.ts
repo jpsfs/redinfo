@@ -5,22 +5,30 @@ import {
   LegDirection,
   PatientMobility,
   TransportPlanningBoard,
+  TransportPlanningCrewMember,
   TransportPlanningLane,
   TransportPlanningLeg,
+  TripCrewRequirement,
   TripPlanIssue,
   TripStopKind,
   TripStopSegment,
   TripStopWalkInput,
   VehicleOccupancySource,
+  VehicleType,
   arrivalWindowWarning,
+  carriesStretcherPassenger,
   checkTripCapacity,
+  checkTripCrew,
   computeEmptyLegs,
   computeTripOccupancyWindow,
+  effectiveCertifications,
   resolveArrivalWindowThresholds,
+  tripCrewRequirement,
   walkTripStops,
 } from '@redinfo/shared';
 import { PrismaService } from '../prisma/prisma.service';
-import { parseIsoDate } from '../utils/date.util';
+import { CERT_HELD_SELECT, toHeldCertifications } from '../users/certifications.util';
+import { parseIsoDate, toIsoDate } from '../utils/date.util';
 import { shiftBoundaryToInstant } from '../utils/timezone.util';
 import { DelegationSettingsService } from '../live-runs/delegation-settings.service';
 import { StaffAbsencesService } from '../staff-absences/staff-absences.service';
@@ -54,13 +62,26 @@ type TripDetailRow = Prisma.TripGetPayload<{ include: typeof TRIP_INCLUDE }>;
 
 export interface TripDetail {
   trip: ReturnType<typeof serializeTrip>;
-  crewMembers: ReturnType<typeof serializeTripCrewMember>[];
+  crewMembers: TransportPlanningCrewMember[];
+  /** What this trip's crew must look like given what it carries — see
+   * `tripCrewRequirement`. Served alongside the issues so a caller can show
+   * the bar as well as the shortfall. */
+  crewRequirement: TripCrewRequirement;
   stops: ReturnType<typeof serializeTripStop>[];
   /** Null when the trip has no stops yet. */
   occupancyWindow: { startsAt: string; endsAt: string } | null;
   emptyLegs: TripStopSegment[];
   issues: TripPlanIssue[];
 }
+
+/** A crew member with everything both `checkTripCrew` and the board need —
+ * the serialized row, the name, and certifications in both the shared
+ * `HeldCertification` form (for the check, which needs expiry dates) and the
+ * flattened type list the board renders. */
+type LoadedCrewMember = TransportPlanningCrewMember & {
+  name: string;
+  held: ReturnType<typeof toHeldCertifications>;
+};
 
 /** Maps the leg-level arrival-timing read (#233) onto this story's ranked
  * severity — soft, informational, never a block. */
@@ -229,10 +250,12 @@ export class TripsService {
 
   private async buildDetail(row: TripDetailRow): Promise<TripDetail> {
     const stops = row.stops as TripStopRow[];
-    const [passengerRequirements, absences, occupancyConflicts] = await Promise.all([
+    const date = toIsoDate(row.date);
+    const [passengerRequirements, absences, occupancyConflicts, crew] = await Promise.all([
       loadPassengerRequirements(this.prisma, pickupLegIds(stops)),
-      this.staffAbsences.findOverlapping(row.date.toISOString().slice(0, 10), row.date.toISOString().slice(0, 10)),
+      this.staffAbsences.findOverlapping(date, date),
       this.checkVehicleAvailability(row.id, row.vehicleId, stops),
+      this.loadCrew(row.crewMembers, date),
     ]);
 
     const walkInputs: TripStopWalkInput[] = stops.map((stop) => ({
@@ -248,17 +271,28 @@ export class TripsService {
           : undefined,
     }));
     const segments = walkTripStops(walkInputs);
+    const crewRequirement = tripCrewRequirement(carriesStretcherPassenger(segments));
 
     const issues: TripPlanIssue[] = [
       ...checkTripCapacity(segments, row.vehicle),
       ...occupancyConflicts,
-      ...(await this.checkCrewAvailability(row.crewMembers, absentUserIds(absences))),
+      ...this.checkCrewAvailability(crew, absentUserIds(absences)),
+      ...checkTripCrew({
+        crew: crew.map((member) => ({ userId: member.userId, certifications: member.held })),
+        requirement: crewRequirement,
+        vehicleType: row.vehicle.vehicleType as VehicleType,
+        date,
+        // A lane with nothing aboard yet has no crew to fall short of — see
+        // `checkTripCrew`. `WAIT`/`RETURN_TO_BASE`-only trips count as empty.
+        hasPassengers: segments.some((segment) => segment.onboardLegIds.length > 0),
+      }),
       ...(await this.checkArrivalTiming(stops)),
     ];
 
     return {
       trip: serializeTrip(row as TripRow),
-      crewMembers: row.crewMembers.map((member) => serializeTripCrewMember(member)),
+      crewMembers: crew.map(({ name: _name, held: _held, ...member }) => member),
+      crewRequirement,
       stops: stops.map((stop) => serializeTripStop(stop)),
       occupancyWindow: stops.length
         ? computeTripOccupancyWindow(stops.map((s) => ({ plannedAt: s.plannedAt.toISOString(), dwellMinutes: s.dwellMinutes })))
@@ -301,16 +335,52 @@ export class TripsService {
     ];
   }
 
-  private async checkCrewAvailability(
-    crewMembers: { id: string; userId: string; overrideReason: string | null }[],
+  /**
+   * The crew rows joined to the people they name, with certifications resolved
+   * against the **trip's own date** rather than today — planning three weeks
+   * out must not accept a certificate that expires next Tuesday, and reading
+   * back a past trip must not retro-fail a crew whose certificate has lapsed
+   * since. One query for the whole crew, never one per member.
+   */
+  private async loadCrew(
+    crewMembers: TripDetailRow['crewMembers'],
+    date: string,
+  ): Promise<LoadedCrewMember[]> {
+    if (crewMembers.length === 0) return [];
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: crewMembers.map((member) => member.userId) } },
+      select: { id: true, firstName: true, lastName: true, certifications: { select: CERT_HELD_SELECT } },
+    });
+    const userById = new Map(users.map((user) => [user.id, user]));
+
+    return crewMembers.map((member) => {
+      const user = userById.get(member.userId);
+      const held = toHeldCertifications(user?.certifications ?? []);
+      return {
+        ...serializeTripCrewMember(member),
+        firstName: user?.firstName ?? '',
+        lastName: user?.lastName ?? '',
+        // Falls back to the id so a message about a user deleted since never
+        // reads as being about nobody at all.
+        name: user ? `${user.firstName} ${user.lastName}`.trim() : member.userId,
+        held,
+        certifications: effectiveCertifications(held, date)
+          .filter((cert) => cert.status !== 'EXPIRED')
+          .map((cert) => cert.type),
+      };
+    });
+  }
+
+  private checkCrewAvailability(
+    crewMembers: LoadedCrewMember[],
     absentUserIds: Set<string>,
-  ): Promise<TripPlanIssue[]> {
+  ): TripPlanIssue[] {
     return crewMembers
       .filter((member) => !member.overrideReason && absentUserIds.has(member.userId))
       .map((member) => ({
         level: 'ERROR' as const,
         code: 'CREW_UNAVAILABLE',
-        message: `Crew member ${member.userId} is recorded absent on this trip's date.`,
+        message: `${member.name} is recorded absent on this trip's date.`,
       }));
   }
 

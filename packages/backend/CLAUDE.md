@@ -111,7 +111,9 @@ per-facility override of the thresholds lives on `Facility` itself
 
 `trips` (#234) is the model/API behind the planning board — the board itself is #235. Split by
 concern: `TripsService` (CRUD + `getDetail`'s read-time ranked validation), `TripCrewService`
-(crew assignment), `TripStopsService` (assign/unassign a leg's `PICKUP`+`DROPOFF` pair, `WAIT`/
+(crew assignment, plus `listCandidates` — `GET /trips/crew-candidates?date=`, the crew dialog's
+picker, which flags an absent/already-committed person rather than hiding them),
+`TripStopsService` (assign/unassign a leg's `PICKUP`+`DROPOFF` pair, `WAIT`/
 `RETURN_TO_BASE` stops, reordering), `TripBreakEvenService` (the wait-vs-release helper),
 `TripLegTravelService` (#235 — the pickup and home-arrival times the board suggests, routing
 between the leg's own precise points via `PlannedDurationService.planBetweenPoints` while the

@@ -57,6 +57,16 @@ export class TripsController {
     return this.trips.getBoard(date, user);
   }
 
+  /** Everyone the crew dialog may offer for a journey on `date` (#235) —
+   * flagged, never filtered, see `TripCrewService.listCandidates`. Declared
+   * before `:id` so `crew-candidates` is never swallowed as an id. */
+  @Get('crew-candidates')
+  @Actions(Action.PLAN_TRANSPORT_TRIPS)
+  @ApiQuery({ name: 'date', required: true, description: 'ISO date' })
+  getCrewCandidates(@Query('date') date: string) {
+    return this.crew.listCandidates(date);
+  }
+
   /**
    * A crew member's own manifest for `date` (#236) — `MyTransportTripsPage`'s
    * one call. Ungated on purpose, same reasoning as `SchedulesController
