@@ -155,6 +155,15 @@ export enum Action {
    */
   MANAGE_INEM_STATUS = 'MANAGE_INEM_STATUS',
   /**
+   * Clear a tripped INEM session circuit breaker (#211) — the manual
+   * recovery step a `FAILED` session otherwise needs done by hand against
+   * the database. Deliberately narrower than `MANAGE_INEM_STATUS`: every
+   * crew member sets their own unit's status, but re-arming the one shared
+   * INEM identity after INEM itself rejected a request is a coordinator/admin
+   * call, not a field one.
+   */
+  RESET_INEM_SESSION = 'RESET_INEM_SESSION',
+  /**
    * See or set who is paid vs. volunteering for a shift — employment
    * contracts, and `ScheduleAssignment.compensation` (the rework that
    * replaced #223's blanket `User.isPaidStaff` flag and #245's
@@ -239,6 +248,7 @@ export const ROLE_PERMISSIONS: Record<UserRole, Action[]> = {
     Action.VIEW_VOLUNTEER_HOURS,
     Action.MANAGE_NOTICES,
     Action.MANAGE_INEM_STATUS,
+    Action.RESET_INEM_SESSION,
     // The coordinator who assigns the crew is the one who decides whether an
     // off-clock assignment was paid extra.
     Action.MANAGE_COMPENSATION,

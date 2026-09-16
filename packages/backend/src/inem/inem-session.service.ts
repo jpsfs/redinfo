@@ -202,6 +202,32 @@ export class InemSessionService implements OnModuleInit {
   }
 
   /**
+   * Manual recovery for a tripped breaker — the reset a `FAILED`
+   * session otherwise needed done by hand against the database (see the
+   * 2026-09-15 incident this codifies). Reopens to `EXPIRED`, not `ACTIVE`:
+   * the next `proactiveReMint()`/`recover()` pass still has to prove the
+   * session actually works before anything is trusted again, exactly like
+   * any other non-fatal failure clears. A no-op when the breaker isn't
+   * tripped — there's nothing to reset, and this must never resurrect a
+   * session that's merely `LOGGING_IN` or already healthy.
+   *
+   * Runs under `RECOVERY_LOCK_SQL` for the same reason `recordApiFailure()`
+   * does: without it, this could race a concurrent `recordApiFailure()` that
+   * is mid-way through tripping the breaker for a *new* failure and clobber
+   * it back open.
+   */
+  async resetCircuitBreaker(): Promise<void> {
+    if (!this.enabled) return;
+    await this.withRecoveryLock(async (tx, row) => {
+      if (row.status !== INEMSessionStatus.FAILED) return;
+      await tx.iNEMSession.update({
+        where: { id: INEM_SESSION_ID },
+        data: { status: INEMSessionStatus.EXPIRED, failureCount: 0, lastError: null },
+      });
+    });
+  }
+
+  /**
    * Records a failure from a live call that reached INEM with cookies good
    * enough to be sent (i.e. not `InemSessionExpiredError` — that has its own
    * `recover()` path) — the reconciler's `GET`/`PUT` calls and the

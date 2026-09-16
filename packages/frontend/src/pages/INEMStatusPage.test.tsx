@@ -3,7 +3,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { AdminContext, testDataProvider } from 'react-admin';
 import polyglotI18nProvider from 'ra-i18n-polyglot';
-import { INEMSessionStatus, INEMStatusOverview, INEMUnit } from '@redinfo/shared';
+import { INEMSessionStatus, INEMStatusOverview, INEMUnit, UserRole } from '@redinfo/shared';
 import { messages } from '../i18n/i18nProvider';
 import { INEMStatusPage } from './INEMStatusPage';
 import { apiFetch, ApiError } from '../api';
@@ -52,6 +52,26 @@ const overview = (units: INEMUnit[], overrides: Partial<INEMStatusOverview> = {}
   units,
   ...overrides,
 });
+
+/** The reset-breaker button is gated on `RESET_INEM_SESSION` — most tests
+ *  render with no role at all and never see it, so only the tests that need
+ *  it supply an authProvider granting a specific role. */
+const renderPageAsRole = (role: UserRole) =>
+  render(
+    <AdminContext
+      dataProvider={testDataProvider()}
+      i18nProvider={i18nProvider}
+      authProvider={{
+        login: () => Promise.resolve(),
+        logout: () => Promise.resolve(),
+        checkAuth: () => Promise.resolve(),
+        checkError: () => Promise.resolve(),
+        getPermissions: () => Promise.resolve([role]),
+      }}
+    >
+      <INEMStatusPage />
+    </AdminContext>,
+  );
 
 const openDialog = async (user: ReturnType<typeof userEvent.setup>) => {
   await user.click(await screen.findByRole('button', { name: 'Change status' }));
@@ -248,6 +268,77 @@ describe('INEMStatusPage', () => {
 
     await screen.findByText('12-AB-34 – CV1');
     expect(screen.queryByText(/INEM portal/)).not.toBeInTheDocument();
+  });
+
+  it('does not show the reset button to a viewer with no INEM permissions at all, even once the breaker is FAILED', async () => {
+    mockApiFetch.mockResolvedValue(
+      overview([unit({ desiredInopCode: '00', reportedInopCode: '00' })], { sessionStatus: INEMSessionStatus.FAILED }),
+    );
+    renderPage();
+
+    await screen.findByText(/cannot currently reach the INEM portal/);
+    expect(screen.queryByRole('button', { name: 'Reset connection' })).not.toBeInTheDocument();
+  });
+
+  it('does not show the reset button to EMERGENCY_OPERATIONAL — the crew role holds MANAGE_INEM_STATUS but not RESET_INEM_SESSION', async () => {
+    mockApiFetch.mockResolvedValue(
+      overview([unit({ desiredInopCode: '00', reportedInopCode: '00' })], { sessionStatus: INEMSessionStatus.FAILED }),
+    );
+    renderPageAsRole(UserRole.EMERGENCY_OPERATIONAL);
+
+    await screen.findByText(/cannot currently reach the INEM portal/);
+    expect(screen.queryByRole('button', { name: 'Reset connection' })).not.toBeInTheDocument();
+  });
+
+  it('shows the reset button to EMERGENCY_COORDINATOR once the breaker is FAILED', async () => {
+    mockApiFetch.mockResolvedValue(
+      overview([unit({ desiredInopCode: '00', reportedInopCode: '00' })], { sessionStatus: INEMSessionStatus.FAILED }),
+    );
+    renderPageAsRole(UserRole.EMERGENCY_COORDINATOR);
+
+    expect(await screen.findByRole('button', { name: 'Reset connection' })).toBeInTheDocument();
+  });
+
+  it('does not show the reset button to a coordinator when the session is merely EXPIRED — that state self-heals, nothing to unlock', async () => {
+    mockApiFetch.mockResolvedValue(
+      overview([unit({ desiredInopCode: '00', reportedInopCode: '00' })], { sessionStatus: INEMSessionStatus.EXPIRED }),
+    );
+    renderPageAsRole(UserRole.EMERGENCY_COORDINATOR);
+
+    await screen.findByText(/being re-established/);
+    expect(screen.queryByRole('button', { name: 'Reset connection' })).not.toBeInTheDocument();
+  });
+
+  it('clicking reset calls POST /inem/reset-session and reloads the status afterward', async () => {
+    const user = userEvent.setup();
+    mockApiFetch.mockResolvedValue(
+      overview([unit({ desiredInopCode: '00', reportedInopCode: '00' })], { sessionStatus: INEMSessionStatus.FAILED }),
+    );
+    renderPageAsRole(UserRole.EMERGENCY_COORDINATOR);
+    const resetButton = await screen.findByRole('button', { name: 'Reset connection' });
+    mockApiFetch.mockClear();
+    mockApiFetch.mockResolvedValue(
+      overview([unit({ desiredInopCode: '00', reportedInopCode: '00' })], { sessionStatus: INEMSessionStatus.EXPIRED }),
+    );
+
+    await user.click(resetButton);
+
+    await waitFor(() => expect(mockApiFetch).toHaveBeenCalledWith('/inem/reset-session', { method: 'POST' }));
+    await waitFor(() => expect(mockApiFetch).toHaveBeenCalledWith('/inem/status'));
+  });
+
+  it('reset button re-enables after a failure instead of getting stuck mid-request', async () => {
+    const user = userEvent.setup();
+    mockApiFetch.mockResolvedValueOnce(
+      overview([unit({ desiredInopCode: '00', reportedInopCode: '00' })], { sessionStatus: INEMSessionStatus.FAILED }),
+    );
+    renderPageAsRole(UserRole.EMERGENCY_COORDINATOR);
+    const resetButton = await screen.findByRole('button', { name: 'Reset connection' });
+
+    mockApiFetch.mockRejectedValueOnce(new Error('boom'));
+    await user.click(resetButton);
+
+    await waitFor(() => expect(resetButton).toBeEnabled());
   });
 
   it('keeps the dialog open with the staged edit intact so the crew member can just retry, on a save conflict', async () => {

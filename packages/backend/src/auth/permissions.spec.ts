@@ -181,6 +181,21 @@ describe('hasPermission', () => {
     expect(hasPermission(UserRole.EMERGENCY_COORDINATOR, Action.MANAGE_INEM_STATUS)).toBe(true);
   });
 
+  it('EMERGENCY_COORDINATOR can perform RESET_INEM_SESSION', () => {
+    expect(hasPermission(UserRole.EMERGENCY_COORDINATOR, Action.RESET_INEM_SESSION)).toBe(true);
+  });
+
+  it('EMERGENCY_OPERATIONAL cannot perform RESET_INEM_SESSION — resetting the shared session is a coordinator/admin call, not a field one', () => {
+    expect(hasPermission(UserRole.EMERGENCY_OPERATIONAL, Action.RESET_INEM_SESSION)).toBe(false);
+  });
+
+  it.each([UserRole.LOGISTICS_COORDINATOR, UserRole.TRANSPORT_COORDINATOR])(
+    '%s cannot perform RESET_INEM_SESSION (cross-domain denied)',
+    (role) => {
+      expect(hasPermission(role, Action.RESET_INEM_SESSION)).toBe(false);
+    },
+  );
+
   // ── Compensation permissions (Stage 1 of the paid-staff rework) ────────────
 
   it('EMERGENCY_COORDINATOR can perform MANAGE_COMPENSATION', () => {

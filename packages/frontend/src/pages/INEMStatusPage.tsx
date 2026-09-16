@@ -6,11 +6,12 @@ import CancelIcon from '@mui/icons-material/Cancel';
 import HelpOutlineIcon from '@mui/icons-material/HelpOutline';
 import SyncIcon from '@mui/icons-material/Sync';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
-import { INEM_AVAILABLE_INOP_CODE, INEMSessionStatus, INEMStatusOverview, INEMUnit } from '@redinfo/shared';
+import { Action, INEM_AVAILABLE_INOP_CODE, INEMSessionStatus, INEMStatusOverview, INEMUnit } from '@redinfo/shared';
 import { apiFetch, ApiError } from '../api';
 import { apiErrorLabel, inemReasonLabel } from '../i18n/labels';
 import { useT } from '../i18n/useT';
 import { useIntlLocale } from '../i18n/useIntlLocale';
+import { useCapabilities } from '../hooks/useCapabilities';
 import { SetUnitStatusDialog } from './inem/SetUnitStatusDialog';
 
 /**
@@ -44,10 +45,12 @@ const REFRESH_MS = 20_000;
 export const INEMStatusPage = () => {
   const t = useT();
   const notify = useNotify();
+  const capabilities = useCapabilities();
   const [overview, setOverview] = useState<INEMStatusOverview | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [savingUnitId, setSavingUnitId] = useState<string | null>(null);
   const [syncingNow, setSyncingNow] = useState(false);
+  const [resettingSession, setResettingSession] = useState(false);
   const [dialogUnitId, setDialogUnitId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -79,6 +82,23 @@ export const INEMStatusPage = () => {
       notify(e instanceof ApiError ? apiErrorLabel(t, e) : t('inem.syncNowFailed'), { type: 'warning' });
     } finally {
       setSyncingNow(false);
+    }
+  };
+
+  // Only reachable at all once the breaker is `FAILED` — the one state
+  // automated recovery refuses to touch on its own (see `InemSessionService`
+  // in the backend). Reopens the session and lets the app's own warm re-mint
+  // take it from there, so this never talks to INEM directly.
+  const handleResetSession = async () => {
+    setResettingSession(true);
+    try {
+      await apiFetch('/inem/reset-session', { method: 'POST' });
+      notify(t('inem.resetSessionSuccess'), { type: 'info' });
+      void load();
+    } catch (e) {
+      notify(e instanceof ApiError ? apiErrorLabel(t, e) : t('inem.resetSessionFailed'), { type: 'warning' });
+    } finally {
+      setResettingSession(false);
     }
   };
 
@@ -135,7 +155,12 @@ export const INEMStatusPage = () => {
       </Stack>
 
       {overview && overview.sessionStatus !== INEMSessionStatus.ACTIVE && (
-        <DegradedBanner status={overview.sessionStatus} />
+        <DegradedBanner
+          status={overview.sessionStatus}
+          canReset={capabilities.can([Action.RESET_INEM_SESSION])}
+          resetting={resettingSession}
+          onReset={handleResetSession}
+        />
       )}
 
       {!overview && !loadError && <CircularProgress size={24} />}
@@ -181,12 +206,43 @@ export const INEMStatusPage = () => {
   );
 };
 
-const DegradedBanner = ({ status }: { status: INEMSessionStatus }) => {
+interface DegradedBannerProps {
+  status: INEMSessionStatus;
+  /** Whether the viewer holds `RESET_INEM_SESSION` — only Admins/coordinators do. */
+  canReset: boolean;
+  resetting: boolean;
+  onReset: () => void;
+}
+
+/**
+ * `EXPIRED` self-heals on its own (a warm re-mint or cold-login is already in
+ * flight) — there is nothing for a human to click. `FAILED` is the one state
+ * that doesn't: the breaker only clears by hand, so the reset button only
+ * ever appears here, and only for someone who holds `RESET_INEM_SESSION`.
+ */
+const DegradedBanner = ({ status, canReset, resetting, onReset }: DegradedBannerProps) => {
   const t = useT();
   if (status !== INEMSessionStatus.FAILED && status !== INEMSessionStatus.EXPIRED) return null;
+  const isFailed = status === INEMSessionStatus.FAILED;
   return (
-    <Alert severity={status === INEMSessionStatus.FAILED ? 'error' : 'warning'} sx={{ mb: 2 }}>
-      {t(status === INEMSessionStatus.FAILED ? 'inem.degradedBanner.FAILED' : 'inem.degradedBanner.EXPIRED')}
+    <Alert
+      severity={isFailed ? 'error' : 'warning'}
+      sx={{ mb: 2 }}
+      action={
+        isFailed && canReset ? (
+          <Button
+            color="inherit"
+            size="small"
+            startIcon={resetting ? <CircularProgress size={16} color="inherit" /> : undefined}
+            disabled={resetting}
+            onClick={onReset}
+          >
+            {t('inem.resetSession')}
+          </Button>
+        ) : undefined
+      }
+    >
+      {t(isFailed ? 'inem.degradedBanner.FAILED' : 'inem.degradedBanner.EXPIRED')}
     </Alert>
   );
 };

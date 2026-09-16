@@ -98,6 +98,20 @@ export class InemService {
     await this.reconciler.reconcile();
   }
 
+  /**
+   * The status page's "Reset" button — only ever shown/reachable once
+   * `sessionStatus` is `FAILED`, the one state automated recovery refuses to
+   * touch on its own. Reopens the breaker to `EXPIRED` and kicks off a warm
+   * re-mint attempt in the background so the button feels responsive instead
+   * of waiting out the keep-alive timer's own delay; it doesn't await that
+   * attempt; a failure there just re-trips the breaker the same way any other
+   * warm re-mint failure would, surfaced on the next status read.
+   */
+  async resetCircuitBreaker(): Promise<void> {
+    await this.session.resetCircuitBreaker();
+    void this.session.proactiveReMint();
+  }
+
   /** Shared guard for both write paths — see their own doc comments for why each needs it. */
   private async assertSessionUsable(): Promise<void> {
     const overview = await this.session.getOverview();
