@@ -49,6 +49,7 @@ import { IdentityCipher } from '../src/common/identity-cipher';
 import { PatientsService } from '../src/patients/patients.service';
 import { CreatePatientDto } from '../src/patients/dto/create-patient.dto';
 import { DelegationSettingsService } from '../src/live-runs/delegation-settings.service';
+import { OccurrenceTypePoliciesService } from '../src/transport-config/occurrence-type-policies.service';
 import { GeographyService } from '../src/geography/geography.service';
 import { FacilitiesService } from '../src/facilities/facilities.service';
 import { VehicleOccupancyService } from '../src/vehicle-occupancy/vehicle-occupancy.service';
@@ -1062,7 +1063,12 @@ async function main() {
     staffAbsences,
     vehicleOccupancy,
   );
-  const transportLegs = new TransportRequestLegsService(prisma);
+  const occurrenceTypePolicies = new OccurrenceTypePoliciesService(prisma);
+  const transportLegs = new TransportRequestLegsService(
+    prisma,
+    delegationSettingsForFacilities,
+    occurrenceTypePolicies,
+  );
   const treatmentPlans = new TransportRequestTreatmentPlansService(prisma, transportLegs);
 
   const orgUls = await organisations.create({
