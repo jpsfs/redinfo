@@ -698,4 +698,114 @@ describeIntegration('Legacy migration harness (integration)', () => {
       expect(roleCaps).toEqual([1, 1, 1]);
     });
   });
+
+  /**
+   * End to end against real Postgres, mirroring the retractions test above:
+   * legacy doesn't clear the seat, it reassigns it to someone else — the same
+   * `escala` key (mes/turno/ano/dia/slotKey), a different crew number. Confirmed
+   * live 2026-09-17: this never synced because `update()` only ever re-applied
+   * `roleId`, leaving the mapped `ScheduleAssignment.userId` stale forever.
+   */
+  describe('a crew seat reassigned in legacy (not cleared)', () => {
+    function escalaRow(crewNumero: number, ano: number, dia: number): EscalaRow {
+      return {
+        mes: 'Marco',
+        condutor: crewNumero,
+        socorrista_1: 0,
+        socorrista_3: 0,
+        trocas: '',
+        turno: 1,
+        ano,
+        dia,
+        observacoes: '',
+        dia_semana: 'Segunda',
+        update_date: '2020-03-31 12:00:00',
+        updated_by: 'admin',
+      };
+    }
+
+    it('repoints the same mapped assignment at the new driver instead of leaving the old one', async () => {
+      const source = new FixtureLegacySource();
+      const dia = 1 + Math.floor(Math.random() * 28);
+      const ano = 2001 + Math.floor(Math.random() * 15);
+      const suffix = `swap-${RUN}`;
+
+      let assignmentAfterFirstRun: { id: string; userId: string } | null = null;
+      let assignmentAfterSwap: { id: string; userId: string } | null = null;
+      let mappingCountAfterSwap = -1;
+
+      await prisma
+        .$transaction(
+          async (tx) => {
+            // ── First run: legacy has Erica on the shift ─────────────────────
+            const first = createRunContext({ prisma, source, options: makeOptions({ apply: false, runId: `${RUN}-r1` }) });
+            first.sharedTx = tx;
+            first.importActorId = await loadSystemActor(first);
+            const { crewNumero: erica } = await setUpCrewAndVehicle(first, source, suffix);
+
+            const maria = 9000 + Math.floor(Math.random() * 999);
+            source.usuariosRows.push({
+              id: `u-${suffix}-maria`,
+              nome: 'Maria Emilia',
+              usuario: String(maria),
+              tipo: 'voluntario',
+              activo: 1,
+              fbid: '',
+              updated_by: 'admin',
+              update_date: '2020-01-01 00:00:00',
+            });
+            source.socorristaRows.push(baseSocorrista({ numero: maria, email: `maria-${suffix}@example.test`, nome: 'Maria Emilia' }));
+            await loadUsers(first, new LocalityResolver(prisma, new Map()));
+
+            source.escalaRows = [escalaRow(erica, ano, dia)];
+
+            const windows = await loadAvailabilityWindows(first);
+            await loadSchedules(first, windows, userResolverFor(source, first));
+
+            const window = await tx.availabilityWindow.findUniqueOrThrow({
+              where: { id: windows.get(`${ano}-3`)!.windowId },
+            });
+            const created = await tx.scheduleAssignment.findMany({
+              where: { schedule: { windowId: window.id } },
+              select: { id: true, userId: true },
+            });
+            expect(created).toHaveLength(1);
+            assignmentAfterFirstRun = created[0];
+
+            // ── Second run: legacy now has Maria on the same seat ────────────
+            source.escalaRows = [escalaRow(maria, ano, dia)];
+
+            const second = createRunContext({ prisma, source, options: makeOptions({ apply: false, runId: `${RUN}-r2` }) });
+            second.sharedTx = tx;
+            second.importActorId = first.importActorId;
+            const windowsAgain = await loadAvailabilityWindows(second);
+            await loadSchedules(second, windowsAgain, userResolverFor(source, second));
+
+            const afterSwap = await tx.scheduleAssignment.findMany({
+              where: { schedule: { windowId: window.id } },
+              select: { id: true, userId: true },
+            });
+            expect(afterSwap).toHaveLength(1); // same seat, not a second row alongside the stale one
+            assignmentAfterSwap = afterSwap[0];
+
+            mappingCountAfterSwap = await tx.legacyIdMap.count({
+              where: { entity: 'ScheduleAssignment', newId: assignmentAfterFirstRun!.id },
+            });
+
+            throw new DryRunRollback();
+          },
+          { timeout: 120_000, maxWait: 10_000 },
+        )
+        .catch((err) => {
+          if (!(err instanceof DryRunRollback)) throw err;
+        });
+
+      expect(assignmentAfterFirstRun).not.toBeNull();
+      expect(assignmentAfterSwap).not.toBeNull();
+      // Same row, repointed — not a leftover row still pointing at Erica.
+      expect(assignmentAfterSwap!.id).toBe(assignmentAfterFirstRun!.id);
+      expect(assignmentAfterSwap!.userId).not.toBe(assignmentAfterFirstRun!.userId);
+      expect(mappingCountAfterSwap).toBe(1);
+    });
+  });
 });
