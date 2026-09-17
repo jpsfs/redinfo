@@ -190,3 +190,20 @@ docs/manual-operador/manual_emergencyoperator.pdf
 # service serves. Multi-hundred-MB, reproducible from
 # scripts/prepare-basemap.sh — never committed.
 /data/basemap/
+
+# Terraform (infra/terraform). `.terraform/` is downloaded providers; the state
+# files are only ever local leftovers (the real state lives in S3 — see
+# infra/terraform/versions.tf) and are a plaintext dump of the environment.
+# `.terraform.lock.hcl` is deliberately NOT ignored: it pins provider hashes
+# and belongs in review.
+**/.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+# Real values for the example files next to them. Nothing secret should be in
+# terraform.tfvars, but it is machine-specific; backend.hcl names the state
+# bucket, which is not something to publish.
+infra/terraform/terraform.tfvars
+infra/terraform/*.auto.tfvars
+infra/terraform/backend.hcl
