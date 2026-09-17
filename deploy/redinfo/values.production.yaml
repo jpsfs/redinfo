@@ -27,6 +27,11 @@ service:
 ingress:
   enabled: true
   className: public
+  # See values.staging.yaml's identical annotation for why: ingress-nginx's
+  # default 1m body cap sits in front of the frontend container's own nginx,
+  # both of which need raising to accept an event report photo attachment.
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "21m"
   hosts:
     - host: app.cvpcampo.org
       paths:
