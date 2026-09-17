@@ -4,15 +4,20 @@ import {
   ConflictException,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { VehicleOccupancyService } from '../vehicle-occupancy/vehicle-occupancy.service';
 import { CreateVehicleDto } from './dto/create-vehicle.dto';
 import { UpdateVehicleDto } from './dto/update-vehicle.dto';
 import { CreateMaintenanceEntryDto } from './dto/create-maintenance-entry.dto';
 import { UpdateMaintenanceEntryDto } from './dto/update-maintenance-entry.dto';
-import { VehicleType } from '@redinfo/shared';
+import { addDays } from '../utils/date.util';
+import { VehicleType, VehicleOccupancySource } from '@redinfo/shared';
 
 @Injectable()
 export class VehiclesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly vehicleOccupancy: VehicleOccupancyService,
+  ) {}
 
   // ─── Vehicles ───────────────────────────────────────────────────────────────
 
@@ -116,6 +121,14 @@ export class VehiclesService {
         ...(dto.manufacturer !== undefined && { manufacturer: dto.manufacturer }),
         ...(dto.model !== undefined && { model: dto.model }),
         ...(dto.notes !== undefined && { notes: dto.notes }),
+        ...(dto.seatedCapacity !== undefined && { seatedCapacity: dto.seatedCapacity }),
+        ...(dto.wheelchairPositions !== undefined && {
+          wheelchairPositions: dto.wheelchairPositions,
+        }),
+        ...(dto.stretcherPositions !== undefined && {
+          stretcherPositions: dto.stretcherPositions,
+        }),
+        ...(dto.hasRampOrLift !== undefined && { hasRampOrLift: dto.hasRampOrLift }),
       },
     });
   }
@@ -155,7 +168,7 @@ export class VehiclesService {
 
   async createEntry(dto: CreateMaintenanceEntryDto) {
     await this.findOne(dto.vehicleId);
-    return this.prisma.maintenanceEntry.create({
+    const entry = await this.prisma.maintenanceEntry.create({
       data: {
         ...dto,
         date: new Date(dto.date),
@@ -163,11 +176,13 @@ export class VehiclesService {
         vatAmount: dto.vatAmount ?? null,
       },
     });
+    await this.syncMaintenanceOccupancy(entry);
+    return entry;
   }
 
   async updateEntry(id: string, dto: UpdateMaintenanceEntryDto) {
     await this.findOneEntry(id);
-    return this.prisma.maintenanceEntry.update({
+    const entry = await this.prisma.maintenanceEntry.update({
       where: { id },
       data: {
         ...(dto.date !== undefined && { date: new Date(dto.date) }),
@@ -178,10 +193,32 @@ export class VehiclesService {
         ...(dto.notes !== undefined && { notes: dto.notes }),
       },
     });
+    await this.syncMaintenanceOccupancy(entry);
+    return entry;
   }
 
   async removeEntry(id: string) {
     await this.findOneEntry(id);
-    return this.prisma.maintenanceEntry.delete({ where: { id } });
+    const entry = await this.prisma.maintenanceEntry.delete({ where: { id } });
+    await this.vehicleOccupancy.removeForSource(VehicleOccupancySource.MAINTENANCE, id);
+    return entry;
+  }
+
+  /**
+   * Write-through to `VehicleOccupancy` (#222) — a `MaintenanceEntry` only
+   * carries a date, no times, so it occupies the whole working day.
+   */
+  private async syncMaintenanceOccupancy(entry: {
+    id: string;
+    vehicleId: string;
+    date: Date;
+    notes: string | null;
+  }) {
+    await this.vehicleOccupancy.syncForSource(VehicleOccupancySource.MAINTENANCE, entry.id, {
+      vehicleId: entry.vehicleId,
+      startsAt: entry.date,
+      endsAt: addDays(entry.date, 1),
+      notes: entry.notes,
+    });
   }
 }

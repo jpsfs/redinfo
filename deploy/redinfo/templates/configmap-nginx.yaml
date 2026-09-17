@@ -1,0 +1,120 @@
+{{- /*
+  Mirrors nginx/nginx.conf, with the upstream templated to this release's backend
+  service instead of the compose service name "backend" — the frontend image bakes
+  in the compose version, which is why it crash-loops ("host not found in upstream")
+  once deployed outside compose.
+*/ -}}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "redinfo.fullname" . }}-frontend-nginx
+  labels:
+    app.kubernetes.io/name: {{ include "redinfo.name" . }}
+    app.kubernetes.io/component: frontend
+data:
+  default.conf: |
+    server {
+        listen 80;
+        server_name _;
+        root /usr/share/nginx/html;
+        index index.html;
+
+        gzip on;
+        gzip_types text/plain text/css application/json application/javascript text/xml application/xml image/svg+xml;
+        gzip_min_length 1000;
+
+        location / {
+            try_files $uri $uri/ /index.html;
+        }
+
+        location /api/ {
+            proxy_pass http://{{ include "redinfo.fullname" . }}-backend:{{ .Values.service.backend.port }}/;
+            proxy_http_version 1.1;
+            proxy_set_header Upgrade $http_upgrade;
+            proxy_set_header Connection 'upgrade';
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_cache_bypass $http_upgrade;
+        }
+
+        # The SPA's own OAuth landing route, not a backend one — it must serve
+        # index.html rather than be proxied like the rest of /auth/*, which
+        # would 404. The backend redirects to the hash form
+        # (/#/auth/callback, see AuthController.frontendRoute) so this normally
+        # isn't hit; it stays as the fallback for old links and for a backend
+        # not yet redeployed, which src/oauthRedirectBridge.ts then rewrites
+        # into the hash route.
+        #
+        # Must be declared before the /auth/ proxy below. nginx always prefers
+        # an exact match over a prefix match, so this wins regardless of block
+        # order, but keep it here for readability.
+        location = /auth/callback {
+            try_files $uri /index.html;
+        }
+
+        location /auth/ {
+            proxy_pass http://{{ include "redinfo.fullname" . }}-backend:{{ .Values.service.backend.port }}/auth/;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+
+        # ── MCP: OAuth 2.1 Authorization Server + the /mcp resource server ────
+        # See `src/main.ts` (backend) and `nginx/nginx.conf`'s own copy of this
+        # block, which this mirrors — these are the exact root-level paths the
+        # MCP SDK's `mcpAuthRouter` fixes per spec (RFC 8414/9728/7591).
+
+        location = /oauth/consent {
+            try_files $uri /index.html;
+        }
+
+        location /mcp {
+            proxy_pass http://{{ include "redinfo.fullname" . }}-backend:{{ .Values.service.backend.port }}/mcp;
+            proxy_http_version 1.1;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+            proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+            proxy_buffering off;
+            proxy_read_timeout 1h;
+        }
+
+        location /.well-known/oauth-authorization-server {
+            proxy_pass http://{{ include "redinfo.fullname" . }}-backend:{{ .Values.service.backend.port }}/.well-known/oauth-authorization-server;
+            proxy_set_header Host $host;
+        }
+
+        location /.well-known/oauth-protected-resource/mcp {
+            proxy_pass http://{{ include "redinfo.fullname" . }}-backend:{{ .Values.service.backend.port }}/.well-known/oauth-protected-resource/mcp;
+            proxy_set_header Host $host;
+        }
+
+        location = /authorize {
+            proxy_pass http://{{ include "redinfo.fullname" . }}-backend:{{ .Values.service.backend.port }}/authorize;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+
+        location = /token {
+            proxy_pass http://{{ include "redinfo.fullname" . }}-backend:{{ .Values.service.backend.port }}/token;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+
+        location = /register {
+            proxy_pass http://{{ include "redinfo.fullname" . }}-backend:{{ .Values.service.backend.port }}/register;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+
+        location = /revoke {
+            proxy_pass http://{{ include "redinfo.fullname" . }}-backend:{{ .Values.service.backend.port }}/revoke;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+
+        location ~* \.(js|css|png|jpg|jpeg|gif|ico|svg|woff2?)$ {
+            expires 1y;
+            add_header Cache-Control "public, immutable";
+        }
+    }

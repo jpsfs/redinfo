@@ -7,7 +7,7 @@ import {
 export const InventoryTemplateEdit = () => (
   <Edit redirect="show">
     <SimpleForm>
-      <TextInput source="notes" label="Notes" multiline fullWidth />
+      <TextInput source="notes" multiline fullWidth />
     </SimpleForm>
   </Edit>
 );

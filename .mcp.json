@@ -1,0 +1,19 @@
+{
+  "mcpServers": {
+    "azure-devops": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@azure-devops/mcp",
+        "jpsfs",
+        "--authentication",
+        "pat",
+        "-d",
+        "core",
+        "work",
+        "work-items",
+        "search"
+      ]
+    }
+  }
+}

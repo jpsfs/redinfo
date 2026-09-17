@@ -3,45 +3,26 @@ import {
   Datagrid,
   TextField,
   DateField,
-  ChipField,
   TopToolbar,
   CreateButton,
   ExportButton,
   SelectInput,
   SearchInput,
   FunctionField,
+  useListContext,
 } from 'react-admin';
-import { Chip, Tooltip } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
+import { Box, Chip, CircularProgress, Paper, Stack, Tooltip } from '@mui/material';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
-
-const DAYS_WARN = 30;
-
-function isExpiringSoon(dateStr: string | null | undefined): boolean {
-  if (!dateStr) return false;
-  const target = new Date(dateStr);
-  const now = new Date();
-  const diffMs = target.getTime() - now.getTime();
-  return diffMs >= 0 && diffMs <= DAYS_WARN * 24 * 60 * 60 * 1000;
-}
-
-function isOverdue(dateStr: string | null | undefined): boolean {
-  if (!dateStr) return false;
-  return new Date(dateStr) < new Date();
-}
-
-const vehicleFilters = [
-  <SearchInput source="q" alwaysOn key="q" />,
-  <SelectInput
-    source="vehicleType"
-    key="vehicleType"
-    choices={[
-      { id: 'EMERGENCY', name: 'Emergency' },
-      { id: 'TRANSPORT', name: 'Transport' },
-    ]}
-  />,
-];
+import { Vehicle } from '@redinfo/shared';
+import { useIsMobile } from '../../hooks/useIsMobile';
+import { useIntlLocale } from '../../i18n/useIntlLocale';
+import { useT } from '../../i18n/useT';
+import { VehicleCapacityChip } from './VehicleCapacityChip';
+import { VehicleCard } from './VehicleCard';
+import { isExpiringSoon, isOverdue } from './vehicleDateStatus';
 
 const ListActions = () => (
   <TopToolbar>
@@ -50,73 +31,129 @@ const ListActions = () => (
   </TopToolbar>
 );
 
-const DateAlertField = ({
-  source,
-  label,
-}: {
-  source: string;
-  label: string;
-}) => (
-  <FunctionField
-    label={label}
-    render={(record: Record<string, string>) => {
-      const val = record[source];
-      const overdue = isOverdue(val);
-      const soon = isExpiringSoon(val);
-      const color = overdue ? 'error' : soon ? 'warning' : 'default';
-      const icon =
-        overdue || soon ? (
-          <Tooltip title={overdue ? 'Overdue!' : 'Expiring soon'}>
-            <WarningAmberIcon fontSize="small" />
-          </Tooltip>
-        ) : undefined;
-      return (
-        <Chip
-          size="small"
-          label={val ? new Date(val).toLocaleDateString('pt-PT') : '—'}
-          color={color as 'error' | 'warning' | 'default'}
-          icon={icon}
-          variant="outlined"
-        />
-      );
-    }}
-  />
-);
+const DateAlertField = ({ source }: { source: string }) => {
+  const t = useT();
+  const intlLocale = useIntlLocale();
+  return (
+    <FunctionField
+      source={source}
+      render={(record: Record<string, string>) => {
+        const val = record[source];
+        const overdue = isOverdue(val);
+        const soon = isExpiringSoon(val);
+        const color = overdue ? 'error' : soon ? 'warning' : 'default';
+        const icon =
+          overdue || soon ? (
+            <Tooltip title={overdue ? t('vehicleList.overdue') : t('vehicleList.expiringSoon')}>
+              <WarningAmberIcon fontSize="small" />
+            </Tooltip>
+          ) : undefined;
+        return (
+          <Chip
+            size="small"
+            label={val ? new Date(val).toLocaleDateString(intlLocale) : '—'}
+            color={color as 'error' | 'warning' | 'default'}
+            icon={icon}
+            variant="outlined"
+          />
+        );
+      }}
+    />
+  );
+};
 
-const VehicleTypeField = () => (
-  <FunctionField
-    label="Type"
-    render={(record: { vehicleType?: string }) =>
-      record.vehicleType === 'EMERGENCY' ? (
-        <Chip
-          size="small"
-          label="Emergency"
-          color="error"
-          icon={<DirectionsCarIcon fontSize="small" />}
-        />
-      ) : (
-        <Chip
-          size="small"
-          label="Transport"
-          color="primary"
-          icon={<LocalShippingIcon fontSize="small" />}
-        />
-      )
-    }
-  />
-);
+const VehicleTypeField = () => {
+  const t = useT();
+  return (
+    <FunctionField
+      source="vehicleType"
+      render={(record: { vehicleType?: string }) =>
+        record.vehicleType === 'EMERGENCY' ? (
+          <Chip
+            size="small"
+            label={t('vehicleType.EMERGENCY')}
+            color="error"
+            icon={<DirectionsCarIcon fontSize="small" />}
+          />
+        ) : (
+          <Chip
+            size="small"
+            label={t('vehicleType.TRANSPORT')}
+            color="primary"
+            icon={<LocalShippingIcon fontSize="small" />}
+          />
+        )
+      }
+    />
+  );
+};
 
-export const VehicleList = () => (
-  <List filters={vehicleFilters} actions={<ListActions />} sort={{ field: 'createdAt', order: 'DESC' }}>
-    <Datagrid rowClick="show" bulkActionButtons={false}>
-      <TextField source="licensePlate" label="Licence Plate" />
-      <TextField source="numeroCauda" label="Nº de Cauda" />
-      <VehicleTypeField />
-      <TextField source="manufacturer" label="Make" emptyText="—" />
-      <TextField source="model" label="Model" emptyText="—" />
-      <DateAlertField source="insuranceRenewalDate" label="Insurance Renewal" />
-      <DateAlertField source="nextImtInspectionDate" label="Next IMT Inspection" />
-      <DateField source="createdAt" label="Created" showTime />
-    </Datagrid>
-  </List>
-);
+/** Stacked cards instead of a table — the mobile replacement for `Datagrid`. */
+const MobileVehicleList = () => {
+  const { data, isLoading } = useListContext<Vehicle>();
+  const navigate = useNavigate();
+
+  if (isLoading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+        <CircularProgress size={24} />
+      </Box>
+    );
+  }
+
+  return (
+    <Stack spacing={1.5}>
+      {(data ?? []).map((vehicle) => (
+        <VehicleCard key={vehicle.id} vehicle={vehicle} onOpen={() => navigate(`/vehicles/${vehicle.id}/show`)} />
+      ))}
+    </Stack>
+  );
+};
+
+export const VehicleList = () => {
+  const t = useT();
+  const isMobile = useIsMobile();
+  const vehicleFilters = [
+    <SearchInput source="q" alwaysOn key="q" />,
+    <SelectInput
+      source="vehicleType"
+      key="vehicleType"
+      choices={[
+        { id: 'EMERGENCY', name: t('vehicleType.EMERGENCY') },
+        { id: 'TRANSPORT', name: t('vehicleType.TRANSPORT') },
+      ]}
+    />,
+  ];
+
+  return (
+    <List
+      filters={vehicleFilters}
+      actions={<ListActions />}
+      sort={{ field: 'createdAt', order: 'DESC' }}
+      component="div"
+    >
+      {/* `component="div"` drops `<List>`'s own default `Card` wrapper — only
+          the table itself keeps a card, via the `Paper` below, matching the
+          pattern on `/users` and `/facilities`. */}
+      <Box sx={{ pt: 2 }}>
+        {isMobile ? (
+          <MobileVehicleList />
+        ) : (
+          <Paper variant="outlined">
+            <Datagrid rowClick="show" bulkActionButtons={false}>
+              <TextField source="licensePlate" />
+              <TextField source="numeroCauda" />
+              <VehicleTypeField />
+              <TextField source="manufacturer" emptyText="—" />
+              <TextField source="model" emptyText="—" />
+              <VehicleCapacityChip />
+              <DateAlertField source="insuranceRenewalDate" />
+              <DateAlertField source="nextImtInspectionDate" />
+              <DateField source="createdAt" showTime />
+            </Datagrid>
+          </Paper>
+        )}
+      </Box>
+    </List>
+  );
+};

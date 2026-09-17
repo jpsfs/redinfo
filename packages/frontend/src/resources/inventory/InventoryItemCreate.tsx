@@ -2,74 +2,55 @@ import {
   Create,
   SimpleForm,
   TextInput,
-  SelectInput,
+  ReferenceInput,
+  AutocompleteInput,
   NumberInput,
   required,
   FormDataConsumer,
+  useGetOne,
+  useLocaleState,
 } from 'react-admin';
 import { useLocation } from 'react-router-dom';
+import { InventoryItemType, Locale, MaterialItem, materialItemDisplayName } from '@redinfo/shared';
 
-const itemTypeChoices = [
-  { id: 'COUNTABLE', name: 'Countable (integer quantity)' },
-  { id: 'UNLIMITED', name: 'Unlimited (present/absent only)' },
-];
+/**
+ * `recommendedQuantity` only makes sense for a `COUNTABLE` item, and type is
+ * no longer a field on this form — it's read through from the linked
+ * `MaterialItem` (#206) — so this fetches the selected item just to know
+ * whether to show the field at all.
+ */
+const RecommendedQuantityInput = ({ materialItemId }: { materialItemId?: string }) => {
+  const { data } = useGetOne<MaterialItem>(
+    'material-items',
+    { id: materialItemId as string },
+    { enabled: Boolean(materialItemId) },
+  );
+  if (!materialItemId || data?.type === InventoryItemType.UNLIMITED) return null;
+  return <NumberInput source="recommendedQuantity" min={0} validate={required()} fullWidth />;
+};
 
 export const InventoryItemCreate = () => {
   const location = useLocation();
+  const [locale] = useLocaleState();
   const defaultValues = (location.state as { record?: { templateId?: string } })?.record ?? {};
 
   return (
     <Create redirect="show">
       <SimpleForm defaultValues={defaultValues}>
-        <TextInput
-          source="templateId"
-          label="Template ID"
-          required
-          disabled
-          fullWidth
-        />
-        <TextInput
-          source="name"
-          label="Item Name"
-          validate={required()}
-          fullWidth
-        />
-        <SelectInput
-          source="type"
-          label="Type"
-          choices={itemTypeChoices}
-          validate={required()}
-          defaultValue="COUNTABLE"
-          fullWidth
-        />
+        <TextInput source="templateId" required disabled fullWidth />
+        <ReferenceInput source="materialItemId" reference="material-items">
+          <AutocompleteInput
+            optionText={(record: MaterialItem) => materialItemDisplayName(record, locale as Locale)}
+            filterToQuery={(searchText: string) => ({ q: searchText })}
+            validate={required()}
+            fullWidth
+          />
+        </ReferenceInput>
         <FormDataConsumer>
-          {({ formData }) =>
-            formData.type !== 'UNLIMITED' && (
-              <NumberInput
-                source="recommendedQuantity"
-                label="Recommended Quantity"
-                min={0}
-                validate={required()}
-                fullWidth
-              />
-            )
-          }
+          {({ formData }) => <RecommendedQuantityInput materialItemId={formData.materialItemId} />}
         </FormDataConsumer>
-        <TextInput
-          source="unit"
-          label="Unit (e.g. pcs, liters, kit)"
-          validate={required()}
-          defaultValue="pcs"
-          fullWidth
-        />
-        <NumberInput
-          source="order"
-          label="Display Order"
-          min={0}
-          defaultValue={0}
-          fullWidth
-        />
-        <TextInput source="notes" label="Notes (optional)" multiline fullWidth />
+        <NumberInput source="order" min={0} defaultValue={0} fullWidth />
+        <TextInput source="notes" multiline fullWidth />
       </SimpleForm>
     </Create>
   );

@@ -1,0 +1,4126 @@
+import type { ApiErrorCode, Locale } from '@redinfo/shared';
+import {
+  AVAILABILITY_WINDOW_CATEGORY_METADATA,
+  AuthProvider,
+  AvailabilityWindowCategory,
+  availabilityWindowCategoryLabel,
+  EventLocationType,
+  EventReportProblem,
+  EventReportType,
+  EventReportWarningCode,
+  Gender,
+  InemSupportUnitType,
+  UserRole,
+  VictimDestinationKind,
+  VOLUNTEER_ACTIVITY_TYPE_LABEL,
+  VolunteerActivityType,
+  VolunteerHoursStatus,
+} from '@redinfo/shared';
+
+export type { Locale };
+
+/**
+ * The app's own message catalogue — everything that is not one of
+ * react-admin's ~164 built-in strings (those live in `ra-pt.ts`, merged in by
+ * `i18nProvider.ts`).
+ *
+ * The side-by-side `{ pt, en }` authoring shape predates #180 and is kept on
+ * purpose: a gap is obvious at a glance, and `MessageKey` makes a typo a
+ * compile error instead of a blank label on a phone. What #180 changed is the
+ * plumbing underneath — this file no longer holds any locale state of its
+ * own. `messagesFor()` flattens a locale's half of the map into what
+ * `ra-i18n-polyglot` wants; the actual lookup happens through react-admin's
+ * `useTranslate()` (see `useT.ts`), which re-renders when the locale changes.
+ * A bare, non-reactive `t()` could not do that — see #180's plan for why.
+ */
+
+/** What every enum-label helper below takes as its first argument. */
+export type Translate = (key: string, options?: Record<string, unknown>) => string;
+
+/** Every message, with its translations side by side so a gap is obvious. */
+const MESSAGES = {
+  // ── Titles and navigation ──
+  'report.new': { pt: 'Novo relatório', en: 'New report' },
+  'report.mine': { pt: 'Os meus relatórios', en: 'My reports' },
+  'report.all': { pt: 'Relatórios de evento', en: 'Event reports' },
+  'report.saved': { pt: 'Relatório gravado', en: 'Report saved' },
+  'report.numberAssigned': { pt: 'Número atribuído', en: 'Number assigned' },
+  'report.chooseType': { pt: 'Que tipo de evento?', en: 'What kind of event?' },
+  'report.chooseTypeHint': {
+    pt: 'Escolhe uma opção. O número é atribuído no fim.',
+    en: 'Pick one. The number is assigned at the end.',
+  },
+  'report.yourShiftToday': { pt: 'É o teu turno de hoje', en: 'This is your shift today' },
+  'report.open': { pt: 'Abrir', en: 'Open' },
+  'report.view': { pt: 'Ver o relatório', en: 'View the report' },
+  'report.none': { pt: 'Ainda não tens relatórios.', en: 'You have no reports yet.' },
+
+  // ── Steps ──
+  'step.whenWhere': { pt: 'Quando e onde', en: 'When and where' },
+  'step.times': { pt: 'Tempos', en: 'Times' },
+  'step.crew': { pt: 'Equipa', en: 'Crew' },
+  'step.vehicles': { pt: 'Viatura e quilómetros', en: 'Vehicle and kilometres' },
+  'step.vehiclesPlural': { pt: 'Viaturas e quilómetros', en: 'Vehicles and kilometres' },
+  'step.materials': { pt: 'Material consumido', en: 'Material consumed' },
+  'step.victims': { pt: 'Vítima e transporte', en: 'Victim and transport' },
+  'step.victimsPlural': { pt: 'Vítimas e transporte', en: 'Victims and transport' },
+  'step.inemSupport': { pt: 'Meios INEM de apoio', en: 'INEM support units' },
+  'step.narrative': { pt: 'Relato e anexos', en: 'Report and attachments' },
+  'step.review': { pt: 'Revisão', en: 'Review' },
+  'step.of': { pt: 'de', en: 'of' },
+  'step.optional': { pt: 'opcional', en: 'optional' },
+
+  // ── Fields ──
+  'field.date': { pt: 'Data', en: 'Date' },
+  'field.hours': { pt: 'Horas do serviço', en: 'Service hours' },
+  'field.start': { pt: 'Início', en: 'Start' },
+  'field.end': { pt: 'Fim', en: 'End' },
+  'field.locationType': { pt: 'Tipo de local', en: 'Location type' },
+  'field.locality': { pt: 'Localidade', en: 'Locality' },
+  'field.reference': { pt: 'Nº de referência', en: 'Reference number' },
+  'field.coduReference': { pt: 'Nº CODU', en: 'CODU number' },
+  'field.vehicle': { pt: 'Viatura', en: 'Vehicle' },
+  'field.vehiclesUsed': { pt: 'Viaturas usadas', en: 'Vehicles used' },
+  'field.materials': { pt: 'Material', en: 'Material' },
+  'field.kilometres': { pt: 'Quilómetros percorridos', en: 'Kilometres covered' },
+  'field.kilometresShort': { pt: 'km', en: 'km' },
+  'field.total': { pt: 'Total', en: 'Total' },
+  'field.gender': { pt: 'Género', en: 'Gender' },
+  'field.age': { pt: 'Idade', en: 'Age' },
+  'field.years': { pt: 'anos', en: 'years' },
+  'field.destination': { pt: 'Transportado para', en: 'Taken to' },
+  'field.hospitalEpisodeNumber': { pt: 'Nº de Episódio', en: 'Episode number' },
+  'field.narrative': { pt: 'Relato operacional', en: 'Operational report' },
+  'field.attachments': { pt: 'Anexos', en: 'Attachments' },
+  'field.verbete': { pt: 'Verbete CODU', en: 'CODU verbete' },
+  'field.verbeteHint': {
+    pt: 'Uma fotografia ou ficheiro do verbete em papel. Só um por relatório.',
+    en: 'A photograph or file of the paper form. One per report.',
+  },
+  'field.verbeteAdd': { pt: 'Adicionar verbete', en: 'Add the verbete' },
+  'field.verbeteReplace': { pt: 'Substituir', en: 'Replace' },
+  'field.verbeteOpen': { pt: 'Abrir', en: 'Open' },
+  'field.reportNumber': { pt: 'Nº do relatório', en: 'Report number' },
+  'field.type': { pt: 'Tipo de evento', en: 'Event type' },
+  'field.crew': { pt: 'Equipa', en: 'Crew' },
+  'field.shift': { pt: 'Turno', en: 'Shift' },
+  'field.victims': { pt: 'Vítimas assistidas', en: 'Victims assisted' },
+  'field.inemSupportUnits': { pt: 'Meios INEM de apoio', en: 'INEM support units' },
+  'field.inemSupportRecorded': { pt: 'Registados', en: 'Recorded' },
+  'field.inemSupportBaseHospital': { pt: 'Hospital de origem', en: 'Base hospital' },
+
+  // ── Filters (report list) ──
+  'filter.allDates': { pt: 'Todas as datas', en: 'All dates' },
+  'filter.previousMonth': { pt: 'Mês anterior', en: 'Previous month' },
+  'filter.nextMonth': { pt: 'Mês seguinte', en: 'Next month' },
+  'filter.clearMonth': { pt: 'Limpar filtro de mês', en: 'Clear month filter' },
+
+  // ── Actions ──
+  'action.next': { pt: 'Seguinte', en: 'Next' },
+  'action.back': { pt: 'Voltar', en: 'Back' },
+  'action.save': { pt: 'Gravar relatório', en: 'Save report' },
+  'action.cancel': { pt: 'Cancelar', en: 'Cancel' },
+  'action.close': { pt: 'Fechar', en: 'Close' },
+  'action.now': { pt: 'Agora', en: 'Now' },
+  'action.change': { pt: 'Alterar', en: 'Change' },
+  'action.changeShift': { pt: 'Mudar turno', en: 'Change shift' },
+  'action.addPerson': { pt: 'Adicionar pessoa', en: 'Add person' },
+  'action.addVehicle': { pt: 'Adicionar viatura', en: 'Add vehicle' },
+  'action.addVictim': { pt: 'Adicionar vítima', en: 'Add victim' },
+  'action.remove': { pt: 'Remover', en: 'Remove' },
+  'action.takePhoto': { pt: 'Tirar fotografia', en: 'Take a photo' },
+  'action.attachFile': { pt: 'Anexar ficheiro', en: 'Attach a file' },
+  'action.search': { pt: 'Procurar', en: 'Search' },
+  'action.useMyLocation': { pt: 'Usar a minha localização', en: 'Use my location' },
+  'action.newReport': { pt: 'Novo relatório', en: 'New report' },
+  'action.continueDraft': { pt: 'Continuar', en: 'Continue' },
+  'action.discardDraft': { pt: 'Apagar rascunho', en: 'Discard draft' },
+  'action.edit': { pt: 'Editar', en: 'Edit' },
+  'action.print': { pt: 'Imprimir', en: 'Print' },
+
+  // ── Status and hints ──
+  'status.draftSaved': { pt: 'Guardado', en: 'Saved' },
+  'status.draftUnfinished': { pt: 'Rascunho por terminar', en: 'Unfinished draft' },
+  'status.today': { pt: 'HOJE', en: 'TODAY' },
+  'status.fromShift': { pt: 'DO TURNO', en: 'FROM SHIFT' },
+  'status.saving': { pt: 'A gravar…', en: 'Saving…' },
+  'hint.numberOnSave': {
+    pt: 'O número do relatório é atribuído ao gravar.',
+    en: 'The report number is assigned when you save.',
+  },
+  'hint.timesOptional': {
+    pt: 'Toca em Agora para marcar a hora. Podes deixar em branco.',
+    en: 'Tap Now to stamp the time. You may leave it blank.',
+  },
+  'hint.emergencyTimesOnly': {
+    pt: 'Só nos relatórios de emergência.',
+    en: 'Emergency reports only.',
+  },
+  'hint.crewFromSchedule': {
+    pt: 'A equipa vem da escala do dia e do tipo de evento. Se saiu outra equipa, muda o turno.',
+    en: 'The crew comes from the day’s rota for this event type. If another crew went, change the shift.',
+  },
+  'hint.oneVehicleEmergency': {
+    pt: 'Numa emergência sai uma viatura. Nos apoios podes registar várias.',
+    en: 'An emergency uses one vehicle. Support reports may list several.',
+  },
+  'hint.kilometresTotal': {
+    pt: 'Total da saída até ao regresso ao quartel.',
+    en: 'Total from leaving to returning to the station.',
+  },
+  'hint.materialsNeedVehicle': {
+    pt: 'Escolhe primeiro a viatura para poderes registar material.',
+    en: 'Choose the vehicle first before recording material.',
+  },
+  'hint.ageApproximate': {
+    pt: 'Se não souberes ao certo, aproxima.',
+    en: 'If you are not sure, approximate.',
+  },
+  'hint.hospitalsByDistance': {
+    pt: 'Hospitais mais próximos primeiro. Se não houve transporte, escolhe o desfecho.',
+    en: 'Nearest hospitals first. If nobody was transported, pick the outcome.',
+  },
+  'hint.localitiesOffline': {
+    pt: 'Todas as localidades de Portugal — funciona sem rede.',
+    en: 'Every locality in Portugal — works with no signal.',
+  },
+  'hint.canSaveIncomplete': {
+    pt: 'Podes gravar assim e completar depois.',
+    en: 'You can save this and finish it later.',
+  },
+  'hint.victimEach': {
+    pt: 'Cada vítima guarda o seu género, idade e para onde foi transportada.',
+    en: 'Each victim keeps their own gender, age and destination.',
+  },
+  'hint.approximateDistance': {
+    pt: 'distância ao concelho',
+    en: 'distance to the municipality',
+  },
+  'hint.noVictim': { pt: 'Não houve vítima a registar', en: 'No victim to record' },
+  'hint.inemSupportUnitsCap': {
+    pt: 'No máximo 3 de cada tipo — VMER, SIV e UMIP contam à parte.',
+    en: 'At most 3 of each type — VMER, SIV and UMIP are counted separately.',
+  },
+  'hint.noInemSupportUnits': {
+    pt: 'Nenhum meio INEM de apoio registado',
+    en: 'No INEM support units recorded',
+  },
+  'hint.noMaterials': { pt: 'Nenhum material registado', en: 'No material recorded' },
+  'hint.recent': { pt: 'RECENTES', en: 'RECENT' },
+  'hint.noTransport': { pt: 'SEM TRANSPORTE', en: 'NOT TRANSPORTED' },
+  'hint.chooseDestination': { pt: 'Escolher desfecho', en: 'Choose an outcome' },
+  'hint.chooseShift': { pt: 'Escolher turno', en: 'Choose a shift' },
+  'hint.recogniseCrew': {
+    pt: 'Reconhece a equipa pelos nomes.',
+    en: 'Recognise the crew by their names.',
+  },
+  'hint.noShift': {
+    pt: 'Não havia turno — escolher pessoas',
+    en: 'No shift — pick people',
+  },
+  'hint.searchLocality': { pt: 'Procurar localidade…', en: 'Search for a locality…' },
+  'hint.searchHospital': { pt: 'Procurar hospital…', en: 'Search for a hospital…' },
+  'hint.nothingFound': { pt: 'Nada encontrado.', en: 'Nothing found.' },
+  'hint.loading': { pt: 'A carregar…', en: 'Loading…' },
+
+  // ── Live emergency mode ──
+  // The screens a crew uses one-handed, in a moving ambulance, at three in the
+  // morning. Every label here is read at a glance rather than studied, which is
+  // why they are short, upper-case on the primary controls, and name the act
+  // rather than the field.
+  'live.title': { pt: 'Emergência em direto', en: 'Live emergency' },
+  'live.start': { pt: 'Registar em direto', en: 'Record live' },
+  'live.startHint': {
+    pt: 'Marca os tempos à medida que acontecem.',
+    en: 'Mark the times as they happen.',
+  },
+  'live.resume': { pt: 'Continuar ocorrência em curso', en: 'Continue the run in progress' },
+  'live.boardResume': {
+    pt: 'É a tua ocorrência — toca para continuar',
+    en: "It's your run — tap to continue",
+  },
+  'live.openRuns': { pt: 'Ocorrências em curso', en: 'Runs in progress' },
+  'live.noOpenRuns': { pt: 'Não há ocorrências em curso.', en: 'No runs in progress.' },
+  'live.newRun': { pt: 'Nova ocorrência', en: 'New run' },
+  'live.onlyEmergency': {
+    pt: 'O registo em direto é só para emergências.',
+    en: 'Live recording is for emergencies only.',
+  },
+  'live.notPermitted': {
+    pt: 'Não tens permissão para registar ocorrências.',
+    en: 'You are not allowed to record runs.',
+  },
+
+  // ── Screens ──
+  'live.screen.intake': { pt: 'Ativação', en: 'Intake' },
+  'live.screen.enroute': { pt: 'A caminho', en: 'En route' },
+  'live.screen.scene': { pt: 'No local', en: 'On scene' },
+  'live.screen.assessment': { pt: 'Avaliação', en: 'Assessment' },
+  'live.screen.transport': { pt: 'Transporte', en: 'Transport' },
+  'live.screen.closing': { pt: 'Fecho', en: 'Closing' },
+
+  // ── The bottom bar ──
+  'live.stamp.activationAt': { pt: 'A CAMINHO', en: 'ON OUR WAY' },
+  'live.stamp.sceneArrivalAt': { pt: 'CHEGUEI AO LOCAL', en: 'ARRIVED ON SCENE' },
+  'live.stamp.sceneDepartureAt': { pt: 'SAÍDA DO LOCAL', en: 'LEFT THE SCENE' },
+  'live.stamp.hospitalArrivalAt': { pt: 'CHEGADA AO HOSPITAL', en: 'ARRIVED AT HOSPITAL' },
+  'live.stamp.availableAt': { pt: 'AMBULÂNCIA DISPONÍVEL', en: 'AMBULANCE AVAILABLE' },
+  'live.stamp.change': { pt: 'Alterar', en: 'Change' },
+  'live.navigate': { pt: 'NAVEGAR', en: 'NAVIGATE' },
+  'live.navigateNoAddress': {
+    pt: 'Sem morada ainda — a hora fica marcada.',
+    en: 'No address yet — the time is still marked.',
+  },
+  'live.finish': { pt: 'TERMINAR E ABRIR RELATÓRIO', en: 'FINISH AND OPEN THE REPORT' },
+  'live.finishAndExit': { pt: 'GUARDAR E SAIR', en: 'SAVE AND EXIT' },
+  'live.finishing': { pt: 'A fechar…', en: 'Closing…' },
+  'live.confirmAvailable': {
+    pt: 'Marcar a ambulância como disponível e fechar a ocorrência?',
+    en: 'Mark the ambulance available and close the run?',
+  },
+  'live.assessmentOpen': { pt: 'Avaliação', en: 'Assessment' },
+  'live.assessmentDone': { pt: 'CONCLUIR AVALIAÇÃO', en: 'FINISH ASSESSMENT' },
+
+  // ── Hospital handover (#213) ──
+  'live.handover.open': { pt: 'PASSAGEM AO HOSPITAL', en: 'HOSPITAL HANDOVER' },
+  'live.handover.title': { pt: 'Passagem ao hospital', en: 'Hospital handover' },
+  'live.handover.admission': { pt: 'Admissão', en: 'Admission' },
+  'live.handover.triage': { pt: 'Triagem', en: 'Triage' },
+  'live.handover.episodeNumberTitle': {
+    pt: 'Nº de Episódio — dado pelo hospital',
+    en: 'Episode number — given by the hospital',
+  },
+
+  // ── The top bar ──
+  'live.clock': { pt: 'Decorrido', en: 'Elapsed' },
+  'live.menu': { pt: 'Mais', en: 'More' },
+  'live.visited': { pt: 'Ecrãs já vistos', en: 'Screens already seen' },
+  'live.coduDados': { pt: 'Ligar CODU DADOS', en: 'Call CODU DADOS' },
+  'live.coduDadosDialled': { pt: 'CODU DADOS contactado', en: 'CODU DADOS contacted' },
+  'live.back': { pt: 'Voltar', en: 'Back' },
+  'live.backConfirm': {
+    pt: 'Voltar apaga a hora marcada neste passo. Continuar?',
+    en: 'Going back clears the time recorded for this step. Continue?',
+  },
+  'live.correctTimes': { pt: 'Corrigir horas', en: 'Correct the times' },
+  'live.abandon': { pt: 'Abandonar ocorrência', en: 'Abandon the run' },
+  'live.abandonConfirm': {
+    pt: 'Abandonar apaga o que está registado neste telefone. Continuar?',
+    en: 'Abandoning erases what is recorded on this phone. Continue?',
+  },
+
+  // ── Sync, in words that answer "will I lose this" ──
+  'sync.saved': { pt: 'Gravado no dispositivo', en: 'Saved on the device' },
+  'sync.syncing': { pt: 'A sincronizar…', en: 'Syncing…' },
+  'sync.synced': { pt: 'Sincronizado', en: 'Synced' },
+  'sync.offline': { pt: 'Sem rede — gravado no dispositivo', en: 'No network — saved on the device' },
+  'sync.failed': { pt: 'Falha ao sincronizar', en: 'Could not sync' },
+  'sync.retry': { pt: 'Tentar agora', en: 'Try now' },
+  'sync.pendingOne': { pt: '1 alteração por enviar', en: '1 change to send' },
+  'sync.pendingMany': { pt: 'alterações por enviar', en: 'changes to send' },
+
+  // ── Fields the live screens add ──
+  'field.chiefComplaint': { pt: 'Motivo da chamada', en: 'Reason for the call' },
+  'field.occurrenceAddress': { pt: 'Rua e número', en: 'Street and number' },
+  'field.referencePoints': { pt: 'Pontos de referência', en: 'Reference points' },
+  'field.victimName': { pt: 'Nome da vítima', en: 'Victim’s name' },
+  'field.victimDateOfBirth': { pt: 'Data de nascimento', en: 'Date of birth' },
+  'field.victimDateOfBirthFromAgeHint': {
+    pt: 'Ano aproximado a partir da idade — corrija se souber a data.',
+    en: 'Approximate year from the age — correct it if you know the date.',
+  },
+  'field.victimSnsNumber': { pt: 'Nº de utente (SNS)', en: 'SNS number' },
+  'field.victimHomeAddress': { pt: 'Residência', en: 'Home address' },
+  'field.victimHomeLocality': { pt: 'Localidade da residência', en: 'Home locality' },
+  'field.bodyPosition': { pt: 'Posição da vítima', en: 'Victim’s position' },
+  'field.notes': { pt: 'Notas', en: 'Notes' },
+  'field.takenAt': { pt: 'Hora da avaliação', en: 'Time of the assessment' },
+
+  // ── Identity, and why it does not last ──
+  'live.identityPurged': {
+    pt: 'Os dados de identificação já foram apagados.',
+    en: 'The identifying details have already been destroyed.',
+  },
+  'live.identityUnavailable': {
+    pt: 'Os dados de identificação não podem ser lidos neste momento.',
+    en: 'The identifying details cannot be read right now.',
+  },
+
+  // ── The clinical record ──
+  'live.abcde': { pt: 'ABCDE', en: 'ABCDE' },
+  'live.chamu': { pt: 'CHAMU', en: 'CHAMU' },
+  'live.vitals': { pt: 'Sinais vitais', en: 'Vital signs' },
+  'live.addAssessment': { pt: 'Nova avaliação', en: 'New assessment' },
+  'live.removeAssessment': { pt: 'Apagar esta avaliação', en: 'Delete this assessment' },
+  'live.assessmentPager': { pt: 'Avaliação', en: 'Assessment' },
+  'live.noAssessments': {
+    pt: 'Ainda não há sinais vitais registados.',
+    en: 'No vital signs recorded yet.',
+  },
+  'live.outOfRange': { pt: 'Fora do intervalo possível', en: 'Outside the possible range' },
+  'live.implausible': { pt: 'Valor invulgar — confirma', en: 'Unusual value — check it' },
+  'live.dictate': { pt: 'Ditar', en: 'Dictate' },
+  'live.dictating': { pt: 'A ouvir…', en: 'Listening…' },
+  'live.dictationUnavailable': {
+    pt: 'Este telefone não suporta ditado.',
+    en: 'This phone does not support dictation.',
+  },
+
+  // ── Photographs ──
+  'live.photos': { pt: 'Fotografias', en: 'Photographs' },
+  'live.addPhoto': { pt: 'Tirar fotografia', en: 'Take a photograph' },
+  'live.photosPending': { pt: 'fotografias por enviar', en: 'photographs to send' },
+  'live.photoPending': { pt: '1 fotografia por enviar', en: '1 photograph to send' },
+  'live.photosUploading': { pt: 'A enviar fotografias…', en: 'Sending photographs…' },
+
+  // ── Materials (#209) ──
+  'live.materials.entryButton': { pt: 'Registar material', en: 'Log material' },
+  'live.materials.title': { pt: 'Material consumido', en: 'Materials consumed' },
+  'live.materials.close': { pt: 'Fechar', en: 'Close' },
+  'live.materials.noFavourites': {
+    pt: 'Sem favoritos disponíveis offline.',
+    en: 'No favourites available offline.',
+  },
+  'live.materials.scanOffline': {
+    pt: 'Sem rede — só é possível ler os favoritos já guardados.',
+    en: 'No signal — only already-cached favourites can be scanned right now.',
+  },
+  'live.materials.unknownItem': { pt: 'Material não identificado', en: 'Unidentified material' },
+
+  // ── Closing ──
+  'live.chronology': { pt: 'Cronologia', en: 'Chronology' },
+  'live.notMarked': { pt: 'não marcado', en: 'not marked' },
+  'live.closeBlocked': {
+    pt: 'Falta o seguinte para fechar:',
+    en: 'These are still needed to close:',
+  },
+  'live.closeBlockedNotify': {
+    pt: 'Ainda falta: %{reasons}',
+    en: 'Still needed: %{reasons}',
+  },
+  'live.closeWarnings': {
+    pt: 'Podes fechar assim — isto fica para o relatório:',
+    en: 'You can close as it is — these are for the report:',
+  },
+  'live.closedIntoDraft': {
+    pt: 'Ocorrência fechada. O relatório está por entregar.',
+    en: 'Run closed. The report is not filed yet.',
+  },
+
+  // ── Drafts and filing ──
+  'report.pending': { pt: 'Por entregar', en: 'Not filed' },
+  'report.pendingHint': {
+    pt: 'Relatórios abertos a partir de uma ocorrência em direto, à espera de serem entregues.',
+    en: 'Reports opened from a live run, waiting to be filed.',
+  },
+  'report.filed': { pt: 'Entregues', en: 'Filed' },
+  'report.noNumberYet': { pt: 'Sem número', en: 'No number yet' },
+  'report.submit': { pt: 'Entregar relatório', en: 'File the report' },
+  'report.submitting': { pt: 'A entregar…', en: 'Filing…' },
+  'report.submitted': { pt: 'Relatório entregue', en: 'Report filed' },
+  'report.renumbered': {
+    pt: 'relatórios já entregues mudaram de número',
+    en: 'already-filed reports changed number',
+  },
+  'report.kilometresPending': { pt: 'por calcular', en: 'not computed yet' },
+  'report.kilometresComputed': { pt: 'Calculado a partir do percurso', en: 'Computed from the route' },
+  'report.kilometresOverridden': { pt: 'Alterado à mão', en: 'Edited by hand' },
+  'report.editForbidden': {
+    pt: 'Só a equipa desta atividade, a coordenação de emergência e os administradores podem editar este relatório.',
+    en: 'Only this activity’s crew, the emergency coordinator and admins can edit this report.',
+  },
+
+  // ── My profile ──
+  'profile.title': { pt: 'O meu perfil', en: 'My profile' },
+  'profile.operational': { pt: 'Operacional', en: 'Operational' },
+  'profile.notOperational': { pt: 'Não operacional', en: 'Not operational' },
+  'profile.myCertifications': { pt: 'As minhas certificações', en: 'My certifications' },
+  'profile.certificationsHint': {
+    pt: 'Mantidas pelo coordenador. Se algo estiver errado, fale com ele.',
+    en: 'Maintained by your coordinator. If something looks wrong, talk to them.',
+  },
+  'profile.noCertifications': {
+    pt: 'Ainda não tem certificações registadas.',
+    en: 'No certifications on file yet.',
+  },
+  'profile.grantedBy': { pt: 'concedido por', en: 'granted by' },
+  'profile.noExpiryOnFile': { pt: 'sem data de validade registada', en: 'no expiry on file' },
+  'profile.personalData': { pt: 'Dados pessoais', en: 'Personal data' },
+  'profile.edit': { pt: 'Editar', en: 'Edit' },
+  'profile.save': { pt: 'Guardar', en: 'Save' },
+  'profile.cancel': { pt: 'Cancelar', en: 'Cancel' },
+  'profile.saved': { pt: 'Perfil atualizado', en: 'Profile updated' },
+  'profile.saveFailed': { pt: 'Não foi possível guardar.', en: 'Could not save.' },
+  'profile.phone': { pt: 'Telefone', en: 'Phone' },
+  'profile.address': { pt: 'Morada', en: 'Address' },
+  'profile.postalCode': { pt: 'Código postal', en: 'Postal code' },
+  'profile.birthDate': { pt: 'Data de nascimento', en: 'Date of birth' },
+  'profile.emergencyContact': { pt: 'Contacto de emergência', en: 'Emergency contact' },
+  'profile.emergencyContactPhone': {
+    pt: 'Telefone do contacto de emergência',
+    en: 'Emergency contact phone',
+  },
+  'profile.identification': { pt: 'Identificação', en: 'Identification' },
+  'profile.identificationHint': {
+    pt: 'Atribuída pela delegação. Para corrigir, fale com o coordenador.',
+    en: 'Assigned by the delegation. To correct, talk to your coordinator.',
+  },
+  'profile.redCrossNumber': { pt: 'Nº Nacional CVP', en: 'Red Cross national no.' },
+  'profile.volunteerNumber': { pt: 'Nº de Voluntário', en: 'Volunteer no.' },
+  'profile.joinedOn': { pt: 'Data de admissão', en: 'Joined on' },
+  'profile.bloodType': { pt: 'Grupo sanguíneo', en: 'Blood type' },
+  'profile.nif': { pt: 'NIF', en: 'NIF' },
+  'profile.citizenCard': { pt: 'Cartão de cidadão', en: 'Citizen card' },
+  'profile.notSet': { pt: 'não definido', en: 'not set' },
+  'profile.expiresIn': { pt: 'expira em', en: 'expires in' },
+  'profile.days': { pt: 'dias', en: 'days' },
+  'profile.lapsedKeepsAccess': {
+    pt: 'Continua a ter acesso, mas deixa de poder ser escalado.',
+    en: 'You keep access, but you can no longer be scheduled.',
+  },
+  'profile.changePhoto': { pt: 'Alterar foto', en: 'Change photo' },
+  'profile.removePhoto': { pt: 'Remover', en: 'Remove' },
+  'profile.photoUpdated': { pt: 'Foto atualizada', en: 'Photo updated' },
+  'profile.photoUpdateFailed': { pt: 'Não foi possível carregar a foto.', en: 'Could not upload the photo.' },
+  'profile.photoRemoved': { pt: 'Foto removida', en: 'Photo removed' },
+  'profile.photoRemoveFailed': { pt: 'Não foi possível remover a foto.', en: 'Could not remove the photo.' },
+
+  // ── The language switcher, on this same page ──
+  'profile.language': { pt: 'Idioma', en: 'Language' },
+  'profile.languageHint': {
+    pt: 'Muda de imediato. As certificações e o resto do texto ficam neste idioma.',
+    en: 'Switches immediately. Certifications and the rest of the text follow.',
+  },
+  'profile.languageSaveFailed': {
+    pt: 'Não foi possível guardar a preferência, mas o idioma muda nesta sessão.',
+    en: 'Could not save the preference, but the language still switches for this session.',
+  },
+
+  // ── The drawer and app bar (layout/navigation.tsx, layout/AppLayout.tsx) ──
+  'nav.myWork': { pt: 'O meu trabalho', en: 'My work' },
+  'nav.operations': { pt: 'Operações', en: 'Operations' },
+  'nav.transports': { pt: 'Transportes', en: 'Transports' },
+  'nav.people': { pt: 'Pessoal', en: 'People' },
+  'nav.fleet': { pt: 'Frota', en: 'Fleet' },
+  'nav.configuration': { pt: 'Configuração', en: 'Configuration' },
+  'nav.live': { pt: 'Emergência', en: 'Live emergency' },
+  'nav.liveSubtitle': { pt: 'Modo em campo', en: 'Field mode' },
+  'nav.home': { pt: 'Início', en: 'Home' },
+  'nav.myAvailability': { pt: 'A minha disponibilidade', en: 'My Availability' },
+  'nav.myDuties': { pt: 'As minhas escalas', en: 'My Duties' },
+  'nav.myTransportTrips': { pt: 'As minhas viagens', en: 'My Trips' },
+  'nav.myHours': { pt: 'As minhas horas', en: 'My Hours' },
+  'nav.myReports': { pt: 'Os meus relatórios', en: 'My Reports' },
+  'nav.volunteerHoursReview': { pt: 'Rever horas de voluntariado', en: 'Review Volunteer Hours' },
+  'nav.statistics': { pt: 'Estatísticas', en: 'Statistics' },
+  'nav.liveEmergencies': { pt: 'Emergências em curso', en: 'Live Emergencies' },
+  'nav.eventReports': { pt: 'Relatórios de evento', en: 'Event Reports' },
+  'nav.schedules': { pt: 'Escalas', en: 'Schedules' },
+  'nav.availabilityWindows': { pt: 'Janelas de disponibilidade', en: 'Availability Windows' },
+  'nav.personnel': { pt: 'Pessoal', en: 'Personnel' },
+  'nav.staffAbsences': { pt: 'Ausências', en: 'Staff Absences' },
+  'nav.vehicles': { pt: 'Viaturas', en: 'Vehicles' },
+  'nav.inventoryTemplates': { pt: 'Modelos de inventário', en: 'Inventory Templates' },
+  'nav.materialItems': { pt: 'Catálogo de materiais', en: 'Material Catalogue' },
+  'nav.inemStatus': { pt: 'Estado INEM', en: 'INEM Status' },
+  'nav.facilities': { pt: 'Unidades de Saúde', en: 'Health Facilities' },
+  'nav.patients': { pt: 'Doentes', en: 'Patients' },
+  'nav.organisations': { pt: 'Organizações', en: 'Organisations' },
+  'nav.agreements': { pt: 'Acordos', en: 'Agreements' },
+  'nav.transportRequests': { pt: 'Pedidos', en: 'Referrals' },
+  'nav.transportReferrals': { pt: 'Decidir', en: 'Decide' },
+  'nav.transportPlanning': { pt: 'Planeamento', en: 'Planning' },
+  'nav.transportConfig': { pt: 'Política de planeamento', en: 'Planning policy' },
+  'nav.holidays': { pt: 'Feriados', en: 'Holidays' },
+  'nav.myProfile': { pt: 'O meu perfil', en: 'My Profile' },
+  'nav.myNotices': { pt: 'Avisos', en: 'Notices' },
+  'nav.aiConnections': { pt: 'Assistentes de IA', en: 'AI Assistants' },
+  'nav.notices': { pt: 'Gerir avisos', en: 'Manage Notices' },
+  'nav.notificationConfig': { pt: 'Notificações', en: 'Notifications' },
+  'nav.about': { pt: 'Acerca de', en: 'About' },
+
+  // ── About dialog (user menu, before Logout) — version/build info for
+  // support purposes. ──
+  'about.title': { pt: 'Acerca do RedInfo', en: 'About RedInfo' },
+  'about.version': { pt: 'Versão', en: 'Version' },
+  'about.builtOn': { pt: 'Compilado em', en: 'Built on' },
+  'about.builtBy': { pt: 'Criado por José Pedro Silva', en: 'Built by José Pedro Silva' },
+  'about.close': { pt: 'Fechar', en: 'Close' },
+
+  // ── Resource names — react-admin's `resources.<name>.name`, replacing the
+  // `options={{ label }}` prop removed from every `<Resource>` in App.tsx. ──
+  'resources.users.name': { pt: 'Pessoal', en: 'Users' },
+  'resources.vehicles.name': { pt: 'Viaturas', en: 'Vehicles' },
+  'resources.maintenance.name': { pt: 'Manutenção', en: 'Maintenance' },
+  'resources.inventory-templates.name': { pt: 'Modelos de inventário', en: 'Inventory Templates' },
+  'resources.inventory-template-items.name': { pt: 'Itens de inventário', en: 'Inventory Items' },
+  'resources.vehicle-inventory.name': { pt: 'Inventário da viatura', en: 'Vehicle Inventory' },
+  'resources.availability-windows.name': {
+    pt: 'Janelas de disponibilidade',
+    en: 'Availability Windows',
+  },
+  'resources.schedules.name': { pt: 'Escalas', en: 'Schedules' },
+  'resources.event-reports.name': { pt: 'Relatórios', en: 'Reports' },
+  'resources.facilities.name': { pt: 'Unidades de Saúde', en: 'Health Facilities' },
+  'resources.municipalities.name': { pt: 'Concelhos', en: 'Municipalities' },
+  'resources.localities.name': { pt: 'Localidades', en: 'Localities' },
+  'resources.holidays.name': { pt: 'Feriados', en: 'Holidays' },
+  'resources.organisations.name': { pt: 'Organizações', en: 'Organisations' },
+  'resources.agreements.name': { pt: 'Acordos', en: 'Agreements' },
+  'resources.transport-requests.name': { pt: 'Pedidos', en: 'Referrals' },
+
+  // ── Personnel registry (#180 phase 3 — users) ──
+  'resources.users.fields.firstName': { pt: 'Nome próprio', en: 'First Name' },
+  'resources.users.fields.lastName': { pt: 'Apelido', en: 'Last Name' },
+  'resources.users.fields.email': { pt: 'E-mail', en: 'Email' },
+  'resources.users.fields.role': { pt: 'Função', en: 'Role' },
+  'resources.users.fields.roles': { pt: 'Funções', en: 'Roles' },
+  'resources.users.fields.password': { pt: 'Palavra-passe', en: 'Password' },
+  'resources.users.fields.isActive': { pt: 'Ativo', en: 'Active' },
+  'resources.users.fields.isPaidStaff': { pt: 'Funcionário remunerado', en: 'Paid staff' },
+  'resources.users.fields.readiness': { pt: 'Operacionalidade', en: 'Readiness' },
+  'resources.users.fields.certification': { pt: 'Tem certificação', en: 'Holds certification' },
+  'resources.users.fields.certificationStatus': {
+    pt: 'Estado da certificação',
+    en: 'Certification status',
+  },
+  'resources.users.fields.certifications': { pt: 'Certificações', en: 'Certifications' },
+  'resources.users.fields.phone': { pt: 'Telefone', en: 'Phone' },
+  'resources.users.fields.birthDate': { pt: 'Data de nascimento', en: 'Date of birth' },
+  'resources.users.fields.joinedOn': { pt: 'Data de admissão', en: 'Joined on' },
+  'resources.users.fields.addressLine': { pt: 'Morada', en: 'Address' },
+  'resources.users.fields.postalCode': { pt: 'Código postal', en: 'Postal code' },
+  'resources.users.fields.redCrossNumber': {
+    pt: 'Nº Nacional CVP',
+    en: 'Red Cross national no.',
+  },
+  'resources.users.fields.volunteerNumber': { pt: 'Nº de Voluntário', en: 'Volunteer no.' },
+  'resources.users.fields.fullName': { pt: 'Nome completo', en: 'Full name' },
+  'resources.users.fields.nif': { pt: 'NIF', en: 'NIF' },
+  'resources.users.fields.citizenCardNumber': { pt: 'Cartão de cidadão', en: 'Citizen card' },
+  'resources.users.fields.bloodType': { pt: 'Grupo sanguíneo', en: 'Blood type' },
+  'resources.users.fields.emergencyContactName': {
+    pt: 'Nome do contacto de emergência',
+    en: 'Emergency contact name',
+  },
+  'resources.users.fields.emergencyContactPhone': {
+    pt: 'Telefone do contacto de emergência',
+    en: 'Emergency contact phone',
+  },
+
+  'userForm.accountSection': { pt: 'Conta', en: 'Account' },
+  'userForm.personnelSection': { pt: 'Pessoal', en: 'Personnel' },
+  'userForm.personnelSectionOptional': {
+    pt: 'Pessoal (opcional — pode ser preenchido depois)',
+    en: 'Personnel (optional — can be filled in later)',
+  },
+  'userForm.adminOnlyFields': {
+    pt: 'O email, a função e a palavra-passe são só de administrador. Pede a um administrador para os alterar.',
+    en: 'Email, role and password are administrator-only. Ask an admin to change them.',
+  },
+  'userForm.newPasswordHint': {
+    pt: 'Nova palavra-passe (deixa em branco para manter a atual).',
+    en: 'New password (leave blank to keep the current one).',
+  },
+  'userForm.providerHint': {
+    pt: 'A entrada com Google/Microsoft liga-se automaticamente no primeiro início de sessão — depois disso, só um administrador consegue voltar a "Palavra-passe".',
+    en: 'Google/Microsoft sign-in links itself automatically on first login — after that, only an admin can move it back to "Password".',
+  },
+  'userForm.volunteerNumberHint': {
+    pt: 'Opcional, atribuído manualmente.',
+    en: 'Optional, manually assigned.',
+  },
+  'userForm.fullNameHint': {
+    pt: 'Só para uso administrativo (seguros, certificados). O nome próprio e o apelido continuam a ser usados em todo o lado.',
+    en: 'For administrative use only (insurance, certificates). First and last name keep being used everywhere else.',
+  },
+
+  'personnelList.nameColumn': { pt: 'Nome', en: 'Name' },
+  'personnelList.roleColumn': { pt: 'Funções', en: 'Roles' },
+  'personnelList.searchPlaceholder': {
+    pt: 'Procurar nome ou número',
+    en: 'Search name or number',
+  },
+  'personnelList.active': { pt: 'Ativo', en: 'Active' },
+  'personnelList.inactive': { pt: 'Inativo', en: 'Inactive' },
+  'personnelList.showAll': { pt: 'Mostrar todos', en: 'Show all' },
+  'personnelList.certStatusExpiring': {
+    pt: 'A expirar nos próximos 6 meses',
+    en: 'Expiring within 6 months',
+  },
+  'personnelList.certStatusExpired': { pt: 'Expirada', en: 'Expired' },
+
+  'userShow.documentSaved': { pt: 'Documento guardado', en: 'Document saved' },
+  'userShow.documentUploadFailed': {
+    pt: 'Não foi possível carregar o documento.',
+    en: 'Could not upload the document.',
+  },
+  'userShow.documentRemoved': { pt: 'Documento removido', en: 'Document removed' },
+  'userShow.documentRemoveFailed': {
+    pt: 'Não foi possível remover o documento.',
+    en: 'Could not remove the document.',
+  },
+  'userShow.removeDocument': { pt: 'Remover documento', en: 'Remove document' },
+  'userShow.attachDocument': { pt: 'Anexar documento', en: 'Attach document' },
+  'userShow.removePhotoButton': { pt: 'Remover foto', en: 'Remove photo' },
+  'userShow.certificationsHeading': { pt: 'Certificações', en: 'Certifications' },
+  'userShow.certificationsHint': {
+    pt: 'Só as certificações realmente atribuídas ficam aqui registadas. O TAS concede o TAT e o SBV, e o TAT concede o SBV — esses aparecem abaixo como concedidos, não guardados.',
+    en: 'Only certifications actually awarded are recorded here. TAS grants TAT and SBV, and TAT grants SBV — those are shown below as granted, not stored.',
+  },
+  'userShow.noCertifications': { pt: 'Sem certificações registadas.', en: 'No certifications on file.' },
+  'userShow.alsoGrantedByAbove': {
+    pt: 'Também concedido pelas anteriores',
+    en: 'Also granted by the above',
+  },
+  'userShow.certificationSaved': { pt: 'Certificação guardada', en: 'Certification saved' },
+  'userShow.certificationRemoved': { pt: 'Certificação removida', en: 'Certification removed' },
+  'userShow.certificationRemoveFailed': {
+    pt: 'Não foi possível remover essa certificação.',
+    en: 'Could not remove that certification.',
+  },
+  'userShow.removeCertConfirmPrefix': { pt: 'Remover a certificação ', en: 'Remove the ' },
+  'userShow.removeCertConfirmSuffix': { pt: '?', en: ' certification?' },
+  'userShow.contactHeading': { pt: 'Contacto', en: 'Contact' },
+  'userShow.personalHeading': { pt: 'Pessoal', en: 'Personal' },
+  'userShow.recordHeading': { pt: 'Registo', en: 'Record' },
+  'userShow.createdLabel': { pt: 'Criado', en: 'Created' },
+  'userShow.updatedLabel': { pt: 'Atualizado', en: 'Updated' },
+
+  // ── Paid staff schedule (#245) ──
+  'userShow.paidStaffScheduleHeading': { pt: 'Horário de trabalho', en: 'Work schedule' },
+  'userShow.paidStaffScheduleHint': {
+    pt: 'Os turnos dentro deste horário nunca geram horas de voluntariado — só os turnos fora dele o fazem, tal como um voluntário.',
+    en: 'Shifts inside this schedule never generate volunteer hours — only shifts outside it do, the same as for a volunteer.',
+  },
+  'userShow.paidStaffScheduleLoadFailed': { pt: 'Não foi possível carregar o horário.', en: 'Could not load the schedule.' },
+  'userShow.scheduleBlocksHeading': { pt: 'Horário recorrente', en: 'Recurring pattern' },
+  'userShow.noScheduleBlocks': { pt: 'Sem horário recorrente definido.', en: 'No recurring pattern set.' },
+  'userShow.addScheduleBlock': { pt: 'Adicionar bloco', en: 'Add block' },
+  'userShow.scheduleBlockDayLabel': { pt: 'Dia da semana', en: 'Day of week' },
+  'userShow.scheduleBlockEffectiveFrom': { pt: 'A partir de', en: 'Effective from' },
+  'userShow.scheduleBlockSave': { pt: 'Guardar bloco', en: 'Save block' },
+  'userShow.scheduleBlockSaved': { pt: 'Bloco guardado', en: 'Block saved' },
+  'userShow.scheduleBlockSaveFailed': { pt: 'Não foi possível guardar o bloco.', en: 'Could not save the block.' },
+  'userShow.scheduleBlockRemoved': { pt: 'Bloco removido', en: 'Block removed' },
+  'userShow.scheduleBlockRemoveFailed': { pt: 'Não foi possível remover o bloco.', en: 'Could not remove the block.' },
+  'userShow.scheduleOverridesHeading': { pt: 'Exceções pontuais', en: 'One-off exceptions' },
+  'userShow.noScheduleOverrides': { pt: 'Sem exceções registadas.', en: 'No exceptions on file.' },
+  'userShow.addScheduleOverride': { pt: 'Adicionar exceção', en: 'Add exception' },
+  'userShow.scheduleOverrideDateLabel': { pt: 'Data', en: 'Date' },
+  'userShow.scheduleOverrideDayOffLabel': { pt: 'Folga', en: 'Day off' },
+  'userShow.scheduleOverrideNotesLabel': { pt: 'Notas', en: 'Notes' },
+  'userShow.scheduleOverrideDayOffChip': { pt: 'Folga', en: 'Day off' },
+  'userShow.scheduleOverrideSave': { pt: 'Guardar exceção', en: 'Save exception' },
+  'userShow.scheduleOverrideSaved': { pt: 'Exceção guardada', en: 'Exception saved' },
+  'userShow.scheduleOverrideSaveFailed': { pt: 'Não foi possível guardar a exceção.', en: 'Could not save the exception.' },
+  'userShow.scheduleOverrideRemoved': { pt: 'Exceção removida', en: 'Exception removed' },
+  'userShow.scheduleOverrideRemoveFailed': { pt: 'Não foi possível remover a exceção.', en: 'Could not remove the exception.' },
+  'userShow.contractSelectorLabel': { pt: 'Contrato', en: 'Contract' },
+  'userShow.contractStillActive': { pt: 'em curso', en: 'ongoing' },
+
+  'employmentContracts.heading': { pt: 'Contratos', en: 'Contracts' },
+  'employmentContracts.hint': {
+    pt: 'Períodos em que esta pessoa está contratada. O horário de trabalho dentro de cada contrato define-se abaixo.',
+    en: "Periods this person is under contract. That contract's own hours are set below.",
+  },
+  'employmentContracts.add': { pt: 'Adicionar contrato', en: 'Add contract' },
+  'employmentContracts.none': { pt: 'Sem contratos registados.', en: 'No contracts on file.' },
+  'employmentContracts.kindLabel': { pt: 'Tipo', en: 'Kind' },
+  'employmentContracts.kindFullTime': { pt: 'Tempo inteiro', en: 'Full time' },
+  'employmentContracts.kindPartTime': { pt: 'Tempo parcial', en: 'Part time' },
+  'employmentContracts.startDateLabel': { pt: 'Início', en: 'Start' },
+  'employmentContracts.endDateLabel': { pt: 'Fim', en: 'End' },
+  'employmentContracts.stillActive': { pt: 'em curso', en: 'ongoing' },
+  'employmentContracts.save': { pt: 'Guardar', en: 'Save' },
+  'employmentContracts.saved': { pt: 'Contrato guardado', en: 'Contract saved' },
+  'employmentContracts.saveFailed': { pt: 'Não foi possível guardar o contrato.', en: 'Could not save the contract.' },
+  'employmentContracts.end': { pt: 'Terminar contrato', en: 'End contract' },
+  'employmentContracts.confirmEnd': { pt: 'Confirmar', en: 'Confirm' },
+  'employmentContracts.ended': { pt: 'Contrato terminado', en: 'Contract ended' },
+  'employmentContracts.endFailed': { pt: 'Não foi possível terminar o contrato.', en: 'Could not end the contract.' },
+  'employmentContracts.loadFailed': { pt: 'Não foi possível carregar os contratos.', en: 'Could not load the contracts.' },
+
+  'staffAbsences.pageTitle': { pt: 'Ausências', en: 'Staff absences' },
+  'staffAbsences.heading': { pt: 'Calendário de ausências', en: 'Absence calendar' },
+  'staffAbsences.subheading': {
+    pt: 'Férias, baixas médicas e outras ausências pagas da equipa remunerada.',
+    en: 'Vacation, sick leave and other paid absences for paid staff.',
+  },
+  'staffAbsences.selectHint': {
+    pt: 'Clica no primeiro dia e depois no último para marcar uma ausência de vários dias.',
+    en: 'Click the first day, then the last, to mark a multi-day absence.',
+  },
+  'staffAbsences.selectHintPending': {
+    pt: 'Agora clica no último dia da ausência (ou clica de novo para cancelar).',
+    en: 'Now click the last day of the absence (or click it again to cancel).',
+  },
+  'staffAbsences.loadFailed': { pt: 'Não foi possível carregar as ausências.', en: 'Could not load the absences.' },
+  'staffAbsences.noPeople': { pt: 'Sem pessoal para mostrar.', en: 'No staff to show.' },
+  'staffAbsences.noneThisMonth': { pt: 'Sem ausências este mês.', en: 'No absences this month.' },
+  'staffAbsences.prevMonth': { pt: 'Mês anterior', en: 'Previous month' },
+  'staffAbsences.nextMonth': { pt: 'Mês seguinte', en: 'Next month' },
+  'staffAbsences.addAbsence': { pt: 'Registar ausência', en: 'Add absence' },
+  'staffAbsences.kindVacation': { pt: 'Férias', en: 'Vacation' },
+  'staffAbsences.kindSickLeave': { pt: 'Baixa médica', en: 'Sick leave' },
+  'staffAbsences.kindOtherPaidLeave': { pt: 'Outra ausência paga', en: 'Other paid leave' },
+  'staffAbsences.dialogTitleCreate': { pt: 'Registar ausência', en: 'Record absence' },
+  'staffAbsences.dialogTitleEdit': { pt: 'Editar ausência', en: 'Edit absence' },
+  'staffAbsences.personLabel': { pt: 'Pessoa', en: 'Person' },
+  'staffAbsences.kindLabel': { pt: 'Tipo', en: 'Kind' },
+  'staffAbsences.startDateLabel': { pt: 'Início', en: 'Start' },
+  'staffAbsences.endDateLabel': { pt: 'Fim', en: 'End' },
+  'staffAbsences.partialDayLabel': { pt: 'Ausência parcial (com horário)', en: 'Partial day (set specific times)' },
+  'staffAbsences.partialDayHint': {
+    pt: 'Raro — por omissão a ausência é o dia inteiro. Só disponível para outra ausência paga, num único dia.',
+    en: 'Rare — absences default to the whole day. Only available for other paid leave, on a single day.',
+  },
+  'staffAbsences.startTimeLabel': { pt: 'Hora de início', en: 'Start time' },
+  'staffAbsences.endTimeLabel': { pt: 'Hora de fim', en: 'End time' },
+  'staffAbsences.notesLabel': { pt: 'Notas', en: 'Notes' },
+  'staffAbsences.save': { pt: 'Guardar', en: 'Save' },
+  'staffAbsences.saved': { pt: 'Ausência guardada', en: 'Absence saved' },
+  'staffAbsences.saveFailed': { pt: 'Não foi possível guardar a ausência.', en: 'Could not save the absence.' },
+  'staffAbsences.delete': { pt: 'Eliminar ausência', en: 'Delete absence' },
+  'staffAbsences.deleted': { pt: 'Ausência eliminada', en: 'Absence deleted' },
+  'staffAbsences.deleteFailed': { pt: 'Não foi possível eliminar a ausência.', en: 'Could not delete the absence.' },
+
+  'certificationDialog.add': { pt: 'Adicionar certificação', en: 'Add certification' },
+  'certificationDialog.edit': { pt: 'Editar certificação', en: 'Edit certification' },
+  'certificationDialog.certificationLabel': { pt: 'Certificação', en: 'Certification' },
+  'certificationDialog.issuedOn': { pt: 'Emitida em', en: 'Issued on' },
+  'certificationDialog.validUntil': { pt: 'Válida até', en: 'Valid until' },
+  'certificationDialog.noExpiry': {
+    pt: 'O certificado não tem data de validade',
+    en: 'The certificate carries no expiry date',
+  },
+  'certificationDialog.notes': { pt: 'Notas (opcional)', en: 'Notes (optional)' },
+  'certificationDialog.save': { pt: 'Guardar certificação', en: 'Save certification' },
+  'certificationDialog.chooseType': {
+    pt: 'Escolhe a certificação.',
+    en: 'Choose which certification this is.',
+  },
+  'certificationDialog.saveFailed': {
+    pt: 'Não foi possível guardar esta certificação.',
+    en: 'Could not save this certification.',
+  },
+
+  // ── Vehicles & fleet (#180 phase 3) ──
+  'vehicleType.EMERGENCY': { pt: 'Emergência', en: 'Emergency' },
+  'vehicleType.TRANSPORT': { pt: 'Transporte', en: 'Transport' },
+
+  'resources.vehicles.fields.licensePlate': { pt: 'Matrícula', en: 'Licence Plate' },
+  'resources.vehicles.fields.numeroCauda': { pt: 'Nº de Cauda', en: 'Fleet ID' },
+  'resources.vehicles.fields.vehicleType': { pt: 'Tipo de viatura', en: 'Vehicle Type' },
+  'resources.vehicles.fields.insuranceRenewalDate': {
+    pt: 'Validade do seguro',
+    en: 'Insurance Renewal Date',
+  },
+  'resources.vehicles.fields.nextImtInspectionDate': {
+    pt: 'Próxima inspeção IMT',
+    en: 'Next IMT Inspection Date',
+  },
+  'resources.vehicles.fields.manufacturer': { pt: 'Fabricante', en: 'Manufacturer' },
+  'resources.vehicles.fields.model': { pt: 'Modelo', en: 'Model' },
+  'resources.vehicles.fields.notes': { pt: 'Notas', en: 'Notes' },
+  'resources.vehicles.fields.createdAt': { pt: 'Criado', en: 'Created' },
+  'resources.vehicles.fields.updatedAt': { pt: 'Última atualização', en: 'Last Updated' },
+
+  // ── Vehicle physical configuration (#221) ──
+  'resources.vehicles.fields.seatedCapacity': { pt: 'Lugares sentados', en: 'Seated Capacity' },
+  'resources.vehicles.fields.wheelchairPositions': {
+    pt: 'Lugares para cadeira de rodas',
+    en: 'Wheelchair Positions',
+  },
+  'resources.vehicles.fields.stretcherPositions': {
+    pt: 'Lugares para maca',
+    en: 'Stretcher Positions',
+  },
+  'resources.vehicles.fields.hasRampOrLift': { pt: 'Rampa ou elevador', en: 'Ramp or Lift' },
+  'vehicleForm.configurationHeading': { pt: 'Configuração', en: 'Configuration' },
+  'vehicleCapacity.seats': { pt: '%{count} lugares', en: '%{count} seats' },
+  'vehicleCapacity.ramp': { pt: 'rampa', en: 'ramp' },
+
+  'vehicleForm.licensePlateInvalid': {
+    pt: 'Tem de ser uma matrícula portuguesa válida: AA-99-99, 99-99-AA, 99-AA-99 ou AA-99-AA',
+    en: 'Must be a valid Portuguese plate: AA-99-99, 99-99-AA, 99-AA-99 or AA-99-AA',
+  },
+  'vehicleForm.licensePlateHelp': {
+    pt: 'Formato português, por exemplo 55-AA-12 ou AB-12-CD',
+    en: 'Portuguese format, e.g. 55-AA-12 or AB-12-CD',
+  },
+  'vehicleForm.numeroCaudaHelp': {
+    pt: 'Identificador de frota único, atribuído pela organização',
+    en: 'Unique fleet identifier assigned by the organisation',
+  },
+
+  'vehicleList.overdue': { pt: 'Atrasado!', en: 'Overdue!' },
+  'vehicleList.expiringSoon': { pt: 'A expirar em breve', en: 'Expiring soon' },
+
+  'vehicleShow.overdueSuffix': { pt: ' ⚠ ATRASADO', en: ' ⚠ OVERDUE' },
+  'vehicleShow.soonSuffix': { pt: ' ⚠ Em breve', en: ' ⚠ Soon' },
+  'vehicleShow.totalMaintenanceCost': { pt: 'Custo total de manutenção:', en: 'Total maintenance cost:' },
+  'vehicleShow.addMaintenanceEntry': { pt: 'Adicionar manutenção', en: 'Add Maintenance Entry' },
+  'vehicleShow.maintenanceRegistryHeading': {
+    pt: 'Registo de manutenção',
+    en: 'Maintenance Registry',
+  },
+
+  'resources.maintenance.fields.vehicleId': { pt: 'Viatura', en: 'Vehicle' },
+  'resources.maintenance.fields.date': { pt: 'Data', en: 'Date' },
+  'resources.maintenance.fields.description': { pt: 'Descrição', en: 'Description' },
+  'resources.maintenance.fields.serviceProvider': { pt: 'Fornecedor', en: 'Service Provider' },
+  'resources.maintenance.fields.cost': { pt: 'Custo (€)', en: 'Cost (€)' },
+  'resources.maintenance.fields.vatAmount': { pt: 'IVA (€)', en: 'VAT (€)' },
+  'resources.maintenance.fields.notes': { pt: 'Notas', en: 'Notes' },
+
+  // ── Inventory templates & items (#180 phase 3) ──
+  'itemType.COUNTABLE': { pt: 'Contável (quantidade inteira)', en: 'Countable (integer quantity)' },
+  'itemType.UNLIMITED': {
+    pt: 'Ilimitado (presente/ausente)',
+    en: 'Unlimited (present/absent only)',
+  },
+
+  'resources.inventory-template-items.fields.templateId': { pt: 'ID do modelo', en: 'Template ID' },
+  'resources.inventory-template-items.fields.name': { pt: 'Nome do item', en: 'Item Name' },
+  'resources.inventory-template-items.fields.materialItemId': {
+    pt: 'Item do catálogo',
+    en: 'Catalogue Item',
+  },
+  'resources.inventory-template-items.fields.type': { pt: 'Tipo', en: 'Type' },
+  'resources.inventory-template-items.fields.recommendedQuantity': {
+    pt: 'Quantidade recomendada',
+    en: 'Recommended Quantity',
+  },
+  'resources.inventory-template-items.fields.unit': { pt: 'Unidade', en: 'Unit' },
+  'resources.inventory-template-items.fields.order': { pt: 'Ordem de exibição', en: 'Display Order' },
+  'resources.inventory-template-items.fields.notes': { pt: 'Notas', en: 'Notes' },
+
+  'inventoryItemForm.unitHelp': { pt: 'Por exemplo, un, litros, kit', en: 'E.g. pcs, liters, kit' },
+
+  // ── Materials catalogue admin resource (#206) ──
+  'resources.material-items.fields.namePt': { pt: 'Nome (PT)', en: 'Name (PT)' },
+  'resources.material-items.fields.nameEn': { pt: 'Nome (EN)', en: 'Name (EN)' },
+  'resources.material-items.fields.unit': { pt: 'Unidade', en: 'Unit' },
+  'resources.material-items.fields.type': { pt: 'Tipo', en: 'Type' },
+  'resources.material-items.fields.notes': { pt: 'Notas', en: 'Notes' },
+  'resources.material-items.fields.isFrequent': { pt: 'Favorito', en: 'Favourite' },
+  'resources.material-items.fields.frequentOrder': {
+    pt: 'Ordem entre favoritos',
+    en: 'Favourite Order',
+  },
+  'resources.material-items.fields.barcodes': { pt: 'Códigos de barras', en: 'Barcodes' },
+  'resources.material-items.fields.barcodes.code': { pt: 'Código', en: 'Code' },
+  'resources.material-items.fields.barcodes.label': { pt: 'Rótulo', en: 'Label' },
+
+  'materialItemForm.namePtHelp': {
+    pt: 'Nome usado quando não existe tradução para inglês.',
+    en: 'Used whenever no English translation is set.',
+  },
+  'materialItemForm.frequentOrderHelp': {
+    pt: 'Ordena os favoritos no acesso rápido — menor primeiro.',
+    en: 'Orders favourites in the quick-access picker — lowest first.',
+  },
+  'materialItemForm.addBarcode': { pt: 'Adicionar código de barras', en: 'Add Barcode' },
+  'materialItemForm.removeBarcode': { pt: 'Remover código de barras', en: 'Remove Barcode' },
+
+  'materialItemList.searchPlaceholder': {
+    pt: 'Pesquisar por nome ou código de barras…',
+    en: 'Search by name or barcode…',
+  },
+  'materialItemList.favourite': { pt: 'Favorito', en: 'Favourite' },
+  'materialItemList.barcodeCount': { pt: '%{count} código(s)', en: '%{count} barcode(s)' },
+
+  // ── MaterialPicker (#207) ──
+  'materialPicker.favouritesTitle': { pt: 'Favoritos', en: 'Favourites' },
+  'materialPicker.searchPlaceholder': { pt: 'Procurar material…', en: 'Search materials…' },
+  'materialPicker.scanButton': { pt: 'Ler código de barras', en: 'Scan barcode' },
+  'materialPicker.scanTitle': { pt: 'A ler código de barras', en: 'Scanning barcode' },
+  'materialPicker.scanHint': {
+    pt: 'Aponte a câmara para o código de barras',
+    en: 'Point the camera at the barcode',
+  },
+  'materialPicker.closeScan': { pt: 'Fechar leitor', en: 'Close scanner' },
+  'materialPicker.cameraDenied': {
+    pt: 'Sem acesso à câmara. Utilize a pesquisa.',
+    en: 'Camera access denied. Use search instead.',
+  },
+  'materialPicker.cameraUnsupported': {
+    pt: 'Leitura de código de barras não suportada neste aparelho. Utilize a pesquisa.',
+    en: "Barcode scanning isn't supported on this device. Use search instead.",
+  },
+  'materialPicker.barcodeNotFound': {
+    pt: 'Nenhum material encontrado para este código.',
+    en: 'No material found for that code.',
+  },
+  'materialPicker.linesEmpty': {
+    pt: 'Ainda não foi registado nenhum material.',
+    en: 'No material recorded yet.',
+  },
+  'materialPicker.unlimitedLogged': { pt: 'Registado', en: 'Logged' },
+  'materialPicker.linesTitle': { pt: 'Material registado', en: 'Material logged' },
+
+  'resources.inventory-templates.fields.vehicleType': { pt: 'Tipo de viatura', en: 'Vehicle Type' },
+  'resources.inventory-templates.fields.version': { pt: 'Versão', en: 'Version' },
+  'resources.inventory-templates.fields.notes': { pt: 'Notas', en: 'Notes' },
+  'resources.inventory-templates.fields.items': { pt: 'Itens', en: 'Items' },
+
+  'inventoryTemplateShow.addItem': { pt: 'Adicionar item', en: 'Add Item' },
+  'inventoryTemplateShow.exportCsv': { pt: 'Exportar CSV', en: 'Export CSV' },
+  'inventoryTemplateShow.itemsHeading': { pt: 'Itens de inventário', en: 'Inventory Items' },
+  'inventoryTemplateShow.unlimited': { pt: 'Ilimitado', en: 'Unlimited' },
+  'inventoryTemplateShow.countable': { pt: 'Contável', en: 'Countable' },
+
+  // ── Vehicle inventory board (#180 phase 3) ──
+  'vehicleInventory.heading': { pt: 'Inventário da viatura', en: 'Vehicle Inventory' },
+  'vehicleInventory.loadFailed': {
+    pt: 'Não foi possível carregar o inventário.',
+    en: 'Could not load inventory data.',
+  },
+  'vehicleInventory.invalidQuantity': {
+    pt: 'Introduz uma quantidade inteira válida',
+    en: 'Please enter a valid integer quantity',
+  },
+  'vehicleInventory.updated': { pt: 'Inventário atualizado', en: 'Inventory updated' },
+  'vehicleInventory.updateFailed': {
+    pt: 'Não foi possível atualizar o inventário',
+    en: 'Failed to update inventory',
+  },
+  'vehicleInventory.noTemplate': {
+    pt: 'Não há modelo de inventário definido para %{type}. Um coordenador pode criar um em Modelos de Inventário.',
+    en: 'No inventory template defined for %{type}. A coordinator can create one in Inventory Templates.',
+  },
+  'vehicleInventory.thisVehicleType': { pt: 'este tipo de viatura', en: 'this vehicle type' },
+  'vehicleInventory.lowStock': { pt: '⚠ Stock baixo', en: '⚠ Low Stock' },
+  'vehicleInventory.templateVersion': { pt: 'Modelo v%{version}', en: 'Template v%{version}' },
+  'vehicleInventory.noItems': {
+    pt: 'Não há itens de inventário definidos no modelo.',
+    en: 'No inventory items defined in the template.',
+  },
+  'vehicleInventory.colItem': { pt: 'Item', en: 'Item' },
+  'vehicleInventory.colType': { pt: 'Tipo', en: 'Type' },
+  'vehicleInventory.colRecommended': { pt: 'Recomendado', en: 'Recommended' },
+  'vehicleInventory.colActual': { pt: 'Real', en: 'Actual' },
+  'vehicleInventory.colUnit': { pt: 'Unidade', en: 'Unit' },
+  'vehicleInventory.colStatus': { pt: 'Estado', en: 'Status' },
+  'vehicleInventory.colAction': { pt: 'Ação', en: 'Action' },
+  'vehicleInventory.infinity': { pt: '∞', en: '∞' },
+  'vehicleInventory.presentPlaceholder': { pt: 'presente', en: 'present' },
+  'vehicleInventory.statusLow': { pt: 'Baixo', en: 'Low' },
+  'vehicleInventory.statusOk': { pt: 'OK', en: 'OK' },
+  'vehicleInventory.statusAboveRec': { pt: 'Acima do Rec.', en: 'Above Rec.' },
+  'vehicleInventory.saveQuantityTooltip': { pt: 'Guardar quantidade', en: 'Save quantity' },
+  'vehicleInventory.needsRecount': { pt: 'Reconferir', en: 'Recount needed' },
+  'vehicleInventory.needsRecountTooltip': {
+    pt: 'O consumo registado excedeu o stock guardado e a quantidade foi ajustada a 0. Uma edição manual da quantidade limpa este aviso.',
+    en: 'Recorded consumption exceeded the stock on file and the quantity was floored at 0. A manual quantity edit clears this flag.',
+  },
+  'vehicleInventory.movementsHeading': { pt: 'Movimentos de stock', en: 'Stock Movements' },
+  'vehicleInventory.movementsLoadFailed': {
+    pt: 'Não foi possível carregar os movimentos de stock.',
+    en: 'Could not load stock movements.',
+  },
+  'vehicleInventory.movementsEmpty': { pt: 'Sem movimentos registados.', en: 'No movements recorded yet.' },
+  'vehicleInventory.colDate': { pt: 'Data', en: 'Date' },
+  'vehicleInventory.colDelta': { pt: 'Variação', en: 'Delta' },
+  'vehicleInventory.colReason': { pt: 'Motivo', en: 'Reason' },
+  'vehicleInventory.colActor': { pt: 'Autor', en: 'Actor' },
+  'vehicleInventory.colReport': { pt: 'Relatório', en: 'Report' },
+  'vehicleInventory.viewReport': { pt: 'Ver relatório', en: 'View report' },
+  'vehicleInventory.unknownActor': { pt: '—', en: '—' },
+  'vehicleInventory.reasonConsumption': { pt: 'Consumo', en: 'Consumption' },
+  'vehicleInventory.reasonManualAdjustment': { pt: 'Ajuste manual', en: 'Manual adjustment' },
+  'vehicleInventory.reasonImport': { pt: 'Importação', en: 'Import' },
+  'vehicleInventory.reasonCorrection': { pt: 'Correção', en: 'Correction' },
+
+  // ── Availability & schedules (#180 phase 3 slice 2) — shared words ──
+  'common.collapse': { pt: 'Recolher', en: 'Collapse' },
+  'common.expand': { pt: 'Expandir', en: 'Expand' },
+  'common.exportCsv': { pt: 'Exportar CSV', en: 'Export CSV' },
+  'dayType.holiday': { pt: 'Feriado', en: 'Holiday' },
+  'dayType.holidayNamed': { pt: 'Feriado · %{name}', en: 'Holiday · %{name}' },
+  'dayType.weekend': { pt: 'Fim de semana', en: 'Weekend' },
+  'dayType.workday': { pt: 'Dia útil', en: 'Workday' },
+  'windowForm.openWindow': { pt: 'Abrir janela', en: 'Open window' },
+  'schedule.statusDraft': { pt: 'Rascunho', en: 'Draft' },
+  'schedule.statusPublished': { pt: 'Publicada', en: 'Published' },
+
+  // ── Resource fields — availability-windows, schedules, holidays ──
+  'resources.availability-windows.fields.category': { pt: 'Categoria', en: 'Category' },
+  'resources.availability-windows.fields.status': { pt: 'Estado', en: 'Status' },
+  'resources.availability-windows.fields.name': { pt: 'Nome', en: 'Name' },
+  'resources.availability-windows.fields.openedBy': { pt: 'Aberta por', en: 'Opened by' },
+  'resources.availability-windows.fields.openedAt': { pt: 'Aberta em', en: 'Opened at' },
+  'resources.availability-windows.fields.closedBy': { pt: 'Fechada por', en: 'Closed by' },
+  'resources.availability-windows.fields.closedAt': { pt: 'Fechada em', en: 'Closed at' },
+  'resources.schedules.fields.category': { pt: 'Categoria', en: 'Category' },
+  'resources.schedules.fields.status': { pt: 'Estado', en: 'Status' },
+  'resources.schedules.fields.publishedBy': { pt: 'Publicada por', en: 'Published by' },
+  'resources.schedules.fields.publishedAt': { pt: 'Publicada em', en: 'Published at' },
+  'resources.holidays.fields.date': { pt: 'Data', en: 'Date' },
+  'resources.holidays.fields.name': { pt: 'Feriado', en: 'Holiday' },
+
+  // ── Window roles (WindowRoleChips, WindowRoleEditor) ──
+  'windowRole.none': {
+    pt: 'Sem funções — as pessoas são escaladas para esta janela sem uma.',
+    en: 'No roles — people are scheduled onto this window without one.',
+  },
+  'windowRole.editorNone': {
+    pt: 'Sem funções — as pessoas vão ser escaladas para esta janela sem uma.',
+    en: 'No roles — people will be scheduled onto this window without one.',
+  },
+  'windowRole.requiresTooltip': {
+    pt: 'Requer a certificação %{certification} — pode ser substituída com justificação.',
+    en: 'Requires the %{certification} certification — overridable with a reason.',
+  },
+  'windowRole.roleName': { pt: 'Função %{index}', en: 'Role %{index}' },
+  'windowRole.roleNameAria': { pt: 'Função %{index} nome', en: 'Role %{index} name' },
+  'windowRole.rolePeopleAria': { pt: 'Função %{index} pessoas', en: 'Role %{index} people' },
+  'windowRole.roleCertAria': {
+    pt: 'Função %{index} certificação obrigatória',
+    en: 'Role %{index} required certification',
+  },
+  'windowRole.removeAria': { pt: 'Remover função %{index}', en: 'Remove role %{index}' },
+  'windowRole.peopleLabel': { pt: 'Pessoas', en: 'People' },
+  'windowRole.requiresLabel': { pt: 'Requer', en: 'Requires' },
+  'windowRole.suggestedFromName': {
+    pt: 'Sugerido a partir do nome: %{certification}',
+    en: 'Suggested from the name: %{certification}',
+  },
+  'windowRole.noSuggestion': { pt: 'Sem sugestão', en: 'No suggestion' },
+  'windowRole.coordinatorChoice': { pt: 'Escolha do coordenador', en: "Coordinator's choice" },
+  'windowRole.suggestedShort': { pt: 'Sugestão: %{certification}', en: 'Suggested: %{certification}' },
+  'windowRole.unset': { pt: 'Por definir', en: 'Unset' },
+  'windowRole.noRequirement': { pt: 'Sem requisito', en: 'No requirement' },
+  'windowRole.addRole': { pt: 'Adicionar função', en: 'Add role' },
+  'windowRole.capacityHint': {
+    pt: 'Pessoas é o máximo que a escala pode colocar numa função por turno; %{unlimited} significa ilimitado. Uma certificação obrigatória é exigível mas não absoluta — um coordenador ainda pode escalar alguém que não a tenha, com justificação.',
+    en: 'People is the most the schedule may put in a role on one shift; %{unlimited} means unlimited. A required certification is enforceable but not absolute — a coordinator may still assign someone who lacks it, with a reason.',
+  },
+
+  // ── Day shift editor ──
+  'dayShift.copyWorkdays': { pt: 'Todos os dias úteis', en: 'All working days' },
+  'dayShift.copyNonWorkdays': { pt: 'Todos os fins de semana e feriados', en: 'All weekends & holidays' },
+  'dayShift.copyAll': { pt: 'Todos os dias', en: 'All days' },
+  'dayShift.startAria': { pt: '%{day} turno %{index} início', en: '%{day} shift %{index} start' },
+  'dayShift.endAria': { pt: '%{day} turno %{index} fim', en: '%{day} shift %{index} end' },
+  'dayShift.vehiclesAria': { pt: '%{day} turno %{index} viaturas', en: '%{day} shift %{index} vehicles' },
+  'dayShift.removeAria': { pt: 'Remover %{day} turno %{index}', en: 'Remove %{day} shift %{index}' },
+  'dayShift.addShiftAria': { pt: 'Adicionar um turno a %{day}', en: 'Add a shift to %{day}' },
+  'dayShift.copyToAria': {
+    pt: 'Copiar os turnos de %{day} para outros dias',
+    en: 'Copy %{day} shifts to other days',
+  },
+  'dayShift.colDay': { pt: 'Dia', en: 'Day' },
+  'dayShift.colShifts': { pt: 'Turnos', en: 'Shifts' },
+  'dayShift.colShiftsHint': {
+    pt: 'início, fim e viaturas necessárias',
+    en: 'start, end and vehicles needed',
+  },
+  'dayShift.noShifts': {
+    pt: 'Sem turnos — não é pedido a ninguém que cubra este dia.',
+    en: 'No shifts — nobody is asked to cover this day.',
+  },
+  'dayShift.addShift': { pt: 'Adicionar turno', en: 'Add shift' },
+  'dayShift.copyToButton': { pt: 'Copiar para…', en: 'Copy to…' },
+
+  // ── Emergency window dialog ──
+  'emergencyDialog.title': { pt: 'Nova disponibilidade de emergência', en: 'New emergency availability' },
+  'emergencyDialog.description': {
+    pt: 'Abre uma janela que cobre um mês inteiro, com os turnos padrão: um turno das 20:00–24:00 nos dias úteis, e 08:00–16:00 mais 16:00–24:00 aos fins de semana e feriados. Cada turno pede uma viatura, e a escala é construída a partir da equipa padrão — %{crew}, uma pessoa em cada. Para variar algo disto, usa o editor completo.',
+    en: 'Opens a window covering a whole month, with the standard shifts: one 20:00–24:00 shift on working days, and 08:00–16:00 plus 16:00–24:00 on weekends and holidays. Every shift asks for one vehicle, and the schedule is built from the standard crew — %{crew}, one person each. To vary any of that, use the full editor instead.',
+  },
+  'emergencyDialog.month': { pt: 'Mês', en: 'Month' },
+  'emergencyDialog.year': { pt: 'Ano', en: 'Year' },
+  'emergencyDialog.openOverlap': {
+    pt: 'Já existe uma janela de Emergência aberta sobre este mês. Fecha-a antes de abrir outra.',
+    en: 'An Emergency window is already open over this month. Close it before opening another one.',
+  },
+  'emergencyDialog.closedOverlap': {
+    pt: 'Uma janela de Emergência já fechada cobre já estas datas.',
+    en: 'A closed Emergency window already covers these dates.',
+  },
+  'emergencyDialog.acknowledgeAgain': {
+    pt: 'Pedir disponibilidade para este mês outra vez, mesmo assim',
+    en: 'Ask for this month again anyway',
+  },
+  'emergencyDialog.opened': { pt: '%{window} aberta para %{dates}', en: '%{window} opened for %{dates}' },
+  'emergencyDialog.saveFailed': { pt: 'Não foi possível abrir a janela.', en: 'Could not open the window.' },
+
+  // ── Availability window list & show ──
+  'windowList.manageHolidays': { pt: 'Gerir feriados', en: 'Manage holidays' },
+  'windowList.newEmergencyAvailability': { pt: 'Nova Disponibilidade de Emergência', en: 'New Emergency Availability' },
+  'windowList.newWindow': { pt: 'Nova janela de disponibilidade', en: 'New availability window' },
+  'windowList.statusOpen': { pt: 'Aberta', en: 'Open' },
+  'windowList.statusClosed': { pt: 'Fechada', en: 'Closed' },
+  'windowList.statusAll': { pt: 'Todas', en: 'All' },
+  'windowList.allCategories': { pt: 'Todas as categorias', en: 'All categories' },
+  'windowList.filterCategoryLabel': { pt: 'Categoria', en: 'Category' },
+  'windowList.filterStatusLabel': { pt: 'Estado', en: 'Status' },
+  'windowList.upcomingHolidays': { pt: 'Próximos feriados', en: 'Upcoming holidays' },
+  'windowList.overlapRuleInfo': {
+    pt: 'Pode estar aberta uma janela por categoria em qualquer dia: uma janela de Emergência e uma de Apoio Local podem cobrir as mesmas datas ao mesmo tempo, duas de Emergência não podem. Cada janela tem os seus próprios turnos, definidos quando é aberta.',
+    en: 'One window per category can be open over any given day: an Emergency and a Local Support window may cover the same dates at once, two Emergency windows may not. Each window carries its own shifts, set when it is opened.',
+  },
+  'windowList.colWindow': { pt: 'Janela', en: 'Window' },
+  'windowShow.pageTitle': { pt: 'Janela de disponibilidade', en: 'Availability window' },
+  'windowShow.rolesHeading': { pt: 'Funções para a escala', en: 'Roles for the schedule' },
+  'windowShow.closeButton': { pt: 'Fechar janela', en: 'Close window' },
+  'windowShow.closeConfirmTitle': { pt: 'Fechar janela de disponibilidade?', en: 'Close availability window?' },
+  'windowShow.closeConfirmBody': {
+    pt: 'Deixam de ser aceites submissões para %{window} (%{dates}) depois de esta janela ser fechada. Esta ação não pode ser desfeita.',
+    en: 'Submissions will no longer be accepted for %{window} (%{dates}) once this window is closed. This cannot be undone.',
+  },
+  'windowShow.closeStatsSummary': {
+    pt: '%{submitted} de %{total} pessoas responderam; %{declined} recusaram; %{pending} ainda sem resposta.',
+    en: '%{submitted} of %{total} personnel submitted; %{declined} declined; %{pending} still pending.',
+  },
+  'windowShow.closeFailed': { pt: 'Não foi possível fechar a janela.', en: 'Could not close the window.' },
+  'windowShow.closed': { pt: 'Janela de disponibilidade fechada', en: 'Availability window closed' },
+  'windowShow.buildSchedule': { pt: 'Construir escala', en: 'Build schedule' },
+  'windowShow.openSchedule': { pt: 'Abrir escala', en: 'Open schedule' },
+  'windowShow.startScheduleFailed': {
+    pt: 'Não foi possível iniciar a escala.',
+    en: 'Could not start the schedule.',
+  },
+  'windowShow.editCompensationOffer': { pt: 'Editar oferta de pagamento', en: 'Edit pay offer' },
+  'windowShow.setCompensationOffer': { pt: 'Definir oferta de pagamento', en: 'Set pay offer' },
+
+  // ── Window compensation offer dialog (#246 Stage 2) ──
+  'windowCompensationDialog.title': { pt: 'Oferta de pagamento', en: 'Pay offer' },
+  'windowCompensationDialog.hint': {
+    pt: 'Publicado nesta janela antes de a disponibilidade ser recolhida — os voluntários veem-no ao submeter. Editável enquanto a janela estiver aberta; depois de fechada, altera-se na escala.',
+    en: 'Published on this window before availability is collected — volunteers see it when submitting. Editable while the window is open; once closed, change it on the schedule instead.',
+  },
+  'windowCompensationDialog.kindAria': { pt: 'Tipo de oferta', en: 'Offer kind' },
+  'windowCompensationDialog.kindNone': { pt: 'Sem oferta', en: 'No offer' },
+  'windowCompensationDialog.kindHourly': { pt: 'Por hora', en: 'Hourly' },
+  'windowCompensationDialog.kindFixed': { pt: 'Valor fixo', en: 'Fixed amount' },
+  'windowCompensationDialog.rateLabel': { pt: 'Valor por hora', en: 'Rate per hour' },
+  'windowCompensationDialog.amountLabel': { pt: 'Valor por turno', en: 'Amount per shift' },
+  'windowCompensationDialog.amountInvalid': {
+    pt: 'Indica um valor em euros, igual ou superior a 0.',
+    en: 'Enter an amount in euros, 0 or more.',
+  },
+  'windowCompensationDialog.amountFixedHint': {
+    pt: 'Por pessoa, por turno — não é dividido pela equipa.',
+    en: 'Per person, per shift — not split across the crew.',
+  },
+  'windowCompensationDialog.noteLabel': { pt: 'Nota (opcional)', en: 'Note (optional)' },
+  'windowCompensationDialog.save': { pt: 'Guardar', en: 'Save' },
+  'windowCompensationDialog.failed': {
+    pt: 'Não foi possível guardar a oferta de pagamento.',
+    en: 'Could not save the pay offer.',
+  },
+
+  // ── The compensation offer line — rendered wherever an offer resolves,
+  // and only then (#246 Stage 2). ──
+  'compensationOffer.hourly': { pt: '%{amount} / hora', en: '%{amount} / hour' },
+  'compensationOffer.fixed': { pt: '%{amount}, por pessoa, por turno', en: '%{amount}, per person, per shift' },
+
+  // ── Window create form ──
+  'windowCreate.pageTitle': { pt: 'Abrir janela de disponibilidade', en: 'Open availability window' },
+  'windowCreate.info': {
+    pt: 'Os voluntários vão poder submeter disponibilidade para cada turno abaixo. Os dias começam na grelha padrão — um turno das 20:00–24:00 nos dias úteis, e 08:00–16:00 mais 16:00–24:00 aos fins de semana e feriados, cada um precisando de uma viatura — e podes alterar qualquer parte disto. As viaturas contam para a cobertura: um turno só conta como coberto quando todas as viaturas têm condutor.',
+    en: 'Volunteers will be able to submit availability for every shift below. Days start on the default grid — one 20:00–24:00 shift on working days, and 08:00–16:00 plus 16:00–24:00 on weekends and holidays, each needing one vehicle — and you can change any of it. Vehicles matter for coverage: a shift counts as covered only once every vehicle has a driver.',
+  },
+  'windowCreate.nameOptional': { pt: 'Nome (opcional)', en: 'Name (optional)' },
+  'windowCreate.nameHelp': {
+    pt: 'Mostrado aos voluntários junto às datas. Não precisa de ser único.',
+    en: 'Shown to volunteers alongside the dates. Need not be unique.',
+  },
+  'windowCreate.startDate': { pt: 'Data de início', en: 'Start date' },
+  'windowCreate.endDate': { pt: 'Data de fim', en: 'End date' },
+  'windowCreate.pickDates': { pt: 'Escolhe uma data de início e uma de fim.', en: 'Pick a start and an end date.' },
+  'windowCreate.endBeforeStart': {
+    pt: 'A data de fim tem de ser igual ou posterior à data de início.',
+    en: 'End date must be on or after the start date.',
+  },
+  'windowCreate.rangeTooLong': {
+    pt: 'Uma janela pode ter, no máximo, %{max} dias (esta tem %{length}).',
+    en: 'A window may span at most %{max} days (this one spans %{length}).',
+  },
+  'windowCreate.overlapCheckFailed': {
+    pt: 'Não foi possível verificar as janelas sobre estas datas',
+    en: 'Could not check for windows over these dates',
+  },
+  'windowCreate.calendarLoadFailed': { pt: 'Não foi possível carregar o calendário.', en: 'Could not load the calendar.' },
+  'windowCreate.openOverlapError': {
+    pt: 'Já existe uma janela de disponibilidade de %{category} aberta sobre estas datas (%{windows}). Fecha-a primeiro, ou escolhe datas que ela não cubra. Janelas de categorias diferentes podem sobrepor-se livremente.',
+    en: 'An availability window for %{category} is already open over these dates (%{windows}). Close it first, or pick dates it does not cover. Windows of a different category may overlap freely.',
+  },
+  'windowCreate.closedOverlapWarning': {
+    pt: 'Uma janela de disponibilidade de %{category} já fechada cobre já estas datas (%{windows}). Ainda podes abrir esta — confirma abaixo se era mesmo pedir disponibilidade outra vez para as mesmas datas.',
+    en: 'A closed availability window for %{category} already covers these dates (%{windows}). You can still open this one — check below if you meant to ask for the same dates again.',
+  },
+  'windowCreate.acknowledgeOverlap': {
+    pt: 'Abrir outra janela de %{category} sobre estas datas',
+    en: 'Open another %{category} window over these dates',
+  },
+  'windowCreate.rolesHint': {
+    pt: 'Nunca se pergunta a um voluntário qual função quer — ele diz apenas quando pode estar presente. Estas são as funções às quais o vais associar quando construíres a escala desta janela.',
+    en: 'Volunteers are never asked which role they want — they say only when they can be there. These are the roles you will assign them to when building the schedule for this window.',
+  },
+  'windowCreate.shiftsPerDayHeading': { pt: 'Turnos por dia', en: 'Shifts per day' },
+  'windowCreate.dayErrorsOne': {
+    pt: 'Um dia tem turnos que não podem ser gravados — vê a mensagem nessa linha.',
+    en: 'One day has shifts that cannot be saved — see the message on that row.',
+  },
+  'windowCreate.dayErrorsMany': {
+    pt: '%{count} dias têm turnos que não podem ser gravados — vê as mensagens nessas linhas.',
+    en: '%{count} days have shifts that cannot be saved — see the messages on those rows.',
+  },
+  'windowCreate.daysShiftsSummary': {
+    pt: '%{days} dias · %{shifts} turnos no total',
+    en: '%{days} days · %{shifts} shifts in total',
+  },
+  'windowCreate.saved': { pt: 'Janela de disponibilidade aberta', en: 'Availability window opened' },
+  'windowCreate.saveFailed': { pt: 'Não foi possível abrir a janela', en: 'Could not open the window' },
+
+  // ── Holidays ──
+  'holidayList.help': {
+    pt: 'Um feriado faz esse dia da semana começar no padrão de fim de semana quando uma janela é aberta: dois turnos (08:00–16:00 e 16:00–24:00) em vez do único turno de 20:00–24:00 dos dias úteis. As janelas já abertas mantêm os turnos que lhes foram dados.',
+    en: 'A holiday makes that weekday start on the weekend pattern when a window is opened: two shifts (08:00–16:00 and 16:00–24:00) instead of the single 20:00–24:00 workday shift. Windows already open keep the shifts they were given.',
+  },
+  'holidayList.backToWindows': { pt: 'Janelas de disponibilidade', en: 'Availability windows' },
+  'holidayList.addHoliday': { pt: 'Adicionar feriado', en: 'Add holiday' },
+  'holidayList.nameHelp': {
+    pt: 'P. ex.: Implantação da República',
+    en: 'e.g. Implantação da República',
+  },
+
+  // ── Availability matrix ──
+  'matrix.heading': { pt: 'Matriz de cobertura', en: 'Coverage matrix' },
+  'matrix.eligiblePersonnel': { pt: '%{count} elegíveis', en: '%{count} eligible personnel' },
+  'matrix.capacityNote': {
+    pt: 'Um turno escalado tem no máximo %{max} pessoas, e cada viatura que precisa tem de ter condutor — esta matriz mostra quem está disponível, não quem acaba escalado.',
+    en: 'A scheduled shift holds at most %{max} people, and every vehicle it needs has to have a driver — this matrix shows everyone who is available, not who ends up scheduled.',
+  },
+  'matrix.reminderTooltip': {
+    pt: 'Os avisos precisam de um canal de notificação (email/SMS), que este sistema ainda não tem.',
+    en: 'Reminders need a notification channel (email/SMS), which this system does not have yet.',
+  },
+  'matrix.noVehicleNeeded': { pt: 'nenhuma viatura necessária', en: 'no vehicle needed' },
+  'matrix.vehicleNeededOne': { pt: '%{count} viatura necessária', en: '%{count} vehicle needed' },
+  'matrix.vehicleNeededMany': { pt: '%{count} viaturas necessárias', en: '%{count} vehicles needed' },
+  'matrix.availableCount': { pt: '%{count} disponíveis', en: '%{count} available' },
+  'matrix.driverCountOne': { pt: '%{count} condutor', en: '%{count} driver' },
+  'matrix.driverCountMany': { pt: '%{count} condutores', en: '%{count} drivers' },
+  'matrix.cellAriaLabel': {
+    pt: '%{label}: %{available} disponíveis, %{drivers} condutores, %{vehicles}, %{level}',
+    en: '%{label}: %{available} available, %{drivers} drivers, %{vehicles}, %{level}',
+  },
+  'matrix.driverBadgeTooltipOne': {
+    pt: '%{count} condutor certificado disponível, %{vehicles}',
+    en: '%{count} certified driver available, %{vehicles}',
+  },
+  'matrix.driverBadgeTooltipMany': {
+    pt: '%{count} condutores certificados disponíveis, %{vehicles}',
+    en: '%{count} certified drivers available, %{vehicles}',
+  },
+  'matrix.legendRed': {
+    pt: 'Menos de 2 disponíveis, ou sem condutor para uma viatura',
+    en: 'Fewer than 2 available, or no driver for a vehicle',
+  },
+  'matrix.legendYellow': {
+    pt: 'Alguma cobertura, mas não há condutor para todas as viaturas',
+    en: 'Some cover, but not a driver for every vehicle',
+  },
+  'matrix.legendGreen': {
+    pt: '%{max}+ disponíveis, um condutor por viatura',
+    en: '%{max}+ available, one driver per vehicle',
+  },
+  'matrix.legendDriversVehicles': {
+    pt: 'Condutores disponíveis / viaturas necessárias',
+    en: 'Drivers available / vehicles needed',
+  },
+  'matrix.submitted': { pt: 'Submetido', en: 'Submitted' },
+  'matrix.declined': { pt: 'Recusado', en: 'Declined' },
+  'matrix.notYetResponded': { pt: 'Ainda sem resposta', en: 'Not yet responded' },
+  'matrix.declinedThisWindow': { pt: 'Recusou esta janela', en: 'Declined this window' },
+  'matrix.nobody': { pt: 'Ninguém.', en: 'Nobody.' },
+  'matrix.nobodyAvailable': { pt: 'Ninguém disponível.', en: 'Nobody available.' },
+  'matrix.sendReminder': { pt: 'Enviar aviso', en: 'Send reminder' },
+  'matrix.colDate': { pt: 'Data', en: 'Date' },
+  'matrix.historicalView': {
+    pt: 'Vista histórica — esta janela está fechada e já não aceita submissões.',
+    en: 'Historical view — this window is closed and no longer accepts submissions.',
+  },
+  'matrix.selectCoverageHint': {
+    pt: 'Seleciona um valor de cobertura para ver quem está disponível nesse turno.',
+    en: 'Select a coverage figure to see who is available for that shift.',
+  },
+  'matrix.drillDownHeading': {
+    pt: '%{day} · %{shift} — %{count} disponíveis',
+    en: '%{day} · %{shift} — %{count} available',
+  },
+  'matrix.nobodyDeclared': {
+    pt: 'Ninguém declarou disponibilidade para este turno.',
+    en: 'Nobody has declared availability for this shift.',
+  },
+  'matrix.loadFailed': { pt: 'Não foi possível carregar a matriz de cobertura.', en: 'Could not load the coverage matrix.' },
+  'matrix.exportFailed': { pt: 'Não foi possível exportar a matriz de cobertura.', en: 'Could not export the coverage matrix.' },
+
+  // ── Schedule list ──
+  'scheduleList.buildSchedulePrompt': { pt: 'Construir escala para uma janela…', en: 'Build schedule for a window…' },
+  'scheduleList.overlapRuleInfo': {
+    pt: 'Uma escala é construída para uma janela de disponibilidade, sobre as datas dessa janela e contra os seus próprios turnos e funções. Janelas de categorias diferentes são escaladas de forma independente, mesmo quando as suas datas se sobrepõem.',
+    en: "A schedule is built for one availability window, over that window's dates and against its own shifts and roles. Windows of different categories are scheduled independently, even when their dates overlap.",
+  },
+  'scheduleList.filterCategoryLabel': { pt: 'Categoria', en: 'Category' },
+  'scheduleList.filterStatusLabel': { pt: 'Estado', en: 'Status' },
+  'scheduleList.allCategories': { pt: 'Todas as categorias', en: 'All categories' },
+  'scheduleList.statusAll': { pt: 'Todas', en: 'All' },
+  'scheduleList.colWindow': { pt: 'Janela', en: 'Window' },
+  'scheduleList.colDates': { pt: 'Datas', en: 'Dates' },
+  'scheduleList.colSlotsFilled': { pt: 'Lugares preenchidos', en: 'Slots filled' },
+  'scheduleList.colFlags': { pt: 'Alertas', en: 'Flags' },
+  'scheduleList.gapsTooltip': { pt: '%{count} turnos sem escala completa', en: '%{count} shifts are not fully crewed' },
+  'scheduleList.overridesTooltip': {
+    pt: '%{count} atribuições foram acordadas fora da plataforma',
+    en: '%{count} assignments were agreed off-platform',
+  },
+  'scheduleShow.pageTitle': { pt: 'Escala', en: 'Schedule' },
+
+  // ── Schedule board ──
+  'scheduleBoard.crewColumn': { pt: 'Equipa', en: 'Crew' },
+  'scheduleBoard.heading': { pt: 'Escala', en: 'Schedule' },
+  'scheduleBoard.loadFailed': { pt: 'Não foi possível carregar a escala.', en: 'Could not load the schedule.' },
+  'scheduleBoard.removeFailed': { pt: 'Não foi possível remover essa atribuição.', en: 'Could not remove that assignment.' },
+  'scheduleBoard.exportFailed': { pt: 'Não foi possível exportar a escala.', en: 'Could not export the schedule.' },
+  'scheduleBoard.autofillButton': { pt: 'Preencher automaticamente', en: 'Auto-fill draft' },
+  'scheduleBoard.publishButton': { pt: 'Publicar escala', en: 'Publish schedule' },
+  'scheduleBoard.windowOpenInfo': {
+    pt: 'Esta janela ainda está aberta — a disponibilidade pode mudar. Podes continuar a construir; quem responder mais tarde aparece na lista de atribuição.',
+    en: 'This window is still open — availability may still change. You can keep building; anyone who submits later shows up in the assign list.',
+  },
+  'scheduleBoard.publishedCoordinatorInfo': {
+    pt: 'Publicada — toda a gente pode ver esta escala, e as pessoas podem inscrever-se num lugar aberto. As alterações que fizeres agora ficam visíveis de imediato.',
+    en: 'Published — everyone can see this rota, and members can add themselves to an open place. Changes you make now are live straight away.',
+  },
+  'scheduleBoard.publishedMemberInfo': {
+    pt: 'Podes inscrever-te em qualquer lugar aberto que consigas cobrir. Depois de estares num turno não te podes remover — pede a um coordenador, que pode arranjar substituição ao mesmo tempo.',
+    en: 'You can add yourself to any open place you are able to cover. Once you are on a shift you cannot take yourself off — ask a coordinator, who can arrange cover at the same time.',
+  },
+  'scheduleBoard.statSlotsFilled': { pt: 'Lugares preenchidos', en: 'Slots filled' },
+  'scheduleBoard.statShiftsWithGaps': { pt: 'Turnos com falhas', en: 'Shifts with gaps' },
+  'scheduleBoard.statOverrides': { pt: 'Substituições', en: 'Overrides' },
+  'scheduleBoard.doubleBooked': { pt: 'Duplamente escalado', en: 'Double-booked' },
+  'scheduleBoard.conflictLine': {
+    pt: '%{user}, %{day} — também em %{window}, %{label}',
+    en: '%{user}, %{day} — also on %{window}, %{label}',
+  },
+  'scheduleBoard.noShifts': {
+    pt: 'Esta janela não tem turnos, por isso não há nada para escalar.',
+    en: 'This window has no shifts, so there is nothing to schedule.',
+  },
+  'scheduleBoard.footerCoordinator': {
+    pt: 'As pessoas que submeteram disponibilidade para um turno são oferecidas primeiro. Qualquer outra pessoa ainda pode ser escalada — a substituição é muitas vezes acordada por telefone — e fica registada como uma excepção.',
+    en: 'People who submitted availability for a shift are offered first. Anyone else can still be assigned — cover is often agreed by phone — and is recorded as an override.',
+  },
+  'scheduleBoard.footerMember': {
+    pt: 'Só são oferecidos os lugares que consegues cobrir: as funções de condutor exigem a certificação de condutor, e uma função já preenchida ao seu limite não aceita mais ninguém.',
+    en: 'Only places you are able to cover are offered: the driver posts need the driver certification, and a role that is already full cannot take another person.',
+  },
+  'scheduleBoard.colDate': { pt: 'Data', en: 'Date' },
+  'scheduleBoard.colShift': { pt: 'Turno', en: 'Shift' },
+  'scheduleBoard.noRolesOnWindow': { pt: 'sem funções nesta janela', en: 'no roles on this window' },
+  'scheduleBoard.certRequiredSuffix': { pt: ' · %{certification} obrigatória', en: ' · %{certification} required' },
+  'scheduleBoard.assign': { pt: 'Atribuir', en: 'Assign' },
+  'scheduleBoard.addMe': { pt: 'Inscrever-me', en: 'Add me' },
+  'scheduleBoard.assignToVerb': { pt: 'Atribuir a', en: 'Assign to' },
+  'scheduleBoard.addMeToVerb': { pt: 'Inscrever-me em', en: 'Add me to' },
+  'scheduleBoard.placeLabel': { pt: '%{verb} %{where}', en: '%{verb} %{where}' },
+  'scheduleBoard.placeLabelWithIndex': {
+    pt: '%{verb} %{where} — lugar %{index} de %{total}',
+    en: '%{verb} %{where} — place %{index} of %{total}',
+  },
+  'scheduleBoard.legendAssigned': { pt: 'Atribuído a partir de disponibilidade submetida', en: 'Assigned from submitted availability' },
+  'scheduleBoard.legendSignedUp': { pt: 'Inscrito pela própria pessoa', en: 'Signed up by the person themselves' },
+  'scheduleBoard.legendOverride': { pt: 'Substituição — não submeteu disponibilidade para este turno', en: 'Override — did not submit for this shift' },
+  'scheduleBoard.legendException': {
+    pt: 'Atribuído sem a certificação obrigatória da função, com justificação',
+    en: "Assigned without the post's required certification, with a reason",
+  },
+  'scheduleBoard.legendLapsed': { pt: 'Certificação caducou desde que este turno foi construído', en: 'Certification lapsed since this shift was built' },
+  'scheduleBoard.legendOpen': { pt: 'Um lugar aberto, um por cada pessoa que a função ainda quer', en: 'An open place, one per person the role still wants' },
+  'scheduleBoard.legendGap': { pt: 'Sem condutor para as viaturas deste turno', en: 'No driver for the vehicles this shift crews' },
+  'scheduleBoard.legendConflict': { pt: 'Duplamente escalado', en: 'Double-booked' },
+  'scheduleBoard.legendAdjusted': { pt: 'Horário ajustado só para esta escala', en: "Hours adjusted for this schedule alone" },
+  'scheduleBoard.legendNameChip': { pt: 'Nome', en: 'Name' },
+  'scheduleBoard.adjustShiftAria': { pt: 'Opções do turno de %{day}, %{label}', en: 'Options for the shift on %{day}, %{label}' },
+  'scheduleBoard.shiftMenuAdjust': { pt: 'Ajustar horário', en: 'Adjust hours' },
+  'scheduleBoard.shiftMenuCompensation': { pt: 'Classificação da equipa', en: 'Crew classification' },
+  'scheduleBoard.unclassifiedPaidCrew': {
+    pt: 'Há oferta de pagamento e ainda ninguém foi classificado — clica para rever',
+    en: 'A pay offer applies and nobody has been classified yet — click to review',
+  },
+  'scheduleBoard.adjustedWas': { pt: 'era %{label}', en: 'was %{label}' },
+  'scheduleBoard.doubleBookedTooltip': {
+    pt: 'Duplamente escalado: também em %{window}, %{label}',
+    en: 'Double-booked: also on %{window}, %{label}',
+  },
+  'scheduleBoard.lapsedTooltip': {
+    pt: '%{certification} caducou desde que este turno foi construído — mantido de propósito, mas vale a pena rever.',
+    en: '%{certification} lapsed since this shift was built — kept on purpose, but worth reviewing.',
+  },
+  'scheduleBoard.exceptionTooltip': {
+    pt: 'Atribuído por excepção — não tem %{certification}. %{reason}',
+    en: 'Assigned by exception — does not hold %{certification}. %{reason}',
+  },
+  'scheduleBoard.signedUpTooltip': { pt: 'Inscrito em %{date}', en: 'Signed up on %{date}' },
+  'scheduleBoard.overrideTooltip': {
+    pt: 'Substituição — não submeteu disponibilidade para este turno. Atribuído por %{assigner} em %{date}',
+    en: 'Override — did not submit for this shift. Assigned by %{assigner} on %{date}',
+  },
+  'scheduleBoard.aCoordinator': { pt: 'um coordenador', en: 'a coordinator' },
+  'scheduleBoard.submittedTooltip': { pt: 'Submeteu disponibilidade para este turno', en: 'Submitted availability for this shift' },
+  'scheduleBoard.noLongerAvailableTooltip': { pt: 'Já não está disponível para este turno', en: 'No longer available for this shift' },
+  'scheduleBoard.suffixSignedUp': { pt: ', inscrito', en: ', signed up' },
+  'scheduleBoard.suffixOverride': { pt: ', substituição', en: ', override' },
+  'scheduleBoard.suffixDoubleBooked': { pt: ', duplamente escalado', en: ', double-booked' },
+  'scheduleBoard.suffixCertification': { pt: ', certificação %{issue}', en: ', certification %{issue}' },
+  'scheduleBoard.issueException': { pt: 'em excepção', en: 'exception' },
+  'scheduleBoard.issueLapsed': { pt: 'caducada', en: 'lapsed' },
+  'scheduleBoard.suffixYou': { pt: ', tu', en: ', you' },
+  'scheduleBoard.printButton': { pt: 'Imprimir escala', en: 'Print schedule' },
+
+  // ── Schedule print (#191) ──
+  'schedulePrint.title': { pt: 'Escala para impressão', en: 'Printable schedule' },
+  'schedulePrint.organisation': {
+    pt: 'Cruz Vermelha Portuguesa – Delegação de Campo',
+    en: 'Portuguese Red Cross – Campo Delegation',
+  },
+  'schedulePrint.crewColumn': { pt: 'Equipa', en: 'Crew' },
+  'schedulePrint.dateColumn': { pt: 'Data', en: 'Date' },
+  'schedulePrint.shiftColumn': { pt: 'Turno', en: 'Shift' },
+  'schedulePrint.unfilled': { pt: 'Por preencher', en: 'Unfilled' },
+  'schedulePrint.holiday': { pt: 'Feriado', en: 'Holiday' },
+  'schedulePrint.weekend': { pt: 'Fim de semana', en: 'Weekend' },
+  'schedulePrint.draftNotice': {
+    pt: 'RASCUNHO — ainda não publicada, sujeita a alterações',
+    en: 'DRAFT — not yet published, subject to change',
+  },
+  'schedulePrint.printButton': { pt: 'Imprimir', en: 'Print' },
+  'schedulePrint.close': { pt: 'Fechar', en: 'Close' },
+  'schedulePrint.loadFailed': { pt: 'Não foi possível carregar a escala.', en: 'Could not load the schedule.' },
+  'schedulePrint.generatedAt': { pt: 'Gerado em %{date}', en: 'Generated %{date}' },
+  'schedulePrint.disclaimer': {
+    pt: 'Esta escala pode ser alterada após a impressão — confirme sempre a versão em vigor online antes de uma resposta de emergência.',
+    en: 'This schedule may change after printing — always confirm the current version online before an emergency response.',
+  },
+
+  // ── Assign / autofill / create schedule / publish / sign-up dialogs ──
+  'assignDialog.alreadyOnRole': {
+    pt: 'Já está em %{role} neste turno — uma pessoa não pode ocupar dois lugares',
+    en: 'Already on %{role} for this shift — one person cannot hold two places',
+  },
+  'assignDialog.alreadyOnShift': { pt: 'Já está neste turno', en: 'Already on this shift' },
+  'assignDialog.loadFailed': { pt: 'Não foi possível carregar quem está disponível.', en: 'Could not load who is available.' },
+  'assignDialog.assignFailed': { pt: 'Não foi possível atribuir essa pessoa.', en: 'Could not assign that person.' },
+  'assignDialog.declinedNote': {
+    pt: 'Declarou não ter disponibilidade nesta janela — acorda isso com a pessoa antes de atribuir',
+    en: 'Declared no availability this window — agree it with them before assigning',
+  },
+  'assignDialog.pendingNote': { pt: 'Ainda não respondeu a esta janela', en: 'Has not responded to this window' },
+  'assignDialog.dutyCountOne': { pt: '%{count} serviço já nesta janela', en: '%{count} duty already this window' },
+  'assignDialog.dutyCountMany': { pt: '%{count} serviços já nesta janela', en: '%{count} duties already this window' },
+  'assignDialog.declinedChip': { pt: 'Recusou', en: 'Declined' },
+  'assignDialog.missingCertChip': { pt: 'Sem %{certification}', en: 'No %{certification}' },
+  'assignDialog.assigned': { pt: 'Atribuído', en: 'Assigned' },
+  'assignDialog.assignByException': { pt: 'Atribuir por excepção', en: 'Assign by exception' },
+  'assignDialog.assignAsOverride': { pt: 'Atribuir como substituição', en: 'Assign as override' },
+  'assignDialog.title': { pt: 'Atribuir · %{role}', en: 'Assign · %{role}' },
+  'assignDialog.requiresChip': { pt: 'Requer %{certification}', en: 'Requires %{certification}' },
+  'assignDialog.searchLabel': { pt: 'Procurar pessoal', en: 'Search personnel' },
+  'assignDialog.availableHeading': { pt: 'Disponível para este turno', en: 'Available for this shift' },
+  'assignDialog.nobodySubmitted': {
+    pt: 'Ninguém submeteu disponibilidade para este turno.',
+    en: 'Nobody submitted availability for this shift.',
+  },
+  'assignDialog.hideOthers': { pt: 'Ocultar todos os outros', en: 'Hide everyone else' },
+  'assignDialog.showOthers': { pt: 'Mostrar todos os outros (%{count})', en: 'Show everyone else (%{count})' },
+  'assignDialog.overrideWarning': {
+    pt: 'Ninguém aqui submeteu disponibilidade para este turno. Atribuir alguém fica registado como uma substituição, com o teu nome e a hora.',
+    en: 'Nobody here submitted availability for this shift. Assigning them is recorded as an override, stamped with your name and the time.',
+  },
+  'assignDialog.certRequirementNote': {
+    pt: 'As pessoas que não têm a certificação %{certification} aparecem na lista em vez de serem ocultadas — atribuir uma delas precisa de uma justificação, registada contra a atribuição.',
+    en: 'People who do not hold the %{certification} certification are listed rather than hidden — assigning one of them needs a reason, recorded against the assignment.',
+  },
+  'assignDialog.closeButton': { pt: 'Fechar', en: 'Close' },
+  'assignDialog.confirmTitle': {
+    pt: 'Atribuir sem a certificação obrigatória?',
+    en: 'Assign without the required certification?',
+  },
+  'assignDialog.requiresCertBold': { pt: '%{role} requer %{certification}.', en: '%{role} requires %{certification}.' },
+  'assignDialog.exceptionNote': {
+    pt: '%{person} não a tem. Atribuir esta pessoa fica registado como uma excepção contra este turno, com o teu nome e a hora.',
+    en: '%{person} does not hold it. Assigning them is recorded as an exception against this shift, stamped with your name and the time.',
+  },
+  'assignDialog.reasonLabel': { pt: 'Justificação', en: 'Reason' },
+  'assignDialog.reasonHelp': {
+    pt: 'Aparece na escala e na versão publicada.',
+    en: 'Shown on the board and on the published schedule.',
+  },
+  'autofillDialog.title': { pt: 'Preenchimento automático', en: 'Auto-fill draft' },
+  'autofillDialog.description': {
+    pt: 'Preenche a partir da disponibilidade submetida, condutores primeiro para cada viatura que um turno precisa. Ninguém que não tenha submetido é colocado.',
+    en: 'Fills from submitted availability, drivers first for every vehicle a shift needs. Nobody who did not submit is placed.',
+  },
+  'autofillDialog.failed': { pt: 'Não foi possível preencher o rascunho.', en: 'Could not fill the draft.' },
+  'autofillDialog.result': {
+    pt: 'Colocadas %{placed}. %{unfilled} lugares ainda abertos, %{withoutDriver} turnos sem condutor para todas as viaturas.',
+    en: 'Placed %{placed}. %{unfilled} slots still open, %{withoutDriver} shifts without a driver for every vehicle.',
+  },
+  'autofillDialog.modeEmptyTitle': { pt: 'Só lugares vazios', en: 'Only empty slots' },
+  'autofillDialog.modeEmptyHint': {
+    pt: 'Mantém quem colocaste à mão, incluindo substituições.',
+    en: 'Keeps everyone you placed by hand, overrides included.',
+  },
+  'autofillDialog.modeReplaceTitle': { pt: 'Limpar e voltar a preencher tudo', en: 'Clear and refill everything' },
+  'autofillDialog.modeReplaceHint': {
+    pt: 'Descarta primeiro todas as atribuições atuais desta escala.',
+    en: 'Discards every current assignment on this schedule first.',
+  },
+  'autofillDialog.fairnessTitle': { pt: 'Repartir serviços de forma equilibrada', en: 'Spread duties evenly' },
+  'autofillDialog.fairnessHint': {
+    pt: 'Prefere quem tem menos serviços até agora nesta janela.',
+    en: 'Prefers whoever has fewest duties so far in this window.',
+  },
+  'autofillDialog.currentFill': {
+    pt: '%{filled} de %{required} lugares estão preenchidos agora.',
+    en: '%{filled} of %{required} slots are filled right now.',
+  },
+  'autofillDialog.replaceWarning': {
+    pt: 'Tudo o que está agora nesta escala vai ser descartado primeiro.',
+    en: 'Everything currently on this schedule will be discarded first.',
+  },
+  'autofillDialog.emptyOnlyNote': {
+    pt: 'Só os lugares vazios vão ser tocados.',
+    en: 'Only the empty slots will be touched.',
+  },
+  'autofillDialog.fillButton': { pt: 'Preencher rascunho', en: 'Fill draft' },
+  'createScheduleDialog.title': { pt: 'Construir uma escala', en: 'Build a schedule' },
+  'createScheduleDialog.loadFailed': {
+    pt: 'Não foi possível carregar as janelas de disponibilidade.',
+    en: 'Could not load the availability windows.',
+  },
+  'createScheduleDialog.startFailed': { pt: 'Não foi possível iniciar essa escala.', en: 'Could not start that schedule.' },
+  'createScheduleDialog.noneAvailable': {
+    pt: 'Todas as janelas de disponibilidade já têm uma escala. Abre primeiro uma nova janela.',
+    en: 'Every availability window already has a schedule. Open a new window first.',
+  },
+  'createScheduleDialog.stillOpen': { pt: 'ainda aberta', en: 'still open' },
+  'publishDialog.title': { pt: 'Publicar escala', en: 'Publish schedule' },
+  'publishDialog.failed': { pt: 'Não foi possível publicar a escala.', en: 'Could not publish the schedule.' },
+  'publishDialog.slotsFilled': { pt: '%{filled} de %{required} lugares preenchidos', en: '%{filled} of %{required} slots filled' },
+  'publishDialog.shiftsWithGaps': { pt: '%{count} turnos com falhas', en: '%{count} shifts with gaps' },
+  'publishDialog.withoutDriverNote': { pt: '%{count} sem condutor', en: '%{count} without a driver' },
+  'publishDialog.overridesCount': { pt: '%{count} substituições', en: '%{count} overrides' },
+  'publishDialog.agreedOffPlatform': { pt: 'acordadas fora da plataforma', en: 'agreed off-platform' },
+  'publishDialog.certExceptions': { pt: '%{count} excepções de certificação', en: '%{count} certification exceptions' },
+  'publishDialog.eachWithReason': { pt: 'cada uma com justificação registada', en: 'each with a recorded reason' },
+  'publishDialog.unclassifiedPaidShifts': {
+    pt: '%{count} turnos com oferta de pagamento por classificar',
+    en: '%{count} shifts with a pay offer still unclassified',
+  },
+  'publishDialog.unclassifiedPaidShiftsNote': {
+    pt: 'revê a classificação da equipa antes ou depois de publicar',
+    en: 'review crew classification before or after publishing',
+  },
+  'publishDialog.lapsedCerts': {
+    pt: '%{count} certificações caducadas desde a atribuição',
+    en: '%{count} certifications lapsed since assignment',
+  },
+  'publishDialog.worthSecondLook': {
+    pt: 'vale a pena rever, não é uma decisão que alguém tenha tomado',
+    en: 'worth a second look, not a decision anyone made',
+  },
+  'publishDialog.doubleBookedCount': { pt: '%{count} duplamente escalados', en: '%{count} double-booked' },
+  'publishDialog.gapsAllowedInfo': {
+    pt: 'É permitido publicar com falhas — a escala é muitas vezes acabada por telefone. O pessoal atribuído vê os seus serviços de imediato, e podes continuar a editar depois.',
+    en: 'Publishing with gaps is allowed — the roster is often finished by phone. Assigned personnel see their duties straight away, and you can keep editing afterwards.',
+  },
+  'publishDialog.publishButton': { pt: 'Publicar', en: 'Publish' },
+
+  // ── Adjust shift dialog ──
+  'adjustShift.title': { pt: 'Ajustar horário do turno', en: 'Adjust shift hours' },
+  'adjustShift.startAria': { pt: 'Início', en: 'Start' },
+  'adjustShift.endAria': { pt: 'Fim', en: 'End' },
+  'adjustShift.windowTimes': { pt: 'Horário da janela: %{label}', en: "Window's own hours: %{label}" },
+  'adjustShift.publishedWarning': {
+    pt: 'Esta escala está publicada — quem estiver neste turno vai ver o novo horário.',
+    en: 'This rota is published — everyone on this shift will see the new hours.',
+  },
+  'adjustShift.reset': { pt: 'Repor horário da janela', en: 'Reset to window hours' },
+  'adjustShift.save': { pt: 'Guardar', en: 'Save' },
+  'adjustShift.errorEndBeforeStart': {
+    pt: 'O turno tem de terminar depois de começar.',
+    en: 'A shift must end after it starts.',
+  },
+  'adjustShift.errorOverlaps': { pt: 'Sobrepõe-se a %{label}.', en: 'Overlaps %{label}.' },
+  'adjustShift.failed': { pt: 'Não foi possível ajustar este turno.', en: 'Could not adjust this shift.' },
+
+  // ── Compensation dialog (Stage 1 of the paid-staff rework) ──
+  'compensationDialog.title': { pt: 'Classificação da equipa', en: 'Crew classification' },
+  'compensationDialog.hint': {
+    pt: 'Por predefinição, todos estão a fazer voluntariado. Quem está em horário de contrato aparece automaticamente e não pode ser alterado aqui.',
+    en: 'Everyone volunteers by default. Anyone on their contract clock is set automatically and cannot be changed here.',
+  },
+  'compensationDialog.optionVolunteer': { pt: 'Voluntariado', en: 'Volunteer' },
+  'compensationDialog.optionPaid': { pt: 'Pago', en: 'Paid' },
+  'compensationDialog.onContractClock': { pt: 'Horário de contrato', en: 'On contract clock' },
+  'compensationDialog.save': { pt: 'Guardar', en: 'Save' },
+  'compensationDialog.failed': {
+    pt: 'Não foi possível guardar a classificação.',
+    en: 'Could not save the classification.',
+  },
+
+  // ── TimeRangeField (shared start/end input for manual volunteer-hours forms) ──
+  'timeRangeField.startAria': { pt: 'Início', en: 'Start' },
+  'timeRangeField.endAria': { pt: 'Fim', en: 'End' },
+
+  'signUpDialog.title': { pt: 'Inscrever-te neste turno?', en: 'Add yourself to this shift?' },
+  'signUpDialog.failed': { pt: 'Não foi possível adicionar-te a este turno.', en: 'Could not add you to this shift.' },
+  'signUpDialog.vehicleCountOne': { pt: '%{count} viatura', en: '%{count} vehicle' },
+  'signUpDialog.vehicleCountMany': { pt: '%{count} viaturas', en: '%{count} vehicles' },
+  'signUpDialog.cannotUndo': {
+    pt: 'Depois de te inscreveres, não te podes remover — pede a um coordenador, que pode arranjar substituição ao mesmo tempo.',
+    en: 'Once you are on, you cannot take yourself off — ask a coordinator, who can arrange cover at the same time.',
+  },
+
+  // ── My duties & my availability ──
+  'myDuties.pageTitle': { pt: 'As minhas escalas', en: 'My Duties' },
+  'myDuties.heading': { pt: 'As minhas escalas', en: 'My Duties' },
+  'myDuties.subheading': {
+    pt: 'Turnos para os quais estás escalado em escalas publicadas. O que disseste ao coordenador que estavas livre para fazer fica em A minha disponibilidade.',
+    en: 'Shifts you are scheduled for on published rotas. What you told the coordinator you were free for lives on My Availability.',
+  },
+  'myDuties.loadFailed': { pt: 'Não foi possível carregar as tuas escalas.', en: 'Could not load your duties.' },
+  'myDuties.upcoming': { pt: 'Próximas', en: 'Upcoming' },
+  'myDuties.noneScheduled': {
+    pt: 'Ainda não tens serviços escalados. Um coordenador vai publicar aqui a próxima escala.',
+    en: 'No duties scheduled yet. A coordinator will publish the next rota here.',
+  },
+  'myDuties.pastDuties': { pt: 'Serviços passados', en: 'Past duties' },
+  'myDuties.withOthers': { pt: 'Com: %{names}', en: 'With: %{names}' },
+  'myDuties.quorumWarning': { pt: 'Por preencher', en: 'Understaffed' },
+  'myDuties.quorumWarningDetail': {
+    pt: 'Este turno ainda não tem o mínimo de pessoas necessário — pode não se realizar.',
+    en: "This shift hasn't reached its minimum crew yet — it may not run.",
+  },
+
+  // ── My transport trips (#236) — the crew manifest, live and print ──
+  'myTransportTrips.pageTitle': { pt: 'As minhas viagens', en: 'My Trips' },
+  'myTransportTrips.heading': { pt: 'As minhas viagens', en: 'My Trips' },
+  'myTransportTrips.subheading': {
+    pt: 'As tuas paragens de transporte para o dia escolhido, pela ordem em que as vais fazer.',
+    en: 'Your transport stops for the chosen day, in the order you work them.',
+  },
+  'myTransportTrips.loadFailed': { pt: 'Não foi possível carregar as tuas viagens.', en: 'Could not load your trips.' },
+  'myTransportTrips.previousDay': { pt: 'Dia anterior', en: 'Previous day' },
+  'myTransportTrips.nextDay': { pt: 'Dia seguinte', en: 'Next day' },
+  'myTransportTrips.today': { pt: 'Hoje', en: 'Today' },
+  'myTransportTrips.printButton': { pt: 'Imprimir', en: 'Print' },
+  'myTransportTrips.noTrips': {
+    pt: 'Não tens viagens de transporte planeadas para este dia.',
+    en: 'No transport trips planned for you this day.',
+  },
+  'myTransportTrips.vehicleLabel': { pt: 'Viatura %{plate}', en: 'Vehicle %{plate}' },
+  'myTransportTrips.stopKind.PICKUP': { pt: 'Recolha', en: 'Pickup' },
+  'myTransportTrips.stopKind.DROPOFF': { pt: 'Entrega', en: 'Drop-off' },
+  'myTransportTrips.stopKind.WAIT': { pt: 'Espera', en: 'Wait' },
+  'myTransportTrips.stopKind.RETURN_TO_BASE': { pt: 'Regresso à base', en: 'Return to base' },
+  'myTransportTrips.waitsHere': { pt: 'A equipa espera aqui', en: 'Crew waits here' },
+  'myTransportTrips.treatmentWindow': {
+    pt: 'Tratamento: %{start} – %{end}',
+    en: 'Treatment: %{start} – %{end}',
+  },
+  'myTransportTrips.readyAwaiting': { pt: 'A aguardar chamada de pronto', en: 'Awaiting ready call' },
+  'myTransportTrips.readyAt': { pt: 'Pronto às %{time}', en: 'Ready at %{time}' },
+  'myTransportTrips.generatedAt': { pt: 'Gerado em %{date}', en: 'Generated %{date}' },
+
+  // ── Notification channels — shared across the notices/settings screens below ──
+  'notificationChannel.IN_APP': { pt: 'Na aplicação', en: 'In-app' },
+  'notificationChannel.EMAIL': { pt: 'Email', en: 'Email' },
+  'notificationChannel.WEB_PUSH': { pt: 'Notificação push', en: 'Push notification' },
+
+  // ── My notices (#165) — the member's own alerts area ──
+  'notices.pageTitle': { pt: 'Avisos', en: 'Notices' },
+  'notices.heading': { pt: 'Avisos', en: 'Notices' },
+  'notices.subheading': {
+    pt: 'Comunicações operacionais dos coordenadores. Confirma a leitura das que precisam de resposta.',
+    en: 'Operational notices from coordinators. Acknowledge the ones that need a response.',
+  },
+  'notices.loadFailed': { pt: 'Não foi possível carregar os avisos.', en: 'Could not load notices.' },
+  'notices.none': { pt: 'Não há avisos ativos.', en: 'No active notices.' },
+  'notices.from': { pt: 'De %{name}', en: 'From %{name}' },
+  'notices.unread': { pt: 'Não lido', en: 'Unread' },
+  'notices.acknowledged': { pt: 'Confirmado', en: 'Acknowledged' },
+  'notices.acknowledgeButton': { pt: 'Confirmar leitura', en: 'Acknowledge' },
+  'notices.acknowledgeFailed': { pt: 'Não foi possível confirmar.', en: 'Could not acknowledge.' },
+  'notices.expiresOn': { pt: 'Válido até %{date}', en: 'Valid until %{date}' },
+
+  // ── Notice management (#165) — the coordinator's create/history screen ──
+  'noticeManage.pageTitle': { pt: 'Gerir avisos', en: 'Manage notices' },
+  'noticeManage.heading': { pt: 'Avisos operacionais', en: 'Operational notices' },
+  'noticeManage.subheading': {
+    pt: 'Cria e acompanha avisos para a equipa. O histórico mostra confirmações de leitura por destinatário.',
+    en: 'Create and track notices for the team. History shows read acknowledgement per recipient.',
+  },
+  'noticeManage.loadFailed': { pt: 'Não foi possível carregar os avisos.', en: 'Could not load notices.' },
+  'noticeManage.none': { pt: 'Ainda não foram enviados avisos.', en: 'No notices sent yet.' },
+  'noticeManage.newButton': { pt: 'Novo aviso', en: 'New notice' },
+  'noticeManage.titleField': { pt: 'Título', en: 'Title' },
+  'noticeManage.bodyField': { pt: 'Mensagem', en: 'Message' },
+  'noticeManage.targetType': { pt: 'Destinatários', en: 'Recipients' },
+  'noticeManage.targetAll': { pt: 'Todos', en: 'Everyone' },
+  'noticeManage.targetRoles': { pt: 'Funções específicas', en: 'Specific roles' },
+  'noticeManage.channels': { pt: 'Enviar também por', en: 'Also deliver via' },
+  'noticeManage.expiresAt': { pt: 'Expira em (opcional)', en: 'Expires on (optional)' },
+  'noticeManage.createButton': { pt: 'Enviar aviso', en: 'Send notice' },
+  'noticeManage.createSuccess': { pt: 'Aviso enviado.', en: 'Notice sent.' },
+  'noticeManage.createFailed': { pt: 'Não foi possível enviar o aviso.', en: 'Could not send the notice.' },
+  'noticeManage.deactivateButton': { pt: 'Terminar agora', en: 'End now' },
+  'noticeManage.deactivateFailed': { pt: 'Não foi possível terminar o aviso.', en: 'Could not end the notice.' },
+  'noticeManage.active': { pt: 'Ativo', en: 'Active' },
+  'noticeManage.ended': { pt: 'Terminado', en: 'Ended' },
+  'noticeManage.recipientsButton': { pt: 'Destinatários', en: 'Recipients' },
+  'noticeManage.recipientsTitle': { pt: 'Destinatários', en: 'Recipients' },
+  'noticeManage.recipientName': { pt: 'Nome', en: 'Name' },
+  'noticeManage.recipientsLoadFailed': {
+    pt: 'Não foi possível carregar os destinatários.',
+    en: 'Could not load recipients.',
+  },
+  'noticeManage.acknowledgedHeader': { pt: 'Confirmações', en: 'Acknowledged' },
+  'noticeManage.acknowledgedCount': {
+    pt: '%{acknowledged} de %{total} confirmaram',
+    en: '%{acknowledged} of %{total} acknowledged',
+  },
+  'noticeManage.deliveryStatus.PENDING': { pt: 'A enviar', en: 'Sending' },
+  'noticeManage.deliveryStatus.SENT': { pt: 'Enviado', en: 'Sent' },
+  'noticeManage.deliveryStatus.FAILED': { pt: 'Falhou', en: 'Failed' },
+
+  // ── Notification settings (#165) — profile section ──
+  'notificationSettings.heading': { pt: 'Notificações', en: 'Notifications' },
+  'notificationSettings.subheading': {
+    pt: 'Como queres ser avisado de novos avisos operacionais, além de os veres aqui na aplicação.',
+    en: 'How you want to hear about new operational notices, on top of seeing them here in the app.',
+  },
+  'notificationSettings.loadFailed': {
+    pt: 'Não foi possível carregar as preferências.',
+    en: 'Could not load your notification preferences.',
+  },
+  'notificationSettings.saveFailed': {
+    pt: 'Não foi possível guardar as preferências.',
+    en: 'Could not save your notification preferences.',
+  },
+  'notificationSettings.pushSubscribe': { pt: 'Ativar neste aparelho', en: 'Enable on this device' },
+  'notificationSettings.pushUnsubscribe': { pt: 'Desativar neste aparelho', en: 'Disable on this device' },
+  'notificationSettings.pushSubscribed': { pt: 'Ativo neste aparelho', en: 'Enabled on this device' },
+  'notificationSettings.pushUnsupported': {
+    pt: 'Este browser não suporta notificações push.',
+    en: 'This browser does not support push notifications.',
+  },
+  'notificationSettings.pushFailed': {
+    pt: 'Não foi possível ativar as notificações push.',
+    en: 'Could not enable push notifications.',
+  },
+  'notificationSettings.typesHeading': { pt: 'Que notificações queres receber', en: 'What you want to be notified about' },
+  'notificationSettings.typesLoadFailed': {
+    pt: 'Não foi possível carregar estas preferências.',
+    en: 'Could not load these preferences.',
+  },
+  'notificationType.SHIFT_REMINDER': { pt: 'Lembrete de turno (24h antes)', en: 'Shift reminder (24h ahead)' },
+  'notificationType.BIRTHDAY_GREETING': { pt: 'Parabéns no meu aniversário', en: 'Birthday wishes for me' },
+  'notificationType.BIRTHDAY_ANNOUNCEMENT': {
+    pt: 'Aviso do aniversário de colegas',
+    en: 'Heads-up on a teammate’s birthday',
+  },
+
+  // ── Notification configuration (#165) — org-wide defaults ──
+  'notificationConfig.pageTitle': { pt: 'Notificações', en: 'Notifications' },
+  'notificationConfig.heading': { pt: 'Canais de notificação', en: 'Notification channels' },
+  'notificationConfig.subheading': {
+    pt: 'Canais disponíveis para avisos operacionais em toda a organização. Cada pessoa pode ainda desativar um canal nas suas preferências.',
+    en: 'Channels available for operational notices, organisation-wide. Each person can still turn a channel off in their own preferences.',
+  },
+  'notificationConfig.loadFailed': { pt: 'Não foi possível carregar a configuração.', en: 'Could not load the configuration.' },
+  'notificationConfig.saveFailed': { pt: 'Não foi possível guardar a configuração.', en: 'Could not save the configuration.' },
+  'notificationConfig.saved': { pt: 'Configuração guardada.', en: 'Configuration saved.' },
+  'notificationConfig.noticeType': { pt: 'Avisos operacionais', en: 'Operational notices' },
+
+  // ── Transport planning policy (#233) — arrival window thresholds and
+  // occurrence-type duration floors, both changeable without a deploy ──
+  'transportConfig.pageTitle': { pt: 'Política de planeamento', en: 'Planning policy' },
+  'transportConfig.loadFailed': { pt: 'Não foi possível carregar a configuração.', en: 'Could not load the configuration.' },
+  'transportConfig.saveFailed': { pt: 'Não foi possível guardar a configuração.', en: 'Could not save the configuration.' },
+  'transportConfig.saved': { pt: 'Configuração guardada.', en: 'Configuration saved.' },
+  'transportConfig.save': { pt: 'Guardar', en: 'Save' },
+  'transportConfig.thresholdsHeading': { pt: 'Janela de chegada', en: 'Arrival window' },
+  'transportConfig.thresholdsSubheading': {
+    pt: 'Um objetivo de conforto para o doente, não uma regra rígida — a única obrigação é chegar até à hora do tratamento. Uma unidade de saúde pode ter os seus próprios limiares na respetiva ficha.',
+    en: 'A soft customer-experience goal, not a hard rule — the only obligation is delivering by treatment start. A facility can carry its own thresholds on its own form.',
+  },
+  'transportConfig.arrivalWindowEarliestMinutes': { pt: 'Não chegar mais de X minutos antes', en: 'Do not arrive more than X minutes early' },
+  'transportConfig.arrivalWindowLatestMinutes': { pt: 'Não chegar depois de X minutos antes', en: 'Do not arrive later than X minutes before' },
+  'transportConfig.arrivalToleranceMinutes': { pt: 'Tolerância de atraso', en: 'Late-arrival tolerance' },
+  'transportConfig.policiesHeading': { pt: 'Duração por tipo de ocorrência', en: 'Duration by occurrence type' },
+  'transportConfig.policiesSubheading': {
+    pt: 'O mínimo é o tempo mais cedo em que o veículo pode ficar livre quando não há uma hora de fim indicada para a viagem; o valor por omissão é apenas uma sugestão de planeamento.',
+    en: 'The minimum is the earliest a vehicle can be freed when a leg has no supplied end time; the default is a planning suggestion only.',
+  },
+  'transportConfig.occurrenceType': { pt: 'Tipo de ocorrência', en: 'Occurrence type' },
+  'transportConfig.minimumDurationMinutes': { pt: 'Mínimo (min)', en: 'Minimum (min)' },
+  'transportConfig.defaultDurationMinutes': { pt: 'Por omissão (min)', en: 'Default (min)' },
+
+  // ── INEM unit status (#216) — the delegation's ambulances on INEM's own portal ──
+  'inem.pageTitle': { pt: 'Estado dos meios INEM', en: 'INEM unit status' },
+  'inem.heading': { pt: 'Estado dos meios INEM', en: 'INEM unit status' },
+  'inem.subheading': {
+    pt: 'Disponibilidade das ambulâncias no portal do INEM. Usa "Alterar estado" para atualizar — o emblema "A sincronizar" é normal enquanto isso acontece.',
+    en: 'Ambulance availability on INEM’s own portal. Use “Change status” to update it — the “Syncing” badge is normal while that happens.',
+  },
+  'inem.loadFailed': { pt: 'Não foi possível carregar o estado dos meios INEM.', en: 'Could not load INEM unit status.' },
+  'inem.saveFailed': { pt: 'Não foi possível guardar o estado deste meio.', en: 'Could not save this unit’s status.' },
+  'inem.noUnits': { pt: 'Não há meios INEM configurados.', en: 'No INEM units configured.' },
+  'inem.save': { pt: 'Guardar', en: 'Save' },
+  'inem.unsavedChanges': { pt: 'Alterações por guardar', en: 'Unsaved changes' },
+  'inem.syncNow': { pt: 'Sincronizar agora', en: 'Sync now' },
+  'inem.syncNowSuccess': { pt: 'Sincronizado com o INEM.', en: 'Synced with INEM.' },
+  'inem.syncNowFailed': { pt: 'Não foi possível sincronizar agora.', en: 'Could not sync right now.' },
+  'inem.available': { pt: 'Disponível', en: 'Available' },
+  'inem.dispatched': { pt: 'Acionado', en: 'Dispatched' },
+  'inem.statusUnavailable': { pt: 'Indisponível', en: 'Unavailable' },
+  'inem.statusUnset': { pt: 'Estado por definir', en: 'Status not set' },
+  'inem.changeStatus': { pt: 'Alterar estado', en: 'Change status' },
+  'inem.dialogTitle': { pt: 'Alterar estado — %{vehicle}', en: 'Change status — %{vehicle}' },
+  'inem.reasonLabel': { pt: 'Motivo', en: 'Reason' },
+  'inem.reasonPlaceholder': { pt: 'Escolhe um motivo', en: 'Choose a reason' },
+  'inem.syncing': { pt: 'A sincronizar…', en: 'Syncing…' },
+  'inem.lastSyncedAt': { pt: 'Última sincronização: %{time}', en: 'Last synced: %{time}' },
+  'inem.neverSynced': { pt: 'Ainda sem sincronização', en: 'Not synced yet' },
+  'inem.lastError': { pt: 'Último erro: %{error}', en: 'Last error: %{error}' },
+  'inem.noVehicleMatch': { pt: 'Sem viatura correspondente', en: 'No matching vehicle' },
+  'inem.degradedBanner.EXPIRED': {
+    pt: 'A ligação ao portal do INEM expirou e está a ser restabelecida. Até lá, define o estado deste meio diretamente no portal do INEM.',
+    en: 'The connection to the INEM portal has expired and is being re-established. Until then, set this unit’s status directly in the INEM portal.',
+  },
+  'inem.degradedBanner.FAILED': {
+    pt: 'O redinfo não consegue neste momento contactar o portal do INEM. Define o estado deste meio diretamente no portal do INEM.',
+    en: 'redinfo cannot currently reach the INEM portal. Set this unit’s status directly in the INEM portal instead.',
+  },
+  'inem.resetSession': { pt: 'Restabelecer ligação', en: 'Reset connection' },
+  'inem.resetSessionSuccess': {
+    pt: 'Ligação restabelecida — a validar com o portal do INEM.',
+    en: 'Connection reset — validating with the INEM portal.',
+  },
+  'inem.resetSessionFailed': { pt: 'Não foi possível restabelecer a ligação.', en: 'Could not reset the connection.' },
+
+  // Reason codes: `pt` is INEM's own display label, copied verbatim from
+  // `GET /api/INOP` (docs/inem-portal-contract.md) — so a Portuguese-speaking
+  // coordinator reads the exact same words here, on INEM's own portal, and on
+  // the phone with CODU. Translate from the *label*, not the code: the code is
+  // INEM's internal identifier and is not always an accurate description (see
+  // `INEM_INOP_REASONS`'s doc comment in `@redinfo/shared`).
+  'inem.inopReason.TEPH_Falta': { pt: 'Sem Tripulação', en: 'No crew' },
+  'inem.inopReason.Acidente_Viatura': { pt: 'Avaria Viatura', en: 'Vehicle breakdown' },
+  'inem.inopReason.Limpar_Repor_Material': { pt: 'Limpar/Repor_Mat', en: 'Clean / restock' },
+  'inem.inopReason.Alimentacao': { pt: 'Alimentação', en: 'Meal break' },
+  'inem.inopReason.Fora_de_turno': { pt: 'Ocupada – ExtraSIEM', en: 'Busy – extra-SIEM' },
+
+  // ── My hours (#164) ──
+  'myHours.pageTitle': { pt: 'As minhas horas', en: 'My Hours' },
+  'myHours.heading': { pt: 'As minhas horas', en: 'My Hours' },
+  'myHours.subheading': {
+    pt: 'As horas dos teus turnos escalados são registadas automaticamente. Corrige as que precisarem, regista um turno que o horário não apanhou, ou regista horas de algo que não teve turno.',
+    en: 'Hours from your scheduled shifts are recorded automatically. Correct any that need it, log a shift the schedule missed, or log hours for something that never had a shift.',
+  },
+  'myHours.loadFailed': { pt: 'Não foi possível carregar as tuas horas.', en: 'Could not load your hours.' },
+  'myHours.pendingHeading': { pt: 'Por aprovar', en: 'Pending review' },
+  'myHours.approvedHeading': { pt: 'Aprovadas', en: 'Approved' },
+  'myHours.noneYet': {
+    pt: 'Ainda não há horas registadas.',
+    en: 'No hours recorded yet.',
+  },
+  'myHours.manualBadge': { pt: 'Manual', en: 'Manual' },
+  'myHours.correctedNotice': {
+    pt: 'Corrigido por um coordenador: %{reason}',
+    en: 'Corrected by a coordinator: %{reason}',
+  },
+  'myHours.flagRanOver': { pt: 'Passou do horário previsto', en: 'Ran past the scheduled end' },
+  'myHours.flagPossiblyLeftEarly': {
+    pt: 'Pode ter saído mais cedo',
+    en: 'May have left early',
+  },
+  'myHours.logButton': { pt: 'Registar horas', en: 'Log hours' },
+  'myHours.logDialogTitle': { pt: 'Registar horas', en: 'Log hours' },
+  'myHours.activityTypeLabel': { pt: 'Atividade', en: 'Activity' },
+  'myHours.dateLabel': { pt: 'Data', en: 'Date' },
+  'myHours.timeRangeLabel': { pt: 'Horário', en: 'Time' },
+  'myHours.descriptionLabel': { pt: 'Descrição', en: 'Description' },
+  'myHours.descriptionLabelOptional': { pt: 'Descrição (opcional)', en: 'Description (optional)' },
+  'myHours.descriptionPlaceholder': {
+    pt: 'Do que se tratou a atividade?',
+    en: 'What was the activity?',
+  },
+  'myHours.logCancel': { pt: 'Cancelar', en: 'Cancel' },
+  'myHours.logSave': { pt: 'Guardar', en: 'Save' },
+  'myHours.logSuccess': { pt: 'Horas registadas — aguardam aprovação.', en: 'Hours logged — awaiting approval.' },
+  'myHours.logFailed': { pt: 'Não foi possível registar as horas.', en: 'Could not log the hours.' },
+  'myHours.editButton': { pt: 'Editar', en: 'Edit' },
+  'myHours.editDialogTitle': { pt: 'Corrigir horas', en: 'Correct hours' },
+  'myHours.editCancel': { pt: 'Cancelar', en: 'Cancel' },
+  'myHours.editSave': { pt: 'Guardar', en: 'Save' },
+  'myHours.editFailed': { pt: 'Não foi possível corrigir as horas.', en: 'Could not correct the hours.' },
+
+  // ── Volunteer hours review (#164, redesigned per docs/plans/volunteer-hours-review-redesign.md) ──
+  'volunteerHoursReview.pageTitle': { pt: 'Rever horas de voluntariado', en: 'Review Volunteer Hours' },
+  'volunteerHoursReview.heading': { pt: 'Rever horas', en: 'Review hours' },
+  'volunteerHoursReview.subheading': {
+    pt: 'Entradas geradas automaticamente com um sinal de exceção, e tudo o que foi registado manualmente. O resto aprova-se sozinho passado um mês.',
+    en: 'Auto-generated entries carrying an exception signal, plus everything logged by hand. Everything else approves itself after a month.',
+  },
+  'volunteerHoursReview.loadFailed': {
+    pt: 'Não foi possível carregar a fila de revisão.',
+    en: 'Could not load the review queue.',
+  },
+  'volunteerHoursReview.retryButton': { pt: 'Tentar novamente', en: 'Retry' },
+  'volunteerHoursReview.noneToReview': {
+    pt: 'Não há nada por rever de momento.',
+    en: 'Nothing to review right now.',
+  },
+  'volunteerHoursReview.noneAfterFilter': {
+    pt: 'Nenhuma entrada corresponde a estes filtros.',
+    en: 'No entries match these filters.',
+  },
+  'volunteerHoursReview.clearFiltersButton': { pt: 'Limpar filtros', en: 'Clear filters' },
+
+  // Tabs
+  'volunteerHoursReview.tabPending': { pt: 'Pendentes (%{count})', en: 'Pending (%{count})' },
+  'volunteerHoursReview.tabApproved': { pt: 'Aprovadas', en: 'Approved' },
+
+  // Stats header
+  'volunteerHoursReview.statsWaiting': { pt: '%{count} por rever', en: '%{count} to review' },
+  'volunteerHoursReview.statsPendingMinutes': { pt: '%{minutes} pendentes', en: '%{minutes} pending' },
+  'volunteerHoursReview.statsExceptions': { pt: '%{count} com exceções', en: '%{count} with exceptions' },
+  'volunteerHoursReview.statsOldest': { pt: 'mais antiga há %{days} dias', en: 'oldest %{days} days ago' },
+  'volunteerHoursReview.statsOldestToday': { pt: 'mais antiga é de hoje', en: 'oldest is from today' },
+
+  // Filter chips + search
+  'volunteerHoursReview.filterAll': { pt: 'Todas (%{count})', en: 'All (%{count})' },
+  'volunteerHoursReview.filterNoFlags': { pt: 'Sem exceções (%{count})', en: 'No exceptions (%{count})' },
+  'volunteerHoursReview.filterRanOver': { pt: 'Excedeu (%{count})', en: 'Ran over (%{count})' },
+  'volunteerHoursReview.filterPossiblyLeftEarly': {
+    pt: 'Saída antecipada (%{count})',
+    en: 'Possibly left early (%{count})',
+  },
+  'volunteerHoursReview.filterManual': { pt: 'Manuais (%{count})', en: 'Manual (%{count})' },
+  'volunteerHoursReview.searchPlaceholder': { pt: 'Procurar voluntário…', en: 'Search volunteer…' },
+
+  // Sweep ("approve all without exceptions")
+  'volunteerHoursReview.sweepButton': {
+    pt: 'Aprovar tudo sem exceções (%{count})',
+    en: 'Approve all without exceptions (%{count})',
+  },
+  'volunteerHoursReview.sweepDialogTitle': { pt: 'Aprovar sem exceções', en: 'Approve without exceptions' },
+  'volunteerHoursReview.sweepDialogBody': {
+    pt: 'Isto aprova %{count} entradas geradas automaticamente (%{minutes}), sem sinais. Entradas manuais e com exceções não são incluídas — a fila não fica vazia.',
+    en: 'This approves %{count} auto-generated entries (%{minutes}), carrying no exception. Manual and flagged entries are not included — the queue will not be empty.',
+  },
+  'volunteerHoursReview.sweepDialogConfirm': { pt: 'Aprovar', en: 'Approve' },
+  'volunteerHoursReview.sweepDialogCancel': { pt: 'Cancelar', en: 'Cancel' },
+  'volunteerHoursReview.sweepSuccess': {
+    pt: '%{count} entradas aprovadas (%{minutes}).',
+    en: '%{count} entries approved (%{minutes}).',
+  },
+  'volunteerHoursReview.sweepFailed': {
+    pt: 'Não foi possível aprovar as entradas sem exceções.',
+    en: 'Could not approve the entries without exceptions.',
+  },
+
+  // Row / card content
+  'volunteerHoursReview.approveButton': { pt: 'Aprovar', en: 'Approve' },
+  'volunteerHoursReview.adjustButton': { pt: 'Ajustar', en: 'Adjust' },
+  'volunteerHoursReview.dismissButton': { pt: 'Descartar', en: 'Dismiss' },
+  'volunteerHoursReview.reopenButton': { pt: 'Reabrir', en: 'Reopen' },
+  'volunteerHoursReview.moreActions': { pt: 'Mais ações', en: 'More actions' },
+  'volunteerHoursReview.flagsPopoverTitle': { pt: 'Sinais desta entrada', en: 'Exceptions on this entry' },
+  'volunteerHoursReview.flagsPopoverReportLink': { pt: 'Ver relatório', en: 'View report' },
+  'volunteerHoursReview.ago': { pt: 'há %{days} dias', en: '%{days} days ago' },
+
+  // Approve (single)
+  'volunteerHoursReview.approveSuccess': { pt: 'Horas aprovadas.', en: 'Hours approved.' },
+  'volunteerHoursReview.approveFailed': {
+    pt: 'Não foi possível aprovar as horas.',
+    en: 'Could not approve the hours.',
+  },
+  'volunteerHoursReview.undoButton': { pt: 'Anular', en: 'Undo' },
+
+  // Selection + bulk approve
+  'volunteerHoursReview.bulkSelectedLabel': {
+    pt: '%{count} selecionadas · %{minutes}',
+    en: '%{count} selected · %{minutes}',
+  },
+  'volunteerHoursReview.bulkApproveButton': { pt: 'Aprovar selecionadas', en: 'Approve selected' },
+  'volunteerHoursReview.bulkClearButton': { pt: 'Limpar', en: 'Clear' },
+  'volunteerHoursReview.bulkApproveDialogTitle': { pt: 'Aprovar selecionadas', en: 'Approve selected' },
+  'volunteerHoursReview.bulkApproveDialogFlaggedNote': {
+    pt: 'Estas incluem entradas com exceções: %{names}.',
+    en: 'These include flagged entries: %{names}.',
+  },
+  'volunteerHoursReview.bulkApproveDialogConfirm': { pt: 'Aprovar', en: 'Approve' },
+  'volunteerHoursReview.bulkApproveDialogCancel': { pt: 'Cancelar', en: 'Cancel' },
+  'volunteerHoursReview.bulkApproveSuccess': {
+    pt: '%{count} entradas aprovadas.',
+    en: '%{count} entries approved.',
+  },
+  'volunteerHoursReview.bulkApprovePartialFailure': {
+    pt: '%{count} não puderam ser aprovadas: %{messages}',
+    en: '%{count} could not be approved: %{messages}',
+  },
+
+  // Adjust dialog
+  'volunteerHoursReview.adjustDialogTitle': { pt: 'Ajustar horas', en: 'Adjust hours' },
+  'volunteerHoursReview.adjustBaseline': { pt: 'Agendado', en: 'Scheduled' },
+  'volunteerHoursReview.adjustProposed': { pt: 'Proposto', en: 'Proposed' },
+  'volunteerHoursReview.adjustYourValue': { pt: 'O teu valor', en: 'Your value' },
+  'volunteerHoursReview.adjustPresetProposed': { pt: 'Aprovar o proposto', en: 'Approve as proposed' },
+  'volunteerHoursReview.adjustPresetScheduled': { pt: 'Repor o agendado', en: 'Reset to scheduled' },
+  'volunteerHoursReview.adjustPresetZero': { pt: 'Não contar (0)', en: "Don't count (0)" },
+  'volunteerHoursReview.adjustReasonLabel': { pt: 'Motivo da correção', en: 'Reason for the correction' },
+  'volunteerHoursReview.adjustReasonRequired': {
+    pt: 'Corrigir o valor exige um motivo.',
+    en: 'Correcting the value needs a reason.',
+  },
+  'volunteerHoursReview.adjustReasonChipLeftEarly': { pt: 'Saiu mais cedo', en: 'Left early' },
+  'volunteerHoursReview.adjustReasonChipConfirmed': {
+    pt: 'Confirmado com a equipa',
+    en: 'Confirmed with the team',
+  },
+  'volunteerHoursReview.adjustReasonChipDuplicate': { pt: 'Duplicado', en: 'Duplicate' },
+  'volunteerHoursReview.adjustCancel': { pt: 'Cancelar', en: 'Cancel' },
+  'volunteerHoursReview.adjustSave': { pt: 'Aprovar', en: 'Approve' },
+
+  // Dismiss / restore
+  'volunteerHoursReview.dismissDialogTitle': { pt: 'Descartar entrada', en: 'Dismiss entry' },
+  'volunteerHoursReview.dismissReasonLabel': { pt: 'Motivo', en: 'Reason' },
+  'volunteerHoursReview.dismissReasonRequired': { pt: 'Descartar exige um motivo.', en: 'Dismissing needs a reason.' },
+  'volunteerHoursReview.dismissCancel': { pt: 'Cancelar', en: 'Cancel' },
+  'volunteerHoursReview.dismissConfirm': { pt: 'Descartar', en: 'Dismiss' },
+  'volunteerHoursReview.dismissSuccess': { pt: 'Entrada descartada.', en: 'Entry dismissed.' },
+  'volunteerHoursReview.dismissFailed': {
+    pt: 'Não foi possível descartar a entrada.',
+    en: 'Could not dismiss the entry.',
+  },
+  'volunteerHoursReview.restoreButton': { pt: 'Repor', en: 'Restore' },
+  'volunteerHoursReview.restoreSuccess': { pt: 'Entrada reposta.', en: 'Entry restored.' },
+  'volunteerHoursReview.restoreFailed': {
+    pt: 'Não foi possível repor a entrada.',
+    en: 'Could not restore the entry.',
+  },
+
+  // Reopen
+  'volunteerHoursReview.reopenSuccess': { pt: 'Entrada reaberta.', en: 'Entry reopened.' },
+  'volunteerHoursReview.reopenFailed': {
+    pt: 'Não foi possível reabrir a entrada.',
+    en: 'Could not reopen the entry.',
+  },
+
+  // Pagination
+  'volunteerHoursReview.paginationRange': { pt: '%{from}–%{to} de %{total}', en: '%{from}–%{to} of %{total}' },
+  'volunteerHoursReview.perPageLabel': { pt: 'Por página', en: 'Per page' },
+  'volunteerHoursReview.prevPage': { pt: 'Anterior', en: 'Previous' },
+  'volunteerHoursReview.nextPage': { pt: 'Seguinte', en: 'Next' },
+
+  // Approved tab
+  'volunteerHoursReview.colVolunteer': { pt: 'Voluntário', en: 'Volunteer' },
+  'volunteerHoursReview.colFlags': { pt: 'Exceções', en: 'Exceptions' },
+  'volunteerHoursReview.colActivity': { pt: 'Atividade', en: 'Activity' },
+  'volunteerHoursReview.colDate': { pt: 'Data', en: 'Date' },
+  'volunteerHoursReview.colCredited': { pt: 'Creditado', en: 'Credited' },
+  'volunteerHoursReview.colApprovedBy': { pt: 'Aprovado por', en: 'Approved by' },
+  'volunteerHoursReview.colWhen': { pt: 'Quando', en: 'When' },
+  'volunteerHoursReview.autoApprovedChip': { pt: 'Automático', en: 'Automatic' },
+  'volunteerHoursReview.reopenedNotice': { pt: 'Reaberta em %{date}', en: 'Reopened on %{date}' },
+
+  // Export
+  'volunteerHoursReview.exportHeading': { pt: 'Exportar resumo', en: 'Export summary' },
+  'volunteerHoursReview.exportMenuButton': { pt: 'Exportar CSV', en: 'Export CSV' },
+  'volunteerHoursReview.exportFrom': { pt: 'De', en: 'From' },
+  'volunteerHoursReview.exportTo': { pt: 'Até', en: 'To' },
+  'volunteerHoursReview.exportButton': { pt: 'Transferir CSV', en: 'Download CSV' },
+  'volunteerHoursReview.exportFailed': { pt: 'Não foi possível exportar o CSV.', en: 'Could not export the CSV.' },
+
+  // Self-service delete (MyHoursPage)
+  'volunteerHoursReview.deleteMineButton': { pt: 'Eliminar', en: 'Delete' },
+  'volunteerHoursReview.deleteMineDialogTitle': { pt: 'Eliminar entrada', en: 'Delete entry' },
+  'volunteerHoursReview.deleteMineDialogBody': {
+    pt: 'Tens a certeza que queres eliminar este registo? Esta ação não pode ser desfeita.',
+    en: 'Delete this entry? This cannot be undone.',
+  },
+  'volunteerHoursReview.deleteMineCancel': { pt: 'Cancelar', en: 'Cancel' },
+  'volunteerHoursReview.deleteMineConfirm': { pt: 'Eliminar', en: 'Delete' },
+  'volunteerHoursReview.deleteMineFailed': {
+    pt: 'Não foi possível eliminar o registo.',
+    en: 'Could not delete the entry.',
+  },
+
+  // ── Bulk hours report — a coordinator logging one activity for several volunteers at once ──
+  'bulkHours.openButton': { pt: 'Registar em lote', en: 'Bulk report' },
+  'bulkHours.dialogTitle': { pt: 'Registar horas em lote', en: 'Bulk hours report' },
+  'bulkHours.dialogSubtitle': {
+    pt: 'Regista a mesma atividade para vários voluntários de uma vez — por exemplo, uma reunião ou uma formação. As entradas ficam aprovadas de imediato.',
+    en: 'Log the same activity for several volunteers at once — a meeting or a training session, for example. The entries land approved immediately.',
+  },
+  'bulkHours.activityTypeLabel': { pt: 'Atividade', en: 'Activity' },
+  'bulkHours.dateLabel': { pt: 'Data', en: 'Date' },
+  'bulkHours.timeRangeLabel': { pt: 'Horário', en: 'Time' },
+  'bulkHours.descriptionLabel': { pt: 'Descrição', en: 'Description' },
+  'bulkHours.descriptionLabelOptional': { pt: 'Descrição (opcional)', en: 'Description (optional)' },
+  'bulkHours.descriptionPlaceholder': {
+    pt: 'Do que se tratou a atividade?',
+    en: 'What was the activity?',
+  },
+  'bulkHours.volunteersHeading': { pt: 'Voluntários', en: 'Volunteers' },
+  'bulkHours.searchLabel': { pt: 'Pesquisar voluntários', en: 'Search volunteers' },
+  'bulkHours.selectAll': { pt: 'Selecionar todos', en: 'Select all' },
+  'bulkHours.clearSelection': { pt: 'Limpar seleção', en: 'Clear selection' },
+  'bulkHours.selectedCount': { pt: '%{count} selecionados', en: '%{count} selected' },
+  'bulkHours.resetRowTime': { pt: 'Repor horário partilhado', en: 'Reset to shared time' },
+  'bulkHours.loadVolunteersFailed': {
+    pt: 'Não foi possível carregar a lista de voluntários.',
+    en: 'Could not load the volunteer list.',
+  },
+  'bulkHours.noneSelected': { pt: 'Seleciona pelo menos um voluntário.', en: 'Select at least one volunteer.' },
+  'bulkHours.cancel': { pt: 'Cancelar', en: 'Cancel' },
+  'bulkHours.submit': { pt: 'Registar', en: 'Log hours' },
+  'bulkHours.submitFailed': { pt: 'Não foi possível registar as horas.', en: 'Could not log the hours.' },
+  'bulkHours.submitSuccess': {
+    pt: '%{count} entradas registadas (%{minutes}).',
+    en: '%{count} entries logged (%{minutes}).',
+  },
+
+  'volunteerHoursStatus.PENDING': { pt: 'Por aprovar', en: 'Pending' },
+  'volunteerHoursStatus.APPROVED': { pt: 'Aprovado', en: 'Approved' },
+
+  'activityType.EMERGENCY': { pt: 'Emergência', en: 'Emergency' },
+  'activityType.LOCAL_SUPPORT': { pt: 'Apoio Local', en: 'Local Support' },
+  'activityType.CNE_SUPPORT': { pt: 'Apoio CNE', en: 'CNE Support' },
+  'activityType.MEETING': { pt: 'Reunião', en: 'Meeting' },
+  'activityType.TRAINING': { pt: 'Formação', en: 'Training' },
+  'activityType.OTHER': { pt: 'Outro', en: 'Other' },
+
+  // ── Statistics (docs/plans/estatisticas-dashboards.md) ──
+  'statistics.pageTitle': { pt: 'Estatísticas', en: 'Statistics' },
+  'statistics.scope': {
+    pt: 'Cruz Vermelha Portuguesa · Delegação de Campo',
+    en: 'Portuguese Red Cross · Campo Delegation',
+  },
+  'statistics.tabPeople': { pt: 'Pessoas & Horas', en: 'People & Hours' },
+  'statistics.tabActivity': { pt: 'Atividade', en: 'Activity' },
+  'statistics.tabFleet': { pt: 'Frota & Resposta', en: 'Fleet & Response' },
+  'statistics.tabInem': { pt: 'INEM', en: 'INEM' },
+  'statistics.periodLabel': { pt: 'Período', en: 'Period' },
+  'statistics.period.thisMonth': { pt: 'Este mês', en: 'This month' },
+  'statistics.period.last12Months': { pt: '12 meses', en: '12 months' },
+  'statistics.period.thisYear': { pt: 'Este ano', en: 'This year' },
+  'statistics.period.lastYear': { pt: 'Ano anterior', en: 'Last year' },
+  'statistics.typeLabel': { pt: 'Tipo', en: 'Type' },
+  'statistics.typeAll': { pt: 'Todos', en: 'All' },
+  'statistics.loadError': {
+    pt: 'Não foi possível carregar as estatísticas.',
+    en: 'Could not load the statistics.',
+  },
+  'statistics.tableTwinToggle': { pt: 'Ver dados em tabela', en: 'View data as a table' },
+  'statistics.monthColumn': { pt: 'Mês', en: 'Month' },
+  'statistics.noData': { pt: 'Sem dados neste período.', en: 'No data in this period.' },
+  'statistics.vsPreviousPeriod': { pt: 'vs. período anterior', en: 'vs. previous period' },
+  'statistics.showingCount': {
+    pt: 'A mostrar %{shown} de %{total}.',
+    en: 'Showing %{shown} of %{total}.',
+  },
+
+  'statistics.people.heroTitle': { pt: 'Horas de voluntariado aprovadas', en: 'Approved volunteer hours' },
+  'statistics.people.heroDescription': {
+    pt: 'de %{volunteers} voluntários ativos, em %{events} eventos. Média de %{avg} h por voluntário. Só entram horas já aprovadas.',
+    en: 'from %{volunteers} active volunteers, across %{events} events. Average of %{avg} h per volunteer. Only already-approved hours count.',
+  },
+  'statistics.people.yourHours': { pt: 'As tuas horas', en: 'Your hours' },
+  'statistics.people.yourEvents': { pt: 'Os teus eventos', en: 'Your events' },
+  'statistics.people.yourEventsDelta': {
+    pt: '%{rank}.º de %{total} · %{pct}% de todos os eventos',
+    en: '%{rank} of %{total} · %{pct}% of all events',
+  },
+  'statistics.people.yourEventsNoRank': { pt: 'sem eventos neste período', en: 'no events in this period' },
+  'statistics.people.activeVolunteers': { pt: 'Voluntários ativos', en: 'Active volunteers' },
+  'statistics.people.averagePerVolunteer': { pt: 'Média por voluntário', en: 'Average per volunteer' },
+  'statistics.people.averagePerVolunteerDelta': { pt: '≈ %{perMonth} h por mês', en: '≈ %{perMonth} h per month' },
+  'statistics.people.monthlyHoursTitle': { pt: 'Horas aprovadas por mês', en: 'Approved hours per month' },
+  'statistics.people.byActivityTypeTitle': { pt: 'Horas por tipo de atividade', en: 'Hours by activity type' },
+  'statistics.people.byActivityTypeSubtitle': { pt: '%{total} h no total', en: '%{total} h in total' },
+  'statistics.people.rosterTitle': { pt: 'Voluntários', en: 'Volunteers' },
+  'statistics.people.rosterSubtitle': {
+    pt: 'Horas aprovadas e participações em eventos · ordenado por horas · visível para toda a organização',
+    en: 'Approved hours and event participation · sorted by hours · visible to the whole organisation',
+  },
+  'statistics.people.you': { pt: 'tu', en: 'you' },
+  'statistics.people.rosterColumnVolunteer': { pt: 'Voluntário', en: 'Volunteer' },
+  'statistics.people.rosterColumnHours': { pt: 'Horas', en: 'Hours' },
+  'statistics.people.rosterColumnEvents': { pt: 'Eventos', en: 'Events' },
+  'statistics.people.rosterColumnEmergency': { pt: 'Emerg.', en: 'Emerg.' },
+  'statistics.people.rosterColumnSupport': { pt: 'Apoio', en: 'Support' },
+  'statistics.people.rosterColumnLastActivity': { pt: 'Última atividade', en: 'Last activity' },
+  'statistics.people.rosterSortName': { pt: 'Nome', en: 'Name' },
+  'statistics.people.rosterEvents': { pt: '%{count} eventos', en: '%{count} events' },
+  'statistics.people.rosterEmpty': {
+    pt: 'Sem voluntários com horas ou eventos neste período.',
+    en: 'No volunteers with hours or events in this period.',
+  },
+
+  'statistics.activity.heroTitle': { pt: 'Eventos registados', en: 'Events recorded' },
+  'statistics.activity.heroDescription': {
+    pt: '%{pct} face ao período anterior (%{prev}). %{victims} vítimas assistidas.',
+    en: '%{pct} versus the previous period (%{prev}). %{victims} victims assisted.',
+  },
+  'statistics.activity.percentOfActivity': { pt: '%{pct}% de toda a atividade', en: '%{pct}% of all activity' },
+  'statistics.activity.victimsAssisted': { pt: 'Vítimas assistidas', en: 'Victims assisted' },
+  'statistics.activity.victimsPerEmergency': { pt: '%{ratio} por emergência', en: '%{ratio} per emergency' },
+  'statistics.activity.eventsByMonthTitle': { pt: 'Eventos por mês', en: 'Events per month' },
+  'statistics.activity.heatmapTitle': { pt: 'Quando acontecem', en: 'When they happen' },
+  'statistics.activity.heatmapSubtitle': {
+    pt: 'Ativações de emergência por dia da semana e faixa horária',
+    en: 'Emergency activations by weekday and time band',
+  },
+  'statistics.activity.heatmapLess': { pt: 'menos', en: 'less' },
+  'statistics.activity.heatmapMore': { pt: 'mais', en: 'more' },
+  'statistics.activity.localityTitle': { pt: 'Eventos por localidade', en: 'Events by locality' },
+  'statistics.activity.municipalityTitle': { pt: 'Eventos por concelho', en: 'Events by municipality' },
+  'statistics.activity.byLocality': { pt: 'Freguesia', en: 'Freguesia' },
+  'statistics.activity.byMunicipality': { pt: 'Concelho', en: 'Municipality' },
+  'statistics.activity.otherLocalities': { pt: 'Outras localidades', en: 'Other localities' },
+  'statistics.activity.hospitalTitle': { pt: 'Hospital de destino', en: 'Destination hospital' },
+  'statistics.activity.hospitalSubtitle': {
+    pt: '%{count} vítimas transportadas',
+    en: '%{count} victims transported',
+  },
+  'statistics.activity.outcomeTitle': { pt: 'Desfecho das vítimas', en: 'Victim outcome' },
+  'statistics.activity.inemTitle': { pt: 'Meios INEM em apoio', en: 'INEM units in support' },
+  'statistics.activity.inemSubtitle': {
+    pt: 'Unidades que responderam connosco, por base de origem',
+    en: 'Units that responded alongside us, by base of origin',
+  },
+  'statistics.activity.inemColumnUnit': { pt: 'Meio', en: 'Unit' },
+  'statistics.activity.inemColumnBase': { pt: 'Base', en: 'Base' },
+  'statistics.activity.inemColumnCount': { pt: 'Ocorrências', en: 'Occurrences' },
+  'statistics.activity.inemFootnote': {
+    pt: 'Poucas classes e nomes longos — uma tabela lê-se melhor do que um gráfico.',
+    en: 'Few classes and long names — a table reads better than a chart.',
+  },
+
+  'statistics.fleet.heroTitle': { pt: 'Quilómetros percorridos', en: 'Kilometres covered' },
+  'statistics.fleet.heroDescription': {
+    pt: 'Média de %{mean} km por evento, em %{vehicles} viaturas. Inclui distâncias corrigidas à mão, assinaladas como tal no relatório.',
+    en: 'Average of %{mean} km per event, across %{vehicles} vehicles. Includes hand-corrected distances, flagged as such on the report.',
+  },
+  'statistics.fleet.kmPerEvent': { pt: 'Km por evento', en: 'Km per event' },
+  'statistics.fleet.medianValue': { pt: 'mediana %{value}', en: 'median %{value}' },
+  'statistics.fleet.timeToScene': { pt: 'Tempo até ao local', en: 'Time to scene' },
+  'statistics.fleet.medianAndP90': { pt: 'mediana · p90 %{p90}', en: 'median · p90 %{p90}' },
+  'statistics.fleet.totalDuration': { pt: 'Duração total', en: 'Total duration' },
+  'statistics.fleet.totalDurationDelta': {
+    pt: 'mediana, da ativação à disponibilidade',
+    en: 'median, from activation to available',
+  },
+  'statistics.fleet.timedEmergencies': { pt: 'Emergências cronometradas', en: 'Timed emergencies' },
+  'statistics.fleet.timedEmergenciesDelta': {
+    pt: '%{pct}% das %{total} emergências',
+    en: '%{pct}% of %{total} emergencies',
+  },
+  'statistics.fleet.perVehicleTitle': { pt: 'Quilómetros por viatura', en: 'Kilometres per vehicle' },
+  'statistics.fleet.perVehicleSubtitle': {
+    pt: 'Por mês · uma escala comum às viaturas',
+    en: 'Per month · one shared scale across vehicles',
+  },
+  'statistics.fleet.totalInPeriod': { pt: '%{km} km no período', en: '%{km} km in period' },
+  'statistics.fleet.legsTitle': { pt: 'Onde vai o tempo', en: 'Where the time goes' },
+  'statistics.fleet.legsSubtitle': {
+    pt: 'Mediana de cada etapa de uma emergência, em minutos',
+    en: 'Median of each stage of an emergency, in minutes',
+  },
+  'statistics.fleet.legsFootnote': {
+    pt: 'As medianas por etapa somam %{sum}′; a mediana da duração total é %{total}′ — são estatísticas diferentes e não têm de bater certo.',
+    en: 'The per-stage medians add up to %{sum}′; the median of the total duration is %{total}′ — these are different statistics and don’t have to agree.',
+  },
+  'statistics.fleet.rangesTitle': { pt: 'Mediana e p90 por etapa', en: 'Median and p90 per stage' },
+  'statistics.fleet.rangesSubtitle': {
+    pt: 'Quanto se estica uma emergência difícil',
+    en: 'How much a hard emergency stretches',
+  },
+  'statistics.fleet.rangesFootnote': {
+    pt: 'Só emergências com os dois carimbos preenchidos. Etapas em branco não entram na conta.',
+    en: 'Only emergencies with both stamps filled in. Blank stages are not counted.',
+  },
+  'statistics.fleet.median': { pt: 'Mediana', en: 'Median' },
+  'statistics.fleet.p90': { pt: 'p90', en: 'p90' },
+  'statistics.fleet.noTimedEmergencies': {
+    pt: 'Sem emergências cronometradas neste período.',
+    en: 'No timed emergencies in this period.',
+  },
+  'statistics.fleet.leg.ACTIVATION_TO_SCENE': { pt: 'Ativação → local', en: 'Activation → scene' },
+  'statistics.fleet.leg.ON_SCENE': { pt: 'No local', en: 'On scene' },
+  'statistics.fleet.leg.SCENE_TO_HOSPITAL': { pt: 'Local → hospital', en: 'Scene → hospital' },
+  'statistics.fleet.leg.HOSPITAL_TO_AVAILABLE': { pt: 'Hospital → disponível', en: 'Hospital → available' },
+
+  // Tab 4 — INEM downtime & reasons (#post-#216), sourced from
+  // `INEMUnitStatusPeriod` — the confirmed-state trail, not the desired
+  // toggle on the live status screen (`inem.*` above).
+  'statistics.inem.heroTitle': { pt: 'Tempo de indisponibilidade', en: 'Downtime' },
+  'statistics.inem.heroDescription': {
+    pt: '%{units} viaturas com indisponibilidade registada neste período.',
+    en: '%{units} vehicles with recorded downtime in this period.',
+  },
+  'statistics.inem.topReason': { pt: 'Motivo mais frequente', en: 'Most frequent reason' },
+  'statistics.inem.affectedUnits': { pt: 'Viaturas afetadas', en: 'Affected vehicles' },
+  'statistics.inem.averagePerUnit': { pt: 'Média por viatura', en: 'Average per vehicle' },
+  'statistics.inem.downtimeRate': { pt: 'Taxa de indisponibilidade', en: 'Downtime rate' },
+  'statistics.inem.downtimeRateDescription': {
+    pt: 'do tempo em que as viaturas poderiam ter estado ativas',
+    en: 'of the time these vehicles could have been active',
+  },
+  'statistics.inem.byReasonTitle': { pt: 'Motivos de indisponibilidade', en: 'Downtime reasons' },
+  'statistics.inem.byReasonSubtitle': {
+    pt: 'Tempo total indisponível, por motivo.',
+    en: 'Total downtime, by reason.',
+  },
+  'statistics.inem.perUnitTitle': { pt: 'Por viatura', en: 'By vehicle' },
+  'statistics.inem.perUnitSubtitle': {
+    pt: 'Tempo indisponível e motivo principal, por viatura.',
+    en: 'Downtime and top reason, per vehicle.',
+  },
+  'statistics.inem.vehicleColumn': { pt: 'Viatura', en: 'Vehicle' },
+  'statistics.inem.hoursColumn': { pt: 'Horas', en: 'Hours' },
+
+  'myAvailability.pageTitle': { pt: 'A minha disponibilidade', en: 'My availability' },
+  'myAvailability.heading': { pt: 'A minha disponibilidade', en: 'My availability' },
+  'myAvailability.weekendHoliday': { pt: 'Fim de semana / feriado', en: 'Weekend / holiday' },
+  'myAvailability.legendHint': {
+    pt: 'Cada dia mostra os turnos que o teu coordenador definiu para ele.',
+    en: "Each day shows the shifts your coordinator set for it.",
+  },
+  'myAvailability.windowPickerLabel': { pt: 'Janela de disponibilidade', en: 'Availability window' },
+  'myAvailability.prevMonth': { pt: 'Mês anterior', en: 'Previous month' },
+  'myAvailability.nextMonth': { pt: 'Mês seguinte', en: 'Next month' },
+  'myAvailability.noShiftsOnDay': { pt: 'Sem turnos neste dia.', en: 'No shifts on this day.' },
+  'myAvailability.markAllLabel': { pt: 'Marcar tudo disponível', en: 'Mark all available' },
+  'myAvailability.clearAllLabel': { pt: 'Limpar tudo', en: 'Clear all' },
+  'myAvailability.shiftsSummary': {
+    pt: '%{selected} de %{total} turnos marcados como disponíveis',
+    en: '%{selected} of %{total} shifts marked available',
+  },
+  'myAvailability.windowOpenChip': { pt: 'Janela aberta', en: 'Window open' },
+  'myAvailability.windowClosedChip': { pt: 'Janela fechada', en: 'Window closed' },
+  'myAvailability.noWindowHeading': {
+    pt: 'Não há nenhuma janela de disponibilidade aberta',
+    en: 'No availability window is currently open',
+  },
+  'myAvailability.noWindowBody': {
+    pt: "Um coordenador vai abrir aqui a próxima janela de disponibilidade. Verifica de novo em breve — vais poder submeter a tua disponibilidade para cada dia e turno quando ela abrir.",
+    en: "A coordinator will open the next availability window here. Check back soon — you'll be able to submit your availability for each day and shift once it opens.",
+  },
+  'myAvailability.noAvailabilityLabel': { pt: 'Não tenho disponibilidade nesta janela', en: 'I have no availability this window' },
+  'myAvailability.noAvailabilityHint': {
+    pt: "Avisa o teu coordenador que não podes fazer nenhum turno entre %{dates}, em vez de deixares todos os dias sem resposta.",
+    en: "Let your coordinator know you can't take any shifts between %{dates}, instead of leaving every day unanswered.",
+  },
+  'myAvailability.declinedHeading': {
+    pt: "Avisámos que não estás disponível nesta janela",
+    en: "You've told us you're not available this window",
+  },
+  'myAvailability.declinedBody': {
+    pt: 'O teu coordenador pode ver isto. Se isso mudar antes de a janela fechar, desmarca a caixa acima e seleciona os teus turnos disponíveis.',
+    en: 'Your coordinator can see this. If that changes before the window closes, uncheck the box above and select your available shifts.',
+  },
+  'myAvailability.canSubmitInfo': {
+    pt: 'Seleciona os turnos que consegues cobrir. Podes alterar em qualquer momento antes de a janela fechar — só os dias entre %{dates} estão abertos para submissão.',
+    en: 'Select the shifts you can cover. You can amend anytime before the window closes — only days between %{dates} are open for submission.',
+  },
+  'myAvailability.closedInfo': {
+    pt: 'Esta janela está fechada. A mostrar as tuas submissões finais para referência — não podem ser feitas mais alterações.',
+    en: 'This window is closed. Showing your final submissions for reference — no further changes can be made.',
+  },
+  'myAvailability.saveHint': {
+    pt: 'As alterações são gravadas para a janela toda de uma vez.',
+    en: 'Changes are saved for the whole window at once.',
+  },
+  'myAvailability.saveButton': { pt: 'Gravar disponibilidade', en: 'Save availability' },
+  'myAvailability.savedNotify': { pt: 'Disponibilidade gravada', en: 'Availability saved' },
+  'myAvailability.saveFailedNotify': { pt: 'Não foi possível gravar a tua disponibilidade', en: 'Could not save your availability' },
+  'myAvailability.declinedNotify': {
+    pt: 'O teu coordenador foi informado de que não estás disponível nesta janela',
+    en: 'Your coordinator has been told you are not available this window',
+  },
+  'myAvailability.undeclinedNotify': { pt: 'Podes voltar a selecionar os teus turnos', en: 'You can select your shifts again' },
+  'myAvailability.declineFailedNotify': { pt: 'Não foi possível atualizar a tua resposta', en: 'Could not update your response' },
+  'myAvailability.loadFailedNotify': { pt: 'Não foi possível carregar a tua disponibilidade.', en: 'Could not load your availability.' },
+
+  // ── Login page (#180 phase 3) ──
+  'login.orSignInWith': { pt: 'ou entrar com', en: 'or sign in with' },
+  'login.signInWithGoogle': { pt: 'Entrar com Google', en: 'Sign in with Google' },
+  'login.signInWithMicrosoft': { pt: 'Entrar com Microsoft', en: 'Sign in with Microsoft' },
+  'login.keepMeSignedIn': { pt: 'Manter sessão iniciada', en: 'Keep me signed in' },
+  'login.keepMeSignedInHint': {
+    pt: 'Recomendado apenas em dispositivos pessoais — desmarca num computador partilhado.',
+    en: 'Recommended only on personal devices — leave unchecked on a shared computer.',
+  },
+  'login.orgName': {
+    pt: 'Cruz Vermelha Portuguesa — Delegação de Campo',
+    en: 'Portuguese Red Cross — Field Delegation',
+  },
+  'login.oauthAccountNotFound': {
+    pt: 'Não existe conta para esta conta Google/Microsoft. Pede a um administrador para a criar.',
+    en: "There's no account for that Google/Microsoft sign-in. Ask an administrator to create one.",
+  },
+  'login.oauthFailed': {
+    pt: 'A entrada falhou — se voltaste à aplicação depois de a colocar em segundo plano, tenta novamente.',
+    en: 'Sign-in failed — if you switched away from the app partway through, try again.',
+  },
+  'login.localLoginDisabled': {
+    pt: 'A entrada com palavra-passe está desativada — usa o Google ou o Microsoft.',
+    en: 'Password sign-in is disabled — use Google or Microsoft instead.',
+  },
+
+  // ── Dashboard (#180 phase 3) ──
+  'dashboard.welcomeTitle': { pt: 'Bem-vindo ao CVP Portal', en: 'Welcome to CVP Portal' },
+  'dashboard.welcomeSubtitle': {
+    pt: 'Sistema de informação da Cruz Vermelha Portuguesa – Delegação de Campo.',
+    en: 'Information system for the Portuguese Red Cross – Field Delegation.',
+  },
+  'dashboard.warningPrefix': {
+    pt: 'As viaturas com seguro ou inspeção IMT a vencer nos próximos',
+    en: 'Vehicles with insurance or IMT inspection dates within',
+  },
+  'dashboard.daysUnit': { pt: 'dias', en: 'days' },
+  'dashboard.warningSuffix': {
+    pt: 'aparecem assinaladas acima.',
+    en: 'are flagged above.',
+  },
+  'dashboard.lowStockTitle': { pt: 'Viaturas com stock baixo (%{count})', en: 'Low Stock Vehicles (%{count})' },
+  'dashboard.moreItems': { pt: '+%{count} mais', en: '+%{count} more' },
+  'dashboard.certificationsTitle': { pt: 'Certificações do pessoal', en: 'Personnel Certifications' },
+  'dashboard.certExpiredCount': {
+    pt: '%{smart_count} expirada |||| %{smart_count} expiradas',
+    en: '%{smart_count} expired',
+  },
+  'dashboard.certExpiringCount': {
+    pt: '%{smart_count} a expirar nos próximos 6 meses',
+    en: '%{smart_count} expiring within 6 months',
+  },
+  'dashboard.renewalsTitle': {
+    pt: 'Renovações e inspeções a aproximar-se (%{count})',
+    en: 'Upcoming Renewals & Inspections (%{count})',
+  },
+  'dashboard.insuranceLabel': { pt: 'Seguro', en: 'Insurance' },
+  'dashboard.upcomingShiftsTitle': { pt: 'Os teus próximos turnos', en: 'Your upcoming shifts' },
+  'dashboard.todayScheduleTitle': { pt: 'Escala de hoje', en: "Today's schedule" },
+  'dashboard.todayNoShift': {
+    pt: 'Não há nenhum turno hoje.',
+    en: 'There is no shift today.',
+  },
+  'dashboard.todayYou': { pt: 'Tu', en: 'You' },
+  'dashboard.birthdaysTitle': {
+    pt: '%{smart_count} aniversário hoje |||| %{smart_count} aniversários hoje',
+    en: '%{smart_count} birthday today |||| %{smart_count} birthdays today',
+  },
+  'dashboard.birthdayWish': {
+    pt: 'Muitos parabéns!',
+    en: 'Many happy returns!',
+  },
+
+  // ── Live Runs page (#180 phase 3) — the drawer's own key, reused here ──
+  'liveRunsPage.noRunsRightNow': {
+    pt: 'Não há nenhuma emergência em curso.',
+    en: 'No emergency is being run right now.',
+  },
+
+  // ── Facilities (#180 phase 3, split into emergency/transport destinations #220) ──
+  'resources.facilities.fields.name': { pt: 'Nome', en: 'Name' },
+  'resources.facilities.fields.municipalityId': { pt: 'Concelho', en: 'Municipality' },
+  'resources.facilities.fields.isActive': { pt: 'Estado', en: 'Status' },
+  'resources.facilities.fields.isEmergencyDestination': {
+    pt: 'Destino de emergência',
+    en: 'Emergency destination',
+  },
+  'resources.facilities.fields.isTransportDestination': {
+    pt: 'Destino de transporte',
+    en: 'Transport destination',
+  },
+  'facilityList.addFacility': { pt: 'Adicionar unidade', en: 'Add facility' },
+  'facilityList.colMunicipality': { pt: 'Concelho', en: 'Municipality' },
+  'facilityList.colDistrict': { pt: 'Distrito', en: 'District' },
+  'facilityList.colCoordinates': { pt: 'Coordenadas', en: 'Coordinates' },
+  'facilityList.municipalityCentreFallback': { pt: 'centro do concelho', en: 'municipality centre' },
+  'facilityList.active': { pt: 'Ativo', en: 'Active' },
+  'facilityList.retired': { pt: 'Retirado', en: 'Retired' },
+  'facilityList.retiredHiddenFromNewReports': {
+    pt: 'Retirado — oculto em novos relatórios',
+    en: 'Retired — hidden from new reports',
+  },
+  'facilityList.helpText': {
+    pt: 'Esta lista alimenta duas listas independentes: os destinos de emergência (para onde uma vítima é transportada) e os destinos de transporte. Uma unidade pode ser as duas coisas, uma delas, ou nenhuma até ser assinalada — mas tem de ter pelo menos uma assinalada para poder ser guardada. As coordenadas ordenam os destinos de emergência por distância à localidade do relatório — uma unidade sem coordenadas usa como aproximação o centro do seu concelho. Um destino de transporte tem sempre de ter coordenadas próprias, porque um transporte agendado precisa da porta certa, não do centro do concelho. Retirar uma unidade remove-a das novas listas sem alterar os relatórios já entregues.',
+    en: 'This list feeds two independent lists: emergency destinations (where a ' +
+      'victim is taken) and transport destinations. A facility can be either, both, ' +
+      'or neither until flagged — but it needs at least one flag to be saved. ' +
+      'Coordinates order emergency destinations by distance from the report\'s ' +
+      'locality — a facility without them falls back to the centre of its ' +
+      'municipality. A transport destination always needs its own coordinates: a ' +
+      'scheduled transport needs the actual door, not the municipality centre. ' +
+      'Retiring a facility removes it from new lists without changing reports ' +
+      'already filed.',
+  },
+  'facilityList.nameField': { pt: 'Nome', en: 'Name' },
+  'facilityList.addressLine': { pt: 'Morada (opcional)', en: 'Address (optional)' },
+  'facilityList.postalCode': { pt: 'Código postal (opcional)', en: 'Postal code (optional)' },
+  'facilityList.latitude': { pt: 'Latitude (opcional)', en: 'Latitude (optional)' },
+  'facilityList.longitude': { pt: 'Longitude (opcional)', en: 'Longitude (optional)' },
+  'facilityList.isEmergencyDestination': {
+    pt: 'Destino de emergência (para onde uma vítima pode ser transportada)',
+    en: 'Emergency destination (where a victim may be taken)',
+  },
+  'facilityList.isTransportDestination': {
+    pt: 'Destino de transporte (precisa de coordenadas próprias)',
+    en: 'Transport destination (needs its own coordinates)',
+  },
+  'facilityList.arrivalWindowOverridesHeading': {
+    pt: 'Janela de chegada (#233)',
+    en: 'Arrival window (#233)',
+  },
+  'facilityList.arrivalWindowOverridesHelp': {
+    pt: 'Substitui, campo a campo, os limiares definidos para toda a delegação. Deixar um campo em branco significa herdar o valor por omissão.',
+    en: 'Overrides the delegation-wide thresholds, field by field. Leaving a field blank means inheriting the default.',
+  },
+  'facilityList.arrivalWindowEarliestMinutesOverride': {
+    pt: 'Não chegar mais de X minutos antes (opcional)',
+    en: 'Do not arrive more than X minutes early (optional)',
+  },
+  'facilityList.arrivalWindowLatestMinutesOverride': {
+    pt: 'Não chegar depois de X minutos antes (opcional)',
+    en: 'Do not arrive later than X minutes before (optional)',
+  },
+  'facilityList.arrivalToleranceMinutesOverride': {
+    pt: 'Tolerância de atraso (opcional)',
+    en: 'Late-arrival tolerance (optional)',
+  },
+
+  // ── Patients (#219, #226) — non-urgent transport ──
+  'resources.patients.fields.mobility': { pt: 'Mobilidade', en: 'Mobility' },
+  'resources.patients.fields.needsOxygen': { pt: 'Necessita de oxigénio', en: 'Needs oxygen' },
+  'resources.patients.fields.escortRequired': { pt: 'Necessita de acompanhante', en: 'Escort required' },
+  'resources.patients.fields.isBariatric': { pt: 'Doente bariátrico', en: 'Bariatric' },
+  'resources.patients.fields.defaultLatitude': { pt: 'Latitude (opcional)', en: 'Latitude (optional)' },
+  'resources.patients.fields.defaultLongitude': { pt: 'Longitude (opcional)', en: 'Longitude (optional)' },
+  'resources.patients.fields.localityId': { pt: 'Localidade', en: 'Locality' },
+  'resources.patients.fields.referenceContactIsOrganisation': {
+    pt: 'O contacto de referência é uma instituição',
+    en: 'The reference contact is an institution',
+  },
+  'resources.patients.fields.contactAuthorisationRecorded': {
+    pt: 'O doente autorizou contactar esta pessoa',
+    en: 'The patient authorised naming this contact',
+  },
+  'resources.patients.fields.contactAuthorisationNote': {
+    pt: 'Nota sobre a autorização (opcional)',
+    en: 'Authorisation note (optional)',
+  },
+  'resources.patients.fields.isActive': { pt: 'Estado', en: 'Status' },
+
+  'patientMobility.AMBULATORY': { pt: 'Deambulante', en: 'Ambulatory' },
+  'patientMobility.WHEELCHAIR': { pt: 'Cadeira de rodas', en: 'Wheelchair' },
+  'patientMobility.STRETCHER': { pt: 'Maca', en: 'Stretcher' },
+
+  'patientList.addPatient': { pt: 'Adicionar doente', en: 'Add patient' },
+  'patientList.active': { pt: 'Ativo', en: 'Active' },
+  'patientList.retired': { pt: 'Inativo', en: 'Inactive' },
+  'patientList.colLocality': { pt: 'Localidade', en: 'Locality' },
+  'patientList.colMobility': { pt: 'Mobilidade', en: 'Mobility' },
+  'patientList.colName': { pt: 'Nome', en: 'Name' },
+  'patientList.identityRestricted': {
+    pt: 'A tua função não permite ver a identidade dos doentes.',
+    en: 'Your role does not permit viewing patient identity.',
+  },
+  'patientList.identityUnavailable': {
+    pt: 'A identidade está selada mas nenhuma chave configurada a consegue abrir.',
+    en: 'Identity is sealed but no configured key can open it.',
+  },
+  'patientList.identityPurged': {
+    pt: 'A identidade deste doente foi destruída em %{date}.',
+    en: 'This patient’s identity was destroyed on %{date}.',
+  },
+  'patientList.noIdentityYet': {
+    pt: 'Ainda não foi registada identidade para este doente.',
+    en: 'No identity has been recorded for this patient yet.',
+  },
+  'patientList.helpText': {
+    pt: 'O perfil de mobilidade, as coordenadas e a localidade ficam sempre visíveis — o planeamento de viagens precisa deles. O nome, telefone, morada e contacto de referência ficam selados e só aparecem para quem tem permissão para ver a identidade do doente.',
+    en: 'The mobility profile, coordinates and locality always stay visible — ' +
+      'trip planning needs them. Name, telephone, address and the reference ' +
+      'contact stay sealed and only appear for someone permitted to view ' +
+      'patient identity.',
+  },
+  'patientForm.sectionProfile': { pt: 'Perfil de transporte', en: 'Transport profile' },
+  'patientForm.sectionIdentity': { pt: 'Identidade', en: 'Identity' },
+  'patientForm.fullName': { pt: 'Nome completo', en: 'Full name' },
+  'patientForm.telephone': { pt: 'Telefone', en: 'Telephone' },
+  'patientForm.homeAddressLine': { pt: 'Morada (rua e número)', en: 'Address (street and number)' },
+  'patientForm.homePostalCode': { pt: 'Código postal', en: 'Postal code' },
+  'patientForm.homeLocality': { pt: 'Localidade (texto livre)', en: 'Locality (free text)' },
+  'patientForm.referenceContactName': { pt: 'Nome do contacto de referência', en: 'Reference contact name' },
+  'patientForm.referenceContactRelationship': {
+    pt: 'Relação com o doente',
+    en: 'Relationship to the patient',
+  },
+  'patientForm.referenceContactTelephone': {
+    pt: 'Telefone do contacto de referência',
+    en: 'Reference contact telephone',
+  },
+  'patientForm.pickLocality': { pt: 'Escolher localidade', en: 'Choose locality' },
+  'patientForm.noLocalityChosen': { pt: 'Nenhuma localidade escolhida', en: 'No locality chosen' },
+
+  // ── Organisations & agreements (#227) — requester and payer as roles on
+  // one model; an agreement is the terms a transport falls under ──
+  'resources.organisations.fields.name': { pt: 'Nome', en: 'Name' },
+  'resources.organisations.fields.taxId': { pt: 'NIF (opcional)', en: 'Tax ID (optional)' },
+  'resources.organisations.fields.contactEmail': { pt: 'E-mail de contacto (opcional)', en: 'Contact email (optional)' },
+  'resources.organisations.fields.contactPhone': { pt: 'Telefone de contacto (opcional)', en: 'Contact phone (optional)' },
+  'resources.organisations.fields.isRequester': { pt: 'Requisitante', en: 'Requester' },
+  'resources.organisations.fields.isPayer': { pt: 'Pagador', en: 'Payer' },
+  'resources.organisations.fields.notes': { pt: 'Notas (opcional)', en: 'Notes (optional)' },
+  'resources.organisations.fields.isActive': { pt: 'Estado', en: 'Status' },
+  'resources.organisations.fields.references': { pt: 'Códigos de referência', en: 'Reference codes' },
+  'resources.organisations.fields.references.code': { pt: 'Código', en: 'Code' },
+  'resources.organisations.fields.references.description': { pt: 'Descrição (opcional)', en: 'Description (optional)' },
+
+  'organisationList.addOrganisation': { pt: 'Adicionar organização', en: 'Add organisation' },
+  'organisationList.active': { pt: 'Ativo', en: 'Active' },
+  'organisationList.retired': { pt: 'Retirado', en: 'Retired' },
+  'organisationList.helpText': {
+    pt: 'Uma organização pode requisitar transportes, pagá-los, ou ambos — o mesmo pedido de transporte pode nomear organizações diferentes em cada papel.',
+    en: 'An organisation can request transports, pay for them, or both — the same transport request can name different organisations in each role.',
+  },
+
+  'agreementList.addAgreement': { pt: 'Adicionar acordo', en: 'Add agreement' },
+  'agreementList.active': { pt: 'Ativo', en: 'Active' },
+  'agreementList.retired': { pt: 'Retirado', en: 'Retired' },
+  'agreementList.helpText': {
+    pt: 'As condições em que um transporte se enquadra — o acordo com o SNS, o de uma seguradora, um arranjo privado — associadas à organização que paga. Sem valores de tarifário: a faturação é gerida fora do redinfo.',
+    en: 'The terms a transport falls under — the national health service agreement, an insurer’s, a private arrangement — scoped to the organisation paying. No tariff values: billing stays outside redinfo.',
+  },
+  'resources.agreements.fields.payerOrganisationId': { pt: 'Organização pagadora', en: 'Paying organisation' },
+  'resources.agreements.fields.name': { pt: 'Nome', en: 'Name' },
+  'resources.agreements.fields.externalReference': { pt: 'Referência externa (opcional)', en: 'External reference (optional)' },
+  'resources.agreements.fields.validFrom': { pt: 'Início da validade', en: 'Valid from' },
+  'resources.agreements.fields.validTo': { pt: 'Fim da validade (opcional)', en: 'Valid to (optional)' },
+  'resources.agreements.fields.notes': { pt: 'Notas (opcional)', en: 'Notes (optional)' },
+  'resources.agreements.fields.isActive': { pt: 'Estado', en: 'Status' },
+
+  // ── Transport requests (#228) — referral intake, field order mirroring the
+  // source document's own layout rather than an idealised one ──
+  'resources.transport-requests.fields.batchReference': { pt: 'Nº do e-mail', en: 'Email No.' },
+  'resources.transport-requests.fields.communicatedAt': { pt: 'Data Comunicação', en: 'Communicated at' },
+  'resources.transport-requests.fields.requesterAccountCode': { pt: 'Cliente', en: 'Account code' },
+  'resources.transport-requests.fields.responseDueAt': { pt: 'Prazo de resposta', en: 'Response due' },
+  'resources.transport-requests.fields.externalServiceNumber': {
+    pt: 'Referência do requisitante',
+    en: "Requester's reference",
+  },
+  'resources.transport-requests.fields.appointmentAt': { pt: 'Data', en: 'Appointment at' },
+  'resources.transport-requests.fields.requestingOrganisationId': {
+    pt: 'Organização requisitante',
+    en: 'Requesting organisation',
+  },
+  'resources.transport-requests.fields.payingOrganisationId': {
+    pt: 'Organização pagadora',
+    en: 'Paying organisation',
+  },
+  'resources.transport-requests.fields.agreementId': { pt: 'Acordo (opcional)', en: 'Agreement (optional)' },
+  'resources.transport-requests.fields.patientId': { pt: 'Doente', en: 'Patient' },
+  'resources.transport-requests.fields.occurrenceType': { pt: 'Ocorrência', en: 'Occurrence' },
+  'resources.transport-requests.fields.requestedVehicleType': { pt: 'Transporte', en: 'Requested vehicle' },
+  'resources.transport-requests.fields.escortTravels': { pt: 'Acompanhante', en: 'Escort travels' },
+  'resources.transport-requests.fields.isRoundTrip': { pt: 'Ida-Volta', en: 'Round trip' },
+  'resources.transport-requests.fields.originAddress': { pt: 'Morada de recolha', en: 'Pickup address' },
+  'resources.transport-requests.fields.destinationFacilityId': { pt: 'Destino', en: 'Destination' },
+  'resources.transport-requests.fields.freeTextMessage': { pt: 'Msg', en: 'Message' },
+  'resources.transport-requests.fields.coordColumnValue': { pt: 'Coord', en: 'Coord' },
+  'resources.transport-requests.fields.decision': { pt: 'Decisão', en: 'Decision' },
+  'resources.transport-requests.fields.rejectionReason': { pt: 'Motivo da rejeição', en: 'Rejection reason' },
+  'resources.transport-requests.fields.minutesUntilResponseDue': {
+    pt: 'Tempo restante',
+    en: 'Time remaining',
+  },
+
+  'transportRequestOccurrenceType.CONSULTA': { pt: 'Consulta', en: 'Consultation' },
+  'transportRequestOccurrenceType.TRATAMENTO': { pt: 'Tratamento', en: 'Treatment' },
+  'transportRequestOccurrenceType.ALTA': { pt: 'Alta', en: 'Discharge' },
+  'transportRequestOccurrenceType.EXAME': { pt: 'Exame', en: 'Examination' },
+  'transportRequestOccurrenceType.OUTRO': { pt: 'Outro', en: 'Other' },
+
+  'transportRequestVehicleType.AMBULANCIA': { pt: 'Ambulância', en: 'Ambulance' },
+  'transportRequestVehicleType.TRANSPORTE': { pt: 'Transporte', en: 'Transport vehicle' },
+  'transportRequestVehicleType.OUTRO': { pt: 'Outro', en: 'Other' },
+
+  'transportRequestDecision.PENDING': { pt: 'Pendente', en: 'Pending' },
+  'transportRequestDecision.ACCEPTED': { pt: 'Aceite', en: 'Accepted' },
+  'transportRequestDecision.REJECTED': { pt: 'Rejeitado', en: 'Rejected' },
+
+  'transportRequestForm.sectionEnvelope': { pt: 'Comunicação', en: 'Communication' },
+  'transportRequestForm.sectionService': { pt: 'Transporte', en: 'Transport' },
+  'transportRequestForm.sectionOrigin': { pt: 'Origem', en: 'Origin' },
+  'transportRequestForm.sectionDestination': { pt: 'Destino', en: 'Destination' },
+  'transportRequestForm.helpText': {
+    pt: 'Os campos e a ordem seguem o próprio pedido — mais fácil copiar sem enganos.',
+    en: "Fields and their order follow the referral's own layout — fewer copying mistakes.",
+  },
+  'transportRequestForm.destinationExisting': { pt: 'Destino já registado', en: 'Existing destination' },
+  'transportRequestForm.destinationNew': { pt: 'Novo destino', en: 'New destination' },
+  'transportRequestForm.addNewDestination': {
+    pt: 'Não está na lista? Adicionar novo destino',
+    en: "Not in the list? Add a new destination",
+  },
+  'transportRequestForm.useExistingDestination': {
+    pt: 'Usar um destino já registado',
+    en: 'Use an existing destination instead',
+  },
+  'transportRequestForm.destinationName': { pt: 'Nome do destino', en: 'Destination name' },
+  'transportRequestForm.destinationMunicipality': { pt: 'Concelho', en: 'Municipality' },
+  'transportRequestForm.destinationAddress': { pt: 'Morada (opcional)', en: 'Address (optional)' },
+  'transportRequestForm.destinationPostalCode': { pt: 'Código postal (opcional)', en: 'Postal code (optional)' },
+  'transportRequestForm.noDestinationChosen': { pt: 'Nenhum destino escolhido', en: 'No destination chosen' },
+  'transportRequestForm.chooseDestination': { pt: 'Escolher destino', en: 'Choose destination' },
+
+  'transportRequestList.addRequest': { pt: 'Adicionar pedido', en: 'Add referral' },
+  'transportRequestList.helpText': {
+    pt: 'Um pedido de transporte, tal como chega no próprio pedido — o requisitante e o pagador podem ser organizações diferentes.',
+    en: 'A transport referral, entered as it actually arrives — the requester and the payer can be different organisations.',
+  },
+  'transportRequestList.overdue': { pt: 'Atrasado', en: 'Overdue' },
+  'transportRequestList.minutesRemaining': { pt: '%{minutes} min restantes', en: '%{minutes} min left' },
+  'transportRequestList.overdueByMinutes': { pt: 'Atrasado %{minutes} min', en: 'Overdue by %{minutes} min' },
+
+  // ── Referral decision page (#229) — accept/reject against the roster and
+  // free vehicles, and the "registado na plataforma externa" follow-up ──
+  'transportReferrals.pageTitle': { pt: 'Decidir pedidos', en: 'Decide referrals' },
+  'transportReferrals.queueTitle': { pt: 'Por decidir', en: 'Awaiting decision' },
+  'transportReferrals.queueEmpty': { pt: 'Sem pedidos por decidir.', en: 'No referrals awaiting decision.' },
+  'transportReferrals.undispatchedTitle': {
+    pt: 'Aceites, por registar na plataforma externa',
+    en: 'Accepted, not yet registered externally',
+  },
+  'transportReferrals.undispatchedEmpty': {
+    pt: 'Tudo registado na plataforma externa.',
+    en: 'Everything is registered externally.',
+  },
+  'transportReferrals.undispatchedHelp': {
+    pt: 'Aceite aqui, mas ninguém confirmou ainda ter clicado em Aceitar na plataforma do requisitante — sem isso, o transporte pode não aparecer do lado deles.',
+    en: "Accepted here, but nobody has confirmed clicking Accept on the requester's own platform yet — without that, the transport may not show up on their end.",
+  },
+  'transportReferrals.selectPrompt': {
+    pt: 'Escolha um pedido na lista para ver os detalhes e decidir.',
+    en: 'Choose a referral from the list to see its details and decide.',
+  },
+  'transportReferrals.loadFailed': { pt: 'Não foi possível carregar os pedidos.', en: 'Could not load the referrals.' },
+  'transportReferrals.feasibilityFailed': {
+    pt: 'Não foi possível carregar a disponibilidade.',
+    en: 'Could not load availability.',
+  },
+  'transportReferrals.feasibilityTitle': { pt: 'Disponibilidade a %{date}', en: 'Availability on %{date}' },
+  'transportReferrals.rosterTitle': { pt: 'Escala', en: 'Roster' },
+  'transportReferrals.rosterEmpty': { pt: 'Ninguém escalado nesse dia.', en: 'Nobody rostered that day.' },
+  'transportReferrals.absencesTitle': { pt: 'Ausências', en: 'Absences' },
+  'transportReferrals.absencesEmpty': { pt: 'Sem ausências registadas nesse dia.', en: 'No absences on file for that day.' },
+  'transportReferrals.committedVehiclesTitle': { pt: 'Viaturas já comprometidas', en: 'Vehicles already committed' },
+  'transportReferrals.committedVehiclesEmpty': { pt: 'Nenhuma viatura comprometida.', en: 'No vehicle committed.' },
+  'transportReferrals.freeVehiclesTitle': { pt: 'Viaturas livres', en: 'Free vehicles' },
+  'transportReferrals.requestedTypeAvailable': {
+    pt: 'O tipo de viatura pedido tem disponibilidade.',
+    en: 'The requested vehicle type has availability.',
+  },
+  'transportReferrals.requestedTypeUnavailable': {
+    pt: 'Sem viaturas livres do tipo pedido.',
+    en: 'No free vehicles of the requested type.',
+  },
+  'transportReferrals.requestedTypeUnknown': {
+    pt: '"Outro" não corresponde a um tipo de viatura da frota — avalie à vista.',
+    en: '"Other" has no fleet counterpart — judge this one by eye.',
+  },
+  'transportReferrals.acceptButton': { pt: 'Aceitar', en: 'Accept' },
+  'transportReferrals.rejectButton': { pt: 'Rejeitar', en: 'Reject' },
+  'transportReferrals.rejectDialogTitle': { pt: 'Rejeitar pedido', en: 'Reject referral' },
+  'transportReferrals.rejectReasonLabel': { pt: 'Motivo', en: 'Reason' },
+  'transportReferrals.rejectConfirm': { pt: 'Confirmar rejeição', en: 'Confirm rejection' },
+  'transportReferrals.cancel': { pt: 'Cancelar', en: 'Cancel' },
+  'transportReferrals.acceptFailed': { pt: 'Não foi possível aceitar o pedido.', en: 'Could not accept the referral.' },
+  'transportReferrals.rejectFailed': { pt: 'Não foi possível rejeitar o pedido.', en: 'Could not reject the referral.' },
+  'transportReferrals.accepted': { pt: 'Pedido aceite.', en: 'Referral accepted.' },
+  'transportReferrals.rejected': { pt: 'Pedido rejeitado.', en: 'Referral rejected.' },
+  'transportReferrals.registerExternalButton': {
+    pt: 'Marcar registado na plataforma externa',
+    en: 'Mark registered on external platform',
+  },
+  'transportReferrals.registerExternalFailed': {
+    pt: 'Não foi possível marcar o registo externo.',
+    en: 'Could not mark the external registration.',
+  },
+  'transportReferrals.registeredExternally': {
+    pt: 'Registo externo confirmado.',
+    en: 'External registration confirmed.',
+  },
+  'transportReferrals.decidedBy': { pt: 'Decidido por %{name} a %{date}', en: 'Decided by %{name} on %{date}' },
+  'transportReferrals.rejectionReasonLabel': { pt: 'Motivo da rejeição', en: 'Rejection reason' },
+  'transportReferrals.externallyRegisteredAt': {
+    pt: 'Registado na plataforma externa a %{date}',
+    en: 'Registered on the external platform on %{date}',
+  },
+
+  // ── Treatment plans & transport legs (#230) — the request detail's own
+  // panels: a recurring series editor, and the leg list it (and one-off
+  // generation) feeds. Neither ever edits the other. ──
+  'treatmentPlan.heading': { pt: 'Plano de tratamento', en: 'Treatment plan' },
+  'treatmentPlan.hint': {
+    pt: 'Uma série recorrente (p. ex. diálise três vezes por semana). Criar ou alterar gera de imediato as viagens correspondentes.',
+    en: 'A recurring series (e.g. dialysis three times a week). Creating or changing one immediately generates the matching legs.',
+  },
+  'treatmentPlan.add': { pt: 'Adicionar plano', en: 'Add plan' },
+  'treatmentPlan.none': { pt: 'Sem plano de tratamento — pedido pontual.', en: 'No treatment plan — a one-off referral.' },
+  'treatmentPlan.destinationFacilityLabel': { pt: 'Local de tratamento', en: 'Treatment facility' },
+  'treatmentPlan.daysOfWeekLabel': { pt: 'Dias da semana', en: 'Days of the week' },
+  'treatmentPlan.treatmentStartTimeLabel': { pt: 'Hora de início', en: 'Start time' },
+  'treatmentPlan.treatmentEndTimeLabel': { pt: 'Hora de fim (opcional)', en: 'End time (optional)' },
+  'treatmentPlan.validFromLabel': { pt: 'Válido desde', en: 'Valid from' },
+  'treatmentPlan.validToLabel': { pt: 'Válido até', en: 'Valid to' },
+  'treatmentPlan.notesLabel': { pt: 'Notas (opcional)', en: 'Notes (optional)' },
+  'treatmentPlan.save': { pt: 'Gravar', en: 'Save' },
+  'treatmentPlan.saved': { pt: 'Plano gravado.', en: 'Plan saved.' },
+  'treatmentPlan.saveFailed': { pt: 'Não foi possível gravar o plano.', en: 'Could not save the plan.' },
+  'treatmentPlan.loadFailed': { pt: 'Não foi possível carregar os planos.', en: 'Could not load the plans.' },
+
+  'transportLeg.heading': { pt: 'Viagens', en: 'Legs' },
+  'transportLeg.none': { pt: 'Sem viagens geradas.', en: 'No legs generated yet.' },
+  'transportLeg.loadFailed': { pt: 'Não foi possível carregar as viagens.', en: 'Could not load the legs.' },
+  'transportLeg.generateOneOffButton': { pt: 'Gerar viagem pontual', en: 'Generate one-off leg' },
+  'transportLeg.generated': { pt: 'Viagens geradas.', en: 'Legs generated.' },
+  'transportLeg.alreadyGenerated': { pt: 'Já existiam viagens para este pedido.', en: 'Legs already existed for this referral.' },
+  'transportLeg.generateFailed': { pt: 'Não foi possível gerar as viagens.', en: 'Could not generate the legs.' },
+  'transportLeg.direction.OUTBOUND': { pt: 'Ida', en: 'Outbound' },
+  'transportLeg.direction.RETURN': { pt: 'Volta', en: 'Return' },
+  'transportLeg.status.PLANNED': { pt: 'Planeada', en: 'Planned' },
+  'transportLeg.status.ASSIGNED': { pt: 'Atribuída', en: 'Assigned' },
+  'transportLeg.status.COMPLETED': { pt: 'Concluída', en: 'Completed' },
+  'transportLeg.status.CANCELLED': { pt: 'Cancelada', en: 'Cancelled' },
+  'transportLeg.status.NO_SHOW': { pt: 'Faltou', en: 'No-show' },
+  'transportLeg.dateLabel': { pt: 'Data', en: 'Date' },
+  'transportLeg.originLabel': { pt: 'Origem', en: 'Origin' },
+  'transportLeg.destinationLabel': { pt: 'Destino', en: 'Destination' },
+  'transportLeg.addressLabel': { pt: 'Morada (opcional)', en: 'Address (optional)' },
+  'transportLeg.facilityLabel': { pt: 'Instalação (opcional)', en: 'Facility (optional)' },
+  'transportLeg.plannedPickupAtLabel': { pt: 'Recolha planeada', en: 'Planned pickup' },
+  'transportLeg.plannedDropoffAtLabel': { pt: 'Entrega planeada', en: 'Planned drop-off' },
+  'transportLeg.save': { pt: 'Gravar', en: 'Save' },
+  'transportLeg.saved': { pt: 'Viagem gravada.', en: 'Leg saved.' },
+  'transportLeg.saveFailed': { pt: 'Não foi possível gravar a viagem.', en: 'Could not save the leg.' },
+  'transportLeg.cancelButton': { pt: 'Cancelar viagem', en: 'Cancel leg' },
+  'transportLeg.cancellationSourceLabel': { pt: 'Causado por', en: 'Caused by' },
+  'transportLeg.cancellationReasonLabel': { pt: 'Motivo', en: 'Reason' },
+  'transportLeg.cancellationSource.PATIENT': { pt: 'Doente', en: 'Patient' },
+  'transportLeg.cancellationSource.FACILITY': { pt: 'Instalação', en: 'Facility' },
+  'transportLeg.cancellationSource.DELEGATION': { pt: 'Delegação', en: 'Delegation' },
+  'transportLeg.confirmCancel': { pt: 'Confirmar cancelamento', en: 'Confirm cancellation' },
+  'transportLeg.cancelled': { pt: 'Viagem cancelada.', en: 'Leg cancelled.' },
+  'transportLeg.cancelFailed': { pt: 'Não foi possível cancelar a viagem.', en: 'Could not cancel the leg.' },
+  'transportLeg.noShowButton': { pt: 'Marcar falta', en: 'Mark no-show' },
+  'transportLeg.noShowConfirm': {
+    pt: 'Marcar esta viagem como falta do doente?',
+    en: "Mark this leg as the patient's no-show?",
+  },
+  'transportLeg.markedNoShow': { pt: 'Viagem marcada como falta.', en: 'Leg marked as a no-show.' },
+  'transportLeg.noShowFailed': { pt: 'Não foi possível marcar a falta.', en: 'Could not mark the no-show.' },
+
+  // ── Transport planning board (#235) — timeline lanes, drag assignment,
+  // dwell and empty running. See TransportPlanningPage.tsx. ──
+  'transportPlanning.pageTitle': { pt: 'Planeamento de transportes', en: 'Transport planning' },
+  'transportPlanning.dateLabel': { pt: 'Data', en: 'Date' },
+  'transportPlanning.loadFailed': { pt: 'Não foi possível carregar o plano do dia.', en: "Could not load the day's plan." },
+  'transportPlanning.railTitle': { pt: 'Por atribuir', en: 'Unassigned' },
+  'transportPlanning.railEmpty': { pt: 'Nada por atribuir neste dia.', en: 'Nothing unassigned on this day.' },
+  'transportPlanning.assignButton': { pt: 'Atribuir', en: 'Assign' },
+  'transportPlanning.reassignButton': { pt: 'Reatribuir', en: 'Reassign' },
+  'transportPlanning.addVehicleButton': { pt: 'Adicionar viatura', en: 'Add vehicle' },
+  'transportPlanning.noLanes': {
+    pt: 'Sem viaturas neste dia — adicione uma para começar a planear.',
+    en: 'No vehicles on this day yet — add one to start planning.',
+  },
+  'transportPlanning.emptyLegLabel': { pt: 'Percurso vazio', en: 'Empty running' },
+  'transportPlanning.dwellLabel': { pt: 'Espera', en: 'Waiting' },
+  'transportPlanning.releaseLabel': { pt: 'Libertada', en: 'Released' },
+  'transportPlanning.issuesTitle': { pt: 'Avisos', en: 'Warnings' },
+  'transportPlanning.issuesEmpty': { pt: 'Sem avisos.', en: 'No warnings.' },
+  'transportPlanning.occupancyLegend.MAINTENANCE': { pt: 'Manutenção', en: 'Maintenance' },
+  'transportPlanning.occupancyLegend.SCHEDULE_SHIFT': { pt: 'Turno', en: 'Shift' },
+  'transportPlanning.occupancyLegend.SUPPORT_EVENT': { pt: 'Evento de apoio', en: 'Support event' },
+  'transportPlanning.occupancyLegend.TRANSPORT_TRIP': { pt: 'Viagem', en: 'Trip' },
+
+  // The board's own vocabulary. "Jornada" is the delegation's word for one
+  // round of the vehicle's day — the sections the printed daily sheet
+  // separates with a heavy rule, one `Trip` each.
+  // The lane prints the ordinal as a badge beside this word rather than
+  // interpolating it into one string — the number is a landmark you scan for,
+  // the word is context you read once.
+  'transportPlanning.journeyWord': { pt: 'Jornada', en: 'Journey' },
+  'transportPlanning.vehicleType.EMERGENCY': { pt: 'Ambulância de socorro', en: 'Emergency ambulance' },
+  'transportPlanning.vehicleType.TRANSPORT': { pt: 'Viatura de transporte', en: 'Transport vehicle' },
+  'transportPlanning.addJourneyButton': { pt: 'Nova jornada', en: 'New journey' },
+  'transportPlanning.journeyEmpty': { pt: 'Jornada vazia — arraste uma viagem para aqui.', en: 'Empty journey — drag a leg here.' },
+  'transportPlanning.noCrew': { pt: 'Sem tripulação', en: 'No crew' },
+  'transportPlanning.dropHere': { pt: 'Largar às %{time}', en: 'Drop at %{time}' },
+  'transportPlanning.zoomIn': { pt: 'Aproximar', en: 'Zoom in' },
+  'transportPlanning.zoomOut': { pt: 'Afastar', en: 'Zoom out' },
+  'transportPlanning.zoomFit': { pt: 'Dia inteiro', en: 'Whole day' },
+
+  // H.I. and H.F. as they are printed on the delegation's daily service sheet
+  // — kept as the crews' own abbreviations rather than renamed, since the
+  // board is read alongside the paper it replaces.
+  'transportPlanning.treatmentStartShort': { pt: 'H.I.', en: 'H.I.' },
+  'transportPlanning.treatmentEndShort': { pt: 'H.F.', en: 'H.F.' },
+  'transportPlanning.treatmentStartLabel': { pt: 'Entrada no tratamento', en: 'Treatment start' },
+  'transportPlanning.treatmentEndLabel': { pt: 'Previsão de estar pronto', en: 'Expected ready for pickup' },
+  'transportPlanning.pickupLabel': { pt: 'Recolher', en: 'Collect' },
+  'transportPlanning.homeArrivalLabel': { pt: 'Chegada a casa', en: 'Home arrival' },
+  'transportPlanning.suggestedHint': { pt: 'sugerido', en: 'suggested' },
+  'transportPlanning.travelLabel': { pt: 'Viagem', en: 'Travel' },
+  'transportPlanning.treatmentDurationLabel': { pt: 'Tratamento', en: 'Treatment' },
+  'transportPlanning.travelUnknown': { pt: 'Sem estimativa de percurso', en: 'No travel estimate' },
+  'transportPlanning.travelEstimatedHint': {
+    pt: 'Estimativa em linha reta — fora da área com rotas.',
+    en: 'Straight-line estimate — outside the routed area.',
+  },
+  'transportPlanning.destinationUnknown': { pt: 'Sem destino', en: 'No destination' },
+  'transportPlanning.destinationPlusMore': { pt: '%{name} +%{count}', en: '%{name} +%{count}' },
+  'transportPlanning.returnToBaseLabel': { pt: 'Regresso à base', en: 'Return to base' },
+  'transportPlanning.onboardLabel': { pt: 'Na viatura', en: 'In the vehicle' },
+
+  // Assign/reassign dialog — also the keyboard equivalent to dragging (#235's
+  // own accessibility requirement) and the override-reason prompt after a
+  // vehicle conflict.
+  'transportPlanning.assignDialogTitleNew': { pt: 'Atribuir a uma viatura', en: 'Assign to a vehicle' },
+  'transportPlanning.assignDialogTitleEdit': { pt: 'Reatribuir', en: 'Reassign' },
+  'transportPlanning.assignDialogLaneLabel': { pt: 'Viatura', en: 'Vehicle' },
+  'transportPlanning.assignDialogPickupLabel': { pt: 'Recolha planeada', en: 'Planned pickup' },
+  'transportPlanning.assignDialogDropoffLabel': { pt: 'Entrega planeada', en: 'Planned drop-off' },
+  'transportPlanning.assignDialogOverrideReasonLabel': { pt: 'Motivo da exceção', en: 'Override reason' },
+  'transportPlanning.assignDialogOverrideHint': {
+    pt: 'Esta viatura já está comprometida nesse intervalo. Indique o motivo para continuar mesmo assim.',
+    en: 'This vehicle is already committed for that interval. Give a reason to proceed anyway.',
+  },
+  'transportPlanning.assignDialogChooseLane': { pt: 'Escolha uma viatura.', en: 'Choose a vehicle.' },
+  'transportPlanning.assignDialogInvalidRange': {
+    pt: 'A entrega não pode ser antes da recolha.',
+    en: 'The drop-off cannot be before the pickup.',
+  },
+  'transportPlanning.assignDialogConfirm': { pt: 'Confirmar', en: 'Confirm' },
+  'transportPlanning.assignDialogCancel': { pt: 'Cancelar', en: 'Cancel' },
+  'transportPlanning.assignDialogUnassign': { pt: 'Remover atribuição', en: 'Unassign' },
+  'transportPlanning.assignFailed': { pt: 'Não foi possível atribuir a viagem.', en: 'Could not assign the leg.' },
+  'transportPlanning.assigned': { pt: 'Viagem atribuída.', en: 'Leg assigned.' },
+  'transportPlanning.unassigned': { pt: 'Atribuição removida.', en: 'Unassigned.' },
+  'transportPlanning.unassignFailed': { pt: 'Não foi possível remover a atribuição.', en: 'Could not remove the assignment.' },
+
+  // Add-vehicle dialog — creates the `Trip` a lane needs to exist before
+  // anything can be dragged onto it.
+  'transportPlanning.addVehicleDialogTitle': { pt: 'Adicionar viatura ao dia', en: "Add a vehicle to the day" },
+  'transportPlanning.addVehicleDialogVehicleLabel': { pt: 'Viatura', en: 'Vehicle' },
+  'transportPlanning.addVehicleDialogConfirm': { pt: 'Adicionar', en: 'Add' },
+  'transportPlanning.addVehicleFailed': { pt: 'Não foi possível adicionar a viatura.', en: 'Could not add the vehicle.' },
+
+  // Crew dialog (#235) — who crews one journey. Composition is ranked by the
+  // backend (`checkTripCrew`) and shown here, never enforced by this dialog:
+  // a journey is crewed one person at a time.
+  'transportPlanning.crewDialogTitle': { pt: 'Tripulação da jornada %{number}', en: 'Crew for journey %{number}' },
+  'transportPlanning.crewDialogClose': { pt: 'Fechar', en: 'Close' },
+  'transportPlanning.crewCurrentTitle': { pt: 'Tripulação atual', en: 'Current crew' },
+  'transportPlanning.crewAddTitle': { pt: 'Adicionar à tripulação', en: 'Add to the crew' },
+  'transportPlanning.crewAddButton': { pt: 'Adicionar', en: 'Add' },
+  'transportPlanning.crewRemoveButton': { pt: 'Remover da tripulação', en: 'Remove from the crew' },
+  'transportPlanning.crewPersonLabel': { pt: 'Pessoa', en: 'Person' },
+  'transportPlanning.crewRoleLabel': { pt: 'Função nesta jornada', en: 'Role on this journey' },
+  'transportPlanning.crewApplyToVehicleDay': {
+    pt: 'Aplicar a todas as jornadas desta viatura no dia',
+    en: "Apply to every journey of this vehicle on this day",
+  },
+  'transportPlanning.crewRequirementHint': { pt: 'Mínimo exigido: %{requirement}', en: 'Minimum required: %{requirement}' },
+  'transportPlanning.crewRequiresEmergencyVehicle': {
+    pt: 'Transporte em maca — exige ambulância de socorro.',
+    en: 'Stretcher transport — requires an emergency ambulance.',
+  },
+  'transportPlanning.crewAbsent': { pt: 'Ausente', en: 'Absent' },
+  'transportPlanning.crewAbsentHint': {
+    pt: 'Esta pessoa está registada como ausente neste dia. Indique o motivo para a adicionar mesmo assim.',
+    en: 'This person is recorded absent on this date. Give a reason to add them anyway.',
+  },
+  'transportPlanning.crewAlreadyCrewing': { pt: 'Já em %{count} jornada(s)', en: 'Already on %{count} journey(s)' },
+  'transportPlanning.crewOnRoster': { pt: 'De escala neste dia', en: 'On the roster this day' },
+  'transportPlanning.crewOffRoster': { pt: 'Restantes', en: 'Everyone else' },
+  'transportPlanning.crewNoCertifications': { pt: 'Sem certificações válidas', en: 'No valid certifications' },
+  'transportPlanning.crewCandidatesFailed': {
+    pt: 'Não foi possível carregar as pessoas disponíveis.',
+    en: 'Could not load the available people.',
+  },
+  'transportPlanning.crewAddFailed': { pt: 'Não foi possível adicionar à tripulação.', en: 'Could not add to the crew.' },
+  'transportPlanning.crewRemoveFailed': {
+    pt: 'Não foi possível remover da tripulação.',
+    en: 'Could not remove from the crew.',
+  },
+  'transportPlanning.crewSaved': { pt: 'Tripulação atualizada.', en: 'Crew updated.' },
+
+  // Wait-or-release dialog (#219) — data only, the board never decides for
+  // the planner.
+  'transportPlanning.waitReleaseButton': { pt: 'Esperar ou libertar', en: 'Wait or release' },
+  'transportPlanning.waitReleaseDialogTitle': { pt: 'Esperar ou libertar a viatura', en: 'Wait or release the vehicle' },
+  'transportPlanning.waitReleaseHint': {
+    pt: 'Comparação apenas informativa — a decisão é sua.',
+    en: 'Comparison only — the decision is yours.',
+  },
+  'transportPlanning.waitReleaseExpectedDwell': { pt: 'Espera prevista', en: 'Expected dwell' },
+  'transportPlanning.waitReleaseRoundTrip': { pt: 'Ida e volta até à base', en: 'Round trip to base' },
+  'transportPlanning.waitOption': { pt: 'Esperar no local', en: 'Wait on site' },
+  'transportPlanning.releaseOption': { pt: 'Libertar a viatura', en: 'Release the vehicle' },
+  'transportPlanning.waitReleaseDwellMinutesLabel': { pt: 'Minutos de espera', en: 'Dwell minutes' },
+  'transportPlanning.waitReleaseConfirm': { pt: 'Gravar', en: 'Save' },
+  'transportPlanning.waitReleaseSaved': { pt: 'Decisão gravada.', en: 'Decision saved.' },
+  'transportPlanning.waitReleaseFailed': { pt: 'Não foi possível gravar a decisão.', en: 'Could not save the decision.' },
+  'transportPlanning.breakEvenFailed': {
+    pt: 'Não foi possível calcular a comparação.',
+    en: 'Could not compute the comparison.',
+  },
+  'transportPlanning.minutes': { pt: '%{count} min', en: '%{count} min' },
+  'transportPlanning.arrivalWarning.TOO_EARLY': { pt: 'Chegada mais cedo que o preferido', en: 'Arrival earlier than preferred' },
+  'transportPlanning.arrivalWarning.LATE_WITHIN_TOLERANCE': {
+    pt: 'Chegada atrasada, dentro da tolerância',
+    en: 'Arrival late, within tolerance',
+  },
+  'transportPlanning.arrivalWarning.LATE_BEYOND_TOLERANCE': {
+    pt: 'Chegada atrasada, fora da tolerância',
+    en: 'Arrival late, beyond tolerance',
+  },
+
+  // ── Journey identity and focus mode (#247 stage 1) ──
+  'transportPlanning.selectJourneyLabel': { pt: 'Selecionar viagem %{number}', en: 'Select journey %{number}' },
+
+  // ── Grouped unplanned rail (#247 stage 2) ──
+  'transportPlanning.railViewGrouped': { pt: 'Agrupado', en: 'Grouped' },
+  'transportPlanning.railViewPerPerson': { pt: 'Por pessoa', en: 'Per person' },
+  'transportPlanning.groupSize': { pt: '%{count} pessoas', en: '%{count} people' },
+  'transportPlanning.assignGroupButton': { pt: 'Atribuir o grupo', en: 'Assign group' },
+  'transportPlanning.assignGroupDialogTitle': {
+    pt: 'Atribuir %{count} pessoas a uma viagem',
+    en: 'Assign %{count} people to a journey',
+  },
+  'transportPlanning.assignGroupDialogHint': {
+    pt: 'Todas ficam com a mesma recolha e entrega — para tratar alguém em separado, usa a vista "Por pessoa".',
+    en: 'Everyone gets the same pickup and dropoff — to place someone separately, use the "Per person" view.',
+  },
+  'transportPlanning.assignGroupPartial': {
+    pt: '%{count} já atribuídas.',
+    en: '%{count} already assigned.',
+  },
+  'transportPlanning.groupInfeasible.WHEELCHAIR': {
+    pt: 'Nenhuma viatura de hoje tem lugares de cadeira de rodas suficientes para o grupo todo.',
+    en: 'No vehicle on today’s board has enough wheelchair positions for the whole group.',
+  },
+  'transportPlanning.groupInfeasible.STRETCHER': {
+    pt: 'Nenhuma viatura de hoje tem lugares de maca suficientes para o grupo todo.',
+    en: 'No vehicle on today’s board has enough stretcher positions for the whole group.',
+  },
+  'transportPlanning.groupInfeasible.SEATS': {
+    pt: 'Nenhuma viatura de hoje tem lugares sentados suficientes para o grupo todo.',
+    en: 'No vehicle on today’s board has enough seats for the whole group.',
+  },
+
+  // ── Journey inspector panel (#247 stage 2) ──
+  'transportPlanning.inspectorTitle': { pt: 'Viagem %{number} · %{vehicle}', en: 'Journey %{number} · %{vehicle}' },
+  'transportPlanning.inspectorClose': { pt: 'Fechar', en: 'Close' },
+  'transportPlanning.inspectorStopsTitle': { pt: 'Paragens', en: 'Stops' },
+  'transportPlanning.inspectorStopPickup': { pt: 'Recolha', en: 'Pickup' },
+  'transportPlanning.inspectorStopDropoff': { pt: 'Entrega', en: 'Drop-off' },
+  'transportPlanning.inspectorStopWait': { pt: 'Espera', en: 'Wait' },
+  'transportPlanning.inspectorStopReturnToBase': { pt: 'Regresso à base', en: 'Return to base' },
+  'transportPlanning.inspectorEditCrew': { pt: 'Editar equipa', en: 'Edit crew' },
+  'transportPlanning.inspectorOpenJourney': { pt: 'Abrir a viagem', en: 'Open journey' },
+
+  // ── Map panel (#247 stage 4) ──
+  'transportPlanning.mapUnavailable': {
+    pt: 'O mapa base não está disponível nesta instalação.',
+    en: 'The basemap is not available on this install.',
+  },
+  'transportPlanning.mapUnavailableHint': {
+    pt: 'Peça a um administrador para correr scripts/prepare-basemap.sh. O quadro continua totalmente utilizável sem o mapa.',
+    en: 'Ask an administrator to run scripts/prepare-basemap.sh. The board stays fully usable without the map.',
+  },
+  'transportPlanning.mapLoading': { pt: 'A carregar o mapa…', en: 'Loading the map…' },
+  'transportPlanning.mapFitToDay': { pt: 'Enquadrar o dia todo', en: 'Fit the whole day' },
+  'transportPlanning.mapLegendRoute': { pt: 'percurso de uma viagem', en: 'a journey’s route' },
+  'transportPlanning.mapLegendStop': { pt: 'paragem planeada', en: 'planned stop' },
+  'transportPlanning.mapLegendUnplanned': { pt: 'por planear', en: 'unplanned' },
+  'transportPlanning.mapOffFrame': { pt: '%{distanceKm} km · viagem %{number}', en: '%{distanceKm} km · journey %{number}' },
+  'transportPlanning.mapOverlapHintTitle': { pt: 'Possíveis partilhas de percurso', en: 'Possible corridor overlaps' },
+  'transportPlanning.mapOverlapHint': {
+    pt: 'Viagem %{a} e viagem %{b} passam a menos de %{distanceKm} km uma da outra.',
+    en: 'Journey %{a} and journey %{b} pass within %{distanceKm} km of each other.',
+  },
+
+  // ── Journey page and crew sheet (#247 stage 3) ──
+  'transportJourney.pageTitle': { pt: 'Viagem %{number}', en: 'Journey %{number}' },
+  'transportJourney.pageTitleLoading': { pt: 'Viagem', en: 'Journey' },
+  'transportJourney.backToBoard': { pt: 'Voltar ao quadro', en: 'Back to board' },
+  'transportJourney.printButton': { pt: 'Imprimir', en: 'Print' },
+  'transportJourney.loadFailed': { pt: 'Não foi possível carregar a viagem.', en: 'Could not load the journey.' },
+  'transportJourney.dateLabel': { pt: 'Data:', en: 'Date:' },
+  'transportJourney.stopsTitle': { pt: 'Paragens', en: 'Stops' },
+  'transportJourney.stopColumnTime': { pt: 'Hora', en: 'Time' },
+  'transportJourney.stopColumnKind': { pt: 'Paragem', en: 'Stop' },
+  'transportJourney.stopColumnPatient': { pt: 'Pessoa', en: 'Person' },
+  'transportJourney.stopColumnDistance': { pt: 'Distância', en: 'Distance' },
+  'transportJourney.stopColumnDwell': { pt: 'Espera', en: 'Dwell' },
+  'transportJourney.stopPickup': { pt: 'Recolha', en: 'Pickup' },
+  'transportJourney.stopDropoff': { pt: 'Entrega', en: 'Drop-off' },
+  'transportJourney.stopWait': { pt: 'Espera', en: 'Wait' },
+  'transportJourney.stopReturnToBase': { pt: 'Regresso à base', en: 'Return to base' },
+  'transportJourney.patientNameHidden': { pt: '(identidade não visível)', en: '(identity hidden)' },
+  'transportJourney.dwellDecision.WAIT': { pt: 'A equipa espera no local', en: 'Crew waits on site' },
+  'transportJourney.dwellDecision.RELEASE': { pt: 'Viatura libertada', en: 'Vehicle released' },
+  'transportJourney.dwellDecision.PENDING': { pt: 'Decisão por tomar', en: 'Decision pending' },
+  'transportJourney.decideWaitRelease': { pt: 'Esperar ou libertar', en: 'Decide wait/release' },
+
+  // ── Trip status (#234) ──
+  'tripStatus.PLANNED': { pt: 'Planeada', en: 'Planned' },
+  'tripStatus.COMPLETED': { pt: 'Concluída', en: 'Completed' },
+  'tripStatus.CANCELLED': { pt: 'Cancelada', en: 'Cancelled' },
+
+  // ── Rich text editor (#180 phase 3) — shared by crew and coordinator forms ──
+  'richText.bold': { pt: 'Negrito', en: 'Bold' },
+  'richText.italic': { pt: 'Itálico', en: 'Italic' },
+  'richText.bulletedList': { pt: 'Lista com marcadores', en: 'Bulleted list' },
+  'richText.numberedList': { pt: 'Lista numerada', en: 'Numbered list' },
+
+  // ── API error codes (#180 phase 4) — see apiErrorLabel(), and
+  // @redinfo/shared's ApiErrorCode doc comment for which exceptions carry
+  // one and why the rest deliberately do not. ──
+  'apiError.WINDOW_OVERLAP_OPEN': {
+    pt: 'Já existe uma janela de disponibilidade aberta para %{category} nestas datas (%{windows}). Fecha-a antes de abrir outra, ou escolhe datas que não estejam cobertas.',
+    en: 'An availability window for %{category} is already open over these dates (%{windows}). Close it before opening another one, or pick dates it does not cover.',
+  },
+  'apiError.WINDOW_OVERLAP_CLOSED': {
+    pt: 'Já existe uma janela de disponibilidade fechada para %{category} que cobre estas datas (%{windows}). Confirma para abrir outra para as mesmas datas.',
+    en: 'A closed availability window for %{category} already covers these dates (%{windows}). Confirm to open another one for the same dates.',
+  },
+  'apiError.WINDOW_ALREADY_CLOSED': {
+    pt: 'Esta janela de disponibilidade já está fechada.',
+    en: 'This availability window is already closed.',
+  },
+  'apiError.WINDOW_COMPENSATION_LOCKED': {
+    pt: 'Esta janela está fechada; edita a oferta de pagamento na escala.',
+    en: "This window is closed; edit the schedule's own pay offer instead.",
+  },
+  'apiError.SCHEDULE_DRAFT_NOT_VISIBLE': {
+    pt: 'Esta escala ainda não foi publicada — só os coordenadores podem ver um rascunho.',
+    en: 'This schedule has not been published yet — only coordinators can see a draft.',
+  },
+  'apiError.SCHEDULE_ALREADY_EXISTS_FOR_WINDOW': {
+    pt: 'Esta janela já tem uma escala; abre essa em vez de criar uma segunda.',
+    en: 'This window already has a schedule; open that one instead of starting a second.',
+  },
+  'apiError.SCHEDULE_PUBLISHED_CANNOT_DELETE': {
+    pt: 'Uma escala publicada não pode ser eliminada — o pessoal já foi informado das suas funções.',
+    en: 'A published schedule cannot be deleted — personnel have already been told their duties.',
+  },
+  'apiError.SCHEDULE_ALREADY_PUBLISHED': {
+    pt: 'Esta escala já está publicada.',
+    en: 'This schedule is already published.',
+  },
+  'apiError.ASSIGNMENT_PERSON_INACTIVE': {
+    pt: '%{person} não é um membro ativo e não pode ser escalado(a).',
+    en: '%{person} is not an active member and cannot be scheduled.',
+  },
+  'apiError.ASSIGNMENT_PERSON_NOT_FIELD_PERSONNEL': {
+    pt: '%{person} não é pessoal de campo e não pode ser escalado(a).',
+    en: '%{person} is not field personnel and cannot be scheduled.',
+  },
+  'apiError.ASSIGNMENT_CERTIFICATION_REQUIRED': {
+    pt: '%{role} exige a certificação %{certification}, que %{person} não possui. Escalá-lo(a) requer um motivo.',
+    en: '%{role} requires the %{certification} certification, which %{person} does not hold. Assigning them needs a reason.',
+  },
+  'apiError.ASSIGNMENT_ALREADY_ON_SHIFT': {
+    pt: '%{person} já está neste turno — uma pessoa não pode ocupar dois lugares no mesmo turno.',
+    en: '%{person} is already on this shift — one person cannot hold two places on one shift.',
+  },
+  'apiError.ASSIGNMENT_ROLE_FULL': {
+    pt: '%{role} está completo neste turno (%{capacity}). Remove alguém primeiro, ou usa outra função.',
+    en: '%{role} is full on this shift (%{capacity}). Remove someone first, or use another role.',
+  },
+  'apiError.ASSIGNMENT_DATE_OUTSIDE_WINDOW': {
+    pt: '%{date} está fora de %{window}.',
+    en: '%{date} is outside %{window}.',
+  },
+  'apiError.ASSIGNMENT_WINDOW_HAS_NO_ROLES': {
+    pt: '%{window} não define funções — as pessoas são escaladas sem uma.',
+    en: '%{window} defines no roles — people are scheduled onto it without one.',
+  },
+  'apiError.ASSIGNMENT_ROLE_ID_REQUIRED': {
+    pt: 'Escolhe uma função: esta janela define %{roles}.',
+    en: 'Choose a role: this window defines %{roles}.',
+  },
+  'apiError.ASSIGNMENT_ROLE_NOT_IN_WINDOW': {
+    pt: 'Essa função não pertence a %{window}.',
+    en: 'That role does not belong to %{window}.',
+  },
+  'apiError.SELF_ASSIGN_SCHEDULE_NOT_PUBLISHED': {
+    pt: 'Esta escala ainda não foi publicada, por isso não está aberta para inscrição.',
+    en: 'This schedule has not been published yet, so it is not open to sign up to.',
+  },
+  'apiError.SELF_ASSIGN_OVERLAPPING_SHIFT': {
+    pt: 'Já estás em %{shift} nesse dia, o que se sobrepõe a este turno.',
+    en: 'You are already on %{shift} that day, which overlaps this shift.',
+  },
+  'apiError.SELF_ASSIGN_PAST_SHIFT': {
+    pt: 'Este turno já passou, por isso já não está aberto para inscrição. Fala com um coordenador se estiveste presente e falta na escala.',
+    en: 'This shift has already passed, so it is no longer open to sign up to. Ask a coordinator if you were there and it is missing from the rota.',
+  },
+  'apiError.SHIFT_ADJUSTMENT_END_BEFORE_START': {
+    pt: 'O turno tem de terminar depois de começar.',
+    en: 'A shift must end after it starts.',
+  },
+  'apiError.SHIFT_ADJUSTMENT_OVERLAPS': {
+    pt: 'Este horário sobrepõe-se a %{other}.',
+    en: 'This overlaps %{other}.',
+  },
+  'apiError.MATERIAL_ITEM_BARCODE_CONFLICT': {
+    pt: 'O código de barras %{code} já está a ser usado por outro item.',
+    en: 'Barcode %{code} is already used by another item.',
+  },
+  'apiError.LAST_SYSTEM_ADMIN': {
+    pt: 'Esta é a única pessoa com a função de Administrador de Sistema — atribui essa função a outra pessoa primeiro.',
+    en: 'This is the only System Administrator left — give someone else that role first.',
+  },
+  'apiError.INEM_SESSION_NOT_ACTIVE': {
+    pt: 'A integração com o INEM está indisponível — define o estado deste meio diretamente no portal do INEM.',
+    en: 'The INEM integration is currently unavailable — set this unit’s status directly in the INEM portal instead.',
+  },
+  'apiError.LIVE_RUN_CLOSE_BLOCKED': {
+    pt: 'Ainda falta preencher algo obrigatório — vê a lista assinalada nesta página antes de terminar.',
+    en: 'Something required is still missing — check the list flagged on this page before finishing.',
+  },
+  'apiError.PAID_STAFF_SCHEDULE_INVALID_RANGE': {
+    pt: 'A hora de fim tem de ser depois da hora de início.',
+    en: 'The end time must be after the start time.',
+  },
+  'apiError.COMPENSATION_RECLASSIFY_PRE_CUTOVER': {
+    pt: 'Este turno é anterior ao início do registo automático de horas de voluntariado e não pode ser reclassificado.',
+    en: 'This shift predates scheduled volunteer-hours generation and cannot be reclassified.',
+  },
+
+  // ── Calendar headers (#180 phase 5) ──
+  // Hand-spelled rather than delegated to `Intl`/`toLocaleDateString`: ICU
+  // abbreviations drift between browsers and Node versions ("Sep" vs
+  // "Sept"), which would move the calendar header between environments —
+  // see `utils/dates.ts`'s doc comment. NOT the same list as
+  // `@redinfo/shared`'s `MONTH_NAMES`: that one is canonical English because
+  // the backend names an emergency window from it, and translating it would
+  // show "Outubro" for a window still named "... - October" — see
+  // `monthNames()`'s doc comment for why it stays untranslated.
+  'date.weekday.MON': { pt: 'Seg', en: 'Mon' },
+  'date.weekday.TUE': { pt: 'Ter', en: 'Tue' },
+  'date.weekday.WED': { pt: 'Qua', en: 'Wed' },
+  'date.weekday.THU': { pt: 'Qui', en: 'Thu' },
+  'date.weekday.FRI': { pt: 'Sex', en: 'Fri' },
+  'date.weekday.SAT': { pt: 'Sáb', en: 'Sat' },
+  'date.weekday.SUN': { pt: 'Dom', en: 'Sun' },
+  'date.monthAbbr.JAN': { pt: 'Jan', en: 'Jan' },
+  'date.monthAbbr.FEB': { pt: 'Fev', en: 'Feb' },
+  'date.monthAbbr.MAR': { pt: 'Mar', en: 'Mar' },
+  'date.monthAbbr.APR': { pt: 'Abr', en: 'Apr' },
+  'date.monthAbbr.MAY': { pt: 'Mai', en: 'May' },
+  'date.monthAbbr.JUN': { pt: 'Jun', en: 'Jun' },
+  'date.monthAbbr.JUL': { pt: 'Jul', en: 'Jul' },
+  'date.monthAbbr.AUG': { pt: 'Ago', en: 'Aug' },
+  'date.monthAbbr.SEP': { pt: 'Set', en: 'Sep' },
+  'date.monthAbbr.OCT': { pt: 'Out', en: 'Oct' },
+  'date.monthAbbr.NOV': { pt: 'Nov', en: 'Nov' },
+  'date.monthAbbr.DEC': { pt: 'Dez', en: 'Dec' },
+  'date.monthFull.JAN': { pt: 'Janeiro', en: 'January' },
+  'date.monthFull.FEB': { pt: 'Fevereiro', en: 'February' },
+  'date.monthFull.MAR': { pt: 'Março', en: 'March' },
+  'date.monthFull.APR': { pt: 'Abril', en: 'April' },
+  'date.monthFull.MAY': { pt: 'Maio', en: 'May' },
+  'date.monthFull.JUN': { pt: 'Junho', en: 'June' },
+  'date.monthFull.JUL': { pt: 'Julho', en: 'July' },
+  'date.monthFull.AUG': { pt: 'Agosto', en: 'August' },
+  'date.monthFull.SEP': { pt: 'Setembro', en: 'September' },
+  'date.monthFull.OCT': { pt: 'Outubro', en: 'October' },
+  'date.monthFull.NOV': { pt: 'Novembro', en: 'November' },
+  'date.monthFull.DEC': { pt: 'Dezembro', en: 'December' },
+
+  // ── Certification badge (missed by #180 phase 3's slice list — it lives
+  // in components/, not a resources/ directory — caught while touching this
+  // file for phase 5's date formatting) ──
+  'certBadge.noExpiryOnFile': { pt: '%{label} — sem data de validade registada', en: '%{label} — no expiry on file' },
+  'certBadge.expiredOn': { pt: '%{label} — expirado a %{date}', en: '%{label} — expired %{date}' },
+  'certBadge.validUntilDate': { pt: '%{label} — válido até %{date}', en: '%{label} — valid until %{date}' },
+  'certBadge.viaGrantedBy': { pt: '%{type} · via %{grantedBy}', en: '%{type} · via %{grantedBy}' },
+
+  // ── MCP: OAuth consent + AI connections (redinfo as an Authorization
+  // Server for Claude/ChatGPT/Copilot Studio, see `src/oauth/` on the
+  // backend) ──
+  'oauthConsent.title': { pt: '%{client} pede acesso', en: '%{client} is requesting access' },
+  'oauthConsent.explanation': {
+    pt: 'Isto vai permitir que este assistente aja no redinfo como si mesmo, dentro do que a sua função já permite.',
+    en: 'This will let the assistant act in redinfo as you, within what your role already allows.',
+  },
+  'oauthConsent.scopeRead': { pt: 'Ler informação (escalas, disponibilidade, relatórios, ocorrências)', en: 'Read information (schedules, availability, reports, live runs)' },
+  'oauthConsent.scopeWrite': { pt: 'Criar e alterar dados em seu nome', en: 'Create and change data on your behalf' },
+  'oauthConsent.allow': { pt: 'Permitir', en: 'Allow' },
+  'oauthConsent.deny': { pt: 'Recusar', en: 'Deny' },
+  'oauthConsent.missingTicket': {
+    pt: 'Faltam dados nesta ligação — volte ao assistente de IA e tente ligar-se novamente.',
+    en: 'This link is missing information — go back to the AI assistant and try connecting again.',
+  },
+
+  'aiConnections.pageTitle': { pt: 'Assistentes de IA', en: 'AI Assistants' },
+  'aiConnections.heading': { pt: 'Ligar um assistente de IA', en: 'Connect an AI assistant' },
+  'aiConnections.explanation': {
+    pt: 'O redinfo pode ser usado por assistentes como o Claude, o ChatGPT ou o Copilot Studio, agindo como si mesmo — o assistente autentica-se com a sua própria conta e só pode fazer o que a sua função já permite no portal.',
+    en: 'redinfo can be used by assistants like Claude, ChatGPT, or Copilot Studio, acting as you — the assistant signs in with your own account and can only do what your role already allows in the portal.',
+  },
+  'aiConnections.urlLabel': { pt: 'Endereço do servidor MCP', en: 'MCP server address' },
+  'aiConnections.copyUrl': { pt: 'Copiar endereço', en: 'Copy address' },
+  'aiConnections.urlCopied': { pt: 'Endereço copiado', en: 'Address copied' },
+  'aiConnections.howToTitle': { pt: 'Como ligar', en: 'How to connect' },
+  'aiConnections.howToClaude': {
+    pt: 'Claude: Definições → Conectores → Adicionar conector personalizado, e cole o endereço acima.',
+    en: 'Claude: Settings → Connectors → Add custom connector, and paste the address above.',
+  },
+  'aiConnections.howToChatGpt': {
+    pt: 'ChatGPT: Definições → Conectores → Criar, e cole o endereço acima.',
+    en: 'ChatGPT: Settings → Connectors → Create, and paste the address above.',
+  },
+  'aiConnections.howToCopilotStudio': {
+    pt: 'Copilot Studio: peça ao administrador do redinfo as credenciais do conector e siga as instruções do Copilot Studio para um conector personalizado OAuth.',
+    en: 'Copilot Studio: ask a redinfo administrator for the connector credentials, then follow Copilot Studio’s own instructions for a custom OAuth connector.',
+  },
+  'aiConnections.scopeNote': {
+    pt: 'Em todos os casos vai ter de iniciar sessão no redinfo como si mesmo e aprovar a ligação — o assistente nunca usa uma conta partilhada.',
+    en: 'In every case you will sign in to redinfo as yourself and approve the connection — the assistant never uses a shared account.',
+  },
+  'aiConnections.activeHeading': { pt: 'Ligações ativas', en: 'Active connections' },
+  'aiConnections.none': { pt: 'Ainda não ligou nenhum assistente.', en: 'No assistant connected yet.' },
+  'aiConnections.lastUsed': { pt: 'Usado pela última vez a %{date}', en: 'Last used %{date}' },
+  'aiConnections.neverUsed': { pt: 'Ainda não usado', en: 'Not used yet' },
+  'aiConnections.revokeButton': { pt: 'Desligar', en: 'Disconnect' },
+  'aiConnections.revoked': { pt: 'Ligação removida', en: 'Connection removed' },
+  'aiConnections.revokeFailed': { pt: 'Não foi possível remover a ligação', en: 'Could not remove the connection' },
+  'aiConnections.loadFailed': { pt: 'Não foi possível carregar as ligações', en: 'Could not load connections' },
+} as const;
+
+export type MessageKey = keyof typeof MESSAGES;
+
+/**
+ * Enum labels live in the same map, under a derived key, so a value added to an
+ * enum without a label fails to compile rather than rendering its raw name.
+ */
+const ENUM_MESSAGES = {
+  [`reportType.${EventReportType.EMERGENCY}`]: { pt: 'Emergência', en: 'Emergency' },
+  [`reportType.${EventReportType.LOCAL_SUPPORT}`]: {
+    pt: 'Apoio Local',
+    en: 'Local Support',
+  },
+  [`reportType.${EventReportType.CNE_SUPPORT}`]: {
+    pt: 'Apoio CNE',
+    en: 'CNE Support',
+  },
+
+  [`reportTypeHint.${EventReportType.EMERGENCY}`]: {
+    pt: 'Ocorrência com número CODU',
+    en: 'Call with a CODU number',
+  },
+  [`reportTypeHint.${EventReportType.LOCAL_SUPPORT}`]: {
+    pt: 'Eventos e prevenções da delegação',
+    en: 'Delegation events and standbys',
+  },
+  [`reportTypeHint.${EventReportType.CNE_SUPPORT}`]: {
+    pt: 'Apoio logístico às operações',
+    en: 'Logistical support to operations',
+  },
+
+  [`locationType.${EventLocationType.HOME}`]: { pt: 'Habitação', en: 'Home' },
+  [`locationType.${EventLocationType.ROAD}`]: { pt: 'Via pública', en: 'Road' },
+  [`locationType.${EventLocationType.PUBLIC_SPACE}`]: {
+    pt: 'Espaço público',
+    en: 'Public space',
+  },
+  [`locationType.${EventLocationType.OTHER_PUBLIC_LOCATION}`]: {
+    pt: 'Outro espaço público',
+    en: 'Other public location',
+  },
+  [`locationType.${EventLocationType.WORK_PLACE}`]: {
+    pt: 'Local de trabalho',
+    en: 'Work place',
+  },
+
+  [`gender.${Gender.FEMALE}`]: { pt: 'Feminino', en: 'Female' },
+  [`gender.${Gender.MALE}`]: { pt: 'Masculino', en: 'Male' },
+  [`gender.${Gender.UNKNOWN}`]: { pt: 'Desconhecido', en: 'Unknown' },
+
+  [`destination.${VictimDestinationKind.HOSPITAL}`]: { pt: 'Hospital', en: 'Hospital' },
+  [`destination.${VictimDestinationKind.TREATED_ON_SCENE}`]: {
+    pt: 'Tratado no local',
+    en: 'Treated on scene',
+  },
+  [`destination.${VictimDestinationKind.REFUSED_TRANSPORT}`]: {
+    pt: 'Recusou transporte',
+    en: 'Refused transport',
+  },
+  [`destination.${VictimDestinationKind.DECEASED_ON_SCENE}`]: {
+    pt: 'Óbito no local',
+    en: 'Deceased on scene',
+  },
+  [`destination.${VictimDestinationKind.CANCELLED}`]: { pt: 'Cancelado', en: 'Cancelled' },
+
+  // Portuguese-origin acronyms, same in both locales.
+  [`inemUnit.${InemSupportUnitType.VMER}`]: { pt: 'VMER', en: 'VMER' },
+  [`inemUnit.${InemSupportUnitType.SIV}`]: { pt: 'SIV', en: 'SIV' },
+  [`inemUnit.${InemSupportUnitType.UMIP}`]: { pt: 'UMIP', en: 'UMIP' },
+
+  // The five stamps of an emergency, in the order they happen.
+  'time.activationAt': { pt: 'Ativação', en: 'Activation' },
+  'time.sceneArrivalAt': { pt: 'Chegada ao local', en: 'Arrival on scene' },
+  'time.sceneDepartureAt': { pt: 'Saída do local', en: 'Departure from scene' },
+  'time.hospitalArrivalAt': { pt: 'Chegada ao hospital', en: 'Arrival at hospital' },
+  'time.availableAt': { pt: 'Disponível', en: 'Available' },
+
+  // ── Why a report cannot be saved ──
+  // Keyed by the code `validateEventReport` returns, so the crew reads
+  // Portuguese while the API's own 400 keeps its English sentence.
+  'problem.MISSING_DATE': {
+    pt: 'Falta a data do evento.',
+    en: 'The date of the activity is missing.',
+  },
+  'problem.MISSING_START': { pt: 'Falta a hora de início.', en: 'The start time is missing.' },
+  'problem.INVALID_END': { pt: 'A hora de fim não é válida.', en: 'The end time is not valid.' },
+  'problem.END_BEFORE_START': {
+    pt: 'O serviço não pode acabar antes de começar.',
+    en: 'The activity cannot end before it starts.',
+  },
+  'problem.MISSING_LOCATION_TYPE': {
+    pt: 'Escolhe o tipo de local.',
+    en: 'Choose the location type.',
+  },
+  'problem.MISSING_LOCALITY': { pt: 'Escolhe a localidade.', en: 'Choose the locality.' },
+  'problem.MISSING_REFERENCE': {
+    pt: 'O nº CODU é obrigatório num relatório de emergência.',
+    en: 'The CODU number is required on an emergency report.',
+  },
+  'problem.REFERENCE_TOO_LONG': {
+    pt: 'O nº de referência é demasiado longo.',
+    en: 'The reference is too long.',
+  },
+  'problem.TIMES_NOT_FOR_TYPE': {
+    pt: 'Estes tempos só existem nos relatórios de emergência.',
+    en: 'These times only exist on emergency reports.',
+  },
+  'problem.INVALID_TIME': { pt: 'Há uma hora inválida.', en: 'One of the times is not valid.' },
+  'problem.TIMES_OUT_OF_ORDER': {
+    pt: 'Os tempos estão fora de ordem.',
+    en: 'The times are out of order.',
+  },
+  'problem.TOO_MANY_CREW': { pt: 'Demasiadas pessoas na equipa.', en: 'Too many people.' },
+  'problem.CREW_MISSING_PERSON': {
+    pt: 'Há uma pessoa em falta na equipa.',
+    en: 'A crew member is missing.',
+  },
+  'problem.CREW_DUPLICATE': {
+    pt: 'A mesma pessoa está na equipa duas vezes.',
+    en: 'The same person is listed twice.',
+  },
+  'problem.ROLE_NAME_TOO_LONG': {
+    pt: 'O nome da função é demasiado longo.',
+    en: 'The role name is too long.',
+  },
+  'problem.TOO_MANY_VEHICLES': {
+    pt: 'Numa emergência registas uma só viatura.',
+    en: 'An emergency records a single vehicle.',
+  },
+  'problem.VEHICLE_MISSING_ID': { pt: 'Falta escolher a viatura.', en: 'Choose the vehicle.' },
+  'problem.VEHICLE_DUPLICATE': {
+    pt: 'A mesma viatura está registada duas vezes.',
+    en: 'The same vehicle is listed twice.',
+  },
+  'problem.KILOMETRES_INVALID': {
+    pt: 'Os quilómetros têm de ser um número inteiro.',
+    en: 'Kilometres must be a whole number.',
+  },
+  'problem.MATERIALS_NOT_A_LIST': {
+    pt: 'Os materiais não são uma lista.',
+    en: 'The materials are not a list.',
+  },
+  'problem.TOO_MANY_MATERIALS': {
+    pt: 'Já atingiste o limite de linhas de material.',
+    en: 'The limit for material lines has been reached.',
+  },
+  'problem.MATERIAL_MISSING_ITEM': {
+    pt: 'Falta escolher o material.',
+    en: 'Choose the material.',
+  },
+  'problem.MATERIAL_DUPLICATE': {
+    pt: 'O mesmo material está registado duas vezes na mesma viatura.',
+    en: 'The same item is listed twice for the same vehicle.',
+  },
+  'problem.MATERIAL_VEHICLE_NOT_ON_REPORT': {
+    pt: 'A viatura do material tem de estar no relatório.',
+    en: 'The material’s vehicle has to be on this report.',
+  },
+  'problem.MATERIAL_QUANTITY_INVALID': {
+    pt: 'Indica quantas unidades foram usadas.',
+    en: 'Enter how many units were used.',
+  },
+  'problem.MATERIAL_QUANTITY_NOT_ALLOWED': {
+    pt: 'Um material ilimitado não leva quantidade.',
+    en: 'An unlimited item is logged with no quantity.',
+  },
+  'problem.TOO_MANY_VICTIMS': {
+    pt: 'Numa emergência registas uma só vítima.',
+    en: 'An emergency records a single victim.',
+  },
+  'problem.VICTIM_GENDER_MISSING': {
+    pt: 'Falta o género da vítima.',
+    en: 'The victim needs a gender.',
+  },
+  'problem.VICTIM_AGE_INVALID': {
+    pt: 'A idade da vítima tem de estar entre 0 e 130.',
+    en: 'The victim’s age must be between 0 and 130.',
+  },
+  'problem.DESTINATION_INVALID': {
+    pt: 'Escolhe para onde foi a vítima, ou por que não foi transportada.',
+    en: 'Choose where the victim went, or why they were not transported.',
+  },
+  'problem.DESTINATION_HOSPITAL_REQUIRED': {
+    pt: 'Escolhe o hospital para onde a vítima foi transportada.',
+    en: 'Choose which hospital the victim was taken to.',
+  },
+  'problem.DESTINATION_HOSPITAL_NOT_ALLOWED': {
+    pt: 'Uma vítima que não foi transportada não pode ter hospital.',
+    en: 'A victim who was not transported cannot have a hospital.',
+  },
+  'problem.DESTINATION_NOT_FOR_TYPE': {
+    pt: '"Tratado no local" só existe num relatório de apoio.',
+    en: 'Treated on scene is only recorded on a support report.',
+  },
+  'problem.HOSPITAL_EPISODE_NOT_ALLOWED': {
+    pt: 'O nº de episódio só existe para uma vítima transportada para o hospital.',
+    en: 'The episode number only applies to a victim taken to hospital.',
+  },
+  'problem.HOSPITAL_EPISODE_REQUIRES_REFERENCE': {
+    pt: 'O nº de episódio precisa da referência CODU do relatório.',
+    en: 'The episode number needs the report’s CODU reference.',
+  },
+  'problem.HOSPITAL_EPISODE_TOO_LONG': {
+    pt: 'O nº de episódio é demasiado longo.',
+    en: 'The episode number is too long.',
+  },
+  'problem.INEM_UNITS_NOT_A_LIST': {
+    pt: 'Os meios INEM de apoio não são uma lista.',
+    en: 'The INEM support units are not a list.',
+  },
+  'problem.INEM_UNITS_NOT_FOR_TYPE': {
+    pt: 'Meios INEM de apoio só existem num relatório de emergência.',
+    en: 'Additional INEM support units are only recorded on an emergency report.',
+  },
+  'problem.INEM_UNIT_INVALID_TYPE': {
+    pt: 'Todos os meios INEM de apoio precisam de um tipo válido.',
+    en: 'Every INEM support unit needs a valid type.',
+  },
+  'problem.INEM_UNIT_HOSPITAL_REQUIRED': {
+    pt: 'Escolhe de que hospital veio o meio INEM de apoio.',
+    en: 'Choose which hospital the INEM support unit came from.',
+  },
+  'problem.TOO_MANY_INEM_UNITS': {
+    pt: 'Já atingiste o limite de meios deste tipo.',
+    en: 'The limit for this unit type has been reached.',
+  },
+  'problem.NARRATIVE_TOO_LONG': {
+    pt: 'O relato é demasiado longo.',
+    en: 'The report is too long.',
+  },
+  'problem.UNKNOWN_TYPE': {
+    pt: 'Tipo de relatório desconhecido.',
+    en: 'Unknown report type.',
+  },
+  'problem.CREW_NOT_A_LIST': { pt: 'Falta a equipa.', en: 'The crew is missing.' },
+  'problem.VEHICLES_NOT_A_LIST': { pt: 'Faltam as viaturas.', en: 'The vehicles are missing.' },
+  'problem.VICTIMS_NOT_A_LIST': { pt: 'Faltam as vítimas.', en: 'The victims are missing.' },
+  'problem.SHIFT_MISSING_SCHEDULE': {
+    pt: 'O turno indicado não tem escala.',
+    en: 'The shift reference has no schedule.',
+  },
+  'problem.SHIFT_MISSING_DATE': {
+    pt: 'O turno indicado não tem data.',
+    en: 'The shift reference has no date.',
+  },
+  'problem.SHIFT_MISSING_SLOT': {
+    pt: 'O turno indicado não tem período.',
+    en: 'The shift reference has no slot.',
+  },
+
+  // ── What is still unfinished ──
+  'warning.MISSING_END_TIME': { pt: 'Falta a hora de fim.', en: 'The end time is missing.' },
+  'warning.MISSING_NARRATIVE': {
+    pt: 'O relato ainda não está escrito.',
+    en: 'The report has not been written yet.',
+  },
+  'warning.NO_CREW': { pt: 'Não há ninguém na equipa.', en: 'Nobody is on the crew.' },
+  'warning.NO_VEHICLE': { pt: 'Não há viatura registada.', en: 'No vehicle is listed.' },
+  'warning.NO_VICTIM': { pt: 'Não há vítima registada.', en: 'No victim is recorded.' },
+  'warning.NO_TIMES_MARKED': {
+    pt: 'Nenhum tempo da ocorrência foi marcado.',
+    en: 'None of the occurrence times were marked.',
+  },
+
+  // ── The clinical record's own problems ──
+  'problem.CLINICAL_NOT_FOR_TYPE': {
+    pt: 'Só um relatório de emergência tem registo clínico.',
+    en: 'Only an emergency report has a clinical record.',
+  },
+  'problem.CHAMU_TOO_LONG': { pt: 'A nota é demasiado longa.', en: 'The note is too long.' },
+  'problem.ABCDE_UNKNOWN_BAND': { pt: 'Letra ABCDE desconhecida.', en: 'Unknown ABCDE band.' },
+  'problem.ABCDE_INVALID_STATUS': {
+    pt: 'Escolhe normal, alterado ou não avaliado.',
+    en: 'Choose normal, altered or not assessed.',
+  },
+  'problem.ABCDE_NOTE_TOO_LONG': {
+    pt: 'A nota ABCDE é demasiado longa.',
+    en: 'The ABCDE note is too long.',
+  },
+  'problem.ASSESSMENTS_NOT_A_LIST': {
+    pt: 'Faltam as avaliações.',
+    en: 'The assessments are missing.',
+  },
+  'problem.TOO_MANY_ASSESSMENTS': {
+    pt: 'Demasiadas avaliações neste relatório.',
+    en: 'Too many assessments on this report.',
+  },
+  'problem.ASSESSMENT_INVALID_TIME': {
+    pt: 'A avaliação precisa da hora a que foi feita.',
+    en: 'The assessment needs the time it was taken.',
+  },
+  'problem.ASSESSMENT_EMPTY': {
+    pt: 'Esta avaliação não tem nada registado.',
+    en: 'This assessment has nothing recorded in it.',
+  },
+  'problem.VITAL_OUT_OF_RANGE': {
+    pt: 'Valor fora do intervalo possível.',
+    en: 'The value is outside the possible range.',
+  },
+  'problem.VITAL_NOT_WHOLE': {
+    pt: 'Este valor é um número inteiro.',
+    en: 'This value is a whole number.',
+  },
+  'problem.DIASTOLIC_ABOVE_SYSTOLIC': {
+    pt: 'A diastólica não pode ser maior que a sistólica.',
+    en: 'The diastolic cannot be above the systolic.',
+  },
+  'problem.ASSESSMENT_POSITION_TOO_LONG': {
+    pt: 'A posição da vítima é demasiado longa.',
+    en: 'The victim’s position is too long.',
+  },
+  'problem.AVDS_INVALID': {
+    pt: 'Escolhe A, V, D ou S.',
+    en: 'Choose A, V, D or S.',
+  },
+
+  // ── The live run's own problems ──
+  'problem.LIVE_RUN_MISSING_ID': {
+    pt: 'A ocorrência não tem identificador.',
+    en: 'The run has no id.',
+  },
+  'problem.LIVE_RUN_INVALID_REVISION': {
+    pt: 'A ocorrência tem uma versão inválida.',
+    en: 'The run has an invalid revision.',
+  },
+  'problem.LIVE_RUN_UNKNOWN_STATE': {
+    pt: 'Estado da ocorrência desconhecido.',
+    en: 'Unknown run state.',
+  },
+  'problem.LIVE_RUN_MISSING_START': {
+    pt: 'Falta a hora de início da ocorrência.',
+    en: 'The run needs a start time.',
+  },
+  'problem.LIVE_RUN_COMPLAINT_TOO_LONG': {
+    pt: 'O motivo da chamada é demasiado longo.',
+    en: 'The reason for the call is too long.',
+  },
+  'problem.LIVE_RUN_ADDRESS_TOO_LONG': {
+    pt: 'A morada é demasiado longa.',
+    en: 'The address is too long.',
+  },
+  'problem.LIVE_RUN_NAME_TOO_LONG': { pt: 'O nome é demasiado longo.', en: 'The name is too long.' },
+  'problem.LIVE_RUN_INVALID_DATE_OF_BIRTH': {
+    pt: 'A data de nascimento é uma data (AAAA-MM-DD).',
+    en: 'The date of birth is a calendar date (YYYY-MM-DD).',
+  },
+  'problem.LIVE_RUN_INVALID_SNS': {
+    pt: 'O nº de utente tem nove dígitos.',
+    en: 'An SNS number is nine digits.',
+  },
+  'problem.LIVE_RUN_NOT_CLOSED': {
+    pt: 'A ocorrência ainda não foi fechada.',
+    en: 'The run has not been closed yet.',
+  },
+
+  // ── What is unfinished on a run, and what actually blocks the close ──
+  'liveWarning.NO_COMPLAINT': {
+    pt: 'Falta o motivo da chamada.',
+    en: 'The reason for the call is missing.',
+  },
+  'liveWarning.NO_VICTIM_DETAILS': {
+    pt: 'Faltam o género e a idade da vítima.',
+    en: 'The victim’s gender and age are missing.',
+  },
+  'liveWarning.NO_DESTINATION': {
+    pt: 'Falta o destino da vítima.',
+    en: 'The victim’s outcome is missing.',
+  },
+  'liveWarning.NO_VITALS': {
+    pt: 'Não há sinais vitais registados.',
+    en: 'No vital signs were recorded.',
+  },
+  'liveWarning.NO_CREW': { pt: 'Não há ninguém na equipa.', en: 'Nobody is on the crew.' },
+  'liveWarning.NO_VEHICLE': { pt: 'Não há viatura registada.', en: 'No vehicle is listed.' },
+  'liveWarning.MISSING_STAMPS': {
+    pt: 'Faltam tempos da ocorrência.',
+    en: 'Some occurrence times are missing.',
+  },
+
+  'liveBlocker.NO_STAMPS': {
+    pt: 'Marca pelo menos um tempo da ocorrência.',
+    en: 'Mark at least one occurrence time.',
+  },
+  'liveBlocker.NO_LOCALITY': { pt: 'Escolhe a localidade.', en: 'Choose the locality.' },
+  'liveBlocker.NO_LOCATION_TYPE': {
+    pt: 'Escolhe o tipo de local.',
+    en: 'Choose the kind of place.',
+  },
+  'liveBlocker.NO_REFERENCE': { pt: 'Escreve o nº CODU.', en: 'Enter the CODU number.' },
+
+  // ── ABCDE ──
+  'abcde.A': { pt: 'A — Via aérea', en: 'A — Airway' },
+  'abcde.B': { pt: 'B — Ventilação', en: 'B — Breathing' },
+  'abcde.C': { pt: 'C — Circulação', en: 'C — Circulation' },
+  'abcde.D': { pt: 'D — Disfunção neurológica', en: 'D — Disability' },
+  'abcde.E': { pt: 'E — Exposição', en: 'E — Exposure' },
+  'abcdeStatus.NORMAL': { pt: 'Normal', en: 'Normal' },
+  'abcdeStatus.ALTERED': { pt: 'Alterado', en: 'Altered' },
+  'abcdeStatus.NOT_ASSESSED': { pt: 'Não avaliado', en: 'Not assessed' },
+
+  // ── CHAMU, as the national form names it ──
+  'chamu.chamuCircumstances': { pt: 'C — Circunstâncias', en: 'C — Circumstances' },
+  'chamu.chamuHistory': { pt: 'H — História clínica', en: 'H — History' },
+  'chamu.chamuAllergies': { pt: 'A — Alergias', en: 'A — Allergies' },
+  'chamu.chamuMedication': { pt: 'M — Medicação', en: 'M — Medication' },
+  'chamu.chamuLastMeal': { pt: 'U — Última refeição', en: 'U — Last meal' },
+
+  // ── Vitals ──
+  'vital.spo2': { pt: 'SpO₂', en: 'SpO₂' },
+  'vital.respiratoryRate': { pt: 'Freq. respiratória', en: 'Respiratory rate' },
+  'vital.heartRate': { pt: 'Freq. cardíaca', en: 'Heart rate' },
+  'vital.systolic': { pt: 'T.A. sistólica', en: 'Systolic' },
+  'vital.diastolic': { pt: 'T.A. diastólica', en: 'Diastolic' },
+  'vital.bloodGlucose': { pt: 'Glicemia', en: 'Blood glucose' },
+  'vital.temperature': { pt: 'Temperatura', en: 'Temperature' },
+  'vital.painScore': { pt: 'Dor (0–10)', en: 'Pain (0–10)' },
+  // AVDS replaces Glasgow — an enum, not a number, so it is not a `vital.*`
+  // row, but it lives in the same band D as the vitals it stands beside.
+  'vital.avds': { pt: 'AVDS', en: 'AVDS' },
+  'avds.A': { pt: 'Alerta', en: 'Alert' },
+  'avds.V': { pt: 'Resposta a estímulos Verbais', en: 'Responds to Verbal stimuli' },
+  'avds.D': { pt: 'Resposta a estímulos Dolorosos', en: 'Responds to painful (Dolorous) stimuli' },
+  'avds.S': { pt: 'Sem resposta', en: 'No response' },
+
+  // Crew posts as the schedule names them, translated where we recognise them.
+  'role.Driver': { pt: 'Condutor', en: 'Driver' },
+  'role.Team Leader': { pt: 'Chefe de Equipa', en: 'Team Leader' },
+  'role.Team Member': { pt: 'Socorrista', en: 'Team Member' },
+
+  // ── Certifications ── SBV/TAT/TAS are already Portuguese acronyms.
+  'certification.DRIVER': { pt: 'Condutor', en: 'Driver' },
+  'certification.SBV': { pt: 'SBV', en: 'SBV' },
+  'certification.TAT': { pt: 'TAT', en: 'TAT' },
+  'certification.TAS': { pt: 'TAS', en: 'TAS' },
+
+  // ── Blood types ──
+  'bloodType.A_POS': { pt: 'A+', en: 'A+' },
+  'bloodType.A_NEG': { pt: 'A-', en: 'A-' },
+  'bloodType.B_POS': { pt: 'B+', en: 'B+' },
+  'bloodType.B_NEG': { pt: 'B-', en: 'B-' },
+  'bloodType.AB_POS': { pt: 'AB+', en: 'AB+' },
+  'bloodType.AB_NEG': { pt: 'AB-', en: 'AB-' },
+  'bloodType.O_POS': { pt: 'O+', en: 'O+' },
+  'bloodType.O_NEG': { pt: 'O-', en: 'O-' },
+
+  // ── Account roles (#180 phase 2) ──
+  // A different vocabulary from `role.*` above: this is `UserRole` (the
+  // account-level role — "System Administrator") not a shift post ("Driver").
+  // Moved out of `@redinfo/shared`'s `ROLE_METADATA`, which nothing else
+  // needed an English fallback for — see its doc comment.
+  [`accountRole.${UserRole.SYSTEM_ADMIN}`]: { pt: 'Administrador de Sistema', en: 'System Administrator' },
+  [`accountRole.${UserRole.EMERGENCY_OPERATIONAL}`]: {
+    pt: 'Operacional de Emergência',
+    en: 'Emergency Operational',
+  },
+  [`accountRole.${UserRole.EMERGENCY_COORDINATOR}`]: {
+    pt: 'Coordenador de Emergência',
+    en: 'Emergency Coordinator',
+  },
+  [`accountRole.${UserRole.LOGISTICS_COORDINATOR}`]: {
+    pt: 'Coordenador de Logística',
+    en: 'Logistics Coordinator',
+  },
+  [`accountRole.${UserRole.TRANSPORT_COORDINATOR}`]: {
+    pt: 'Coordenador de Transportes',
+    en: 'Transport Coordinator',
+  },
+  // ── Auth providers — how a person signs in, `UserForm`'s provider field ──
+  [`authProvider.${AuthProvider.LOCAL}`]: { pt: 'Palavra-passe', en: 'Password' },
+  [`authProvider.${AuthProvider.GOOGLE}`]: { pt: 'Google', en: 'Google' },
+  [`authProvider.${AuthProvider.MICROSOFT}`]: { pt: 'Microsoft', en: 'Microsoft' },
+
+  [`accountRoleDescription.${UserRole.SYSTEM_ADMIN}`]: {
+    pt: 'Acesso total a todos os recursos e operações do sistema.',
+    en: 'Full access to all system resources and operations.',
+  },
+  [`accountRoleDescription.${UserRole.EMERGENCY_OPERATIONAL}`]: {
+    pt: 'Realiza operações de emergência no terreno; não gere configuração.',
+    en: 'Performs emergency field operations; cannot manage configuration.',
+  },
+  [`accountRoleDescription.${UserRole.EMERGENCY_COORDINATOR}`]: {
+    pt: 'Gere a configuração e os fluxos das operações de emergência.',
+    en: 'Manages emergency-operation configuration and workflows.',
+  },
+  [`accountRoleDescription.${UserRole.LOGISTICS_COORDINATOR}`]: {
+    pt: 'Gere as operações e a configuração de logística.',
+    en: 'Manages logistics operations and configuration.',
+  },
+  [`accountRoleDescription.${UserRole.TRANSPORT_COORDINATOR}`]: {
+    pt: 'Gere pedidos de transporte, doentes, planos de tratamento e o planeamento de viagens.',
+    en: 'Manages transport requests, patients, treatment plans and trip planning.',
+  },
+
+  // ── Availability-window categories (#180 phase 2) ──
+  // `@redinfo/shared`'s `AVAILABILITY_WINDOW_CATEGORY_METADATA.label` stays
+  // English (the backend still builds an exception message from it, until
+  // #180 phase 4) — these are the frontend's own translated keys, with the
+  // shared English value as the fallback if one is ever missing.
+  [`windowCategory.${AvailabilityWindowCategory.EMERGENCY}`]: { pt: 'Emergência', en: 'Emergency' },
+  [`windowCategory.${AvailabilityWindowCategory.LOCAL_SUPPORT}`]: {
+    pt: 'Apoio Local',
+    en: 'Local Support',
+  },
+  [`windowCategory.${AvailabilityWindowCategory.CNE_SUPPORT}`]: {
+    pt: 'Apoio CNE',
+    en: 'CNE Support',
+  },
+  [`windowCategoryDescription.${AvailabilityWindowCategory.EMERGENCY}`]: {
+    pt: 'Cobertura de resposta a emergências — a escala permanente de prevenção.',
+    en: 'Emergency response cover — the standing on-call rota.',
+  },
+  [`windowCategoryDescription.${AvailabilityWindowCategory.LOCAL_SUPPORT}`]: {
+    pt: 'Cobertura para eventos locais e pedidos de prevenção.',
+    en: 'Cover for local events and standby requests.',
+  },
+  [`windowCategoryDescription.${AvailabilityWindowCategory.CNE_SUPPORT}`]: {
+    pt: 'Cobertura para operações CNE.',
+    en: 'Cover for CNE operations.',
+  },
+} as const;
+
+const ALL_MESSAGES: Record<string, { pt: string; en: string }> = {
+  ...MESSAGES,
+  ...ENUM_MESSAGES,
+};
+
+/**
+ * The catalogue polyglot wants: one locale, flat dotted keys. Fed to
+ * `ra-i18n-polyglot` by `i18nProvider.ts`, merged over the hand-written
+ * `ra.*` catalogue (`ra-pt.ts`) and `ra-language-english`.
+ */
+export function messagesFor(locale: Locale): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(ALL_MESSAGES).map(([key, value]) => [key, value[locale]]),
+  );
+}
+
+export const reportTypeLabel = (t: Translate, type: EventReportType | string): string =>
+  t(`reportType.${type}`);
+
+export const reportTypeHint = (t: Translate, type: EventReportType | string): string =>
+  t(`reportTypeHint.${type}`);
+
+export const locationTypeLabel = (t: Translate, value: EventLocationType | string): string =>
+  t(`locationType.${value}`);
+
+export const genderLabel = (t: Translate, value: Gender | string): string => t(`gender.${value}`);
+
+export const destinationLabel = (t: Translate, value: VictimDestinationKind | string): string =>
+  t(`destination.${value}`);
+
+export const inemUnitLabel = (t: Translate, value: InemSupportUnitType | string): string =>
+  t(`inemUnit.${value}`);
+
+export const occurrenceTimeLabel = (t: Translate, field: string): string => t(`time.${field}`);
+
+/**
+ * Why a report cannot be saved, in the crew's language.
+ *
+ * Falls back to the English message the rule carries, so a code added to
+ * `@redinfo/shared` without a translation still says something true rather than
+ * showing a bare `problem.WHATEVER`.
+ */
+export const problemLabel = (t: Translate, problem: EventReportProblem | null): string => {
+  if (!problem) return '';
+  const key = `problem.${problem.code}`;
+  return key in ALL_MESSAGES ? t(key) : problem.message;
+};
+
+/** What is still unfinished, in the crew's language. */
+export const warningLabel = (t: Translate, code: EventReportWarningCode): string =>
+  t(`warning.${code}`);
+
+/** What is still unfinished on a live run, in the crew's language. */
+export const liveWarningLabel = (t: Translate, code: string): string => t(`liveWarning.${code}`);
+
+/** What actually stops a run being closed. */
+export const liveBlockerLabel = (t: Translate, code: string): string => t(`liveBlocker.${code}`);
+
+/** The label on the bottom bar's primary control, from the stamp it writes. */
+export const liveStampLabel = (t: Translate, field: string): string => t(`live.stamp.${field}`);
+
+export const liveScreenLabel = (t: Translate, screen: string): string => t(`live.screen.${screen}`);
+
+export const abcdeBandLabel = (t: Translate, band: string): string => t(`abcde.${band}`);
+
+export const abcdeStatusLabel = (t: Translate, status: string): string => t(`abcdeStatus.${status}`);
+
+export const chamuLabel = (t: Translate, field: string): string => t(`chamu.${field}`);
+
+export const vitalLabel = (t: Translate, key: string): string => t(`vital.${key}`);
+
+/** The AVDS level's own Portuguese expansion — the accessible name on its chip. */
+export const avdsLevelLabel = (t: Translate, level: string): string => t(`avds.${level}`);
+
+export const syncStateLabel = (t: Translate, state: string): string => t(`sync.${state}`);
+
+/**
+ * A crew post, translated when it is one of the standard three and left as
+ * typed otherwise — a coordinator may name a role anything, and inventing a
+ * translation for "Apoio Extra" would be worse than showing what they wrote.
+ */
+export const roleLabel = (t: Translate, name?: string | null): string => {
+  if (!name) return '';
+  const key = `role.${name}`;
+  return key in ALL_MESSAGES ? t(key) : name;
+};
+
+export const certificationLabel = (t: Translate, type: string): string =>
+  t(`certification.${type}`);
+
+/**
+ * An INEM INOP reason code's display label — translated from `pt`'s verbatim
+ * INEM copy when redinfo has shipped a key for it, falling back to the label
+ * the live `GET /api/INOP` call itself supplied otherwise. INEM can add a
+ * reason redinfo has no key for yet; this is what keeps that reading as
+ * untranslated-but-legible instead of falling back to some other code's text.
+ */
+export const inemReasonLabel = (t: Translate, code: string, apiLabel: string): string => {
+  const key = `inem.inopReason.${code}`;
+  return key in ALL_MESSAGES ? t(key) : apiLabel;
+};
+
+export const bloodTypeLabel = (t: Translate, type: string): string => t(`bloodType.${type}`);
+
+/** The account role's display name — `UserRole`, not a shift post; see `roleLabel` for that. */
+export const accountRoleLabel = (t: Translate, role: UserRole | string): string =>
+  t(`accountRole.${role}`);
+
+export const accountRoleDescription = (t: Translate, role: UserRole | string): string =>
+  t(`accountRoleDescription.${role}`);
+
+/** How a person signs in — `AuthProvider`, the `UserForm` provider field. */
+export const authProviderLabel = (t: Translate, provider: AuthProvider | string): string =>
+  t(`authProvider.${provider}`);
+
+/**
+ * A window category's display label, falling back to `@redinfo/shared`'s
+ * English `AVAILABILITY_WINDOW_CATEGORY_METADATA` if this catalogue is ever
+ * missing an entry — that shared English string is what the backend still
+ * builds an overlap exception message from (until #180 phase 4), so it is
+ * never removed, only preferred-over.
+ */
+export const windowCategoryLabel = (t: Translate, category: AvailabilityWindowCategory | string): string => {
+  const key = `windowCategory.${category}`;
+  return key in ALL_MESSAGES ? t(key) : availabilityWindowCategoryLabel(category);
+};
+
+export const windowCategoryDescription = (
+  t: Translate,
+  category: AvailabilityWindowCategory | string,
+): string => {
+  const key = `windowCategoryDescription.${category}`;
+  if (key in ALL_MESSAGES) return t(key);
+  return (
+    AVAILABILITY_WINDOW_CATEGORY_METADATA[category as AvailabilityWindowCategory]?.description ??
+    String(category)
+  );
+};
+
+/**
+ * A volunteer-hours activity type's display label (#164), falling back to
+ * `@redinfo/shared`'s English `VOLUNTEER_ACTIVITY_TYPE_LABEL` the same way
+ * `windowCategoryLabel` falls back to its own shared map.
+ */
+export const activityTypeLabel = (t: Translate, type: VolunteerActivityType | string): string => {
+  const key = `activityType.${type}`;
+  return key in ALL_MESSAGES
+    ? t(key)
+    : (VOLUNTEER_ACTIVITY_TYPE_LABEL[type as VolunteerActivityType] ?? String(type));
+};
+
+export const volunteerHoursStatusLabel = (
+  t: Translate,
+  status: VolunteerHoursStatus | string,
+): string => t(`volunteerHoursStatus.${status}`);
+
+/**
+ * A backend `ApiErrorBody` (#180 phase 4), in the reader's language.
+ *
+ * Falls back to `error.message` — the English the API sent — whenever
+ * `error.code` is absent (most exceptions; see `@redinfo/shared`'s
+ * `ApiErrorCode` doc comment for which ones deliberately carry one) or the
+ * catalogue is missing an entry for a code that exists. That fallback is
+ * the same safety net every other translated-with-a-fallback helper in this
+ * file uses: a gap here degrades to true and readable, never to blank.
+ */
+export const apiErrorLabel = (
+  t: Translate,
+  error: { code?: ApiErrorCode; message: string; params?: Record<string, string | number> },
+): string => {
+  if (!error.code) return error.message;
+  const key = `apiError.${error.code}`;
+  return key in ALL_MESSAGES ? t(key, { _: error.message, ...error.params }) : error.message;
+};

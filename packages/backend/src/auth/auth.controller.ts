@@ -9,11 +9,12 @@ import {
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
-import { AuthGuard } from '@nestjs/passport';
 import { ApiTags, ApiBody, ApiBearerAuth, ApiExcludeEndpoint } from '@nestjs/swagger';
 import { AuthService } from './auth.service';
 import { LocalAuthGuard } from './guards/local-auth.guard';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
+import { GoogleAuthGuard } from './guards/google-oauth.guard';
+import { MicrosoftAuthGuard } from './guards/microsoft-oauth.guard';
 import { CurrentUser } from './decorators/current-user.decorator';
 import { LoginDto } from './dto/login.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
@@ -30,8 +31,22 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @UseGuards(LocalAuthGuard)
   @ApiBody({ type: LoginDto })
-  async login(@Req() req: any) {
-    return this.authService.login(req.user as User);
+  async login(@Req() req: any, @Body() dto: LoginDto) {
+    return this.authService.login((req.user as User).id, dto.remember ?? false);
+  }
+
+  // ── Public config ────────────────────────────────────────────────────────────
+
+  /**
+   * Whether the login screen should show the password form at all —
+   * unauthenticated by necessity (it's what the login screen itself uses),
+   * but a single global boolean, not tied to any particular account, so it
+   * carries none of the per-email enumeration risk a lookup would.
+   */
+  @Get('config')
+  @ApiExcludeEndpoint()
+  getConfig() {
+    return { localLoginEnabled: this.authService.isLocalLoginEnabled() };
   }
 
   // ── Refresh ─────────────────────────────────────────────────────────────────
@@ -63,39 +78,87 @@ export class AuthController {
 
   @Get('google')
   @ApiExcludeEndpoint()
-  @UseGuards(AuthGuard('google'))
+  @UseGuards(GoogleAuthGuard)
   googleLogin() {
     // Redirect is handled by passport
   }
 
   @Get('google/callback')
   @ApiExcludeEndpoint()
-  @UseGuards(AuthGuard('google'))
+  @UseGuards(GoogleAuthGuard)
   async googleCallback(@Req() req: any, @Res() res: any) {
-    const tokens = await this.authService.login(req.user as User);
-    const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:5173';
-    res.redirect(
-      `${frontendUrl}/auth/callback?accessToken=${tokens.accessToken}&refreshToken=${tokens.refreshToken}`,
-    );
+    // No matching account, or a token-exchange failure — see
+    // `GoogleAuthGuard.handleRequest`, which sets `req.oauthError` for the latter.
+    if (!req.user) {
+      return res.redirect(this.frontendRoute(`/login?error=${this.oauthErrorCode(req)}`));
+    }
+    const remember = req.query.state === 'true';
+    const tokens = await this.authService.login((req.user as User).id, remember);
+    res.redirect(this.callbackRoute(tokens, remember));
   }
 
   // ── Microsoft OAuth ───────────────────────────────────────────────────────────
 
   @Get('microsoft')
   @ApiExcludeEndpoint()
-  @UseGuards(AuthGuard('microsoft'))
+  @UseGuards(MicrosoftAuthGuard)
   microsoftLogin() {
     // Redirect is handled by passport
   }
 
   @Get('microsoft/callback')
   @ApiExcludeEndpoint()
-  @UseGuards(AuthGuard('microsoft'))
+  @UseGuards(MicrosoftAuthGuard)
   async microsoftCallback(@Req() req: any, @Res() res: any) {
-    const tokens = await this.authService.login(req.user as User);
-    const frontendUrl = process.env.FRONTEND_URL ?? 'http://localhost:5173';
-    res.redirect(
-      `${frontendUrl}/auth/callback?accessToken=${tokens.accessToken}&refreshToken=${tokens.refreshToken}`,
-    );
+    if (!req.user) {
+      return res.redirect(this.frontendRoute(`/login?error=${this.oauthErrorCode(req)}`));
+    }
+    const remember = req.query.state === 'true';
+    const tokens = await this.authService.login((req.user as User).id, remember);
+    res.redirect(this.callbackRoute(tokens, remember));
+  }
+
+  // ── Redirecting back into the SPA ─────────────────────────────────────────────
+
+  /**
+   * Which flash message the login screen shows for a failed OAuth callback.
+   * `oauthError` (set by `GoogleAuthGuard`/`MicrosoftAuthGuard.handleRequest`)
+   * means the strategy itself failed — most commonly a mobile browser
+   * replaying the callback URL after its authorization code was already
+   * redeemed by the first, successful hit — as opposed to a clean `done(null,
+   * false)` for an OAuth identity with no matching admin-provisioned account.
+   */
+  private oauthErrorCode(req: any): 'oauth_failed' | 'oauth_account_not_found' {
+    return req.oauthError ? 'oauth_failed' : 'oauth_account_not_found';
+  }
+
+  /**
+   * Builds an absolute URL for an in-app route.
+   *
+   * The frontend is react-admin 5, whose `<Admin>` mounts a **HashRouter** —
+   * every in-app route lives after the `#`, so a bare `${frontendUrl}/login`
+   * is not the login screen, it is a path the router never sees. The browser
+   * fetches it, nginx serves `index.html`, the router boots on an empty hash,
+   * lands on `/` and (unauthenticated) bounces to `#/login`, leaving the
+   * tokens unread in a query string nothing is listening to. Hence the `/#`.
+   *
+   * `route` carries its own query string *inside* the fragment, so the SPA
+   * reads it off the router's location, not `window.location.search`.
+   */
+  private frontendRoute(route: string): string {
+    const frontendUrl = (process.env.FRONTEND_URL ?? 'http://localhost:5173').replace(/\/+$/, '');
+    return `${frontendUrl}/#${route}`;
+  }
+
+  private callbackRoute(
+    tokens: { accessToken: string; refreshToken: string },
+    remember: boolean,
+  ): string {
+    const params = new URLSearchParams({
+      accessToken: tokens.accessToken,
+      refreshToken: tokens.refreshToken,
+      remember: String(remember),
+    });
+    return this.frontendRoute(`/auth/callback?${params.toString()}`);
   }
 }

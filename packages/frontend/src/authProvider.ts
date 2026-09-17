@@ -1,17 +1,27 @@
 import { AuthProvider } from 'react-admin';
+import type { Locale } from '@redinfo/shared';
+import { store } from './i18n/i18nProvider';
+import { getAccessToken, getRefreshToken, setTokens, clearTokens } from './authStorage';
+import { refreshAccessToken } from './authRefresh';
 
 const API_URL = import.meta.env.VITE_API_URL ?? '';
 
-const TOKEN_KEY = 'redinfo_access_token';
-const REFRESH_KEY = 'redinfo_refresh_token';
-
 export const authProvider: AuthProvider = {
   // ── Login (local) ────────────────────────────────────────────────────────────
-  async login({ username, password }: { username: string; password: string }) {
+  async login({
+    username,
+    password,
+    remember = true,
+  }: {
+    username: string;
+    password: string;
+    /** "Keep me signed in" — see `authStorage`'s doc comment. */
+    remember?: boolean;
+  }) {
     const res = await fetch(`${API_URL}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: username, password }),
+      body: JSON.stringify({ email: username, password, remember }),
     });
 
     if (!res.ok) {
@@ -20,13 +30,12 @@ export const authProvider: AuthProvider = {
     }
 
     const data = await res.json();
-    localStorage.setItem(TOKEN_KEY, data.accessToken);
-    localStorage.setItem(REFRESH_KEY, data.refreshToken);
+    setTokens(data.accessToken, data.refreshToken, remember);
   },
 
   // ── Logout ───────────────────────────────────────────────────────────────────
   async logout() {
-    const refreshToken = localStorage.getItem(REFRESH_KEY);
+    const refreshToken = getRefreshToken();
     if (refreshToken) {
       await fetch(`${API_URL}/auth/logout`, {
         method: 'POST',
@@ -34,35 +43,31 @@ export const authProvider: AuthProvider = {
         body: JSON.stringify({ refreshToken }),
       }).catch(() => undefined);
     }
-    localStorage.removeItem(TOKEN_KEY);
-    localStorage.removeItem(REFRESH_KEY);
+    clearTokens();
   },
 
   // ── Token refresh ─────────────────────────────────────────────────────────────
   async checkAuth() {
-    const token = localStorage.getItem(TOKEN_KEY);
+    const token = getAccessToken();
     if (!token) throw new Error('No token');
 
     // Check if JWT is expired (client-side fast path)
     try {
       const [, payload] = token.split('.');
       const decoded = JSON.parse(atob(payload));
+      // Pre-#multi-role tokens carry a singular `role` claim, not `roles`.
+      // Rather than leave a mid-session user with a half-broken menu (some
+      // capabilities checked, others silently missing), treat a token
+      // without the new claim as expired and force a clean re-login — the
+      // access token's short lifetime (15 min default) means this is a
+      // one-time inconvenience, not a recurring one.
+      if (!Array.isArray(decoded.roles)) {
+        clearTokens();
+        throw new Error('Session expired');
+      }
       if (decoded.exp * 1000 < Date.now()) {
-        // Attempt refresh
-        const refreshToken = localStorage.getItem(REFRESH_KEY);
-        if (!refreshToken) throw new Error('No refresh token');
-
-        const res = await fetch(`${API_URL}/auth/refresh`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refreshToken }),
-        });
-
-        if (!res.ok) throw new Error('Refresh failed');
-
-        const data = await res.json();
-        localStorage.setItem(TOKEN_KEY, data.accessToken);
-        localStorage.setItem(REFRESH_KEY, data.refreshToken);
+        const refreshed = await refreshAccessToken();
+        if (!refreshed) throw new Error('Session expired');
       }
     } catch {
       throw new Error('Session expired');
@@ -76,7 +81,7 @@ export const authProvider: AuthProvider = {
 
   // ── Identity ──────────────────────────────────────────────────────────────────
   async getIdentity() {
-    const token = localStorage.getItem(TOKEN_KEY);
+    const token = getAccessToken();
     if (!token) throw new Error('No token');
 
     const res = await fetch(`${API_URL}/auth/me`, {
@@ -85,6 +90,18 @@ export const authProvider: AuthProvider = {
     if (!res.ok) throw new Error('Failed to fetch identity');
 
     const user = await res.json();
+
+    // Reconcile the account's chosen language with what the tree is
+    // currently showing — see #180's precedence note. `RaStore.locale`
+    // drives the *first* paint, before this call resolves; from here on the
+    // server wins. `user.locale === null` means "never chosen" — leave the
+    // store (browser-detected) alone, or the person who changes their
+    // phone's language would stop being followed by a locale we invented.
+    const serverLocale: Locale | null = user.locale ?? null;
+    if (serverLocale && serverLocale !== store.getItem<Locale>('locale')) {
+      store.setItem('locale', serverLocale);
+    }
+
     return {
       id: user.id,
       fullName: `${user.firstName} ${user.lastName}`,
@@ -95,18 +112,16 @@ export const authProvider: AuthProvider = {
 
   // ── Permissions ───────────────────────────────────────────────────────────────
   async getPermissions() {
-    const token = localStorage.getItem(TOKEN_KEY);
+    const token = getAccessToken();
     if (!token) return null;
     try {
       const [, payload] = token.split('.');
       const decoded = JSON.parse(atob(payload));
-      return decoded.role ?? null;
+      return Array.isArray(decoded.roles) ? decoded.roles : null;
     } catch {
       return null;
     }
   },
 };
 
-export function getAccessToken(): string | null {
-  return localStorage.getItem(TOKEN_KEY);
-}
+export { getAccessToken };

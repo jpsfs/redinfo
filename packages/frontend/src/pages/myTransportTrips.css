@@ -1,0 +1,31 @@
+/**
+ * Print stylesheet for MyTransportTripsPage (#236) — the same
+ * browser-print-not-server-PDF choice as `schedulePrint.css`, applied to the
+ * live mobile page itself rather than a separate route: this screen already
+ * shows exactly what a driver needs, so printing it is a stylesheet, not a
+ * second page.
+ */
+@media print {
+  /* Screen-only controls (date picker, prev/next, the print button itself,
+     the polling page chrome) — never printed. */
+  .my-transport-trips-toolbar,
+  .my-transport-trips-app-chrome {
+    display: none !important;
+  }
+
+  .my-transport-trip-card {
+    /* One legible page per trip, per #236's acceptance criteria — a row
+       never splits mid-stop either (see `.my-transport-trip-stop` below). */
+    break-after: page;
+    box-shadow: none !important;
+    border: none !important;
+  }
+
+  .my-transport-trip-card:last-of-type {
+    break-after: auto;
+  }
+
+  .my-transport-trip-stop {
+    break-inside: avoid;
+  }
+}

@@ -16,14 +16,32 @@ export class CreateInventoryTemplateItemDto {
   @IsNotEmpty()
   templateId: string;
 
-  @ApiProperty({ example: 'First Aid Kit' })
+  /**
+   * The new, catalogue-driven identity of the row (#206). When set,
+   * `name`/`type`/`unit` are read through from the `MaterialItem` and any
+   * value sent for them below is ignored — see `InventoryService`. Optional
+   * only for the legacy free-text path some older callers still use;
+   * omitting it AND `name` is rejected.
+   */
+  @ApiPropertyOptional({ description: 'MaterialItem catalogue entry this row is for' })
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
-  name: string;
+  materialItemId?: string;
 
-  @ApiProperty({ enum: InventoryItemType, default: InventoryItemType.COUNTABLE })
+  @ApiPropertyOptional({
+    example: 'First Aid Kit',
+    description: 'Legacy free-text name, ignored once materialItemId is set',
+  })
+  @IsOptional()
+  @IsString()
+  @IsNotEmpty()
+  name?: string;
+
+  @ApiPropertyOptional({ enum: InventoryItemType, description: 'Legacy free-text type, ignored once materialItemId is set' })
+  @IsOptional()
   @IsEnum(InventoryItemType)
-  type: InventoryItemType;
+  type?: InventoryItemType;
 
   @ApiPropertyOptional({ example: 2, description: 'Recommended quantity (null for UNLIMITED)' })
   @IsOptional()
@@ -32,10 +50,14 @@ export class CreateInventoryTemplateItemDto {
   @Min(0)
   recommendedQuantity?: number;
 
-  @ApiProperty({ example: 'pcs', default: 'pcs' })
+  @ApiPropertyOptional({
+    example: 'pcs',
+    description: 'Legacy free-text unit, ignored once materialItemId is set',
+  })
+  @IsOptional()
   @IsString()
   @IsNotEmpty()
-  unit: string;
+  unit?: string;
 
   @ApiPropertyOptional()
   @IsOptional()

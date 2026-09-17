@@ -19,3 +19,5 @@ jobs:
           node scripts/policy-check.js
         env:
           GITHUB_EVENT_PATH: ${{ github.event_path }}
+      - name: Check doc maps
+        run: node scripts/check-doc-maps.mjs

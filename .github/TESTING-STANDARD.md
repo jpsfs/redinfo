@@ -3,6 +3,8 @@
 Purpose
 This document defines the mandatory testing approach for features: unit, integration, and end-to-end tests that validate user story acceptance criteria (behavior/outcome focused).
 
+Current reality: there is no e2e harness wired up yet (`pnpm --filter frontend test:e2e` is a stub). The e2e requirement below is the target, not something already enforced — don't block a PR on it until a harness exists.
+
 Principles
 - Tests must validate user-facing outcomes or domain/business rules described in the user story acceptance criteria.
 - Avoid tests that only assert private implementation details.
@@ -26,11 +28,17 @@ Run unit tests (backend):
 pnpm --filter backend test
 ```
 
-Run integration tests (example pattern):
+Run integration tests (needs `DATABASE_URL`):
 
 ```
-pnpm --filter backend test -- -t "integration"
+pnpm --filter backend test:integration
 ```
+
+Use the script rather than `test -- -t "integration"`: everything after the `--`
+reaches jest as a *path* pattern, not as flags, so the name filter never applies
+and the suites run in parallel. They share one database, and more than one of
+them assumes it is the only thing holding an availability window open — the
+script runs them in band and filters by name properly.
 
 Run e2e tests (example using Playwright):
 

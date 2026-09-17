@@ -23,19 +23,20 @@ export class RolesGuard implements CanActivate {
     }
 
     const { user } = context.switchToHttp().getRequest();
-    const role: UserRole = user?.role;
+    const roles: UserRole[] = user?.roles ?? [];
 
-    if (!role) return false;
+    if (roles.length === 0) return false;
 
     // @Roles and @Actions are alternative authorization strategies (OR).
-    // @Roles: explicit allow-list of roles.
-    // @Actions: capability-based check via ROLE_PERMISSIONS.
-    if (requiredRoles && requiredRoles.length > 0 && requiredRoles.includes(role)) {
+    // @Roles: explicit allow-list — holding *any* listed role is enough.
+    // @Actions: capability-based check via ROLE_PERMISSIONS, unioned across
+    // every role the user holds.
+    if (requiredRoles && requiredRoles.length > 0 && requiredRoles.some((role) => roles.includes(role))) {
       return true;
     }
 
     if (requiredActions && requiredActions.length > 0) {
-      return requiredActions.every((action) => hasPermission(role, action));
+      return requiredActions.every((action) => hasPermission(roles, action));
     }
 
     return false;

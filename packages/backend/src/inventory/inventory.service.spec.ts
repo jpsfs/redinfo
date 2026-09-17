@@ -1,5 +1,6 @@
 import { ConflictException, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InventoryService } from './inventory.service';
+import { StockMovementsService } from './stock-movements.service';
 import { VehicleType, InventoryItemType } from '@redinfo/shared';
 
 // ── helpers ────────────────────────────────────────────────────────────────────
@@ -51,8 +52,17 @@ const EMERGENCY_VEHICLE = {
   numeroCauda: 'VIAT-01',
 };
 
+const OXYGEN_MATERIAL_ITEM = {
+  id: 'mat-oxygen',
+  namePt: 'Cilindro de Oxigénio',
+  nameEn: 'Oxygen Cylinder',
+  unit: 'kit',
+  type: InventoryItemType.COUNTABLE,
+  isDeleted: false,
+};
+
 function buildPrismaStub(overrides: Record<string, unknown> = {}) {
-  return {
+  const stub = {
     inventoryTemplate: {
       findMany: jest.fn().mockResolvedValue([EMERGENCY_TEMPLATE]),
       findUnique: jest.fn().mockResolvedValue(null),
@@ -75,6 +85,9 @@ function buildPrismaStub(overrides: Record<string, unknown> = {}) {
       ),
       count: jest.fn().mockResolvedValue(0),
     },
+    materialItem: {
+      findFirst: jest.fn().mockResolvedValue(null),
+    },
     vehicleInventoryItem: {
       findMany: jest.fn().mockResolvedValue([]),
       findUnique: jest.fn().mockResolvedValue(null),
@@ -90,12 +103,23 @@ function buildPrismaStub(overrides: Record<string, unknown> = {}) {
     vehicleInventoryAudit: {
       create: jest.fn().mockResolvedValue({ id: 'audit-1' }),
     },
+    stockMovement: {
+      create: jest.fn().mockResolvedValue({ id: 'move-1' }),
+    },
     vehicle: {
       findFirst: jest.fn().mockResolvedValue(null),
       findMany: jest.fn().mockResolvedValue([]),
     },
-    $transaction: jest.fn().mockImplementation((ops: unknown[]) => Promise.all(ops)),
     ...overrides,
+  };
+  // The callback form of `$transaction` receives the stub itself as `tx` —
+  // there's no separate transaction client, matching how these calls are
+  // flat in the real `PrismaService` too.
+  return {
+    ...stub,
+    $transaction: jest.fn().mockImplementation((arg: unknown) =>
+      typeof arg === 'function' ? arg(stub) : Promise.all(arg as unknown[]),
+    ),
   };
 }
 
@@ -107,7 +131,7 @@ describe('InventoryService', () => {
 
   beforeEach(() => {
     prisma = buildPrismaStub();
-    service = new InventoryService(prisma as never);
+    service = new InventoryService(prisma as never, new StockMovementsService(prisma as never));
   });
 
   // ── templates ────────────────────────────────────────────────────────────────
@@ -191,6 +215,107 @@ describe('InventoryService', () => {
         unit: 'pcs',
       };
       await expect(service.createTemplateItem(dto)).rejects.toThrow(BadRequestException);
+    });
+
+    it('derives name/type/unit from the linked MaterialItem when materialItemId is given (#206)', async () => {
+      prisma.inventoryTemplate.findUnique.mockResolvedValue(EMERGENCY_TEMPLATE);
+      prisma.materialItem.findFirst.mockResolvedValue(OXYGEN_MATERIAL_ITEM);
+      const dto = { templateId: 'tpl-1', materialItemId: 'mat-oxygen', recommendedQuantity: 2 };
+
+      await service.createTemplateItem(dto);
+
+      expect(prisma.materialItem.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { id: 'mat-oxygen', isDeleted: false } }),
+      );
+      const callData = prisma.inventoryTemplateItem.create.mock.calls[0][0].data;
+      expect(callData).toMatchObject({
+        materialItemId: 'mat-oxygen',
+        name: 'Cilindro de Oxigénio',
+        type: InventoryItemType.COUNTABLE,
+        unit: 'kit',
+      });
+    });
+
+    it('throws NotFoundException when materialItemId does not resolve', async () => {
+      prisma.inventoryTemplate.findUnique.mockResolvedValue(EMERGENCY_TEMPLATE);
+      prisma.materialItem.findFirst.mockResolvedValue(null);
+      const dto = { templateId: 'tpl-1', materialItemId: 'missing', recommendedQuantity: 2 };
+
+      await expect(service.createTemplateItem(dto)).rejects.toThrow(NotFoundException);
+    });
+
+    it('throws BadRequestException when neither materialItemId nor name/type are given', async () => {
+      prisma.inventoryTemplate.findUnique.mockResolvedValue(EMERGENCY_TEMPLATE);
+      await expect(service.createTemplateItem({ templateId: 'tpl-1' })).rejects.toThrow(
+        BadRequestException,
+      );
+    });
+  });
+
+  describe('updateTemplateItem', () => {
+    it('re-derives name/type/unit when re-pointed at a different MaterialItem', async () => {
+      const item = {
+        id: 'item-1',
+        templateId: 'tpl-1',
+        materialItemId: 'mat-old',
+        name: 'Old Name',
+        type: InventoryItemType.COUNTABLE,
+        unit: 'pcs',
+        isDeleted: false,
+        template: EMERGENCY_TEMPLATE,
+      };
+      prisma.inventoryTemplateItem.findFirst.mockResolvedValue(item);
+      prisma.materialItem.findFirst.mockResolvedValue(OXYGEN_MATERIAL_ITEM);
+
+      await service.updateTemplateItem('item-1', { materialItemId: 'mat-oxygen' });
+
+      expect(prisma.inventoryTemplateItem.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: expect.objectContaining({
+            materialItemId: 'mat-oxygen',
+            name: 'Cilindro de Oxigénio',
+            type: InventoryItemType.COUNTABLE,
+            unit: 'kit',
+          }),
+        }),
+      );
+    });
+
+    it('leaves the material link alone when materialItemId is omitted', async () => {
+      const item = {
+        id: 'item-1',
+        templateId: 'tpl-1',
+        materialItemId: 'mat-oxygen',
+        name: 'Cilindro de Oxigénio',
+        type: InventoryItemType.COUNTABLE,
+        unit: 'kit',
+        isDeleted: false,
+        template: EMERGENCY_TEMPLATE,
+      };
+      prisma.inventoryTemplateItem.findFirst.mockResolvedValue(item);
+
+      await service.updateTemplateItem('item-1', { order: 3 });
+
+      expect(prisma.materialItem.findFirst).not.toHaveBeenCalled();
+      const callData = prisma.inventoryTemplateItem.update.mock.calls[0][0].data;
+      expect(callData).not.toHaveProperty('materialItemId');
+      expect(callData).not.toHaveProperty('name');
+    });
+
+    it('throws NotFoundException when re-pointed at a missing MaterialItem', async () => {
+      const item = {
+        id: 'item-1',
+        templateId: 'tpl-1',
+        isDeleted: false,
+        template: EMERGENCY_TEMPLATE,
+        type: InventoryItemType.COUNTABLE,
+      };
+      prisma.inventoryTemplateItem.findFirst.mockResolvedValue(item);
+      prisma.materialItem.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.updateTemplateItem('item-1', { materialItemId: 'missing' }),
+      ).rejects.toThrow(NotFoundException);
     });
   });
 

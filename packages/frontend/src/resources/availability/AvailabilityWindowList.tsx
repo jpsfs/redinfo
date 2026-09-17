@@ -1,0 +1,361 @@
+import { useEffect, useState } from 'react';
+import {
+  CreateButton,
+  Datagrid,
+  DateField,
+  FunctionField,
+  List,
+  TextField,
+  TopToolbar,
+  useListContext,
+} from 'react-admin';
+import { Link, useNavigate } from 'react-router-dom';
+import {
+  Alert,
+  Box,
+  Button,
+  Card,
+  CardContent,
+  Chip,
+  CircularProgress,
+  Paper,
+  Stack,
+  Typography,
+} from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
+import BoltIcon from '@mui/icons-material/Bolt';
+import EventBusyIcon from '@mui/icons-material/EventBusy';
+import { AVAILABILITY_WINDOW_CATEGORIES, AvailabilityWindow, AvailabilityWindowStatus, Holiday } from '@redinfo/shared';
+import { apiFetch } from '../../api';
+import { CategoryChip } from '../../components/CategoryChip';
+import { ChipFilterRow } from '../../components/ChipFilterRow';
+import { MonthFilter } from '../../components/MonthFilter';
+import { useIsMobile } from '../../hooks/useIsMobile';
+import { windowCategoryLabel } from '../../i18n/labels';
+import { useT } from '../../i18n/useT';
+import { formatDate, formatDateRange, toIsoDate } from '../../utils/dates';
+import { EmergencyWindowDialog } from './EmergencyWindowDialog';
+import { WindowCategoryChip, WindowStatusChip } from './WindowIdentity';
+import { WindowListCard } from './WindowListCard';
+
+/**
+ * Two ways to open a window: pick a month and go, or build the shifts day by
+ * day. The month shortcut covers the urgent case, where the standard grid is
+ * fine and the only question is which month.
+ *
+ * `TopToolbar`'s own layout never wraps its children, so the three buttons —
+ * two of them multi-word — run off a phone's width if left to it. Below `sm`
+ * they render in a wrapping `Stack` instead, at the cost of `TopToolbar`'s own
+ * chrome, which is desktop-only affordance anyway.
+ *
+ * The third button can't just be react-admin's `<CreateButton>` on mobile:
+ * that component switches to a `position: fixed` floating action button of
+ * its own accord below the `md` breakpoint (900px — wider than our `sm`
+ * mobile cutoff), so inside our wrapping `Stack` it renders detached from the
+ * other two, floating over the page instead of sitting next to them. Below
+ * `sm` we use a plain `Link` button instead, matching the other two.
+ */
+export const WindowListActions = () => {
+  const t = useT();
+  const isMobile = useIsMobile();
+  const [emergencyOpen, setEmergencyOpen] = useState(false);
+
+  const sharedButtons = (
+    <>
+      <Button
+        component={Link}
+        to="/holidays"
+        size="small"
+        startIcon={<EventBusyIcon />}
+      >
+        {t('windowList.manageHolidays')}
+      </Button>
+      <Button
+        size="small"
+        startIcon={<BoltIcon />}
+        onClick={() => setEmergencyOpen(true)}
+      >
+        {t('windowList.newEmergencyAvailability')}
+      </Button>
+    </>
+  );
+
+  return (
+    <>
+      {isMobile ? (
+        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap sx={{ px: 2, pb: 1 }}>
+          {sharedButtons}
+          <Button
+            component={Link}
+            to="/availability-windows/create"
+            size="small"
+            startIcon={<AddIcon />}
+          >
+            {t('windowList.newWindow')}
+          </Button>
+        </Stack>
+      ) : (
+        <TopToolbar>
+          {sharedButtons}
+          <CreateButton label={t('windowList.newWindow')} />
+        </TopToolbar>
+      )}
+      <EmergencyWindowDialog
+        open={emergencyOpen}
+        onClose={() => setEmergencyOpen(false)}
+      />
+    </>
+  );
+};
+
+const actorName = (actor?: { firstName: string; lastName: string } | null) =>
+  actor ? `${actor.firstName} ${actor.lastName}` : '—';
+
+/**
+ * The upcoming-holidays panel from the design: coordinators pick window dates
+ * against it, since a holiday inside the window doubles that day's shifts.
+ */
+const UpcomingHolidays = () => {
+  const t = useT();
+  const [holidays, setHolidays] = useState<Holiday[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const from = toIsoDate(new Date());
+    apiFetch<{ data: Holiday[] }>(`/holidays?from=${from}&perPage=5`)
+      .then((result) => {
+        if (!cancelled) setHolidays(result.data);
+      })
+      .catch(() => {
+        if (!cancelled) setHolidays([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  if (!holidays?.length) return null;
+
+  return (
+    <Card variant="outlined" sx={{ mb: 2 }}>
+      <CardContent>
+        <Typography variant="subtitle2" gutterBottom>
+          {t('windowList.upcomingHolidays')}
+        </Typography>
+        <Stack spacing={0.5}>
+          {holidays.map((holiday) => (
+            <Box
+              key={holiday.id}
+              sx={{ display: 'flex', justifyContent: 'space-between', gap: 2 }}
+            >
+              <Typography variant="body2" color="text.secondary">
+                {formatDate(t, holiday.date)}
+              </Typography>
+              <Typography variant="body2">{holiday.name}</Typography>
+            </Box>
+          ))}
+        </Stack>
+        <Button component={Link} to="/holidays" size="small" sx={{ mt: 1, px: 0 }}>
+          {t('windowList.manageHolidays')}
+        </Button>
+      </CardContent>
+    </Card>
+  );
+};
+
+/** Stacked cards instead of a table — the mobile replacement for `Datagrid`. */
+const MobileWindowList = () => {
+  const { data, isLoading } = useListContext<AvailabilityWindow>();
+  const navigate = useNavigate();
+
+  if (isLoading) {
+    return (
+      <Box sx={{ display: 'flex', justifyContent: 'center', p: 3 }}>
+        <CircularProgress size={24} />
+      </Box>
+    );
+  }
+
+  return (
+    <Stack spacing={1.5}>
+      {(data ?? []).map((window) => (
+        <WindowListCard
+          key={window.id}
+          window={window}
+          onOpen={() => navigate(`/availability-windows/${window.id}/show`)}
+        />
+      ))}
+    </Stack>
+  );
+};
+
+/**
+ * Category, status and month, together.
+ *
+ * A plain body element rather than `<List filters>`: `WindowListActions` is
+ * a custom `actions` element, and `ListToolbar` only threads `filters` into
+ * react-admin's *default* toolbar — with a custom one it renders the actions
+ * untouched and the filter form never appears
+ * (`ra-ui-materialui/dist/list/ListToolbar.js`).
+ *
+ * Status defaults to Open, via `filterDefaultValues` on `<List>`: a closed
+ * window's job is done, and this page is for managing what's still live.
+ * "All" sets `status: ''` rather than removing the key — an empty string
+ * still counts as "the user has an opinion" to react-admin's list-params
+ * logic, so the Open default does not silently reassert itself once some
+ * other filter or sort has been touched.
+ */
+export const WindowFilterBar = () => {
+  const t = useT();
+  const { filterValues, setFilters, displayedFilters } = useListContext();
+
+  const activeCategory = filterValues.category as string | undefined;
+  const selectCategory = (category?: string) => {
+    const { category: _dropped, ...rest } = filterValues;
+    setFilters(category ? { ...rest, category } : rest, displayedFilters);
+  };
+
+  const activeStatus = (filterValues.status as string | undefined) ?? AvailabilityWindowStatus.OPEN;
+  const selectStatus = (status: string) => {
+    setFilters({ ...filterValues, status }, displayedFilters);
+  };
+
+  return (
+    // No card here, deliberately: this is filtering/navigation, not content,
+    // so it sits straight on the page's grey background — same as
+    // `EventReportList`'s `TypeTabs` — leaving the white card look for the
+    // windows themselves below.
+    <Box sx={{ mb: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ minWidth: 64, flexShrink: 0 }}
+        >
+          {t('windowList.filterCategoryLabel')}
+        </Typography>
+        <ChipFilterRow>
+          <Chip
+            label={t('windowList.allCategories')}
+            color={activeCategory ? 'default' : 'primary'}
+            variant={activeCategory ? 'outlined' : 'filled'}
+            onClick={() => selectCategory(undefined)}
+            sx={{ height: 32, fontWeight: 600 }}
+          />
+          {AVAILABILITY_WINDOW_CATEGORIES.map((category) => (
+            <CategoryChip
+              key={category}
+              category={category}
+              label={windowCategoryLabel(t, category)}
+              selected={activeCategory === category}
+              onClick={() => selectCategory(category)}
+              sx={{ height: 32, fontWeight: 600, cursor: 'pointer' }}
+            />
+          ))}
+        </ChipFilterRow>
+      </Box>
+
+      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
+        <Typography
+          variant="caption"
+          color="text.secondary"
+          sx={{ minWidth: 64, flexShrink: 0 }}
+        >
+          {t('windowList.filterStatusLabel')}
+        </Typography>
+        <ChipFilterRow>
+          <Chip
+            size="small"
+            label={t('windowList.statusOpen')}
+            color={activeStatus === AvailabilityWindowStatus.OPEN ? 'success' : 'default'}
+            variant={activeStatus === AvailabilityWindowStatus.OPEN ? 'filled' : 'outlined'}
+            onClick={() => selectStatus(AvailabilityWindowStatus.OPEN)}
+          />
+          <Chip
+            size="small"
+            label={t('windowList.statusClosed')}
+            color={activeStatus === AvailabilityWindowStatus.CLOSED ? 'primary' : 'default'}
+            variant={activeStatus === AvailabilityWindowStatus.CLOSED ? 'filled' : 'outlined'}
+            onClick={() => selectStatus(AvailabilityWindowStatus.CLOSED)}
+          />
+          <Chip
+            size="small"
+            label={t('windowList.statusAll')}
+            color={activeStatus === '' ? 'primary' : 'default'}
+            variant={activeStatus === '' ? 'filled' : 'outlined'}
+            onClick={() => selectStatus('')}
+          />
+        </ChipFilterRow>
+        <MonthFilter />
+      </Box>
+    </Box>
+  );
+};
+
+export const AvailabilityWindowList = () => {
+  const t = useT();
+  const isMobile = useIsMobile();
+
+  return (
+    <List
+      actions={<WindowListActions />}
+      filterDefaultValues={{ status: AvailabilityWindowStatus.OPEN }}
+      sort={{ field: 'startDate', order: 'DESC' }}
+      empty={false}
+      component="div"
+    >
+      {/* `component="div"` above drops `<List>`'s own default `Card` wrapper —
+          otherwise it pulls `WindowFilterBar` in behind it too, painting a
+          white background *behind* what's meant to sit on the page's own
+          grey. Only the table itself keeps a card, via the `Paper` below. */}
+      <Box sx={{ pt: 2 }}>
+        <WindowFilterBar />
+        <UpcomingHolidays />
+        <Alert severity="info" sx={{ mb: 2 }}>
+          {t('windowList.overlapRuleInfo')}
+        </Alert>
+        {isMobile ? (
+          <MobileWindowList />
+        ) : (
+          <Paper variant="outlined">
+            <Datagrid rowClick="show" bulkActionButtons={false}>
+              <FunctionField
+                label={t('windowList.colWindow')}
+                render={(record: AvailabilityWindow) =>
+                  formatDateRange(t, record.startDate, record.endDate)
+                }
+              />
+              <FunctionField
+                source="category"
+                sortable={false}
+                render={(record: AvailabilityWindow) => (
+                  <WindowCategoryChip category={record.category} />
+                )}
+              />
+              <TextField source="name" emptyText="—" sortable={false} />
+              <FunctionField
+                source="status"
+                sortable={false}
+                render={(record: AvailabilityWindow) => (
+                  <WindowStatusChip status={record.status} />
+                )}
+              />
+              <FunctionField
+                source="openedBy"
+                sortable={false}
+                render={(record: AvailabilityWindow) => actorName(record.openedBy)}
+              />
+              <DateField source="openedAt" showTime sortable={false} />
+              <FunctionField
+                source="closedBy"
+                sortable={false}
+                render={(record: AvailabilityWindow) => actorName(record.closedBy)}
+              />
+              <DateField source="closedAt" showTime emptyText="—" sortable={false} />
+            </Datagrid>
+          </Paper>
+        )}
+      </Box>
+    </List>
+  );
+};

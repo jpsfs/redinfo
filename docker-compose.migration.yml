@@ -1,0 +1,96 @@
+# Legacy-migration overlay — the throwaway MySQL the loader reads from, plus
+# the standalone container that runs the loader itself.
+#
+# Usage (all three -f flags: naming any -f disables Compose's automatic pickup
+# of docker-compose.override.yml, and without it the postgres-test dependency
+# other services expect is missing):
+#
+#   docker compose -f docker-compose.yml -f docker-compose.override.yml \
+#                  -f docker-compose.migration.yml up -d --force-recreate mysql-legacy
+#   docker compose -f docker-compose.yml -f docker-compose.override.yml \
+#                  -f docker-compose.migration.yml run --rm migration
+#
+# Never loaded in production: docker-compose.prod.yml is a sibling overlay, and
+# this one is only ever named explicitly.
+#
+# `migration` is a standalone image (packages/legacy-migration/Dockerfile) —
+# it shares no layers, dependencies, or source with the `backend` service.
+# Nothing here ever touches the app's own image, so this whole file (and
+# packages/legacy-migration/) can be deleted the day the migration is over
+# with no trace left in the running app. See migration/README.md.
+
+name: redinfo
+
+services:
+  # ── Legacy MariaDB (throwaway) ──────────────────────────────────────────────
+  # Deliberately volume-less. The entrypoint runs /docker-entrypoint-initdb.d/*
+  # only when the data directory is empty, and a recreated container has a fresh
+  # writable layer — so `up --force-recreate` re-imports the dump from scratch,
+  # every time, with no `docker volume rm` to remember. That is the whole point:
+  # a mutated legacy copy that survives a run is a copy nobody can trust.
+  mysql-legacy:
+    image: mariadb:11.8
+    # Not `unless-stopped`: this exists for the duration of a migration run.
+    restart: "no"
+    environment:
+      MARIADB_ROOT_PASSWORD: ${LEGACY_MYSQL_PASSWORD:-legacy_dev_password}
+      MARIADB_DATABASE: ${LEGACY_MYSQL_DATABASE:-u127939263_cvp}
+    volumes:
+      # Read-only, and the whole directory rather than the file: mysqldump
+      # output may be split, and :ro is what stops an import writing back into
+      # a directory that holds real production data.
+      - ./migration/dump:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      # The entrypoint runs init scripts against a socket-only temporary server
+      # and only then opens the TCP port, so "can I connect over TCP" is exactly
+      # "has the dump finished importing" — no sentinel table needed.
+      test:
+        [
+          "CMD-SHELL",
+          "mariadb-admin ping -h 127.0.0.1 -u root -p\"$$MARIADB_ROOT_PASSWORD\" --silent",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 60
+      start_period: 300s
+    ports:
+      # Non-default host port so a local MySQL, and the dev Postgres on 5432,
+      # are both left alone. For DBeaver / a manual `mysql` client only —
+      # the loader talks to it over the compose network as `mysql-legacy:3306`.
+      - "3307:3306"
+
+  # ── Migration loader (standalone, one-shot) ─────────────────────────────────
+  # Never `up -d` this one — it is meant to run to completion and exit, so use
+  # `run --rm migration [-- --apply ...]`. Defaults point at the local dev
+  # Postgres and the throwaway `mysql-legacy` above, for a local rehearsal;
+  # override DATABASE_URL / LEGACY_MYSQL_* (e.g. via `docker compose run -e`)
+  # to point the same image at staging or production instead. See "Go-live
+  # sequence" in migration/README.md before ever doing that with --apply.
+  migration:
+    build:
+      context: .
+      dockerfile: packages/legacy-migration/Dockerfile
+      # Explicit: the Dockerfile's final stage is `job` (job-entrypoint.sh,
+      # which fetches its own copy from LEGACY_PROD_MYSQL_* and demands those
+      # vars be set) — without this, an image rebuild silently picks up that
+      # stage instead of `base` and this service stops working for its actual
+      # purpose, local rehearsal against the already-loaded mysql-legacy above.
+      target: base
+    restart: "no"
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgresql://redinfo:redinfo_dev_password@postgres:5432/redinfo}
+      LEGACY_MYSQL_HOST: ${LEGACY_MYSQL_HOST:-mysql-legacy}
+      LEGACY_MYSQL_PORT: ${LEGACY_MYSQL_PORT:-3306}
+      LEGACY_MYSQL_USER: ${LEGACY_MYSQL_USER:-root}
+      LEGACY_MYSQL_PASSWORD: ${LEGACY_MYSQL_PASSWORD:-legacy_dev_password}
+      LEGACY_MYSQL_DATABASE: ${LEGACY_MYSQL_DATABASE:-u127939263_cvp}
+      LEGACY_TIMEZONE: ${LEGACY_TIMEZONE:-Europe/Lisbon}
+      LEGACY_IMPORT_ACTOR_EMAIL: ${LEGACY_IMPORT_ACTOR_EMAIL:-import@redinfo.invalid}
+    volumes:
+      # The dump the loader never reads directly (mysql-legacy does), the
+      # committed schema, the hand-maintained overrides, and out/ — which the
+      # loader writes and the host reads.
+      - ./migration:/app/migration
+    depends_on:
+      mysql-legacy:
+        condition: service_healthy

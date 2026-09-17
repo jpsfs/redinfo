@@ -2,11 +2,14 @@ import { Admin, Resource, CustomRoutes } from 'react-admin';
 import { Route } from 'react-router-dom';
 import { authProvider } from './authProvider';
 import { dataProvider } from './dataProvider';
+import { i18nProvider, store } from './i18n/i18nProvider';
 import { theme } from './layout/theme';
 import { AppLayout } from './layout/AppLayout';
 import { LoginPage } from './pages/auth/LoginPage';
 import { Dashboard } from './pages/Dashboard';
 import { OAuthCallback } from './pages/auth/OAuthCallback';
+import { ConsentPage } from './pages/oauth/ConsentPage';
+import { AiConnectionsPage } from './pages/AiConnectionsPage';
 import { UserList, UserEdit, UserCreate, UserShow } from './resources/users';
 import {
   VehicleList,
@@ -23,11 +26,68 @@ import {
   InventoryTemplateEdit,
   InventoryItemCreate,
   InventoryItemEdit,
+  MaterialItemList,
+  MaterialItemCreate,
+  MaterialItemEdit,
 } from './resources/inventory';
+import {
+  AvailabilityWindowList,
+  AvailabilityWindowCreate,
+  AvailabilityWindowShow,
+  HolidayList,
+  HolidayCreate,
+  HolidayEdit,
+} from './resources/availability';
+import { ScheduleList, ScheduleShow, SchedulePrintPage } from './resources/schedules';
+import {
+  EventReportList,
+  EventReportCreate,
+  EventReportShow,
+  EventReportEdit,
+} from './resources/eventReports';
+import { FacilityList, FacilityCreate, FacilityEdit } from './resources/facilities';
+import { PatientList, PatientShow, PatientCreate, PatientEdit } from './resources/patients';
+import { OrganisationList, OrganisationCreate, OrganisationEdit } from './resources/organisations';
+import { AgreementList, AgreementCreate, AgreementEdit } from './resources/agreements';
+import {
+  TransportRequestList,
+  TransportRequestCreate,
+  TransportRequestEdit,
+} from './resources/transportRequests';
+import { TransportRequestShow } from './resources/transportRequests/TransportRequestShow';
+import { LiveEntryPage, LiveRunGate, LiveRunPage } from './resources/liveRuns';
+import { MyAvailabilityPage } from './pages/MyAvailabilityPage';
+import { MyDutiesPage } from './pages/MyDutiesPage';
+import { MyTransportTripsPage } from './pages/MyTransportTripsPage';
+import { MyHoursPage } from './pages/MyHoursPage';
+import { MyReportsPage } from './pages/MyReportsPage';
+import { MyProfilePage } from './pages/MyProfilePage';
+import { LiveRunsPage } from './pages/LiveRunsPage';
+import { VolunteerHoursReviewPage } from './pages/VolunteerHoursReviewPage';
+import { StatisticsPage } from './pages/StatisticsPage';
+import { MyNoticesPage } from './pages/MyNoticesPage';
+import { NoticesPage } from './pages/NoticesPage';
+import { NotificationConfigPage } from './pages/NotificationConfigPage';
+import { INEMStatusPage } from './pages/INEMStatusPage';
+import { StaffAbsencesPage } from './pages/StaffAbsencesPage';
+import { TransportReferralsPage } from './pages/TransportReferralsPage';
+import { TransportConfigPage } from './pages/TransportConfigPage';
+import { TransportPlanningPage } from './pages/TransportPlanningPage';
+import { TransportPlanningJourneyPage } from './pages/TransportPlanningJourneyPage';
 import PeopleIcon from '@mui/icons-material/People';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import BuildIcon from '@mui/icons-material/Build';
 import InventoryIcon from '@mui/icons-material/Inventory';
+import Inventory2Icon from '@mui/icons-material/Inventory2';
+import DateRangeIcon from '@mui/icons-material/DateRange';
+import EventBusyIcon from '@mui/icons-material/EventBusy';
+import EventNoteIcon from '@mui/icons-material/EventNote';
+import LocalHospitalIcon from '@mui/icons-material/LocalHospital';
+import MedicalServicesIcon from '@mui/icons-material/MedicalServices';
+import DescriptionIcon from '@mui/icons-material/Description';
+import BusinessIcon from '@mui/icons-material/Business';
+import HandshakeIcon from '@mui/icons-material/Handshake';
+import AssignmentIcon from '@mui/icons-material/Assignment';
 
 export default function App() {
   return (
@@ -35,6 +95,8 @@ export default function App() {
       title="RedInfo"
       authProvider={authProvider}
       dataProvider={dataProvider}
+      i18nProvider={i18nProvider}
+      store={store}
       theme={theme}
       layout={AppLayout}
       loginPage={LoginPage}
@@ -43,6 +105,130 @@ export default function App() {
     >
       <CustomRoutes noLayout>
         <Route path="/auth/callback" element={<OAuthCallback />} />
+
+        {/* Live emergency mode owns the whole viewport: its own app bar carries
+            the run clock and sync state, and the bottom bar has to be the only
+            thing in thumb reach — react-admin's Layout would put a hamburger
+            menu there instead. `noLayout` routes render outside the auth gate,
+            so `LiveRunGate` brings the gate with it.
+
+            The screen is a path segment rather than component state because this
+            is an Android device: with it in the URL, the hardware back button
+            walks screens for free and a mid-run reload lands where the crew
+            was. */}
+        <Route
+          path="/live"
+          element={
+            <LiveRunGate>
+              <LiveEntryPage />
+            </LiveRunGate>
+          }
+        />
+        <Route
+          path="/live/:runId"
+          element={
+            <LiveRunGate>
+              <LiveRunPage />
+            </LiveRunGate>
+          }
+        />
+        <Route
+          path="/live/:runId/:screen"
+          element={
+            <LiveRunGate>
+              <LiveRunPage />
+            </LiveRunGate>
+          }
+        />
+
+        {/* Print-optimised schedule board (AB#189/#191) — its own screen so the
+            browser's print dialog sees only the rota, not react-admin's app bar
+            and drawer. `noLayout` puts it outside the auth gate, so the page
+            calls `useAuthenticated()` itself, same as `LiveRunGate` above.
+            Ungated otherwise, matching the Export CSV button it sits beside on
+            `ScheduleBoard`. */}
+        <Route path="/schedules/:id/print" element={<SchedulePrintPage />} />
+
+        {/* The human half of the MCP OAuth flow (`OAuthProviderService.authorize()`
+            on the backend redirects here with `?ticket=`) — a focused prompt, not
+            the app shell, same reasoning as the print/live routes above.
+            `useAuthenticated()` inside `ConsentPage` is what actually gates it. */}
+        <Route path="/oauth/consent" element={<ConsentPage />} />
+      </CustomRoutes>
+
+      {/* Personal action page rather than a resource: it only ever shows the
+          signed-in user's own availability, so there is nothing to list. */}
+      <CustomRoutes>
+        <Route path="/my-availability" element={<MyAvailabilityPage />} />
+        {/* Duties span every rota someone is on, so this is not scoped to a
+            single window the way My Availability is. */}
+        <Route path="/my-duties" element={<MyDutiesPage />} />
+        {/* The crew manifest (#236) — live and print in one screen (see that
+            page's own doc comment). Ungated, same reasoning as /my-duties:
+            `GET /trips/me` scopes to the caller's own crew membership. */}
+        <Route path="/my-transport-trips" element={<MyTransportTripsPage />} />
+        {/* Hours generated from those duties, plus anything logged by hand
+            (#164). Ungated, like /my-duties above — scoped to the caller by
+            the API, not by capability. */}
+        <Route path="/my-hours" element={<MyHoursPage />} />
+        {/* "What did I file" stays a different, faster question than "what
+            happened" even though every role can now read the full archive —
+            this is also the form to file a new report, and where an
+            unfinished draft is surfaced. */}
+        <Route path="/my-reports" element={<MyReportsPage />} />
+        {/* Everyone's own record — certifications (read-only, coordinator-
+            maintained) and the contact details they keep current themselves.
+            Reached from the app-bar avatar menu (`RedInfoUserMenu`), not the
+            drawer — settled by #181's navigation design. */}
+        <Route path="/my-profile" element={<MyProfilePage />} />
+        {/* The live-runs oversight board as its own screen, gated by
+            VIEW_LIVE_RUNS in the drawer manifest (layout/navigation.tsx). It
+            also still appears on the Dashboard — unrelated to this route. */}
+        <Route path="/live-runs" element={<LiveRunsPage />} />
+        {/* The coordinator's review queue for volunteer hours (#164), gated
+            by VIEW_VOLUNTEER_HOURS in the drawer manifest. */}
+        <Route path="/volunteer-hours/review" element={<VolunteerHoursReviewPage />} />
+        {/* Aggregate, organisation-wide dashboards (docs/plans/estatisticas-dashboards.md).
+            No `requires` in the drawer manifest — every authenticated member sees it. */}
+        <Route path="/statistics" element={<StatisticsPage />} />
+        {/* The member's own alerts area (#165). Ungated — everyone sees the
+            notices targeted at them, the same way everyone sees their own duties. */}
+        <Route path="/my-notices" element={<MyNoticesPage />} />
+        {/* The coordinator's create/history screen for operational notices
+            (#165), gated by MANAGE_NOTICES in the drawer manifest. */}
+        <Route path="/notices" element={<NoticesPage />} />
+        {/* Org-wide default delivery channels per notification type (#165),
+            gated by MANAGE_NOTICES the same as the notices screen above. */}
+        <Route path="/notification-config" element={<NotificationConfigPage />} />
+        <Route path="/staff-absences" element={<StaffAbsencesPage />} />
+        {/* The referral decision page (#229) — queue, undispatched section
+            and the feasibility panel side by side, gated by
+            MANAGE_TRANSPORT_REQUESTS in the drawer manifest. */}
+        <Route path="/transport-referrals" element={<TransportReferralsPage />} />
+        {/* Arrival window thresholds and occurrence-type duration floors
+            (#233), gated by MANAGE_TRANSPORT_CONFIG in the drawer manifest —
+            same gating as organisations/agreements. */}
+        <Route path="/transport-config" element={<TransportConfigPage />} />
+        {/* Timeline lanes with drag assignment (#235) — the manual planning
+            board Feature #219 builds ahead of any route optimisation, gated
+            by PLAN_TRANSPORT_TRIPS in the drawer manifest. */}
+        <Route path="/transport-planning" element={<TransportPlanningPage />} />
+        {/* One journey's own page and printable crew sheet (#247 stage 3),
+            reached from the board's inspector ("Open journey") or a direct
+            link — no separate drawer entry, same as any other record's
+            detail page; `GET /trips/:id` still gates on
+            PLAN_TRANSPORT_TRIPS. */}
+        <Route path="/transport-planning/journeys/:tripId" element={<TransportPlanningJourneyPage />} />
+        {/* The delegation's INEM units — availability toggle, INOP reason,
+            syncing badge and degraded-session banner (#216), gated by
+            MANAGE_INEM_STATUS in the drawer manifest. Not react-admin CRUD:
+            there is nothing to create or delete, only status to set. */}
+        <Route path="/inem-status" element={<INEMStatusPage />} />
+        {/* "How to connect an AI assistant" + the caller's own active connections
+            (MCP/OAuth). Ungated — every authenticated person may connect an
+            assistant to their own account; what it can then do is still bounded
+            by their role. */}
+        <Route path="/ai-connections" element={<AiConnectionsPage />} />
       </CustomRoutes>
 
       <Resource
@@ -52,7 +238,6 @@ export default function App() {
         edit={UserEdit}
         create={UserCreate}
         show={UserShow}
-        options={{ label: 'Users' }}
       />
 
       <Resource
@@ -62,7 +247,6 @@ export default function App() {
         create={VehicleCreate}
         edit={VehicleEdit}
         show={VehicleShow}
-        options={{ label: 'Vehicles' }}
       />
 
       <Resource
@@ -70,7 +254,6 @@ export default function App() {
         icon={BuildIcon}
         create={MaintenanceCreate}
         edit={MaintenanceEdit}
-        options={{ label: 'Maintenance' }}
       />
 
       <Resource
@@ -80,19 +263,101 @@ export default function App() {
         show={InventoryTemplateShow}
         create={InventoryTemplateCreate}
         edit={InventoryTemplateEdit}
-        options={{ label: 'Inventory Templates' }}
       />
 
       <Resource
         name="inventory-template-items"
         create={InventoryItemCreate}
         edit={InventoryItemEdit}
-        options={{ label: 'Inventory Items' }}
+      />
+
+      <Resource name="vehicle-inventory" />
+
+      <Resource
+        name="material-items"
+        icon={Inventory2Icon}
+        list={MaterialItemList}
+        create={MaterialItemCreate}
+        edit={MaterialItemEdit}
       />
 
       <Resource
-        name="vehicle-inventory"
-        options={{ label: 'Vehicle Inventory' }}
+        name="availability-windows"
+        icon={DateRangeIcon}
+        list={AvailabilityWindowList}
+        create={AvailabilityWindowCreate}
+        show={AvailabilityWindowShow}
+      />
+
+      <Resource
+        name="schedules"
+        icon={EventNoteIcon}
+        list={ScheduleList}
+        show={ScheduleShow}
+      />
+
+      <Resource
+        name="event-reports"
+        icon={DescriptionIcon}
+        list={EventReportList}
+        create={EventReportCreate}
+        show={EventReportShow}
+        edit={EventReportEdit}
+      />
+
+      <Resource
+        name="facilities"
+        icon={LocalHospitalIcon}
+        list={FacilityList}
+        create={FacilityCreate}
+        edit={FacilityEdit}
+      />
+
+      <Resource
+        name="patients"
+        icon={MedicalServicesIcon}
+        list={PatientList}
+        show={PatientShow}
+        create={PatientCreate}
+        edit={PatientEdit}
+      />
+
+      <Resource
+        name="organisations"
+        icon={BusinessIcon}
+        list={OrganisationList}
+        create={OrganisationCreate}
+        edit={OrganisationEdit}
+      />
+
+      <Resource
+        name="agreements"
+        icon={HandshakeIcon}
+        list={AgreementList}
+        create={AgreementCreate}
+        edit={AgreementEdit}
+      />
+
+      <Resource
+        name="transport-requests"
+        icon={AssignmentIcon}
+        list={TransportRequestList}
+        create={TransportRequestCreate}
+        edit={TransportRequestEdit}
+        show={TransportRequestShow}
+      />
+
+      {/* Read-only reference data, reached only by the pickers that need it —
+          no list, so it stays out of the menu. */}
+      <Resource name="municipalities" />
+      <Resource name="localities" />
+
+      <Resource
+        name="holidays"
+        icon={EventBusyIcon}
+        list={HolidayList}
+        create={HolidayCreate}
+        edit={HolidayEdit}
       />
     </Admin>
   );

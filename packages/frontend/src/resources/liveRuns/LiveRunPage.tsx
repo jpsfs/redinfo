@@ -1,0 +1,510 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useNavigate, useParams } from 'react-router-dom';
+import { useNotify } from 'react-admin';
+import {
+  Box,
+  Button,
+  Container,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
+  IconButton,
+  LinearProgress,
+  Stack,
+  TextField,
+  Typography,
+} from '@mui/material';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import {
+  DelegationSettings,
+  EventReportType,
+  LiveRunBlockerCode,
+  LiveRunCloseResponse,
+  LiveRunState,
+  LiveRunSupportActionKind,
+  LiveScreen,
+  Locality,
+  OCCURRENCE_TIME_FIELDS,
+  OccurrenceTimeField,
+} from '@redinfo/shared';
+import { ApiError, apiFetch } from '../../api';
+import { apiErrorLabel, liveBlockerLabel, liveScreenLabel, occurrenceTimeLabel } from '../../i18n/labels';
+import { useT } from '../../i18n/useT';
+import { composeInstant, timeOfDay, todayIso } from '../eventReports/reportDraft';
+import { useReportLookups } from '../eventReports/useReportLookups';
+import { attachPhotosToReport, deleteRun } from './liveRunDb';
+import { isLiveScreen, screenForRun, writeCurrentRunId } from './liveRun';
+import { useLiveRun } from './useLiveRun';
+import { useLiveRunSync } from './useLiveRunSync';
+import { usePhotoQueue } from './usePhotoQueue';
+import { useDictation } from './useDictation';
+import { useWakeLock } from './useWakeLock';
+import { mapsUrl, telUrl } from './mapsLink';
+import { LiveTopBar } from './LiveTopBar';
+import { LiveBottomBar } from './LiveBottomBar';
+import {
+  AssessmentScreen,
+  ClosingScreen,
+  EnRouteScreen,
+  IntakeScreen,
+  LiveScreenProps,
+  MaterialsSheet,
+  SceneScreen,
+  TransportScreen,
+} from './LiveScreens';
+
+/**
+ * The live run's shell.
+ *
+ * The `EventReportEditor` analogue minus the second layout — live mode owns the
+ * whole viewport, and the bottom bar has to be the only thing in thumb reach, so
+ * react-admin's `Layout` (whose hamburger menu would sit exactly there) is not
+ * used at all.
+ *
+ * **The screen is in the URL, not in component state.** This is an Android
+ * device, where the hardware back button is the most-pressed control on the
+ * phone: with the screen in the path, back walks screens for free and a mid-run
+ * reload lands where the crew was.
+ */
+/**
+ * Where the crew fills in each field the closing screen can be blocked on —
+ * so a tap on "Terminar" while one is missing lands on the field itself
+ * rather than on a rejected request.
+ */
+const BLOCKER_SCREEN: Record<LiveRunBlockerCode, LiveScreen> = {
+  NO_STAMPS: 'enroute',
+  NO_LOCALITY: 'scene',
+  NO_LOCATION_TYPE: 'scene',
+  NO_REFERENCE: 'intake',
+};
+
+export const LiveRunPage = () => {
+  const { runId = '', screen } = useParams();
+  const navigate = useNavigate();
+  const notify = useNotify();
+
+  const form = useLiveRun({ runId });
+  const [closing, setClosing] = useState(false);
+  const [correcting, setCorrecting] = useState(false);
+  const [materialsOpen, setMaterialsOpen] = useState(false);
+  const [locality, setLocality] = useState<Locality | null>(null);
+  const [homeLocality, setHomeLocality] = useState<Locality | null>(null);
+  const [settings, setSettings] = useState<DelegationSettings | null>(null);
+
+  const photos = usePhotoQueue({ runId, reportId: form.reportId });
+  const dictation = useDictation();
+  const sync = useLiveRunSync({ onMerged: form.replace });
+  const t = useT();
+
+  // Named once, used everywhere a blocker is surfaced: the toast on a blocked
+  // tap and the bottom bar's standing note read the same reasons, so the note
+  // above the buttons is never a header with nothing under it.
+  const blockedReasons = useMemo(
+    () => form.blockers.map((code) => liveBlockerLabel(t, code)).join(' · '),
+    [form.blockers, t],
+  );
+
+  // The screen stays awake for the length of an open run and no longer: a phone
+  // left on the closing screen in a pocket should be allowed to sleep.
+  useWakeLock(form.run.state !== LiveRunState.CLOSED);
+
+  const lookups = useReportLookups(
+    useMemo(
+      () => ({
+        localityId: form.run.localityId ?? '',
+        type: EventReportType.EMERGENCY,
+        startedAt: form.run.startedAt,
+      }),
+      [form.run.localityId, form.run.startedAt],
+    ),
+  );
+
+  /** The delegation's own configuration — the CODU Dados number to dial. */
+  useEffect(() => {
+    let cancelled = false;
+    void apiFetch<DelegationSettings>('/live-runs/settings')
+      .then((value) => {
+        if (!cancelled) setSettings(value);
+      })
+      // A missing number means the menu item is absent, not that the run breaks.
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /** The locality the run points at, resolved for display. */
+  useEffect(() => {
+    if (lookups.locality) setLocality(lookups.locality);
+  }, [lookups.locality]);
+
+  /**
+   * The victim's home locality, resolved separately from `lookups` — it lives
+   * in the sealed identity blob, not on the run itself, so nothing about the
+   * report's own locality-driven lookups (vehicles, hospitals, the rota)
+   * should depend on it.
+   */
+  const homeLocalityId = form.run.identity?.victimHomeLocalityId ?? null;
+  useEffect(() => {
+    if (!homeLocalityId) {
+      setHomeLocality(null);
+      return undefined;
+    }
+    let cancelled = false;
+    apiFetch<Locality>(`/localities/${homeLocalityId}`)
+      .then((found) => {
+        if (!cancelled) setHomeLocality(found);
+      })
+      .catch(() => {
+        if (!cancelled) setHomeLocality(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [homeLocalityId]);
+
+  /** `/live/:runId` with no screen, or a screen nobody knows, lands where the run is. */
+  useEffect(() => {
+    if (!form.ready) return;
+    if (!isLiveScreen(screen)) {
+      navigate(`/live/${runId}/${screenForRun(form.run)}`, { replace: true });
+    }
+  }, [form.ready, form.run, navigate, runId, screen]);
+
+  const address = form.run.identity?.occurrenceAddress ?? null;
+  const navigateHref = useMemo(
+    () =>
+      mapsUrl({
+        address,
+        locality: locality?.name ?? null,
+        municipality: locality?.municipality?.name ?? null,
+      }),
+    [address, locality],
+  );
+
+  /**
+   * The transport screen's own destination, once a hospital has been chosen.
+   *
+   * Same mechanics as `navigateHref` above — a `NAVEGAR` button in the bottom
+   * bar the crew can ignore — but pointed at the hospital instead of the
+   * occurrence, and precise when the hospital has its own coordinates rather
+   * than only a municipality.
+   */
+  const hospital = form.run.destinationFacilityId
+    ? lookups.hospitalsById[form.run.destinationFacilityId]
+    : null;
+  const hospitalNavigateHref = useMemo(
+    () =>
+      hospital
+        ? mapsUrl({
+            name: hospital.name,
+            municipality: hospital.municipality?.name ?? null,
+            latitude: hospital.latitude,
+            longitude: hospital.longitude,
+          })
+        : null,
+    [hospital],
+  );
+
+  /**
+   * Stamps, and moves the run to its next screen.
+   *
+   * The order matters on the intake screen, where this fires alongside an anchor
+   * the browser is about to follow: the stamp is written first and not awaited
+   * behind the navigation, so a crew that hands off to Maps and never comes back
+   * still has its activation time.
+   */
+  const stamp = useCallback(() => {
+    form.stamp();
+  }, [form]);
+
+  /** The run's own state decides the screen, so the URL follows the document. */
+  useEffect(() => {
+    if (!form.ready || !isLiveScreen(screen)) return;
+    // The assessment screen is reached deliberately and is not part of the walk,
+    // so it is never navigated away from by a state change.
+    if (screen === 'assessment') return;
+    const expected = screenForRun(form.run);
+    if (expected !== screen) navigate(`/live/${runId}/${expected}`);
+    // Only on a state change: this must not fight the crew tapping back.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form.run.state]);
+
+  /**
+   * Closes the run and always leaves a draft report behind — `destination`
+   * only decides where the crew lands afterwards.
+   *
+   * `'report'` is the everyday path: straight into the fresh draft, to finish
+   * while the call is still fresh. `'home'` is the second way out (#213):
+   * same close, same draft, but a crew that will finish the paperwork later
+   * from a desk is not forced through the report editor to get back to the
+   * home page.
+   */
+  const close = useCallback(
+    async (destination: 'report' | 'home') => {
+      // Already closed — either this very tap a moment ago, or an earlier
+      // visit: the device's own copy remembers `reportId` once closing has
+      // written it (see `useLiveRun`'s load), so a run reopened from a
+      // reload or the board's own-run link lands here too. The server has
+      // already turned this into a report and refuses a second `close`
+      // (`assertCanWriteRun`'s "closed into a report" guard), so don't ask
+      // it again — just take the exit the crew asked for.
+      if (form.reportId) {
+        writeCurrentRunId(null);
+        navigate(destination === 'report' ? `/event-reports/${form.reportId}` : '/');
+        return;
+      }
+
+      // Caught here rather than left to the server: a blocker the crew can
+      // see is unmarked on this very screen must never turn into a network
+      // round trip, and the crew is dropped straight onto the field that is
+      // still missing instead of onto a rejection.
+      if (form.blockers.length > 0) {
+        notify(t('live.closeBlockedNotify', { reasons: blockedReasons }), { type: 'warning' });
+        navigate(`/live/${runId}/${BLOCKER_SCREEN[form.blockers[0]]}`);
+        return;
+      }
+
+      setClosing(true);
+      try {
+        // The close endpoint reads whatever the server already has, on
+        // purpose (closing is a POST, never folded into the sync PUT — see
+        // the controller) — so a still-debounced keystroke has to reach the
+        // device first, and anything sitting in the outbox after that has to
+        // reach the server, or a field the crew just filled in here can
+        // still come back as missing.
+        await form.flush();
+        await sync.flush();
+        const response = await apiFetch<LiveRunCloseResponse>(`/live-runs/${runId}/close`, {
+          method: 'POST',
+        });
+
+        // One merged object, one write — `form.run` inside this closure is
+        // still the pre-close snapshot even after `replace` fires (that only
+        // lands on the *next* render), so a second, separate write built
+        // from `form.run` would race this one and could leave the device's
+        // own copy behind at its old, unclosed state (or its `reportId`
+        // reverted to null) while the server — and the report it just
+        // created — have already moved on. `replace` takes both the run and
+        // its `reportId` together for exactly this reason.
+        const closedRun = { ...form.run, ...response.run };
+        await form.replace(closedRun, response.report.id);
+        await attachPhotosToReport(runId, response.report.id);
+        // The run is finished; the device stops offering to resume it.
+        writeCurrentRunId(null);
+
+        notify(t('live.closedIntoDraft'), { type: 'success' });
+        navigate(destination === 'report' ? `/event-reports/${response.report.id}` : '/');
+      } catch (cause) {
+        notify(
+          cause instanceof ApiError
+            ? apiErrorLabel(t, cause)
+            : cause instanceof Error
+              ? cause.message
+              : t('sync.failed'),
+          { type: 'error' },
+        );
+      } finally {
+        setClosing(false);
+      }
+    },
+    [blockedReasons, form, navigate, notify, runId, sync, t],
+  );
+
+  const abandon = useCallback(async () => {
+    if (!window.confirm(t('live.abandonConfirm'))) return;
+    await deleteRun(runId);
+    writeCurrentRunId(null);
+    navigate('/live', { replace: true });
+  }, [navigate, runId, t]);
+
+  /**
+   * Undoes the run's last stamp, after asking first.
+   *
+   * `LiveTopBar` only ever offers this when there is a step to undo, but the
+   * confirmation still matters: this is the one action in the overflow that
+   * erases a moment, and it must not be one mis-tap away like the bottom bar's
+   * stamp button.
+   */
+  const goBack = useCallback(() => {
+    if (!window.confirm(t('live.backConfirm'))) return;
+    form.goBack();
+  }, [form, t]);
+
+  if (!form.ready) {
+    return (
+      <Box sx={{ p: 4 }}>
+        <LinearProgress />
+        <Typography sx={{ mt: 2 }} color="text.secondary">
+          {t('hint.loading')}
+        </Typography>
+      </Box>
+    );
+  }
+
+  const current = isLiveScreen(screen) ? screen : 'intake';
+  const stampedAvailable = Boolean(form.run.availableAt);
+
+  const screenProps: LiveScreenProps = {
+    form,
+    lookups,
+    photos,
+    dictation,
+    locality,
+    onPickLocality: (picked) => {
+      setLocality(picked);
+      form.patch({ localityId: picked.id });
+    },
+    homeLocality,
+    onPickHomeLocality: (picked) => {
+      setHomeLocality(picked);
+      form.patchIdentity({ victimHomeLocalityId: picked.id });
+    },
+    onOpenAssessment: () => navigate(`/live/${runId}/assessment`),
+    onRefusedFiles: (messages) =>
+      messages.forEach((message) => notify(message, { type: 'warning' })),
+    // Only set while the assessment screen is actually on display: the
+    // assessment route is reached and left deliberately, never advanced by a
+    // stamp (see `nextStampForScreen`), so this is its one way back.
+    onDone: current === 'assessment' ? () => navigate(`/live/${runId}/scene`) : undefined,
+  };
+
+  return (
+    <Box sx={{ minHeight: '100vh', bgcolor: 'background.default' }}>
+      <LiveTopBar
+        run={form.run}
+        sync={sync.state}
+        syncError={sync.lastError}
+        screen={current}
+        onJump={(target) => navigate(`/live/${runId}/${target}`)}
+        coduDadosHref={telUrl(settings?.coduDadosPhone)}
+        onCoduDados={() => form.recordSupportAction(LiveRunSupportActionKind.CODU_DADOS)}
+        onBack={goBack}
+        onCorrectTimes={() => setCorrecting(true)}
+        onAbandon={() => void abandon()}
+      />
+
+      <Container maxWidth="sm" sx={{ pt: 2, pb: 'calc(140px + env(safe-area-inset-bottom))' }}>
+        <Stack direction="row" alignItems="center" spacing={0.5} sx={{ mb: 1.5 }}>
+          {current === 'assessment' && (
+            <IconButton
+              edge="start"
+              // Distinct from the assessment pager's own chevrons, which share
+              // `action.back` for "the set before this one" — this one leaves
+              // the screen entirely, so it names where it goes.
+              aria-label={`${t('action.back')} — ${liveScreenLabel(t, 'scene')}`}
+              onClick={() => navigate(`/live/${runId}/scene`)}
+              sx={{ ml: -1 }}
+            >
+              <ArrowBackIcon />
+            </IconButton>
+          )}
+          <Typography variant="h6" sx={{ fontWeight: 800 }}>
+            {liveScreenLabel(t, current)}
+          </Typography>
+        </Stack>
+
+        {current === 'intake' && <IntakeScreen {...screenProps} />}
+        {current === 'enroute' && <EnRouteScreen {...screenProps} />}
+        {current === 'scene' && <SceneScreen {...screenProps} />}
+        {current === 'assessment' && <AssessmentScreen {...screenProps} />}
+        {current === 'transport' && <TransportScreen {...screenProps} />}
+        {current === 'closing' && <ClosingScreen {...screenProps} />}
+      </Container>
+
+      <LiveBottomBar
+        run={form.run}
+        screen={current}
+        onStamp={stamp}
+        onCorrect={() => setCorrecting(true)}
+        navigateHref={
+          current === 'intake' || current === 'enroute'
+            ? navigateHref
+            : current === 'transport'
+              ? hospitalNavigateHref
+              : null
+        }
+        onDone={screenProps.onDone}
+        onFinish={current === 'closing' && stampedAvailable ? () => void close('report') : undefined}
+        onFinishAndExit={
+          current === 'closing' && stampedAvailable ? () => void close('home') : undefined
+        }
+        finishing={closing}
+        blockedReason={
+          current === 'closing' && form.blockers.length > 0
+            ? t('live.closeBlockedNotify', { reasons: blockedReasons })
+            : null
+        }
+        materialsCount={form.materials.length}
+        onOpenMaterials={() => setMaterialsOpen(true)}
+      />
+
+      <CorrectTimesDialog
+        open={correcting}
+        run={form.run}
+        onClose={() => setCorrecting(false)}
+        onCorrect={form.correct}
+      />
+
+      <MaterialsSheet open={materialsOpen} onClose={() => setMaterialsOpen(false)} form={form} />
+    </Box>
+  );
+};
+
+/**
+ * The correction sheet.
+ *
+ * Offered because the alternative is worse: a crew that tapped a stamp early
+ * writes the real time into the narrative instead, where nothing can read it.
+ * Times are typed as wall-clock on the run's own day, through the same
+ * `composeInstant` the report form uses — so a run that crossed midnight
+ * corrects to the right day rather than to twenty-two hours earlier.
+ */
+const CorrectTimesDialog = ({
+  open,
+  run,
+  onClose,
+  onCorrect,
+}: {
+  open: boolean;
+  run: { startedAt: string } & Partial<Record<OccurrenceTimeField, string | null>>;
+  onClose: () => void;
+  onCorrect: (field: OccurrenceTimeField, instant: string | null) => void;
+}) => {
+  const t = useT();
+  const day = run.startedAt ? todayIso(new Date(run.startedAt)) : todayIso();
+
+  return (
+    <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs">
+      <DialogTitle sx={{ fontWeight: 800 }}>{t('live.correctTimes')}</DialogTitle>
+      <DialogContent>
+        <Stack spacing={2} sx={{ pt: 1 }}>
+          {OCCURRENCE_TIME_FIELDS.map((field) => (
+            <TextField
+              key={field}
+              fullWidth
+              type="time"
+              label={occurrenceTimeLabel(t, field)}
+              value={timeOfDay(run[field])}
+              onChange={(event) =>
+                onCorrect(
+                  field,
+                  event.target.value
+                    ? composeInstant(day, event.target.value, { notBefore: run.startedAt })
+                    : null,
+                )
+              }
+              inputProps={{ 'aria-label': occurrenceTimeLabel(t, field) }}
+            />
+          ))}
+        </Stack>
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={onClose} sx={{ minHeight: 48, fontWeight: 700 }}>
+          {t('action.cancel')}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+};

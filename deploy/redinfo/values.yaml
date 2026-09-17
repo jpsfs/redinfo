@@ -3,11 +3,24 @@ namespace: dev
 
 image:
   backend:
-    repository: redinfo/backend
+    repository: jpsfs/redinfo-backend
     tag: "dev"
     pullPolicy: IfNotPresent
   frontend:
-    repository: redinfo/frontend
+    repository: jpsfs/redinfo-frontend
+    tag: "dev"
+    pullPolicy: IfNotPresent
+  # Built from packages/legacy-migration/Dockerfile's `job` target — see
+  # templates/job-legacy-migration.yaml. Irrelevant while legacyMigration.enabled
+  # is false (the default).
+  legacyMigration:
+    repository: jpsfs/redinfo-legacy-migration
+    tag: "dev"
+    pullPolicy: IfNotPresent
+  # Built from packages/inem-worker/Dockerfile — see templates/deployment-worker.yaml.
+  # Irrelevant while inemWorker.enabled is false (the default).
+  inemWorker:
+    repository: jpsfs/redinfo-inem-worker
     tag: "dev"
     pullPolicy: IfNotPresent
 
@@ -21,6 +34,7 @@ service:
 
 ingress:
   enabled: false
+  className: ""
   annotations: {}
   hosts: []
   tls: []
@@ -28,10 +42,129 @@ ingress:
 resources:
   backend: {}
   frontend: {}
+  # A browser, not an API server (#215's own guidance) — real headroom by
+  # default rather than {}, even though the Deployment itself stays disabled
+  # (inemWorker.enabled: false) until an environment opts in.
+  inemWorker:
+    requests:
+      memory: "512Mi"
+      cpu: "250m"
+    limits:
+      memory: "1Gi"
+      cpu: "1"
 
+# Non-secret env vars only (NODE_ENV, FRONTEND_URL, PORT, ATTACHMENTS_DIR, ...).
+# Secret-shaped vars (JWT_SECRET, IDENTITY_ENCRYPTION_KEYS, OAuth, Maps, DATABASE_URL)
+# live under `secrets` below and are rendered into a Secret, not here.
+#
+# INEM_ENABLED/INEM_ENTITY/INEM_BASE_URL (#211) belong here too, once set —
+# not secret-shaped. INEM_USERNAME/INEM_PASSWORD/INEM_WORKER_TOKEN are the
+# secret-shaped half and live under `secrets` below.
+#
+# env.frontend.APP_TITLE: tab title / installed-app name, read by
+# packages/frontend/docker-entrypoint-app-title.sh at container start (NOT a
+# build arg — see packages/frontend/Dockerfile) and sed'ed into
+# index.html/manifest.webmanifest. This is what lets one frontend image be
+# built once and promoted staging → production with different branding in
+# each. Unset here (falls back to "RedInfo - Dev"); see values.staging.yaml /
+# values.production.yaml for the real per-environment values.
 env:
   backend: {}
   frontend: {}
+
+# Rendered verbatim into a Secret named <fullname>-app-secrets (see
+# templates/secret-app.yaml), keyed to match .env.example. Leave a key unset to
+# omit it entirely rather than shipping an empty value. Populate via
+# `--set-string secrets.<KEY>=...` from the pipeline — never commit real values here.
+#
+# LEGACY_PROD_MYSQL_HOST/PORT/USER/PASSWORD/DATABASE are only read while
+# legacyMigration.enabled is true — legacy production's own connection details,
+# never the throwaway local copy job-legacy-migration.yaml's Job creates for
+# itself (see secret-app.yaml's own comment on this).
+#
+# INEM_USERNAME/INEM_PASSWORD/INEM_WORKER_TOKEN (#211) — the shared INEM
+# credential and the worker's internal-endpoint token. Production only, same
+# as RESEND_API_KEY/VAPID_* — see values.staging.yaml's comment on `secrets`.
+secrets: {}
+
+# Set to override DATABASE_URL outright (external DB). Empty composes it from the
+# bundled postgresql subchart's own values instead (see templates/_helpers.tpl).
+database:
+  url: ""
+
+# Persistent volume for ATTACHMENTS_DIR — event report attachments, certification
+# documents, profile photos. Disabling this loses that data on every pod restart.
+uploads:
+  enabled: false
+  size: 5Gi
+  storageClass: ""
+  mountPath: /app/uploads
+
+probes:
+  enabled: true
+  backend:
+    # Generous: the entrypoint runs `prisma migrate deploy` before the app starts listening.
+    initialDelaySeconds: 20
+
+# Post-install/post-upgrade Helm hook that runs migrations + prisma/seed.ts
+# (admin user + PT geography reference data). See templates/job-seed.yaml.
+seed:
+  enabled: false
+
+# Post-install/post-upgrade Helm hook (after job-seed) that fetches a fresh
+# copy from legacy production and migrates it into this environment on every
+# deploy — see templates/job-legacy-migration.yaml and migration/README.md.
+# Meant to be true for as long as legacy production is still the delegation's
+# system of record; flip to false the day it's decommissioned and the whole
+# packages/legacy-migration/ package can go with it.
+legacyMigration:
+  enabled: false
+  # Generous: a fresh mysqldump + reload + full loader run, in one Job.
+  activeDeadlineSeconds: 1800
+  # How long a *finished* Job — succeeded or failed — survives before the
+  # cluster garbage-collects it and its pods. Applied to both the deploy-time
+  # hook and every CronJob run, and the only thing that cleans up the failed
+  # ones: Helm's own `hook-delete-policy: hook-succeeded` covers the happy
+  # path, so without this a run that hit `activeDeadlineSeconds` or died
+  # partway (`backoffLimit: 0`) sat in the namespace forever as a workload
+  # showing 0 replicas. An hour is long enough to still read its logs.
+  ttlSecondsAfterFinished: 3600
+  timezone: "Europe/Lisbon"
+  importActorEmail: "import@redinfo.invalid"
+  # Separate CronJob (templates/cronjob-legacy-migration.yaml) that repeats the
+  # same fetch+migrate run on a schedule, decoupled from deploys. Only takes
+  # effect when `enabled` above is also true. Off by default — staging runs
+  # the deploy-time hook only (values.staging.yaml); production runs both
+  # (values.production.yaml).
+  cron:
+    enabled: false
+    schedule: "0 * * * *"
+    concurrencyPolicy: Forbid
+    startingDeadlineSeconds: 300
+    # Keep one of each rather than Kubernetes' default 3 successful: with an
+    # hourly schedule the default leaves three completed Jobs permanently
+    # parked in the namespace. `ttlSecondsAfterFinished` above usually reaps
+    # them first; these are the backstop when it doesn't.
+    successfulJobsHistoryLimit: 1
+    failedJobsHistoryLimit: 1
+
+# packages/inem-worker (#215) — the stateless Playwright session-minter for
+# the INEM integration (#211). Off everywhere by default; only production
+# should ever flip this to true, once INEM_USERNAME/INEM_PASSWORD/
+# INEM_WORKER_TOKEN are populated (see values.production.yaml) and the OWA
+# session has been bootstrapped by hand (packages/inem-worker/README.md).
+# `replicas: 1` is fixed in templates/deployment-worker.yaml, not driven by
+# `replicaCount` above — the shared INEM/OWA credential and the backend's
+# single-flight advisory lock both assume exactly one worker polling at a
+# time.
+inemWorker:
+  enabled: false
+  # Kept independent of env.backend.INEM_BASE_URL (same value, different
+  # values-file section) rather than cross-referenced — Helm has no clean way
+  # to read a possibly-list-shaped env.backend map from here. Keep the two in
+  # sync by hand if this is ever overridden.
+  inemBaseUrl: "https://portalpem.inem.pt"
+  pollIntervalSeconds: 15
 
 autoscaling: {}
 nodeSelector: {}
@@ -48,4 +181,3 @@ postgresql:
   primary:
     persistence:
       enabled: false
-

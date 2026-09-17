@@ -13,11 +13,15 @@ import {
   UpsertVehicleInventoryItemDto,
   UpdateVehicleInventoryItemDto,
 } from './dto/vehicle-inventory-item.dto';
-import { VehicleType, InventoryItemType } from '@redinfo/shared';
+import { VehicleType, InventoryItemType, StockMovementReason } from '@redinfo/shared';
+import { StockMovementsService } from './stock-movements.service';
 
 @Injectable()
 export class InventoryService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly stockMovements: StockMovementsService,
+  ) {}
 
   // ─── Templates ────────────────────────────────────────────────────────────────
 
@@ -120,7 +124,7 @@ export class InventoryService {
         skip,
         take: perPage,
         orderBy: [{ order: 'asc' }, { name: 'asc' }],
-        include: { template: true },
+        include: { template: true, materialItem: true },
       }),
       this.prisma.inventoryTemplateItem.count({ where }),
     ]);
@@ -130,16 +134,44 @@ export class InventoryService {
   async findOneTemplateItem(id: string) {
     const item = await this.prisma.inventoryTemplateItem.findFirst({
       where: { id, isDeleted: false },
-      include: { template: true },
+      include: { template: true, materialItem: true },
     });
     if (!item) throw new NotFoundException(`Inventory template item ${id} not found`);
     return item;
   }
 
+  /**
+   * Looks up the `MaterialItem` a create/update points at and returns the
+   * `name`/`type`/`unit` triple the row should carry — the catalogue is the
+   * identity now (#206), so these stay a read-through cache of it rather
+   * than free text. Returns `null` when the dto carries no `materialItemId`
+   * at all (the legacy free-text path); throws when it names one that
+   * doesn't exist.
+   */
+  private async resolveMaterialItem(materialItemId: string | undefined) {
+    if (!materialItemId) return null;
+    const materialItem = await this.prisma.materialItem.findFirst({
+      where: { id: materialItemId, isDeleted: false },
+    });
+    if (!materialItem) {
+      throw new NotFoundException(`Material item ${materialItemId} not found`);
+    }
+    return materialItem;
+  }
+
   async createTemplateItem(dto: CreateInventoryTemplateItemDto) {
     const template = await this.findOneTemplate(dto.templateId);
+    const materialItem = await this.resolveMaterialItem(dto.materialItemId);
 
-    if (dto.type === InventoryItemType.COUNTABLE && dto.recommendedQuantity === undefined) {
+    const name = materialItem?.namePt ?? dto.name;
+    const type = materialItem?.type ?? dto.type;
+    const unit = materialItem?.unit ?? dto.unit;
+
+    if (!name || !type) {
+      throw new BadRequestException('Either materialItemId or name/type must be provided');
+    }
+
+    if (type === InventoryItemType.COUNTABLE && dto.recommendedQuantity === undefined) {
       throw new BadRequestException(
         'recommendedQuantity is required for COUNTABLE items',
       );
@@ -148,14 +180,15 @@ export class InventoryService {
     const item = await this.prisma.inventoryTemplateItem.create({
       data: {
         templateId: dto.templateId,
-        name: dto.name,
-        type: dto.type,
-        recommendedQuantity: dto.type === InventoryItemType.UNLIMITED ? null : (dto.recommendedQuantity ?? 0),
-        unit: dto.unit ?? 'pcs',
+        materialItemId: materialItem?.id ?? null,
+        name,
+        type,
+        recommendedQuantity: type === InventoryItemType.UNLIMITED ? null : (dto.recommendedQuantity ?? 0),
+        unit: unit ?? 'pcs',
         notes: dto.notes ?? null,
         order: dto.order ?? 0,
       },
-      include: { template: true },
+      include: { template: true, materialItem: true },
     });
 
     // Bump template version when items change
@@ -169,23 +202,30 @@ export class InventoryService {
 
   async updateTemplateItem(id: string, dto: UpdateInventoryTemplateItemDto) {
     const item = await this.findOneTemplateItem(id);
+    // `undefined` means "leave the link alone"; an explicit id re-points it,
+    // re-deriving name/type/unit from the newly linked catalogue entry.
+    const materialItem =
+      dto.materialItemId !== undefined ? await this.resolveMaterialItem(dto.materialItemId) : null;
+    const effectiveType = materialItem?.type ?? dto.type ?? item.type;
 
     const updatedItem = await this.prisma.inventoryTemplateItem.update({
       where: { id },
       data: {
-        ...(dto.name !== undefined && { name: dto.name }),
-        ...(dto.type !== undefined && { type: dto.type }),
+        ...(dto.materialItemId !== undefined && { materialItemId: materialItem?.id ?? null }),
+        ...(materialItem
+          ? { name: materialItem.namePt, type: materialItem.type, unit: materialItem.unit }
+          : {
+              ...(dto.name !== undefined && { name: dto.name }),
+              ...(dto.type !== undefined && { type: dto.type }),
+              ...(dto.unit !== undefined && { unit: dto.unit }),
+            }),
         ...(dto.recommendedQuantity !== undefined && {
-          recommendedQuantity:
-            (dto.type ?? item.type) === InventoryItemType.UNLIMITED
-              ? null
-              : dto.recommendedQuantity,
+          recommendedQuantity: effectiveType === InventoryItemType.UNLIMITED ? null : dto.recommendedQuantity,
         }),
-        ...(dto.unit !== undefined && { unit: dto.unit }),
         ...(dto.notes !== undefined && { notes: dto.notes }),
         ...(dto.order !== undefined && { order: dto.order }),
       },
-      include: { template: true },
+      include: { template: true, materialItem: true },
     });
 
     // Bump template version when items change
@@ -305,7 +345,11 @@ export class InventoryService {
     return item;
   }
 
-  async upsertVehicleInventoryItem(dto: UpsertVehicleInventoryItemDto, userId?: string) {
+  async upsertVehicleInventoryItem(
+    dto: UpsertVehicleInventoryItemDto,
+    userId?: string,
+    reason: StockMovementReason.MANUAL_ADJUSTMENT | StockMovementReason.IMPORT = StockMovementReason.MANUAL_ADJUSTMENT,
+  ) {
     const templateItem = await this.findOneTemplateItem(dto.templateItemId);
 
     if (templateItem.type === InventoryItemType.COUNTABLE) {
@@ -330,38 +374,66 @@ export class InventoryService {
       where: { vehicleId_templateItemId: { vehicleId: dto.vehicleId, templateItemId: dto.templateItemId } },
     });
 
-    if (existing) {
-      const updated = await this.prisma.vehicleInventoryItem.update({
-        where: { id: existing.id },
+    const newQuantity = dto.actualQuantity ?? null;
+
+    return this.prisma.$transaction(async (tx) => {
+      if (existing) {
+        const updated = await tx.vehicleInventoryItem.update({
+          where: { id: existing.id },
+          data: {
+            actualQuantity: newQuantity,
+            templateVersion: template?.version ?? 1,
+            updatedById: userId ?? null,
+            // A hand-entered (or re-imported) count is a fresh recount.
+            needsRecount: false,
+          },
+          include: { templateItem: true },
+        });
+
+        await tx.vehicleInventoryAudit.create({
+          data: {
+            vehicleInventoryItemId: existing.id,
+            changedById: userId ?? null,
+            oldQuantity: existing.actualQuantity,
+            newQuantity,
+          },
+        });
+
+        await this.stockMovements.recordManualAdjustment(tx, {
+          vehicleId: dto.vehicleId,
+          materialItemId: templateItem.materialItemId,
+          itemType: templateItem.type as InventoryItemType,
+          oldQuantity: existing.actualQuantity,
+          newQuantity,
+          actorId: userId ?? null,
+          reason,
+        });
+
+        return updated;
+      }
+
+      const created = await tx.vehicleInventoryItem.create({
         data: {
-          actualQuantity: dto.actualQuantity ?? null,
+          vehicleId: dto.vehicleId,
+          templateItemId: dto.templateItemId,
+          actualQuantity: newQuantity,
           templateVersion: template?.version ?? 1,
           updatedById: userId ?? null,
         },
         include: { templateItem: true },
       });
 
-      await this.prisma.vehicleInventoryAudit.create({
-        data: {
-          vehicleInventoryItemId: existing.id,
-          changedById: userId ?? null,
-          oldQuantity: existing.actualQuantity,
-          newQuantity: dto.actualQuantity ?? null,
-        },
+      await this.stockMovements.recordManualAdjustment(tx, {
+        vehicleId: dto.vehicleId,
+        materialItemId: templateItem.materialItemId,
+        itemType: templateItem.type as InventoryItemType,
+        oldQuantity: null,
+        newQuantity,
+        actorId: userId ?? null,
+        reason,
       });
 
-      return updated;
-    }
-
-    return this.prisma.vehicleInventoryItem.create({
-      data: {
-        vehicleId: dto.vehicleId,
-        templateItemId: dto.templateItemId,
-        actualQuantity: dto.actualQuantity ?? null,
-        templateVersion: template?.version ?? 1,
-        updatedById: userId ?? null,
-      },
-      include: { templateItem: true },
+      return created;
     });
   }
 
@@ -386,26 +458,42 @@ export class InventoryService {
         })
       : null;
 
-    const updated = await this.prisma.vehicleInventoryItem.update({
-      where: { id },
-      data: {
-        actualQuantity: dto.actualQuantity ?? null,
-        templateVersion: template?.version ?? existing.templateVersion,
-        updatedById: userId ?? null,
-      },
-      include: { templateItem: true },
-    });
+    const newQuantity = dto.actualQuantity ?? null;
 
-    await this.prisma.vehicleInventoryAudit.create({
-      data: {
-        vehicleInventoryItemId: id,
-        changedById: userId ?? null,
+    return this.prisma.$transaction(async (tx) => {
+      const updated = await tx.vehicleInventoryItem.update({
+        where: { id },
+        data: {
+          actualQuantity: newQuantity,
+          templateVersion: template?.version ?? existing.templateVersion,
+          updatedById: userId ?? null,
+          // A hand-entered count is a fresh recount.
+          needsRecount: false,
+        },
+        include: { templateItem: true },
+      });
+
+      await tx.vehicleInventoryAudit.create({
+        data: {
+          vehicleInventoryItemId: id,
+          changedById: userId ?? null,
+          oldQuantity: existing.actualQuantity,
+          newQuantity,
+        },
+      });
+
+      await this.stockMovements.recordManualAdjustment(tx, {
+        vehicleId: existing.vehicleId,
+        materialItemId: templateItem.materialItemId,
+        itemType: templateItem.type as InventoryItemType,
         oldQuantity: existing.actualQuantity,
-        newQuantity: dto.actualQuantity ?? null,
-      },
-    });
+        newQuantity,
+        actorId: userId ?? null,
+        reason: StockMovementReason.MANUAL_ADJUSTMENT,
+      });
 
-    return updated;
+      return updated;
+    });
   }
 
   async removeVehicleInventoryItem(id: string) {
@@ -624,6 +712,7 @@ export class InventoryService {
       await this.upsertVehicleInventoryItem(
         { vehicleId, templateItemId: templateItem.id, actualQuantity: actualQuantity ?? undefined },
         userId,
+        StockMovementReason.IMPORT,
       );
       updated++;
     }

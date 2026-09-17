@@ -1,4 +1,3 @@
-*.tgz
 .DS_Store
 .git
 .gitignore
@@ -8,4 +7,3 @@ venv
 dist
 coverage
 *.log
-charts

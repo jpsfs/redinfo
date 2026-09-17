@@ -1,0 +1,93 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+  <style>
+    body { margin: 0; font-family: "Inter", "Roboto", "Helvetica Neue", Arial, sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: #B01218; } a:hover { color: #8b0e13; }
+    code, .mono { font-family: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace; }
+    .grid { display: grid; grid-template-columns: 190px 150px 1fr; }
+    .grid > div { padding: 8px 12px; border-bottom: 1px solid #E0E0E0; font-size: 0.8125rem; line-height: 1.45; color: #212121; }
+    .th { font-size: 0.6875rem !important; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: #616161 !important; background: #FAFAFA; }
+    .sec { grid-column: 1 / -1; background: #F5F5F5; font-size: 0.6875rem !important; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #616161 !important; }
+    .cap { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 0.6875rem; color: #B01218; }
+    .none { font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 0.6875rem; color: #9E9E9E; }
+  </style>
+</helmet>
+
+<div style="width: 860px; height: 1055px; background: #F5F5F5; padding: 28px; box-sizing: border-box; display: flex; flex-direction: column; gap: 18px;">
+
+  <div style="display: flex; flex-direction: column; gap: 4px;">
+    <div style="font-size: 1.25rem; font-weight: 600; color: #212121; line-height: 1.25;">The navigation manifest</div>
+    <div style="font-size: 0.875rem; color: #616161; line-height: 1.5;">One array in <code style="font-size: 0.8125rem;">layout/navigation.ts</code> is the whole mechanism. A screen is in the menu because it is listed here — not because its resource happens to carry a <code style="font-size: 0.8125rem;">list</code> prop, and not because it escaped <code style="font-size: 0.8125rem;">RESOURCES_HIDDEN_FROM_MENU</code>, which is deleted.</div>
+  </div>
+
+  <div style="background: #FFFFFF; border: 1px solid #E0E0E0; border-radius: 8px; overflow: hidden;">
+    <div class="grid">
+      <div class="th">Entry</div>
+      <div class="th">Route</div>
+      <div class="th">Shown when the viewer holds</div>
+
+      <div class="sec">Pinned — no header</div>
+      <div><b style="font-weight: 600;">Emergência</b></div><div class="mono" style="font-size: 0.75rem;">/live</div><div><span class="cap">EMERGENCY_OPERATION</span></div>
+      <div>Home</div><div class="mono" style="font-size: 0.75rem;">/</div><div><span class="none">— always</span></div>
+
+      <div class="sec">My work</div>
+      <div>My Availability</div><div class="mono" style="font-size: 0.75rem;">/my-availability</div><div><span class="cap">SUBMIT_AVAILABILITY</span></div>
+      <div>My Duties</div><div class="mono" style="font-size: 0.75rem;">/my-duties</div><div><span class="none">— always</span></div>
+      <div>My Reports</div><div class="mono" style="font-size: 0.75rem;">/my-reports</div><div><span class="cap">CREATE_EVENT_REPORT</span></div>
+
+      <div class="sec">Operations</div>
+      <div>Live Emergencies</div><div class="mono" style="font-size: 0.75rem;">/live-runs</div><div><span class="cap">VIEW_LIVE_RUNS</span></div>
+      <div>Event Reports</div><div class="mono" style="font-size: 0.75rem;">/event-reports</div><div><span class="cap">VIEW_EVENT_REPORTS</span></div>
+      <div>Schedules</div><div class="mono" style="font-size: 0.75rem;">/schedules</div><div><span class="cap">VIEW_SCHEDULES</span></div>
+      <div>Availability Windows</div><div class="mono" style="font-size: 0.75rem;">/availability-windows</div><div><span class="cap">MANAGE_AVAILABILITY_WINDOWS</span> <span style="color: #616161;">or</span> <span class="cap">VIEW_AVAILABILITY_MATRIX</span></div>
+
+      <div class="sec">People</div>
+      <div>Personnel</div><div class="mono" style="font-size: 0.75rem;">/users</div><div><span class="cap">VIEW_USERS</span></div>
+
+      <div class="sec">Fleet</div>
+      <div>Vehicles</div><div class="mono" style="font-size: 0.75rem;">/vehicles</div><div><span class="cap">VIEW_VEHICLES</span></div>
+      <div>Inventory Templates</div><div class="mono" style="font-size: 0.75rem;">/inventory-templates</div><div><span class="cap">MANAGE_LOGISTICS</span></div>
+
+      <div class="sec">Configuration</div>
+      <div>Hospitals</div><div class="mono" style="font-size: 0.75rem;">/hospitals</div><div><span class="cap">MANAGE_HOSPITALS</span></div>
+      <div>Holidays</div><div class="mono" style="font-size: 0.75rem;">/holidays</div><div><span class="cap">MANAGE_HOLIDAYS</span></div>
+
+      <div class="sec">Under the avatar, never in the menu</div>
+      <div>My Profile</div><div class="mono" style="font-size: 0.75rem;">/my-profile</div><div><span class="none">— always</span></div>
+      <div>Log out</div><div class="mono" style="font-size: 0.75rem;">—</div><div><span class="none">— always</span></div>
+    </div>
+  </div>
+
+  <div style="display: flex; gap: 16px; align-items: stretch;">
+    <div style="flex-grow: 1; background: #FFFFFF; border: 1px solid #E0E0E0; border-radius: 8px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px;">
+      <div style="font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #616161;">Rules the manifest carries</div>
+      <div style="font-size: 0.8125rem; color: #212121; line-height: 1.6;">
+        A section with no visible entry is not drawn — no empty header, no stray divider.<br>
+        Sections keep this order at every width; ordering is the manifest's, never registration order.<br>
+        A route absent from the manifest is reachable but invisible — how <code style="font-size: 0.75rem;">maintenance</code>, <code style="font-size: 0.75rem;">municipalities</code> and <code style="font-size: 0.75rem;">vehicle-inventory</code> stay out without a second list.<br>
+        Capability check is <code style="font-size: 0.75rem;">hasPermission(role, action)</code> from <code style="font-size: 0.75rem;">@redinfo/shared</code> — the same table the backend guards with, so the menu cannot drift from it.
+      </div>
+    </div>
+    <div style="width: 268px; flex: none; background: #FFFFFF; border: 1px solid #E0E0E0; border-radius: 8px; padding: 14px 16px; display: flex; flex-direction: column; gap: 8px;">
+      <div style="font-size: 0.6875rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: #616161;">Entries per role</div>
+      <div style="display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; font-size: 0.8125rem; color: #212121; line-height: 1.4;">
+        <span>System Admin</span><b style="font-weight: 600;">14</b>
+        <span>Emergency Coordinator</span><b style="font-weight: 600;">14</b>
+        <span>Emergency Operational</span><b style="font-weight: 600;">6</b>
+        <span>Logistics Coordinator</span><b style="font-weight: 600;">4</b>
+      </div>
+      <div style="font-size: 0.75rem; color: #616161; line-height: 1.5; margin-top: 2px;">The two coordinators-and-up see the same menu: they differ only in <code style="font-size: 0.6875rem;">MANAGE_USERS</code>, which changes fields inside Personnel, not entries.</div>
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

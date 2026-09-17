@@ -9,16 +9,20 @@ name: redinfo
 services:
   # ── PostgreSQL ──────────────────────────────────────────────────────────────
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-redinfo}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-redinfo_dev_password}
       POSTGRES_DB: ${POSTGRES_DB:-redinfo}
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-redinfo} -d ${POSTGRES_DB:-redinfo}"]
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-redinfo} -d ${POSTGRES_DB:-redinfo}",
+        ]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -34,12 +38,141 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-redinfo}:${POSTGRES_PASSWORD:-redinfo_dev_password}@postgres:5432/${POSTGRES_DB:-redinfo}
       NODE_ENV: development
-      FRONTEND_URL: http://localhost:5173
+      # Overridable per host — a hardcoded value here would always win over
+      # .env's FRONTEND_URL, since `environment:` takes precedence over
+      # `env_file`. Needed so hosts reachable at a real domain (e.g.
+      # dev-redcross.jpsfs.com) get correct CORS + OAuth-callback redirects
+      # while plain localhost dev keeps working with no .env change.
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:5173}
+      # Event report attachments, certification documents, profile photos.
+      # A named volume so they survive a redeploy — see docker-compose.prod.yml.
+      ATTACHMENTS_DIR: /app/uploads
+      # Self-hosted routing/geocoding (#231) — always the compose-network
+      # service names below, never overridable to a real host through
+      # `environment:` here; `RoutingModule`'s host guard refuses to start
+      # against anything else anyway. Set explicitly (rather than relying on
+      # the client's own default) for the same reason DATABASE_URL is spelled
+      # out above rather than left implicit.
+      ROUTING_BASE_URL: http://osrm:5000
+      GEOCODING_BASE_URL: http://nominatim:8080
+    volumes:
+      - backend_uploads:/app/uploads
     depends_on:
       postgres:
         condition: service_healthy
+      # Not `condition: service_healthy` for either — `RoutingService` is
+      # fail-soft (same posture as `RouteDistanceService`/`InemSessionService`):
+      # a not-yet-imported Nominatim must never block the whole API from
+      # starting, it should just make geocoding answer "not found" until it's
+      # ready.
+      osrm:
+        condition: service_started
+      nominatim:
+        condition: service_started
     ports:
       - "3000:3000"
+
+  # ── OSRM (#231) ──────────────────────────────────────────────────────────────
+  # Self-hosted routing over an OpenStreetMap Portugal extract — see the banner
+  # comment on `OsrmRoutingService` for why OSRM over Valhalla. Serves the
+  # `.osrm*` files `scripts/prepare-osrm-data.sh` produces into
+  # `./data/routing/osrm`; that script is a one-off, run by hand (or once per
+  # fresh checkout), not part of `up` itself.
+  osrm:
+    image: ghcr.io/project-osrm/osrm-backend:v5.27.1
+    command: osrm-routed --algorithm mld /data/portugal-latest.osrm
+    restart: unless-stopped
+    volumes:
+      - ./data/routing/osrm:/data:ro
+    healthcheck:
+      # The image (Debian, minimal) has neither curl nor wget — `/route`
+      # with two arbitrary well-formed coordinates always answers 200
+      # regardless of whether they're routable, so it works as a plain
+      # "the server is up" probe without depending on the loaded region.
+      # Perl is the one scripting language the image does ship with.
+      test:
+        - CMD-SHELL
+        - >-
+          perl -MIO::Socket::INET -e
+          '$$s = IO::Socket::INET->new(PeerAddr => "127.0.0.1:5000", Timeout => 3) or exit 1;
+          print $$s "GET /route/v1/driving/0,0;0,1 HTTP/1.0\r\n\r\n";
+          local $$/; $$r = <$$s>;
+          exit(($$r =~ /^HTTP\/1\.[01] 200/) ? 0 : 1);'
+      interval: 15s
+      # Perl's interpreter startup + IO::Socket::INET's module compile is
+      # slow enough under load (host also running Nominatim's import) to
+      # blow past a 5s timeout even when OSRM itself answers instantly.
+      timeout: 15s
+      retries: 5
+      # `.osrm*` files may not exist yet on a fresh checkout (before the
+      # prepare script has run) — give it room to keep restarting rather than
+      # report unhealthy immediately.
+      start_period: 30s
+
+  # ── Nominatim (#231) ─────────────────────────────────────────────────────────
+  # Self-hosted geocoding, same extract as `osrm` above. Unlike OSRM, the
+  # image manages its own import: first start downloads `PBF_URL` and builds
+  # its Postgres from scratch into the `nominatim_data` volume — genuinely
+  # slow for a whole country (tens of minutes to a couple of hours) — and
+  # every start after that reuses what's already imported. Patient addresses
+  # never leave the building: everything here stays inside the compose
+  # network, never published to the host.
+  nominatim:
+    image: mediagis/nominatim:4.5
+    restart: unless-stopped
+    environment:
+      PBF_URL: https://download.geofabrik.de/europe/portugal-latest.osm.pbf
+      REPLICATION_URL: https://download.geofabrik.de/europe/portugal-updates/
+      IMPORT_WIKIPEDIA: "false"
+      NOMINATIM_PASSWORD: ${NOMINATIM_PASSWORD:-redinfo_dev_password}
+    volumes:
+      - nominatim_data:/var/lib/postgresql/14
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/status.php"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 2h
+
+  # ── Basemap tiles (#247 stage 4) ────────────────────────────────────────────
+  # Self-hosted PMTiles behind our own nginx — see
+  # `docs/plans/planeamento-transportes-redesign.md` §5 for why: a tile
+  # request centred on a patient's house is that address leaving the
+  # building, the same reasoning that keeps routing/geocoding self-hosted
+  # (`routing.module.ts`). Plain `nginx:alpine` rather than `pmtiles serve` —
+  # the map panel fetches the raw `.pmtiles` file itself (byte-range
+  # requests via `pmtiles.js`'s own protocol handler), and the CLI's own
+  # docs say a standard web server is what serves that, not `pmtiles serve`
+  # (which exposes a decoded ZXY API instead). Serves `./data/basemap`,
+  # produced by `scripts/prepare-basemap.sh` — optional: `MapPanel` degrades
+  # to a placeholder when `portugal.pmtiles` isn't there yet, same fail-soft
+  # posture as `osrm`'s `.osrm*` files above.
+  tiles:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    volumes:
+      - ./data/basemap:/usr/share/nginx/html:ro
+
+  # ── INEM worker (#215) ──────────────────────────────────────────────────────
+  # Stateless Playwright session-minter — see packages/inem-worker/README.md.
+  # Off by default (profile-gated): `docker compose --profile inem-worker up`.
+  # Idle and harmless with none of INEM_USERNAME/INEM_PASSWORD/INEM_WORKER_TOKEN
+  # set in .env; it just fails MissingConfigError and exits, same fail-soft
+  # posture as the backend module it polls. Needs an OWA session already
+  # bootstrapped (`pnpm --filter @redinfo/inem-worker bootstrap`, run
+  # locally/headed — never in this container) before a cold login can do
+  # anything useful.
+  inem-worker:
+    build:
+      context: .
+      dockerfile: packages/inem-worker/Dockerfile
+    profiles: ["inem-worker"]
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      BACKEND_URL: http://backend:3000
+    depends_on:
+      - backend
 
   # ── Frontend (React + Vite) ─────────────────────────────────────────────────
   frontend:
@@ -51,8 +184,11 @@ services:
     env_file: .env
     depends_on:
       - backend
+      - tiles
     ports:
       - "5173:5173"
 
 volumes:
   postgres_data:
+  backend_uploads:
+  nominatim_data:

@@ -6,7 +6,7 @@ This document summarizes mandatory repository policies enforced for AI-assisted 
 Mandatory rules
 1. Every PR opened via the web coding agent must include at least one implementation screenshot (see `.github/PULL_REQUEST_TEMPLATE.md`).
 2. All UI-affecting changes must declare compliance with `.github/UI-UX-GUIDELINES.md`.
-3. Every feature must include unit, integration, and end-to-end tests that validate user story acceptance criteria.
+3. Every feature must include unit, integration, and end-to-end tests that validate user story acceptance criteria. (Current reality: no e2e harness exists yet — see `.github/TESTING-STANDARD.md`. Unit + integration is the enforced bar until one is built.)
 4. Significant changes must include README updates or a documented deferred-docs justification.
 5. Agents must use in-repo policy docs as the primary source of truth. Live ADO lookups are maintenance-only and require a documented refresh.
 

@@ -1,19 +1,133 @@
-replicaCount: 2
 namespace: staging
+
+# Single replica: the uploads PVC is ReadWriteOnce and the backend migrates on boot,
+# so a second generation can't safely run alongside the first anyway.
+replicaCount: 1
 
 image:
   backend:
-    repository: redinfo/backend
+    repository: jpsfs/redinfo-backend
     tag: "staging"
     pullPolicy: IfNotPresent
   frontend:
-    repository: redinfo/frontend
+    repository: jpsfs/redinfo-frontend
+    tag: "staging"
+    pullPolicy: IfNotPresent
+  legacyMigration:
+    repository: jpsfs/redinfo-legacy-migration
     tag: "staging"
     pullPolicy: IfNotPresent
 
+service:
+  backend:
+    type: ClusterIP
+    port: 3000
+  frontend:
+    type: ClusterIP
+    port: 80
+
 ingress:
   enabled: true
+  className: public
+  hosts:
+    - host: staging-redcross.jpsfs.com
+      paths:
+        - path: /
+          service: frontend
+          servicePort: 80
+  # HTTP only for now — cert-manager is not enabled on this cluster yet. This means
+  # OAuth login (Google/Microsoft) will not work on staging until TLS is added; use
+  # the seeded local admin account (admin@redcross.local) in the meantime.
+  tls: []
 
-resources: {}
+resources:
+  backend:
+    requests:
+      cpu: 100m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+  frontend:
+    requests:
+      cpu: 50m
+      memory: 64Mi
+    limits:
+      cpu: 150m
+      memory: 128Mi
 
-# TODO: populate staging values (secrets, ingress host, DB)
+env:
+  backend:
+    NODE_ENV: "production"
+    PORT: "3000"
+    ATTACHMENTS_DIR: "/app/uploads"
+    # Cloudflare terminates TLS in front of this host — the site is only ever
+    # reachable over https (plain http to the origin 522s at Cloudflare's edge).
+    # This must match the scheme browsers actually see: it's used verbatim to
+    # build the post-OAuth redirect Location (auth.controller.ts's
+    # googleCallback/microsoftCallback), so an http value here sends the
+    # browser to a URL Cloudflare won't serve, breaking Google/Microsoft login.
+    FRONTEND_URL: "https://staging-redcross.jpsfs.com"
+  frontend:
+    # Stamped into index.html/manifest.webmanifest at container start by
+    # packages/frontend/docker-entrypoint-app-title.sh — this (not a build
+    # arg) is what lets the same frontend image serve staging and production.
+    APP_TITLE: "RedInfo - QA"
+
+# Populated by the pipeline from the `redinfo-staging` ADO variable group via
+# --set-string; left empty here so nothing sensitive is ever committed. Now
+# includes LEGACY_PROD_MYSQL_HOST/PORT/USER/PASSWORD/DATABASE — see
+# values.yaml's own comment on `secrets` and `legacyMigration` below.
+#
+# Deliberately never add RESEND_API_KEY / VAPID_* to the `redinfo-staging`
+# variable group: those are only rendered from `redinfo-production` (see
+# .ado/templates/deploy-env.yml). Real people's emails live in staging data,
+# and EmailChannelService fails soft with no key configured — a notice still
+# saves and shows in-app, it just isn't emailed until this environment gets
+# its own real (non-production) transport. A shared internal Mailpit-style
+# catch-all is planned for staging email preview; SMTP_HOST/SMTP_PORT will be
+# added to `env.backend` above once that's ready — see
+# packages/backend/src/notifications/channels/email-channel.service.ts for
+# how the transport is chosen.
+#
+# Same reasoning for INEM_USERNAME / INEM_PASSWORD / INEM_WORKER_TOKEN (#211):
+# never add these to the `redinfo-staging` variable group. It's a single
+# shared credential INEM issued for the whole delegation, and only production
+# runs the Playwright worker that spends it — the module fails soft and shows
+# a disabled UI here without them, the same way it does in plain local dev.
+secrets: {}
+
+uploads:
+  enabled: true
+  size: 10Gi
+  mountPath: /app/uploads
+
+seed:
+  enabled: true
+
+# Staging is the rehearsal environment for this bridge period: kept in sync
+# with legacy production on every deploy for as long as both systems are
+# live. See values.yaml's own comment and migration/README.md.
+#
+# Deploy-time only here (cron off) — unlike production, staging doesn't need
+# fresher-than-a-deploy data, and every run is a real fetch from legacy
+# production, best kept to only when someone's actually looking at this env.
+legacyMigration:
+  enabled: true
+  cron:
+    enabled: false
+
+# Enable a bundled Postgres instance for staging, with real persistence.
+postgresql:
+  enabled: true
+  auth:
+    username: redinfo
+    database: redinfo_staging
+    # password/postgresPassword are injected by the pipeline via --set-string;
+    # this placeholder is only ever used if someone runs a manual `helm template`.
+    password: "changeme"
+    postgresPassword: "changeme"
+  primary:
+    persistence:
+      enabled: true
+      size: 10Gi

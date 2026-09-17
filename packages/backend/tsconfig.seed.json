@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./prisma-dist",
+    "rootDir": "./prisma",
+    "module": "commonjs",
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "baseUrl": ".",
+    "paths": {
+      "@redinfo/shared": ["../shared/dist/index.d.ts"]
+    }
+  },
+  "include": ["prisma/seed.ts", "prisma/seed-geography.ts"],
+  "exclude": ["node_modules", "dist", "prisma-dist"]
+}

@@ -1,7 +1,8 @@
 # ─── Development stage ────────────────────────────────────────────────────────
 FROM node:22-bookworm-slim AS dev
 
-RUN npm install -g pnpm
+# Use the same pnpm version across dev/CI/Docker.
+RUN corepack enable && corepack prepare pnpm@10.32.1 --activate
 
 # OpenSSL required by Prisma on Debian
 RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
@@ -14,7 +15,7 @@ COPY packages/shared/package.json ./packages/shared/
 COPY packages/backend/package.json ./packages/backend/
 
 # Install all deps
-RUN pnpm install
+RUN pnpm install --frozen-lockfile
 
 # Copy sources
 COPY tsconfig.base.json ./
@@ -34,7 +35,7 @@ CMD ["sh", "-c", \
 # ─── Build stage ──────────────────────────────────────────────────────────────
 FROM node:22-bookworm-slim AS build
 
-RUN npm install -g pnpm
+RUN corepack enable && corepack prepare pnpm@10.32.1 --activate
 
 RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 
@@ -44,7 +45,7 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* ./
 COPY packages/shared/package.json ./packages/shared/
 COPY packages/backend/package.json ./packages/backend/
 
-RUN pnpm install
+RUN pnpm install --frozen-lockfile
 
 COPY tsconfig.base.json ./
 COPY packages/shared ./packages/shared
@@ -56,12 +57,27 @@ RUN pnpm build
 WORKDIR /app/packages/backend
 RUN pnpm prisma:generate
 RUN pnpm build
+# Compiled separately from `pnpm build` (nest build only emits src/**) so the seed
+# Job (deploy/redinfo/templates/job-seed.yaml) can run it in the prod image, which
+# has no ts-node — prisma:seed's `ts-node prisma/seed.ts` only works in dev/build.
+RUN pnpm build:seed
 
 
 # ─── Production stage ─────────────────────────────────────────────────────────
 FROM node:22-bookworm-slim AS prod
 
-RUN npm install -g pnpm
+# Commit this image was built from, for the About dialog's GET /health/version
+# (see health.controller.ts). The build context has no .git (.dockerignore
+# excludes it), so these come in as build args from the CI pipeline, which
+# knows Build.SourceVersion — see .ado/deployment.yml. Unset (empty ARG
+# default) for a plain local `docker compose build`, which the controller's
+# own fallback turns into 'dev' / null rather than a stale-looking value.
+ARG GIT_COMMIT_SHA=""
+ARG GIT_COMMIT_DATE=""
+ENV GIT_COMMIT_SHA=$GIT_COMMIT_SHA
+ENV GIT_COMMIT_DATE=$GIT_COMMIT_DATE
+
+RUN corepack enable && corepack prepare pnpm@10.32.1 --activate
 
 RUN apt-get update && apt-get install -y --no-install-recommends openssl && rm -rf /var/lib/apt/lists/*
 
@@ -74,12 +90,27 @@ COPY packages/shared/package.json ./packages/shared/
 COPY packages/backend/package.json ./packages/backend/
 
 # Install only prod deps
-RUN pnpm install --prod
+RUN pnpm install --prod --frozen-lockfile
 
-# Copy generated Prisma client + compiled output
+# Copy compiled output and Prisma schema. @redinfo/shared's package.json points
+# `main` at ./dist/index.js — without this, the workspace symlink pnpm just
+# created resolves to a package.json with no dist, and the app throws
+# `Cannot find module` on the first import of @redinfo/shared at startup.
+COPY --from=build /app/packages/shared/dist ./packages/shared/dist
 COPY --from=build /app/packages/backend/dist ./packages/backend/dist
-COPY --from=build /app/packages/backend/node_modules/.prisma ./packages/backend/node_modules/.prisma
 COPY packages/backend/prisma ./packages/backend/prisma
+
+# Compiled seed scripts + the geography JSON they read via __dirname at runtime
+# (packages/backend/prisma/seed-geography.ts resolves ./data/pt-localities.json
+# relative to itself, so the data must sit alongside the compiled output).
+COPY --from=build /app/packages/backend/prisma-dist ./packages/backend/prisma-dist
+COPY packages/backend/prisma/data ./packages/backend/prisma-dist/data
+
+# Generate the Prisma client inside the production node_modules so pnpm
+# places it at the correct virtual-store location that @prisma/client
+# resolves at runtime.  prisma must be in dependencies (not devDependencies)
+# for this to work – and for the entrypoint's "prisma migrate deploy" too.
+RUN pnpm --filter @redinfo/backend run prisma:generate
 
 WORKDIR /app/packages/backend
 

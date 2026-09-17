@@ -5,6 +5,7 @@ import {
   colorRedCrossRedDark,
   colorRedCrossRedLight,
   colorWhite,
+  colorGrey50,
   colorGrey100,
   colorGrey200,
   colorGrey700,
@@ -102,6 +103,94 @@ export const theme = createTheme({
   components: {
     // Include react-admin's default component overrides first, then apply ours
     ...(defaultTheme.components as ThemeOptions['components']),
+
+    // ── Layout/List: let mobile content actually shrink to the viewport ────
+    // Flex items default to `min-width: auto`, which refuses to shrink an
+    // item below its own content's width. That's invisible almost
+    // everywhere, but react-admin's `<Layout>` and `<List>` roots are each a
+    // chain of nested flex containers between the app shell and one page's
+    // content (`.layout` itself even hardcodes `min-width: fit-content`, to
+    // protect the docked sidebar from being squeezed on a narrow *desktop*
+    // window) — so a single nowrap-and-scroll row anywhere down in a page
+    // (a horizontally scrolling filter-chip strip, see `ChipFilterRow`) can
+    // make any one link in that chain refuse to shrink too, turning what
+    // should be that one row's internal scroll into horizontal scroll for
+    // the whole page. Below `sm` there's no docked sidebar for
+    // `fit-content` to protect, so every link gets `min-width: 0` instead.
+    //
+    // Every class here is one of these two components' own generated
+    // classes (`RaLayout-*` from `ra-ui-materialui/src/layout/Layout.tsx`'s
+    // `LayoutClasses`, `RaList-*` from `.../list/ListView.tsx`'s
+    // `ListClasses`) — this is the full chain, not a guess at part of it;
+    // confirmed by walking `getBoundingClientRect()` on every ancestor of an
+    // overflowing `ChipFilterRow` in a real mobile browser.
+    RaLayout: {
+      styleOverrides: {
+        root: {
+          '@media (max-width: 599.95px)': {
+            minWidth: 0,
+            '& .RaLayout-appFrame': { minWidth: 0 },
+            '& .RaLayout-contentWithSidebar': { minWidth: 0 },
+            '& .RaLayout-content': { minWidth: 0 },
+          },
+          // `.RaLayout-appFrame` always reserves `marginTop` for the app
+          // bar, whether or not one is actually rendered — it's a static
+          // rule on the wrapper, not conditional on the `appBar` prop's
+          // output. `AppLayout` marks the root with this class exactly when
+          // it swaps in `NullAppBar` (the mobile event report wizard, which
+          // draws its own sticky header — see `AppLayout.tsx`), so without
+          // this the wizard would trade one doubled bar for a blank gap the
+          // same height.
+          '&.redinfo-no-app-bar .RaLayout-appFrame': { marginTop: 0 },
+        },
+      },
+    },
+    RaList: {
+      styleOverrides: {
+        root: {
+          '@media (max-width: 599.95px)': {
+            minWidth: 0,
+            '& .RaList-main': { minWidth: 0 },
+          },
+        },
+      },
+    },
+
+    // ── List actions toolbar: no card of its own ────────────────────────────
+    // Two different react-admin components paint themselves white
+    // (`background.paper`) by default, on the assumption a list toolbar
+    // needs to stand out: `<ListToolbar>` (`<List>`'s own wrapper around its
+    // `filters`/`actions` props) and `<TopToolbar>` (what a list's `actions`
+    // prop usually renders into — the "New report"-style button row). Here
+    // that row sits directly above a page's own filter row, which
+    // deliberately has no card background either (see
+    // `EventReportList`/`ScheduleFilterBar`) — the two need to read as one
+    // continuous "controls" strip on the page's own grey background, not a
+    // white card sitting on top of a borderless one.
+    //
+    // `!important` is load-bearing, not decoration: both components set
+    // `background.paper` themselves via an inline `sx` scoped to
+    // `@media (max-width: 599.95px)`, not via a theme `styleOverrides` rule
+    // — confirmed by reading the generated stylesheet, which shows our
+    // (unconditional) rule *and* their media-scoped one as separate CSS
+    // rules of equal specificity, with theirs sorted after ours and winning
+    // below 600px. A plain override here fixes >600px (where only our rule
+    // exists) but loses the cascade tie below it, so the white strip came
+    // back at mobile widths specifically.
+    RaListToolbar: {
+      styleOverrides: {
+        root: {
+          backgroundColor: 'transparent !important',
+        },
+      },
+    },
+    RaTopToolbar: {
+      styleOverrides: {
+        root: {
+          backgroundColor: 'transparent !important',
+        },
+      },
+    },
 
     // ── App bar: Red Cross red ──────────────────────────────────────────────
     MuiAppBar: {
@@ -214,26 +303,64 @@ export const theme = createTheme({
     },
 
     // ── react-admin Login page overrides ──────────────────────────────────
+    //
+    // Was a solid `colorRedCrossRed` field behind the card — too strong at
+    // full-viewport scale even though the same red is fine as an accent
+    // (button, chip, card edge). A soft neutral base with a faint red glow
+    // keeps the brand identity (plus the card's red top edge and the red
+    // submit button) without the wall-of-red.
     RaLogin: {
       styleOverrides: {
         root: {
-          background: colorRedCrossRed,
-          backgroundImage: 'none',
-          minHeight: '100vh',
+          backgroundColor: colorGrey100,
+          backgroundImage: `radial-gradient(ellipse 900px 480px at 50% -12%, ${colorRedCrossRedLight}40, transparent 70%), linear-gradient(180deg, ${colorGrey50} 0%, ${colorGrey100} 100%)`,
+          // `100vh` on a mobile browser is taller than the visible area once
+          // the address bar is accounted for, so a fully-fitting page still
+          // scrolled and, being centered, revealed empty space above the
+          // card rather than cutting anything off. `100dvh` tracks the
+          // actual visible viewport instead.
+          minHeight: '100dvh',
+          // react-admin's base root pairs `min-height: 100vh` with `height:
+          // 1px` — a WebKit workaround so old it predates every browser this
+          // app supports. Left in place, it pins this box to exactly one
+          // viewport tall and makes `overflow-y: auto` on it the only way to
+          // reach content past the fold — which is itself unreliable for
+          // touch-scrolling on mobile Safari (nested `overflow: auto`
+          // regions sized in viewport units are a well-known source of
+          // "can't scroll" bugs there, worse once the address bar's
+          // show/hide resizes the viewport mid-gesture). `height: auto`
+          // cancels the hack: the box grows to fit its content past
+          // `min-height`, so the *page* scrolls — the one mechanism every
+          // mobile browser gets right — instead of a nested pane.
+          height: 'auto',
           display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
+          // NOT `alignItems`/`justifyContent: center` — with `height: auto`
+          // above, centering via `margin: auto` on the card below (which
+          // degrades to top-alignment once content is taller than the
+          // viewport, instead of clipping it) does the same job without
+          // reintroducing the WebKit trick's constraints.
+          padding: spacingUnit * 2,
           // react-admin's overridesResolver only applies `root` — hide the
           // default lock-icon avatar using a nested selector instead of the
           // `avatar` slot key, which is not processed by overridesResolver.
           '& .RaLogin-avatar': { display: 'none' },
-        },
-        card: {
-          borderRadius: borderRadiusMedium,
-          padding: `${spacingUnit}px`,
-          boxShadow: '0 4px 24px rgba(0,0,0,0.18)',
-          width: '100%',
-          maxWidth: 400,
+          // Same reason the card styling lives here instead of in a
+          // sibling `card:` key: that key is never read (overridesResolver
+          // above returns `styles.root` only), so a `card:` block just sits
+          // there doing nothing — it did for all of borderRadius/
+          // borderTop/boxShadow/width/maxWidth/margin before this comment
+          // existed. The `margin: auto` here is what actually centers the
+          // card vertically when it fits inside `min-height`, and degrades
+          // to top-alignment (no clipping) once content needs to scroll.
+          '& .RaLogin-card': {
+            borderRadius: borderRadiusMedium,
+            borderTop: `4px solid ${colorRedCrossRed}`,
+            padding: `${spacingUnit}px`,
+            boxShadow: '0 8px 32px rgba(0,0,0,0.12)',
+            width: '100%',
+            maxWidth: 400,
+            margin: 'auto',
+          },
         },
       },
     },

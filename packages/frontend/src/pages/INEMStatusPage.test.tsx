@@ -1,0 +1,400 @@
+import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { AdminContext, testDataProvider } from 'react-admin';
+import polyglotI18nProvider from 'ra-i18n-polyglot';
+import { INEMSessionStatus, INEMStatusOverview, INEMUnit, UserRole } from '@redinfo/shared';
+import { messages } from '../i18n/i18nProvider';
+import { INEMStatusPage } from './INEMStatusPage';
+import { apiFetch, ApiError } from '../api';
+
+// Partial mock — the real `ApiError` comes through (needed for the
+// `instanceof ApiError` check in the component's own catch blocks), only
+// `apiFetch` is replaced.
+vi.mock('../api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../api')>()),
+  apiFetch: vi.fn(),
+}));
+
+vi.mock('react-admin', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('react-admin')>()),
+  Title: () => null,
+}));
+
+const mockApiFetch = apiFetch as unknown as Mock;
+
+const i18nProvider = polyglotI18nProvider(messages, 'en');
+const renderPage = () =>
+  render(
+    <AdminContext dataProvider={testDataProvider()} i18nProvider={i18nProvider}>
+      <INEMStatusPage />
+    </AdminContext>,
+  );
+
+const unit = (overrides: Partial<INEMUnit> = {}): INEMUnit => ({
+  unitId: 'CVCAMPO1',
+  station: 'CVCAMPO',
+  carId: '12-AB-34',
+  unitType: 'AMBULANCE',
+  desiredInopCode: 'CVCAMPO_AVAILABLE' as never, // overwritten below per test
+  reportedInopCode: null,
+  reportedActive: null,
+  lastSyncedAt: null,
+  lastError: null,
+  vehicle: { id: 'veh-1', licensePlate: '12-AB-34', numeroCauda: 'CV1' },
+  ...overrides,
+});
+
+const overview = (units: INEMUnit[], overrides: Partial<INEMStatusOverview> = {}): INEMStatusOverview => ({
+  sessionStatus: INEMSessionStatus.ACTIVE,
+  sessionLastError: null,
+  inopReasons: { TEPH_Falta: 'Sem Tripulação', Nova_Razao: 'Nova Razão' },
+  units,
+  ...overrides,
+});
+
+/** The reset-breaker button is gated on `RESET_INEM_SESSION` — most tests
+ *  render with no role at all and never see it, so only the tests that need
+ *  it supply an authProvider granting a specific role. */
+const renderPageAsRole = (role: UserRole) =>
+  render(
+    <AdminContext
+      dataProvider={testDataProvider()}
+      i18nProvider={i18nProvider}
+      authProvider={{
+        login: () => Promise.resolve(),
+        logout: () => Promise.resolve(),
+        checkAuth: () => Promise.resolve(),
+        checkError: () => Promise.resolve(),
+        getPermissions: () => Promise.resolve([role]),
+      }}
+    >
+      <INEMStatusPage />
+    </AdminContext>,
+  );
+
+const openDialog = async (user: ReturnType<typeof userEvent.setup>) => {
+  await user.click(await screen.findByRole('button', { name: 'Change status' }));
+  return screen.findByRole('dialog');
+};
+
+describe('INEMStatusPage', () => {
+  beforeEach(() => mockApiFetch.mockReset());
+
+  it('shows the vehicle a crew recognises, not the bare INEM unit id', async () => {
+    mockApiFetch.mockResolvedValue(overview([unit({ desiredInopCode: '00' })]));
+    renderPage();
+
+    expect(await screen.findByText('12-AB-34 – CV1')).toBeInTheDocument();
+  });
+
+  it('falls back to the INEM unit id when no vehicle matched', async () => {
+    mockApiFetch.mockResolvedValue(overview([unit({ desiredInopCode: '00', vehicle: null })]));
+    renderPage();
+
+    expect(await screen.findByText('12-AB-34')).toBeInTheDocument();
+    expect(screen.getByText(/No matching vehicle/)).toBeInTheDocument();
+  });
+
+  it('shows a plain status chip instead of a toggle to interpret — available reads as available', async () => {
+    mockApiFetch.mockResolvedValue(overview([unit({ desiredInopCode: '00', reportedInopCode: '00' })]));
+    renderPage();
+
+    await screen.findByText('12-AB-34 – CV1');
+    expect(screen.getByText('Available')).toBeInTheDocument();
+    expect(screen.queryByText('Unavailable')).not.toBeInTheDocument();
+  });
+
+  it('shows a plain "Unavailable" chip plus the reason, right on the card, for an INOP unit', async () => {
+    mockApiFetch.mockResolvedValue(
+      overview([unit({ desiredInopCode: 'TEPH_Falta', reportedInopCode: 'TEPH_Falta' })]),
+    );
+    renderPage();
+
+    await screen.findByText('12-AB-34 – CV1');
+    expect(screen.getByText('Unavailable')).toBeInTheDocument();
+    expect(screen.getByText('No crew')).toBeInTheDocument();
+  });
+
+  it('shows "Dispatched" over "Available" when INEM reports the unit acted on a call, even though redinfo\'s own desired/reported codes both say available', async () => {
+    mockApiFetch.mockResolvedValue(
+      overview([unit({ desiredInopCode: '00', reportedInopCode: '00', reportedActive: 'Acionado' })]),
+    );
+    renderPage();
+
+    await screen.findByText('12-AB-34 – CV1');
+    expect(screen.getByText('Dispatched')).toBeInTheDocument();
+    expect(screen.queryByText('Available')).not.toBeInTheDocument();
+  });
+
+  it('shows a neutral "not set" chip when no one has ever chosen a status for the unit', async () => {
+    mockApiFetch.mockResolvedValue(overview([unit({ desiredInopCode: null })]));
+    renderPage();
+
+    await screen.findByText('12-AB-34 – CV1');
+    expect(screen.getByText('Status not set')).toBeInTheDocument();
+  });
+
+  it('opens a dialog titled with the vehicle\'s own name — never ambiguous about scope — and stages edits there until confirmed', async () => {
+    const user = userEvent.setup();
+    mockApiFetch.mockResolvedValue(overview([unit({ desiredInopCode: 'TEPH_Falta', reportedInopCode: 'TEPH_Falta' })]));
+    renderPage();
+
+    const dialog = await openDialog(user);
+    expect(dialog).toHaveTextContent('Change status — 12-AB-34 – CV1');
+
+    const toggle = screen.getByRole('checkbox', { name: 'Available' });
+    const save = screen.getByRole('button', { name: 'Save' });
+    expect(toggle).not.toBeChecked();
+    expect(save).toBeDisabled();
+
+    await user.click(toggle);
+
+    // Flipping the switch only stages the change — no request yet.
+    expect(mockApiFetch).not.toHaveBeenCalledWith('/inem/units/CVCAMPO1', expect.anything());
+    expect(save).toBeEnabled();
+
+    await user.click(save);
+
+    await waitFor(() =>
+      expect(mockApiFetch).toHaveBeenCalledWith('/inem/units/CVCAMPO1', {
+        method: 'PUT',
+        body: { inopCode: '00' },
+      }),
+    );
+    // Closes on success.
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+  });
+
+  it('reveals the reason dropdown only once the unit is not available, and Save is disabled until a reason is actually picked', async () => {
+    const user = userEvent.setup();
+    mockApiFetch.mockResolvedValue(overview([unit({ desiredInopCode: '00', reportedInopCode: '00' })]));
+    renderPage();
+
+    await openDialog(user);
+    const toggle = screen.getByRole('checkbox', { name: 'Available' });
+    const save = screen.getByRole('button', { name: 'Save' });
+    expect(screen.queryByLabelText('Reason')).not.toBeInTheDocument();
+
+    await user.click(toggle);
+    expect(await screen.findByLabelText('Reason')).toBeInTheDocument();
+    // Dirty (the switch moved), but nothing to send yet — no reason chosen.
+    expect(save).toBeDisabled();
+
+    await user.click(screen.getByLabelText('Reason'));
+    await user.click(await screen.findByRole('option', { name: 'No crew' }));
+    expect(save).toBeEnabled();
+
+    expect(mockApiFetch).not.toHaveBeenCalledWith('/inem/units/CVCAMPO1', expect.anything());
+    await user.click(save);
+
+    await waitFor(() =>
+      expect(mockApiFetch).toHaveBeenCalledWith('/inem/units/CVCAMPO1', {
+        method: 'PUT',
+        body: { inopCode: 'TEPH_Falta' },
+      }),
+    );
+  });
+
+  it('translates a known INOP reason from its label, and shows an unknown one verbatim from the API', async () => {
+    const user = userEvent.setup();
+    mockApiFetch.mockResolvedValue(overview([unit({ desiredInopCode: 'Nova_Razao', reportedInopCode: 'Nova_Razao' })]));
+    renderPage();
+
+    await openDialog(user);
+    await user.click(screen.getByLabelText('Reason'));
+    expect(await screen.findByRole('option', { name: 'No crew' })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: 'Nova Razão' })).toBeInTheDocument();
+  });
+
+  it('still shows the currently selected reason verbatim when it is missing from the reasons map — e.g. after a fallback-table restart (#218)', async () => {
+    const user = userEvent.setup();
+    mockApiFetch.mockResolvedValue(
+      overview([unit({ desiredInopCode: '04', reportedInopCode: '04' })], {
+        inopReasons: { TEPH_Falta: 'Sem Tripulação' }, // no "04" key
+      }),
+    );
+    renderPage();
+
+    await openDialog(user);
+    await user.click(screen.getByLabelText('Reason'));
+    expect(await screen.findByRole('option', { name: '04' })).toBeInTheDocument();
+  });
+
+  it('cancel discards the staged edit without saving', async () => {
+    const user = userEvent.setup();
+    mockApiFetch.mockResolvedValue(overview([unit({ desiredInopCode: '00', reportedInopCode: '00' })]));
+    renderPage();
+
+    await openDialog(user);
+    await user.click(screen.getByRole('checkbox', { name: 'Available' }));
+    await user.click(screen.getByRole('button', { name: 'Cancel' }));
+
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(mockApiFetch).not.toHaveBeenCalledWith('/inem/units/CVCAMPO1', expect.anything());
+  });
+
+  it('shows a syncing badge when the desired state has not yet reached INEM', async () => {
+    mockApiFetch.mockResolvedValue(
+      overview([unit({ desiredInopCode: '00', reportedInopCode: 'TEPH_Falta' })]),
+    );
+    renderPage();
+
+    expect(await screen.findByText('Syncing…')).toBeInTheDocument();
+  });
+
+  it('shows no syncing badge once desired and reported agree', async () => {
+    mockApiFetch.mockResolvedValue(overview([unit({ desiredInopCode: '00', reportedInopCode: '00' })]));
+    renderPage();
+
+    await screen.findByText('12-AB-34 – CV1');
+    expect(screen.queryByText('Syncing…')).not.toBeInTheDocument();
+  });
+
+  it('shows the degraded banner and names the INEM-portal fallback when the session has failed', async () => {
+    mockApiFetch.mockResolvedValue(
+      overview([unit({ desiredInopCode: '00', reportedInopCode: '00' })], {
+        sessionStatus: INEMSessionStatus.FAILED,
+      }),
+    );
+    renderPage();
+
+    expect(await screen.findByText(/cannot currently reach the INEM portal/)).toBeInTheDocument();
+  });
+
+  it('shows no degraded banner when the session is active', async () => {
+    mockApiFetch.mockResolvedValue(overview([unit({ desiredInopCode: '00', reportedInopCode: '00' })]));
+    renderPage();
+
+    await screen.findByText('12-AB-34 – CV1');
+    expect(screen.queryByText(/INEM portal/)).not.toBeInTheDocument();
+  });
+
+  it('does not show the reset button to a viewer with no INEM permissions at all, even once the breaker is FAILED', async () => {
+    mockApiFetch.mockResolvedValue(
+      overview([unit({ desiredInopCode: '00', reportedInopCode: '00' })], { sessionStatus: INEMSessionStatus.FAILED }),
+    );
+    renderPage();
+
+    await screen.findByText(/cannot currently reach the INEM portal/);
+    expect(screen.queryByRole('button', { name: 'Reset connection' })).not.toBeInTheDocument();
+  });
+
+  it('does not show the reset button to EMERGENCY_OPERATIONAL — the crew role holds MANAGE_INEM_STATUS but not RESET_INEM_SESSION', async () => {
+    mockApiFetch.mockResolvedValue(
+      overview([unit({ desiredInopCode: '00', reportedInopCode: '00' })], { sessionStatus: INEMSessionStatus.FAILED }),
+    );
+    renderPageAsRole(UserRole.EMERGENCY_OPERATIONAL);
+
+    await screen.findByText(/cannot currently reach the INEM portal/);
+    expect(screen.queryByRole('button', { name: 'Reset connection' })).not.toBeInTheDocument();
+  });
+
+  it('shows the reset button to EMERGENCY_COORDINATOR once the breaker is FAILED', async () => {
+    mockApiFetch.mockResolvedValue(
+      overview([unit({ desiredInopCode: '00', reportedInopCode: '00' })], { sessionStatus: INEMSessionStatus.FAILED }),
+    );
+    renderPageAsRole(UserRole.EMERGENCY_COORDINATOR);
+
+    expect(await screen.findByRole('button', { name: 'Reset connection' })).toBeInTheDocument();
+  });
+
+  it('does not show the reset button to a coordinator when the session is merely EXPIRED — that state self-heals, nothing to unlock', async () => {
+    mockApiFetch.mockResolvedValue(
+      overview([unit({ desiredInopCode: '00', reportedInopCode: '00' })], { sessionStatus: INEMSessionStatus.EXPIRED }),
+    );
+    renderPageAsRole(UserRole.EMERGENCY_COORDINATOR);
+
+    await screen.findByText(/being re-established/);
+    expect(screen.queryByRole('button', { name: 'Reset connection' })).not.toBeInTheDocument();
+  });
+
+  it('clicking reset calls POST /inem/reset-session and reloads the status afterward', async () => {
+    const user = userEvent.setup();
+    mockApiFetch.mockResolvedValue(
+      overview([unit({ desiredInopCode: '00', reportedInopCode: '00' })], { sessionStatus: INEMSessionStatus.FAILED }),
+    );
+    renderPageAsRole(UserRole.EMERGENCY_COORDINATOR);
+    const resetButton = await screen.findByRole('button', { name: 'Reset connection' });
+    mockApiFetch.mockClear();
+    mockApiFetch.mockResolvedValue(
+      overview([unit({ desiredInopCode: '00', reportedInopCode: '00' })], { sessionStatus: INEMSessionStatus.EXPIRED }),
+    );
+
+    await user.click(resetButton);
+
+    await waitFor(() => expect(mockApiFetch).toHaveBeenCalledWith('/inem/reset-session', { method: 'POST' }));
+    await waitFor(() => expect(mockApiFetch).toHaveBeenCalledWith('/inem/status'));
+  });
+
+  it('reset button re-enables after a failure instead of getting stuck mid-request', async () => {
+    const user = userEvent.setup();
+    mockApiFetch.mockResolvedValueOnce(
+      overview([unit({ desiredInopCode: '00', reportedInopCode: '00' })], { sessionStatus: INEMSessionStatus.FAILED }),
+    );
+    renderPageAsRole(UserRole.EMERGENCY_COORDINATOR);
+    const resetButton = await screen.findByRole('button', { name: 'Reset connection' });
+
+    mockApiFetch.mockRejectedValueOnce(new Error('boom'));
+    await user.click(resetButton);
+
+    await waitFor(() => expect(resetButton).toBeEnabled());
+  });
+
+  it('keeps the dialog open with the staged edit intact so the crew member can just retry, on a save conflict', async () => {
+    const user = userEvent.setup();
+    mockApiFetch.mockResolvedValueOnce(
+      overview([unit({ desiredInopCode: 'TEPH_Falta', reportedInopCode: 'TEPH_Falta' })]),
+    );
+    renderPage();
+
+    await openDialog(user);
+    const toggle = screen.getByRole('checkbox', { name: 'Available' });
+    await user.click(toggle);
+
+    mockApiFetch.mockRejectedValueOnce(new ApiError('unavailable', 409, 'INEM_SESSION_NOT_ACTIVE'));
+    mockApiFetch.mockResolvedValueOnce(
+      overview([unit({ desiredInopCode: 'TEPH_Falta', reportedInopCode: 'TEPH_Falta' })]),
+    );
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(mockApiFetch).toHaveBeenCalledWith('/inem/status'));
+    // Still open, and the crew member's chosen "Available" wasn't reverted.
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
+    expect(toggle).toBeChecked();
+  });
+
+  it('"Sync now" pushes a pass immediately, independent of any unit\'s Save, and reloads on success', async () => {
+    const user = userEvent.setup();
+    mockApiFetch.mockResolvedValue(overview([unit({ desiredInopCode: '00', reportedInopCode: '00' })]));
+    renderPage();
+    await screen.findByText('12-AB-34 – CV1');
+    mockApiFetch.mockClear();
+
+    await user.click(screen.getByRole('button', { name: 'Sync now' }));
+
+    await waitFor(() => expect(mockApiFetch).toHaveBeenCalledWith('/inem/sync-now', { method: 'POST' }));
+    // Reloads afterward so the page reflects whatever the pass just changed.
+    await waitFor(() => expect(mockApiFetch).toHaveBeenCalledWith('/inem/status'));
+  });
+
+  it('"Sync now" re-enables after a failure instead of getting stuck mid-request', async () => {
+    const user = userEvent.setup();
+    mockApiFetch.mockResolvedValueOnce(overview([unit({ desiredInopCode: '00', reportedInopCode: '00' })]));
+    renderPage();
+    await screen.findByText('12-AB-34 – CV1');
+
+    mockApiFetch.mockRejectedValueOnce(new ApiError('unavailable', 409, 'INEM_SESSION_NOT_ACTIVE'));
+    const syncNow = screen.getByRole('button', { name: 'Sync now' });
+    await user.click(syncNow);
+
+    await waitFor(() => expect(syncNow).toBeEnabled());
+  });
+
+  it('shows the calm empty state when the delegation has no INEM units', async () => {
+    mockApiFetch.mockResolvedValue(overview([]));
+    renderPage();
+
+    expect(await screen.findByText('No INEM units configured.')).toBeInTheDocument();
+  });
+});

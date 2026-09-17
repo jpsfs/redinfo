@@ -4,10 +4,6 @@ import { VehicleType } from '@redinfo/shared';
 
 // ── helpers ────────────────────────────────────────────────────────────────────
 
-const tomorrow = new Date();
-tomorrow.setDate(tomorrow.getDate() + 1);
-const tomorrowStr = tomorrow.toISOString().slice(0, 10);
-
 const farFuture = '2099-12-31';
 
 function makeVehicleDto(overrides: Partial<{
@@ -49,15 +45,24 @@ function buildPrismaStub(overrides: Record<string, unknown> = {}) {
   };
 }
 
+function buildVehicleOccupancyStub() {
+  return {
+    syncForSource: jest.fn().mockResolvedValue(undefined),
+    removeForSource: jest.fn().mockResolvedValue(undefined),
+  };
+}
+
 // ── VehiclesService unit tests ─────────────────────────────────────────────────
 
 describe('VehiclesService', () => {
   let service: VehiclesService;
   let prisma: ReturnType<typeof buildPrismaStub>;
+  let vehicleOccupancy: ReturnType<typeof buildVehicleOccupancyStub>;
 
   beforeEach(() => {
     prisma = buildPrismaStub();
-    service = new VehiclesService(prisma as never);
+    vehicleOccupancy = buildVehicleOccupancyStub();
+    service = new VehiclesService(prisma as never, vehicleOccupancy as never);
   });
 
   // ── create ──────────────────────────────────────────────────────────────────
@@ -84,6 +89,58 @@ describe('VehiclesService', () => {
         .mockResolvedValueOnce({ id: 'existing' }); // cauda check
       const dto = makeVehicleDto();
       await expect(service.create(dto)).rejects.toThrow(ConflictException);
+    });
+
+    it('round-trips the physical-configuration fields (#221)', async () => {
+      const dto = {
+        ...makeVehicleDto(),
+        seatedCapacity: 4,
+        wheelchairPositions: 2,
+        stretcherPositions: 1,
+        hasRampOrLift: true,
+      };
+      const result = await service.create(dto);
+      expect(result).toMatchObject({
+        seatedCapacity: 4,
+        wheelchairPositions: 2,
+        stretcherPositions: 1,
+        hasRampOrLift: true,
+      });
+    });
+  });
+
+  // ── update ──────────────────────────────────────────────────────────────────
+
+  describe('update — physical configuration (#221)', () => {
+    it('persists a change to the capacity fields', async () => {
+      prisma.vehicle.findFirst.mockResolvedValue({ id: 'v1', isDeleted: false });
+      await service.update('v1', {
+        seatedCapacity: 6,
+        wheelchairPositions: 1,
+        stretcherPositions: 2,
+        hasRampOrLift: false,
+      });
+      expect(prisma.vehicle.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'v1' },
+          data: expect.objectContaining({
+            seatedCapacity: 6,
+            wheelchairPositions: 1,
+            stretcherPositions: 2,
+            hasRampOrLift: false,
+          }),
+        }),
+      );
+    });
+
+    it('leaves the capacity fields untouched when omitted', async () => {
+      prisma.vehicle.findFirst.mockResolvedValue({ id: 'v1', isDeleted: false });
+      await service.update('v1', { manufacturer: 'Toyota' });
+      const [call] = prisma.vehicle.update.mock.calls;
+      expect(call[0].data).not.toHaveProperty('seatedCapacity');
+      expect(call[0].data).not.toHaveProperty('wheelchairPositions');
+      expect(call[0].data).not.toHaveProperty('stretcherPositions');
+      expect(call[0].data).not.toHaveProperty('hasRampOrLift');
     });
   });
 
@@ -142,6 +199,22 @@ describe('VehiclesService', () => {
       expect(result.vehicleId).toBe('v1');
     });
 
+    it('syncs a VehicleOccupancy interval for the whole day (#222)', async () => {
+      prisma.vehicle.findFirst.mockResolvedValue({ id: 'v1', isDeleted: false });
+      await service.createEntry({
+        vehicleId: 'v1',
+        date: '2025-03-01',
+        description: 'Oil change',
+        serviceProvider: 'Garagem Silva',
+        cost: 150,
+      });
+      expect(vehicleOccupancy.syncForSource).toHaveBeenCalledWith(
+        'MAINTENANCE',
+        'me1',
+        expect.objectContaining({ vehicleId: 'v1' }),
+      );
+    });
+
     it('throws NotFoundException when vehicle does not exist', async () => {
       prisma.vehicle.findFirst.mockResolvedValue(null);
       await expect(
@@ -161,6 +234,12 @@ describe('VehiclesService', () => {
       prisma.maintenanceEntry.findUnique.mockResolvedValue({ id: 'me1' });
       await service.removeEntry('me1');
       expect(prisma.maintenanceEntry.delete).toHaveBeenCalledWith({ where: { id: 'me1' } });
+    });
+
+    it('removes the matching VehicleOccupancy interval (#222)', async () => {
+      prisma.maintenanceEntry.findUnique.mockResolvedValue({ id: 'me1' });
+      await service.removeEntry('me1');
+      expect(vehicleOccupancy.removeForSource).toHaveBeenCalledWith('MAINTENANCE', 'me1');
     });
 
     it('throws NotFoundException when entry does not exist', async () => {

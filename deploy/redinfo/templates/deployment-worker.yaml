@@ -1,0 +1,53 @@
+{{- if .Values.inemWorker.enabled -}}
+{{- /*
+  packages/inem-worker (#215) — the stateless Playwright session-minter for
+  the INEM integration (#211/#214). Polls the backend's
+  /internal/inem/login-jobs for cold-login work; see
+  packages/inem-worker/README.md.
+
+  replicas is fixed at 1, not .Values.replicaCount: the shared INEM/OWA
+  credential and the backend's single-flight advisory lock (InemSessionService)
+  both assume exactly one worker polling at a time — a second replica would
+  just be a second poller racing to claim the same job.
+*/ -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "redinfo.fullname" . }}-inem-worker
+  labels:
+    app.kubernetes.io/name: {{ include "redinfo.name" . }}
+    app.kubernetes.io/component: inem-worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "redinfo.name" . }}
+      app.kubernetes.io/component: inem-worker
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "redinfo.name" . }}
+        app.kubernetes.io/component: inem-worker
+      annotations:
+        checksum/secret: {{ include (print $.Template.BasePath "/secret-app.yaml") . | sha256sum }}
+    spec:
+      containers:
+        - name: inem-worker
+          image: "{{ .Values.image.inemWorker.repository }}:{{ .Values.image.inemWorker.tag }}"
+          imagePullPolicy: {{ .Values.image.inemWorker.pullPolicy }}
+          # INEM_USERNAME / INEM_PASSWORD / INEM_WORKER_TOKEN come from the
+          # same app-secrets Secret the backend reads (see secret-app.yaml) —
+          # one shared credential, one Secret, both consumers.
+          envFrom:
+            - secretRef:
+                name: {{ include "redinfo.fullname" . }}-app-secrets
+          env:
+            - name: BACKEND_URL
+              value: "http://{{ include "redinfo.fullname" . }}-backend:{{ .Values.service.backend.port }}"
+            - name: INEM_BASE_URL
+              value: {{ .Values.inemWorker.inemBaseUrl | quote }}
+            - name: INEM_WORKER_POLL_INTERVAL_MS
+              value: {{ mul (.Values.inemWorker.pollIntervalSeconds | int) 1000 | quote }}
+          resources:
+{{ toYaml .Values.resources.inemWorker | indent 12 }}
+{{- end -}}

@@ -4,21 +4,26 @@
   "private": true,
   "scripts": {
     "build": "nest build",
+    "build:seed": "tsc -p tsconfig.seed.json",
     "dev": "nest start --watch",
     "start": "node dist/main",
     "lint": "eslint \"{src,apps,libs,test}/**/*.ts\" --fix",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit -p tsconfig.build.json",
     "test": "jest",
+    "test:integration": "bash scripts/test-integration.sh",
     "prisma:migrate": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
     "prisma:generate": "prisma generate",
     "prisma:studio": "prisma studio",
-    "prisma:seed": "ts-node prisma/seed.ts"
+    "prisma:seed": "ts-node prisma/seed.ts",
+    "prisma:seed:dev": "ts-node prisma/seed.ts && ts-node prisma/seed-dev.ts",
+    "cleanup:migrated-scheduled-hours": "ts-node scripts/cleanup-migrated-scheduled-hours.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
     "@nestjs/common": "^10.3.9",
     "@nestjs/config": "^3.2.2",
     "@nestjs/core": "^10.3.9",
@@ -34,15 +39,24 @@
     "class-validator": "^0.14.1",
     "cookie-parser": "^1.4.6",
     "helmet": "^7.1.0",
+    "nodemailer": "^9.0.6",
     "passport": "^0.7.0",
     "passport-google-oauth20": "^2.0.0",
     "passport-jwt": "^4.0.1",
     "passport-local": "^1.0.0",
     "passport-microsoft": "^1.0.0",
+    "pg-boss": "^12.28.1",
+    "prisma": "^5.15.0",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "resend": "^6.25.0",
+    "rxjs": "^7.8.1",
+    "sanitize-html": "2.13.1",
+    "undici": "6.28.0",
+    "web-push": "^3.6.7",
+    "zod": "^4.5.4"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@nestjs/cli": "^10.3.2",
     "@nestjs/schematics": "^10.1.1",
     "@nestjs/testing": "^11.1.16",
@@ -51,27 +65,45 @@
     "@types/express": "^4.17.21",
     "@types/jest": "^30.0.0",
     "@types/node": "^22.0.0",
+    "@types/nodemailer": "^8.0.1",
     "@types/passport-google-oauth20": "^2.0.16",
     "@types/passport-jwt": "^4.0.1",
     "@types/passport-local": "^1.0.38",
+    "@types/sanitize-html": "^2.16.1",
+    "@types/web-push": "^3.6.4",
+    "eslint": "^10.9.0",
+    "globals": "^17.11.0",
     "jest": "^30.3.0",
-    "prisma": "^5.15.0",
     "ts-jest": "^29.4.6",
     "ts-node": "^10.9.2",
     "tsconfig-paths-webpack-plugin": "^4.1.0",
-    "typescript": "^5.4.5"
+    "typescript": "^5.4.5",
+    "typescript-eslint": "^8.67.0"
   },
   "jest": {
-    "moduleFileExtensions": ["js", "json", "ts"],
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
     "rootDir": "src",
+    "maxWorkers": 1,
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
-      "^.+\\.(t|j)s$": ["ts-jest", { "tsconfig": "./tsconfig.json" }]
+      "^.+\\.(t|j)s$": [
+        "ts-jest",
+        {
+          "tsconfig": "./tsconfig.json"
+        }
+      ]
     },
     "moduleNameMapper": {
-      "^@redinfo/shared$": "<rootDir>/../../shared/src/index.ts"
+      "^@redinfo/shared$": "<rootDir>/../../shared/src/index.ts",
+      "^pg-boss$": "<rootDir>/notifications/__mocks__/pg-boss.ts"
     },
-    "collectCoverageFrom": ["**/*.(t|j)s"],
+    "collectCoverageFrom": [
+      "**/*.(t|j)s"
+    ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
   }

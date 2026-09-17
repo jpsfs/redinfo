@@ -1,0 +1,24 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "module": "commonjs",
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "baseUrl": ".",
+    "paths": {
+      "@redinfo/shared": ["../shared/dist/index.d.ts"]
+    }
+  },
+  "include": [
+    "src/**/*.ts",
+    // The two backend files this package imports directly (see main.ts's
+    // REPO_ROOT comment) — listed explicitly so TypeScript's inferred
+    // `rootDir` covers them too, rather than erroring that they fall outside
+    // a `src`-only root (TS6059). There is no separate compiled build for
+    // this package (see package.json's scripts) so an unconventional
+    // multi-root `rootDir` has no output-layout consequences to worry about.
+    "../backend/src/event-reports/event-report-numbering.ts",
+    "../backend/src/event-reports/sanitize-report.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
+}

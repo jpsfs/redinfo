@@ -1,0 +1,47 @@
+{
+  "name": "@redinfo/legacy-migration",
+  "version": "0.1.0",
+  "private": true,
+  "description": "One-off operator tool that moves the legacy MySQL delegation database into this app's Postgres schema. Not a dependency of @redinfo/backend and never bundled into its image — see migration/README.md. Safe to delete this whole package once the migration is over.",
+  "scripts": {
+    "migrate:legacy": "ts-node src/main.ts",
+    "prisma:generate": "prisma generate --schema=../backend/prisma/schema.prisma",
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "jest",
+    "test:integration": "bash scripts/test-integration.sh"
+  },
+  "dependencies": {
+    "@prisma/client": "^5.15.0",
+    "@redinfo/shared": "workspace:*",
+    "mysql2": "^3.24.2",
+    "sanitize-html": "2.13.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.4.5"
+  },
+  "devDependencies": {
+    "@types/jest": "^30.0.0",
+    "@types/node": "^22.0.0",
+    "@types/sanitize-html": "^2.16.1",
+    "jest": "^30.3.0",
+    "prisma": "^5.15.0",
+    "ts-jest": "^29.4.6"
+  },
+  "jest": {
+    "moduleFileExtensions": ["js", "json", "ts"],
+    "rootDir": "src",
+    "maxWorkers": 1,
+    "testRegex": ".*\\.spec\\.ts$",
+    "transform": {
+      "^.+\\.(t|j)s$": [
+        "ts-jest",
+        {
+          "tsconfig": "./tsconfig.json"
+        }
+      ]
+    },
+    "moduleNameMapper": {
+      "^@redinfo/shared$": "<rootDir>/../../shared/src/index.ts"
+    },
+    "testEnvironment": "node"
+  }
+}

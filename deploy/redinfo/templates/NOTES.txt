@@ -1,9 +1,13 @@
-Thank you for installing redinfo.
+Thank you for installing redinfo ({{ .Release.Name }} in namespace {{ .Release.Namespace }}).
 
 To verify the rendered resources locally:
 
-  helm template redinfo ./deploy/redinfo --values deploy/redinfo/values.dev.yaml
+  helm template {{ .Release.Name }} deploy/redinfo --values deploy/redinfo/values.staging.yaml
 
-To run a dry-run install into the `dev` namespace:
+{{- if .Values.ingress.enabled }}
+{{- range .Values.ingress.hosts }}
 
-  helm install --create-namespace --namespace dev redinfo-dev ./deploy/redinfo --values deploy/redinfo/values.dev.yaml --dry-run --debug
+Once the ingress controller has picked this up, the app should be reachable at:
+  http://{{ .host }}
+{{- end }}
+{{- end }}

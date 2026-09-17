@@ -1,0 +1,21 @@
+{{- if .Values.uploads.enabled -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "redinfo.fullname" . }}-uploads
+  labels:
+    app.kubernetes.io/name: {{ include "redinfo.name" . }}
+  annotations:
+    # A `helm uninstall` must never take event report attachments, certification
+    # documents, or profile photos with it.
+    helm.sh/resource-policy: keep
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if .Values.uploads.storageClass }}
+  storageClassName: {{ .Values.uploads.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.uploads.size }}
+{{- end -}}

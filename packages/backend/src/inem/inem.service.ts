@@ -1,0 +1,153 @@
+import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  INEM_INOP_REASONS,
+  INEMSessionStatus,
+  INEMStatusOverview,
+  INEMUnit as INEMUnitShape,
+} from '@redinfo/shared';
+import { INEMSessionStatus as PrismaINEMSessionStatus, Prisma } from '@prisma/client';
+import { ApiConflictException } from '../common/api-error.exception';
+import { PrismaService } from '../prisma/prisma.service';
+import { InemReconcilerService } from './inem-reconciler.service';
+import { InemSessionService } from './inem-session.service';
+
+type INEMUnitRow = Prisma.INEMUnitGetPayload<{
+  include: { vehicle: { select: { id: true; licensePlate: true; numeroCauda: true } } };
+}>;
+
+const UNIT_INCLUDE = {
+  vehicle: { select: { id: true, licensePlate: true, numeroCauda: true } },
+} as const;
+
+/**
+ * The public-facing half of the INEM integration (#214): the fleet-board
+ * screen's `GET /inem/status`, a crew member's `PUT /inem/units/:unitId`,
+ * and `POST /inem/sync-now`.
+ *
+ * `setUnitStatus` never talks to INEM directly — writing `desiredInopCode`
+ * and an audit row is its entire job; `InemReconcilerService` does the
+ * pushing. A crew member sets a unit's status and moves on; they never wait
+ * on a scraped SSO session — `setUnitStatus` only kicks the reconciler's
+ * `triggerNow()` in the background once its own write has committed, it
+ * doesn't await it.
+ *
+ * `syncNow` is the one deliberate exception: the UI's own "Sync now" button
+ * is a direct request for feedback ("did that actually work?"), so it
+ * awaits a real reconcile pass and lets a genuine failure surface as an
+ * error toast, rather than firing-and-forgetting like `setUnitStatus` does.
+ */
+@Injectable()
+export class InemService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly session: InemSessionService,
+    private readonly reconciler: InemReconcilerService,
+  ) {}
+
+  async getStatusOverview(): Promise<INEMStatusOverview> {
+    const [sessionOverview, units] = await Promise.all([
+      this.session.getOverview(),
+      this.prisma.iNEMUnit.findMany({ include: UNIT_INCLUDE, orderBy: { unitId: 'asc' } }),
+    ]);
+
+    return {
+      sessionStatus: toSharedSessionStatus(sessionOverview.status),
+      sessionLastError: sessionOverview.lastError,
+      inopReasons: this.getInopReasonLabels(),
+      units: units.map(toUnitShape),
+    };
+  }
+
+  /**
+   * Code → display label, for whoever needs to render an `inopCode` outside
+   * this module (e.g. `StatisticsInemService`) — the last live `GET
+   * /api/INOP` capture, falling back to the compile-time table. See
+   * `INEM_INOP_REASONS`'s doc comment for why that fallback can be stale.
+   */
+  getInopReasonLabels(): Record<string, string> {
+    return this.session.getCachedInopReasons() ?? INEM_INOP_REASONS;
+  }
+
+  async setUnitStatus(actor: { id: string }, unitId: string, inopCode: string): Promise<void> {
+    await this.assertSessionUsable();
+
+    const unit = await this.prisma.iNEMUnit.findUnique({ where: { unitId } });
+    if (!unit) throw new NotFoundException(`INEM unit ${unitId} not found`);
+
+    await this.prisma.$transaction([
+      this.prisma.iNEMUnit.update({ where: { unitId }, data: { desiredInopCode: inopCode } }),
+      this.prisma.iNEMStatusAudit.create({ data: { unitId, userId: actor.id, inopCode } }),
+    ]);
+
+    // Starts the push now instead of leaving it to sit for the reconcile
+    // loop's own randomized delay — not awaited, so this request still
+    // returns as soon as the write above has committed.
+    this.reconciler.triggerNow();
+  }
+
+  /**
+   * Runs one reconcile pass right away and waits for it — the "Sync now"
+   * button's whole job. Rejects with the same `INEM_SESSION_NOT_ACTIVE` a
+   * blocked `setUnitStatus` would, rather than resolving a no-op pass: the
+   * breaker being tripped means `reconcile()` would just recover-and-return
+   * having pushed nothing, and a button that reports success while doing
+   * nothing is worse than one that plainly says the integration is down.
+   */
+  async syncNow(): Promise<void> {
+    await this.assertSessionUsable();
+    await this.reconciler.reconcile();
+  }
+
+  /**
+   * The status page's "Reset" button — only ever shown/reachable once
+   * `sessionStatus` is `FAILED`, the one state automated recovery refuses to
+   * touch on its own. Reopens the breaker to `EXPIRED` and kicks off a warm
+   * re-mint attempt in the background so the button feels responsive instead
+   * of waiting out the keep-alive timer's own delay; it doesn't await that
+   * attempt; a failure there just re-trips the breaker the same way any other
+   * warm re-mint failure would, surfaced on the next status read.
+   */
+  async resetCircuitBreaker(): Promise<void> {
+    await this.session.resetCircuitBreaker();
+    void this.session.proactiveReMint();
+  }
+
+  /** Shared guard for both write paths — see their own doc comments for why each needs it. */
+  private async assertSessionUsable(): Promise<void> {
+    const overview = await this.session.getOverview();
+    if (overview.status === PrismaINEMSessionStatus.FAILED) {
+      // The breaker has tripped — the status banner (#216) names the manual
+      // fallback: set/check status directly in INEM's own portal.
+      throw new ApiConflictException(
+        'INEM_SESSION_NOT_ACTIVE',
+        'The INEM integration is currently unavailable — set this unit’s status directly in the INEM portal instead.',
+      );
+    }
+  }
+}
+
+/**
+ * Prisma's generated enum and the shared one are declared separately but
+ * share every member name and value 1:1 — asserting here avoids an
+ * exhaustive switch that would need to be kept in sync by hand for no
+ * behavioural benefit. `notification-delivery.service.ts` does the same for
+ * `NotificationChannel`.
+ */
+function toSharedSessionStatus(status: PrismaINEMSessionStatus): INEMSessionStatus {
+  return status as unknown as INEMSessionStatus;
+}
+
+function toUnitShape(row: INEMUnitRow): INEMUnitShape {
+  return {
+    unitId: row.unitId,
+    station: row.station,
+    carId: row.carId,
+    unitType: row.unitType,
+    desiredInopCode: row.desiredInopCode,
+    reportedInopCode: row.reportedInopCode,
+    reportedActive: row.reportedActive,
+    lastSyncedAt: row.lastSyncedAt ? row.lastSyncedAt.toISOString() : null,
+    lastError: row.lastError,
+    vehicle: row.vehicle,
+  };
+}

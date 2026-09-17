@@ -2,13 +2,15 @@
   "name": "redinfo",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "pnpm@10.32.1",
   "scripts": {
     "dev": "pnpm --parallel -r dev",
-    "build": "pnpm --parallel -r build",
+    "build": "pnpm -r build",
     "lint": "pnpm --parallel -r lint",
     "typecheck": "pnpm --parallel -r typecheck",
     "db:migrate": "pnpm --filter backend prisma:migrate",
     "db:studio": "pnpm --filter backend prisma:studio",
+    "migrate:legacy": "pnpm --filter @redinfo/legacy-migration migrate:legacy",
     "validate:env": "node scripts/validate-env.js",
     "setup:ci": "node scripts/setup-ci.js",
     "policy-check": "node scripts/validate-env.js",
@@ -19,6 +21,6 @@
   },
   "engines": {
     "node": ">=22.0.0",
-    "pnpm": ">=9.0.0"
+    "pnpm": ">=10.32.1"
   }
 }

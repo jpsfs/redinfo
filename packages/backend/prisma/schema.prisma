@@ -15,6 +15,7 @@ enum UserRole {
   EMERGENCY_OPERATIONAL
   EMERGENCY_COORDINATOR
   LOGISTICS_COORDINATOR
+  TRANSPORT_COORDINATOR
 }
 
 enum AuthProvider {
@@ -23,35 +24,313 @@ enum AuthProvider {
   MICROSOFT
 }
 
-model User {
-  id             String       @id @default(cuid())
-  email          String       @unique
-  firstName      String
-  lastName       String
-  passwordHash   String?
-  role           UserRole     @default(EMERGENCY_OPERATIONAL)
-  provider       AuthProvider @default(LOCAL)
-  providerId     String?
-  isActive       Boolean      @default(true)
-  createdAt      DateTime     @default(now())
-  updatedAt      DateTime     @updatedAt
+/// The four operational certifications the delegation tracks. DRIVER is
+/// autonomous; SBV/TAT/TAS form a ladder — see `UserCertification` and
+/// `CERTIFICATION_IMPLIES` in `@redinfo/shared`.
+enum CertificationType {
+  DRIVER
+  SBV
+  TAT
+  TAS
+}
 
-  refreshTokens  RefreshToken[]
+enum BloodType {
+  A_POS
+  A_NEG
+  B_POS
+  B_NEG
+  AB_POS
+  AB_NEG
+  O_POS
+  O_NEG
+}
+
+model User {
+  id           String       @id @default(cuid())
+  email        String       @unique
+  firstName    String
+  lastName     String
+  passwordHash String?
+  /// Every role this person holds. Unordered, no primary — permissions are
+  /// the union across the set (`hasPermission` in `@redinfo/shared`). An
+  /// empty array is not a valid state; the DTO enforces non-empty on the
+  /// way in.
+  roles        UserRole[]   @default([EMERGENCY_OPERATIONAL])
+  provider     AuthProvider @default(LOCAL)
+  providerId   String?
+  isActive     Boolean      @default(true)
+  createdAt    DateTime     @default(now())
+  updatedAt    DateTime     @updatedAt
+
+  // ── Personnel profile ──
+  // `isDriver` no longer lives here: it is computed from holding a valid
+  // DRIVER certification (see `UserCertification`). Everything below is
+  // nullable — this is a migration onto rows that never had it.
+  phone                 String?
+  birthDate             DateTime?  @db.Date
+  /// When the person joined the delegation.
+  joinedOn              DateTime?  @db.Date
+  addressLine           String?
+  postalCode            String?
+  localityId            String?
+  locality              Locality?  @relation(fields: [localityId], references: [id], onDelete: SetNull)
+  /// Assigned by the delegation; not self-editable.
+  redCrossNumber        String?    @unique
+  /// Optional, manually assigned by a coordinator; not self-editable.
+  volunteerNumber       String?    @unique
+  /// Full legal name, for administrative use only (insurance forms,
+  /// certificates, official correspondence). Not self-editable, and never
+  /// what the app displays — `firstName`/`lastName` stay the display name
+  /// everywhere, filled in or not.
+  fullName              String?
+  nif                   String?    @unique
+  citizenCardNumber     String?
+  bloodType             BloodType?
+  emergencyContactName  String?
+  emergencyContactPhone String?
+  /// The profile photo. Same shape as `UserCertification`'s document — bytes
+  /// on disk, metadata here.
+  photoFilename         String?
+  photoMimeType         String?
+  photoByteSize         Int?
+  photoStorageKey       String?    @unique
+  /// The language the person uses for the UI and their emails. Was NULL by
+  /// design (never chosen → browser decides) until this went in: Portuguese
+  /// is now the delegation-wide default, explicit rather than detected, and a
+  /// migration backfilled every pre-existing NULL row to 'pt'. Still
+  /// overridable per person from their profile (`AVAILABLE_LOCALES`).
+  locale                String?    @default("pt") @db.VarChar(2)
+
+  refreshTokens RefreshToken[]
+
+  oauthAuthorizationCodes OAuthAuthorizationCode[]
+  oauthGrants             OAuthGrant[]
+
+  windowsOpened           AvailabilityWindow[]     @relation("WindowOpenedBy")
+  windowsClosed           AvailabilityWindow[]     @relation("WindowClosedBy")
+  windowCompensationsSet  AvailabilityWindow[]     @relation("WindowCompensationSetBy")
+  availabilitySubmissions AvailabilitySubmission[]
+  availabilityResponses   AvailabilityResponse[]
+
+  schedulesCreated           Schedule[]              @relation("ScheduleCreatedBy")
+  schedulesPublished         Schedule[]              @relation("SchedulePublishedBy")
+  scheduleCompensationsSet   Schedule[]              @relation("ScheduleCompensationSetBy")
+  scheduleAssignments        ScheduleAssignment[]    @relation("ScheduleAssignedTo")
+  assignmentsMade            ScheduleAssignment[]    @relation("ScheduleAssignedBy")
+  assignmentCompensationsSet ScheduleAssignment[]    @relation("ScheduleAssignmentCompensationSetBy")
+  shiftAdjustmentsMade       ScheduleShiftOverride[] @relation("ScheduleShiftAdjustedBy")
+
+  employmentContracts         EmploymentContract[]        @relation("EmploymentContractOwner")
+  employmentContractsCreated  EmploymentContract[]        @relation("EmploymentContractCreatedBy")
+  paidStaffSchedule           PaidStaffSchedule[]         @relation("PaidStaffScheduleOwner")
+  paidStaffScheduleCreated    PaidStaffSchedule[]         @relation("PaidStaffScheduleCreatedBy")
+  paidStaffScheduleOverride   PaidStaffScheduleOverride[] @relation("PaidStaffScheduleOverrideOwner")
+  paidStaffScheduleOverrideBy PaidStaffScheduleOverride[] @relation("PaidStaffScheduleOverrideCreatedBy")
+  staffAbsences               StaffAbsence[]              @relation("StaffAbsenceOwner")
+  staffAbsencesCreated        StaffAbsence[]              @relation("StaffAbsenceCreatedBy")
+
+  eventReportsCreated    EventReport[]           @relation("EventReportCreatedBy")
+  eventReportsSubmitted  EventReport[]           @relation("EventReportSubmittedBy")
+  eventReportCrew        EventReportCrewMember[]
+  eventReportAttachments EventReportAttachment[] @relation("EventReportAttachmentUploadedBy")
+
+  liveRunsCreated LiveRun[]           @relation("LiveRunCreatedBy")
+  liveRunCrew     LiveRunCrewMember[]
+
+  patientsCreated Patient[] @relation("PatientCreatedBy")
+
+  transportRequestsCreated TransportRequest[] @relation("TransportRequestCreatedBy")
+  transportRequestsDecided TransportRequest[] @relation("TransportRequestDecidedBy")
+
+  tripCrewMemberships TripCrewMember[]
+
+  certifications        UserCertification[] @relation("UserCertifications")
+  certificationsCreated UserCertification[] @relation("UserCertificationCreatedBy")
+  profileAudits         UserProfileAudit[]  @relation("UserProfileAuditSubject")
+  profileChangesMade    UserProfileAudit[]  @relation("UserProfileAuditChangedBy")
+
+  volunteerHoursEntries  VolunteerHoursEntry[] @relation("VolunteerHoursOwner")
+  volunteerHoursApproved VolunteerHoursEntry[] @relation("VolunteerHoursApprovedBy")
+  volunteerHoursLogged   VolunteerHoursEntry[] @relation("VolunteerHoursLoggedBy")
+  volunteerHoursReopened VolunteerHoursEntry[] @relation("VolunteerHoursReopenedBy")
+  volunteerHoursDeleted  VolunteerHoursEntry[] @relation("VolunteerHoursDeletedBy")
+
+  noticesCreated           Notice[]                      @relation("NoticeCreatedBy")
+  noticeReceipts           NoticeReceipt[]               @relation("NoticeReceiptOwner")
+  notificationDeliveries   NotificationDelivery[]        @relation("NotificationDeliveryRecipient")
+  pushSubscriptions        PushSubscription[]            @relation("PushSubscriptionOwner")
+  notificationPreferences  UserNotificationPreference[]  @relation("NotificationPreferenceOwner")
+  notificationTypeSettings UserNotificationTypeSetting[] @relation("NotificationTypeSettingOwner")
+  inemStatusAudits         INEMStatusAudit[]             @relation("INEMStatusAuditActor")
 
   @@index([email])
   @@index([provider, providerId])
+  @@index([isActive])
+  @@index([localityId])
+}
+
+/// A certification actually awarded to a person — see `CertificationType` and
+/// `effectiveCertifications` in `@redinfo/shared` for what each one grants.
+///
+/// Only what was *held* is stored; TAT/SBV granted by a TAS are computed at
+/// read time rather than materialised as rows, so there is exactly one place
+/// to correct an expiry date.
+model UserCertification {
+  id     String            @id @default(cuid())
+  userId String
+  user   User              @relation("UserCertifications", fields: [userId], references: [id], onDelete: Cascade)
+  type   CertificationType
+
+  /// Null = no known expiry; counts as valid. What the isDriver→DRIVER
+  /// backfill writes, and what a certification looks like before a
+  /// coordinator has entered its real date.
+  validUntil DateTime? @db.Date
+  issuedOn   DateTime? @db.Date
+  notes      String?
+
+  /// The scanned certificate. All four null together — a record may exist
+  /// before the scan is uploaded.
+  filename   String?
+  mimeType   String?
+  byteSize   Int?
+  storageKey String? @unique
+
+  createdById String
+  createdBy   User     @relation("UserCertificationCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  /// One record per certification per person — a renewal edits the existing
+  /// row rather than adding a second one.
+  @@unique([userId, type])
+  @@index([userId])
+  /// Drives the expiring-soon query.
+  @@index([type, validUntil])
+}
+
+/// Actor-and-timestamp trail for personnel profile changes, following
+/// `VehicleInventoryAudit`'s pattern. For fields marked sensitive (NIF,
+/// citizen card, blood type, emergency contact, birth date) `oldValue` and
+/// `newValue` stay null — the audit records *that* something changed, not a
+/// second copy of the sensitive value.
+model UserProfileAudit {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation("UserProfileAuditSubject", fields: [userId], references: [id], onDelete: Cascade)
+  changedById String
+  changedBy   User     @relation("UserProfileAuditChangedBy", fields: [changedById], references: [id], onDelete: Restrict)
+  field       String
+  oldValue    String?
+  newValue    String?
+  changedAt   DateTime @default(now())
+
+  @@index([userId])
 }
 
 model RefreshToken {
-  id          String   @id @default(cuid())
-  token       String   @unique
-  userId      String
-  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  expiresAt   DateTime
-  createdAt   DateTime @default(now())
-  revokedAt   DateTime?
+  id        String    @id @default(cuid())
+  token     String    @unique
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  revokedAt DateTime?
+  /// "Keep me signed in" at issuance time — carries the longer TTL class
+  /// through rotation, since `refresh()` re-derives the new token's lifetime
+  /// from the one it's replacing rather than from anything the client sends.
+  remember  Boolean   @default(false)
 
   @@index([userId])
+}
+
+// ── OAuth 2.1 Authorization Server (MCP) ────────────────────────────────────
+// Lets an AI assistant (Claude, ChatGPT, Copilot Studio, ...) act as a
+// signed-in user over the MCP endpoint (`/mcp`) instead of as a shared
+// service account. redinfo is its own Authorization Server: whichever login
+// a user already has (local password, Google, Microsoft — see
+// `AuthProvider`) is what the `/oauth/authorize/decision` consent step
+// trusts. See `src/oauth/` (this AS) and `src/mcp/` (the resource server
+// that accepts the tokens it issues).
+
+/// A registered OAuth client — either self-registered via Dynamic Client
+/// Registration (RFC 7591, `isDynamic: true`, `clientSecretSealed: null`,
+/// PKCE-only "public" client — the SDK's `clientRegistrationHandler` refuses
+/// anything else, see `RedinfoClientsStore.registerClient`) or
+/// hand-provisioned by a SYSTEM_ADMIN for a confidential client such as a
+/// Copilot Studio connector. A confidential client's secret must be
+/// recoverable in plaintext (the SDK's own `authenticateClient` middleware
+/// does a literal string compare — see `src/oauth/`), so unlike every other
+/// secret in this schema it is not hashed but sealed with `IdentityCipher`
+/// (scope `"oauth-client-secret"`, AAD-bound to this row's `id`).
+model OAuthClient {
+  id                 String    @id @default(cuid())
+  clientId           String    @unique
+  clientSecretSealed Bytes?
+  clientName         String
+  redirectUris       String[]
+  isDynamic          Boolean   @default(false)
+  createdAt          DateTime  @default(now())
+  disabledAt         DateTime?
+
+  authorizationCodes OAuthAuthorizationCode[]
+  grants             OAuthGrant[]
+
+  @@index([isDynamic])
+}
+
+/// A short-lived authorization code from the `/oauth/authorize` redirect,
+/// redeemed once at `/oauth/token`. Unlike `RefreshToken`'s JWT, `code` is a
+/// plain random opaque value (`crypto.randomBytes`) — nothing needs to
+/// self-verify it, only look it up, so there is nothing a JWT would add.
+model OAuthAuthorizationCode {
+  id                  String      @id @default(cuid())
+  code                String      @unique
+  /// The SDK's own `client.client_id` string, not `OAuthClient.id` — the FK
+  /// targets `OAuthClient.clientId` directly so provider code never has to
+  /// translate between "the id the SDK hands us" and "the id Prisma wants".
+  clientId            String
+  client              OAuthClient @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  userId              String
+  user                User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  redirectUri         String
+  codeChallenge       String
+  /// Always "S256" — PKCE "plain" never reaches this far; the SDK's own
+  /// authorization handler rejects it before `provider.authorize()` runs.
+  codeChallengeMethod String      @default("S256")
+  scopes              String[]
+  expiresAt           DateTime
+  consumedAt          DateTime?
+  createdAt           DateTime    @default(now())
+
+  @@index([clientId])
+  @@index([userId])
+}
+
+/// The durable connection between a user and an AI client, created on
+/// consent approval — what the "AI connections" settings page lists and
+/// revokes. `refreshToken` is a plain random opaque value, `RefreshToken`-row
+/// style (a raw, unique-indexed secret looked up by exact match); the
+/// short-lived access token itself is a signed JWT (`aud: "redinfo-mcp"`)
+/// and is never persisted — `verifyAccessToken` re-checks this row (for
+/// `revokedAt`) on every call so a revoke takes effect before that JWT would
+/// otherwise expire.
+model OAuthGrant {
+  id           String      @id @default(cuid())
+  userId       String
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// See `OAuthAuthorizationCode.clientId` — same "SDK's client_id, not
+  /// OAuthClient.id" relation shape.
+  clientId     String
+  client       OAuthClient @relation(fields: [clientId], references: [clientId], onDelete: Cascade)
+  scopes       String[]
+  refreshToken String      @unique
+  expiresAt    DateTime
+  revokedAt    DateTime?
+  lastUsedAt   DateTime?
+  createdAt    DateTime    @default(now())
+
+  @@index([userId])
+  @@index([clientId])
 }
 
 enum VehicleType {
@@ -69,12 +348,23 @@ model Vehicle {
   manufacturer          String?
   model                 String?
   notes                 String?
+  seatedCapacity        Int         @default(0)
+  wheelchairPositions   Int         @default(0)
+  stretcherPositions    Int         @default(0)
+  hasRampOrLift         Boolean     @default(false)
   isDeleted             Boolean     @default(false)
   createdAt             DateTime    @default(now())
   updatedAt             DateTime    @updatedAt
 
   maintenanceEntries    MaintenanceEntry[]
   vehicleInventoryItems VehicleInventoryItem[]
+  stockMovements        StockMovement[]
+  eventReports          EventReportVehicle[]
+  eventReportMaterials  EventReportMaterial[]
+  liveRuns              LiveRun[]
+  inemUnits             INEMUnit[]
+  occupancies           VehicleOccupancy[]
+  trips                 Trip[]
 
   @@index([vehicleType])
   @@index([isDeleted])
@@ -84,6 +374,8 @@ model MaintenanceEntry {
   id              String   @id @default(cuid())
   vehicleId       String
   vehicle         Vehicle  @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  /// Only a calendar date, no times. Written through to `VehicleOccupancy`
+  /// (source `MAINTENANCE`) as the whole working day — midnight to midnight.
   date            DateTime @db.Date
   description     String
   serviceProvider String
@@ -96,11 +388,84 @@ model MaintenanceEntry {
   @@index([vehicleId])
 }
 
+/// Where a `VehicleOccupancy` interval came from (#222).
+enum VehicleOccupancySource {
+  SCHEDULE_SHIFT
+  TRANSPORT_TRIP
+  MAINTENANCE
+  SUPPORT_EVENT
+}
+
+/// One interval during which a named vehicle is committed, whatever the
+/// source (#222) — the single answer to "is vehicle X free at time Y?" for
+/// the whole platform. Deliberately outside every transport-specific
+/// module: the fleet is one pool, so this can't live inside `transports`.
+/// Written through from its source row — never maintained by hand.
+model VehicleOccupancy {
+  id             String                 @id @default(cuid())
+  vehicleId      String
+  vehicle        Vehicle                @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  startsAt       DateTime
+  endsAt         DateTime
+  source         VehicleOccupancySource
+  sourceId       String
+  /// Set when this booking was made despite overlapping another interval
+  /// for the same vehicle. Conflicts are warnings a planner can override,
+  /// never a hard block — mirrors `ScheduleAssignment.isOverride` /
+  /// `certificationOverrideReason`.
+  overrideReason String?
+  notes          String?
+  createdAt      DateTime               @default(now())
+  updatedAt      DateTime               @updatedAt
+
+  @@index([vehicleId, startsAt, endsAt])
+  @@index([source, sourceId])
+}
+
 // ─── Inventory ────────────────────────────────────────────────────────────────
 
 enum InventoryItemType {
   COUNTABLE
   UNLIMITED
+}
+
+/// The catalogue of physical items that can be stocked on a vehicle or
+/// consumed during an event report. One `MaterialItem` per real-world item
+/// type — replaces the old per-template-item name so the same glove/bandage
+/// has a single stable identity across vehicles, barcodes and translations.
+model MaterialItem {
+  id            String            @id @default(cuid())
+  namePt        String
+  nameEn        String?
+  unit          String            @default("pcs")
+  type          InventoryItemType @default(COUNTABLE)
+  notes         String?
+  isFrequent    Boolean           @default(false)
+  frequentOrder Int               @default(0)
+  isDeleted     Boolean           @default(false)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  barcodes             MaterialItemBarcode[]
+  templateItems        InventoryTemplateItem[]
+  stockMovements       StockMovement[]
+  eventReportMaterials EventReportMaterial[]
+
+  @@index([isFrequent])
+  @@index([isDeleted])
+}
+
+/// A barcode (EAN/GS1, etc.) identifying a `MaterialItem`. One item may carry
+/// several codes — different manufacturers or box sizes for the same
+/// catalogue entry.
+model MaterialItemBarcode {
+  id             String       @id @default(cuid())
+  materialItemId String
+  materialItem   MaterialItem @relation(fields: [materialItemId], references: [id], onDelete: Cascade)
+  code           String       @unique
+  label          String?
+
+  @@index([materialItemId])
 }
 
 model InventoryTemplate {
@@ -120,6 +485,12 @@ model InventoryTemplateItem {
   id                  String            @id @default(cuid())
   templateId          String
   template            InventoryTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  /// Nullable during the catalogue migration; tightened to required once the
+  /// backfill in this same migration has run. `name`/`type`/`unit` below stay
+  /// read-through from `materialItem` for now — dropped once every row has
+  /// been repointed and callers read through the catalogue instead.
+  materialItemId      String?
+  materialItem        MaterialItem?     @relation(fields: [materialItemId], references: [id], onDelete: Restrict)
   name                String
   type                InventoryItemType @default(COUNTABLE)
   recommendedQuantity Int?
@@ -134,6 +505,7 @@ model InventoryTemplateItem {
 
   @@index([templateId])
   @@index([isDeleted])
+  @@index([materialItemId])
 }
 
 model VehicleInventoryItem {
@@ -144,6 +516,11 @@ model VehicleInventoryItem {
   templateItem    InventoryTemplateItem @relation(fields: [templateItemId], references: [id], onDelete: Cascade)
   actualQuantity  Int?
   templateVersion Int
+  /// Set when a `StockMovement` deduction floored `actualQuantity` at zero,
+  /// or when the row was created on the fly for an item a report consumed
+  /// that the sheet never knew about. Cleared by a manual recount
+  /// (upsert/update/CSV import); never cleared by another consumption.
+  needsRecount    Boolean               @default(false)
   updatedById     String?
   createdAt       DateTime              @default(now())
   updatedAt       DateTime              @updatedAt
@@ -165,4 +542,2443 @@ model VehicleInventoryAudit {
   changedAt              DateTime             @default(now())
 
   @@index([vehicleInventoryItemId])
+}
+
+enum StockMovementReason {
+  CONSUMPTION
+  MANUAL_ADJUSTMENT
+  IMPORT
+  CORRECTION
+}
+
+/// A single stock delta — the movement ledger behind a vehicle's item count.
+/// Replaces before/after auditing as the source of truth for `CONSUMPTION`:
+/// a report can be edited or deleted, and its movements need to be found and
+/// reversed as a group, which `VehicleInventoryAudit` (keyed off a single
+/// `VehicleInventoryItem`, with no report reference) cannot do.
+///
+/// `delta` is the full amount requested, even when the resulting
+/// `VehicleInventoryItem.actualQuantity` floors at zero — the ledger stays
+/// truthful about what was spent; the shortfall is a floor plus a
+/// `needsRecount` flag, not a rewritten movement. See `StockMovementsService`.
+model StockMovement {
+  id             String              @id @default(cuid())
+  vehicleId      String
+  vehicle        Vehicle             @relation(fields: [vehicleId], references: [id], onDelete: Cascade)
+  materialItemId String
+  materialItem   MaterialItem        @relation(fields: [materialItemId], references: [id], onDelete: Restrict)
+  delta          Int
+  reason         StockMovementReason
+  /// The event report this consumption came from — null for manual/import/
+  /// correction movements. `SetNull`, not `Cascade`: a report being deleted
+  /// has its stock effect explicitly reversed first (see
+  /// `StockMovementsService.reverseReportConsumption`); the movement itself
+  /// stays as a true historical fact once the report it came from is gone.
+  reportId       String?
+  report         EventReport?        @relation(fields: [reportId], references: [id], onDelete: SetNull)
+  actorId        String?
+  occurredAt     DateTime            @default(now())
+  note           String?
+
+  @@index([vehicleId, occurredAt])
+  @@index([reportId])
+}
+
+// ─── Availability ─────────────────────────────────────────────────────────────
+
+enum AvailabilityWindowStatus {
+  OPEN
+  CLOSED
+}
+
+/// Independent rotas. Two windows may cover the same dates as long as their
+/// categories differ; within one category only one open window may cover a day.
+enum AvailabilityWindowCategory {
+  EMERGENCY
+  LOCAL_SUPPORT
+  CNE_SUPPORT
+}
+
+/// Only DECLINED is ever stored: absence of a row means "not yet responded".
+enum AvailabilityResponseStatus {
+  DECLINED
+}
+
+/// Coordinator-maintained holiday table (no external API). A holiday makes a
+/// weekday follow the weekend shift pattern.
+model Holiday {
+  id        String   @id @default(cuid())
+  date      DateTime @unique @db.Date
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([date])
+}
+
+model AvailabilityWindow {
+  id                      String                     @id @default(cuid())
+  startDate               DateTime                   @db.Date
+  endDate                 DateTime                   @db.Date
+  /// Which rota this window collects availability for. No default on purpose:
+  /// every caller states it, so a missing category cannot silently become one.
+  category                AvailabilityWindowCategory
+  /// Optional free-text title, e.g. "Emergency - October". Not unique.
+  name                    String?
+  status                  AvailabilityWindowStatus   @default(OPEN)
+  openedById              String
+  openedBy                User                       @relation("WindowOpenedBy", fields: [openedById], references: [id])
+  openedAt                DateTime                   @default(now())
+  closedById              String?
+  closedBy                User?                      @relation("WindowClosedBy", fields: [closedById], references: [id])
+  closedAt                DateTime?
+  /// This window's own compensation offer (Stage 2 of the paid-staff rework,
+  /// #246) — a coordinator publishing a rate *before* availability is
+  /// collected, e.g. "Apoio CNE, 5€/hour". Editable freely while `status =
+  /// OPEN`; frozen once closed, since submissions were made against the
+  /// window as it stood (see the doc comment above `status`). Post-close
+  /// corrections go through `Schedule`'s own offer fields instead, which
+  /// replace this one as a whole unit (`resolveCompensationOffer`) — never
+  /// mix a schedule's `compensationKind` with this row's rate/amount.
+  ///
+  /// `null` means nothing was ever offered; `NONE` (a real enum value) means
+  /// one was explicitly withdrawn. `HOURLY` implies `compensationRateCents`
+  /// is set and `compensationAmountCents` is null, `FIXED` the mirror, and
+  /// `NONE`/null implies both are null — Prisma cannot express that
+  /// conditional NOT NULL, so it is a hand-written CHECK constraint in this
+  /// column's migration (`compensationRateCents`/`compensationAmountCents`
+  /// are also never negative). `FIXED` is per person, per shift.
+  compensationKind        CompensationOfferKind?
+  /// EUR cents per hour. Set only when `compensationKind = HOURLY`.
+  compensationRateCents   Int?
+  /// EUR cents per person, per shift. Set only when `compensationKind = FIXED`.
+  compensationAmountCents Int?
+  /// Free-text context shown alongside the offer, e.g. "paid by the client".
+  compensationNote        String?
+  compensationSetById     String?
+  compensationSetBy       User?                      @relation("WindowCompensationSetBy", fields: [compensationSetById], references: [id])
+  compensationSetAt       DateTime?
+  createdAt               DateTime                   @default(now())
+  updatedAt               DateTime                   @updatedAt
+
+  submissions AvailabilitySubmission[]
+  responses   AvailabilityResponse[]
+  shifts      AvailabilityWindowShift[]
+  roles       AvailabilityWindowRole[]
+  schedule    Schedule?
+
+  @@index([status])
+  @@index([startDate, endDate])
+  /// Overlap checks are always "this category, these dates".
+  @@index([category, status])
+}
+
+/// The shifts of one day of one window, materialised when the window is opened.
+///
+/// Windows carry their own grid rather than deriving it: a coordinator may give
+/// any day any times, and a holiday added after the fact must not silently
+/// invalidate submissions already made against the day it lands on.
+model AvailabilityWindowShift {
+  id             String             @id @default(cuid())
+  windowId       String
+  window         AvailabilityWindow @relation(fields: [windowId], references: [id], onDelete: Cascade)
+  date           DateTime           @db.Date
+  /// 1-based position within the day, ordered by startMinute. Submissions point here.
+  slot           Int
+  /// Minutes from midnight the shift starts, 0–1439.
+  startMinute    Int
+  /// Minutes from midnight it ends, 1–1440 (1440 = midnight).
+  endMinute      Int
+  /// Vehicles to be crewed on this shift; each needs its own driver, which is
+  /// what the coverage colours are judged against. 0 = people only.
+  vehiclesNeeded Int
+
+  @@unique([windowId, date, slot])
+  @@index([windowId])
+}
+
+/// A post the schedule for this window assigns people to.
+///
+/// Roles hang off the window rather than off a person or a shift: availability
+/// is collected without them (a volunteer says only when they can be there) and
+/// the coordinator allocates roles when building the schedule.
+model AvailabilityWindowRole {
+  id                    String             @id @default(cuid())
+  windowId              String
+  window                AvailabilityWindow @relation(fields: [windowId], references: [id], onDelete: Cascade)
+  name                  String
+  /// Most people the schedule may put in this role on one shift. 0 = unlimited.
+  maxPeople             Int
+  /// Fewest people this post needs filled for the shift to count as properly
+  /// crewed — 0 for a role that is a "pool" seat rather than a required post
+  /// (a Team Member can fill it, or not, or leave mid-shift, without that
+  /// blocking anything). Never more than `maxPeople` unless `maxPeople` is the
+  /// unlimited sentinel (`0`), in which case a positive count still means "at
+  /// least this many", with no cap. Read by volunteer-hours generation
+  /// (`#164`) to decide whether a shift's default hours may be auto-created;
+  /// unrelated to `shiftGaps()`, which still judges every finite role against
+  /// its `maxPeople` for the schedule board's own gap chips.
+  mandatoryCount        Int                @default(0)
+  /// The certification someone must hold to be assigned here, or null for no
+  /// requirement. A coordinator's choice — the editor suggests DRIVER for a
+  /// role named "Driver", but nothing forces it, and every requirement is
+  /// overridable at assignment time with a recorded reason.
+  requiredCertification CertificationType?
+  /// Position in the window's own role list, 0-based.
+  order                 Int
+
+  assignments ScheduleAssignment[]
+
+  /// One post per name: two roles a schedule cannot tell apart are not two roles.
+  @@unique([windowId, name])
+  @@index([windowId])
+}
+
+model AvailabilitySubmission {
+  id        String             @id @default(cuid())
+  userId    String
+  user      User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  windowId  String
+  window    AvailabilityWindow @relation(fields: [windowId], references: [id], onDelete: Cascade)
+  date      DateTime           @db.Date
+  /// Slot of AvailabilityWindowShift for the same (windowId, date). Not a
+  /// foreign key: the shift row is identified by a composite the submission
+  /// would otherwise have to duplicate, and slots never move once opened.
+  slot      Int
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+
+  @@unique([windowId, userId, date, slot])
+  @@index([windowId])
+  @@index([date])
+  @@index([userId])
+}
+
+enum ScheduleStatus {
+  DRAFT
+  PUBLISHED
+}
+
+/// How one shift of one person's time is classified for pay — see the shared
+/// enum's doc comment for the full resolution rule (D1–D3 of the paid-staff
+/// rework, superseding #223/#245).
+enum AssignmentCompensationKind {
+  VOLUNTEER
+  SALARY
+  PAID
+}
+
+/// How a window (or a schedule, overriding it) advertises pay for its shifts,
+/// before anyone is even assigned — see the shared enum's doc comment
+/// (Stage 2 of the paid-staff rework, #246). `NONE` is a real, storable
+/// value distinct from the column being null: null means nothing was ever
+/// offered, `NONE` means an offer was explicitly withdrawn.
+enum CompensationOfferKind {
+  HOURLY
+  FIXED
+  NONE
+}
+
+/// The duty roster built from one availability window.
+///
+/// One per window, and identified by it: windows of different categories may
+/// cover the same dates, so there is no single "monthly schedule" to hang this
+/// off. A schedule may be started while its window is still open — coordinators
+/// begin arranging cover before submissions close.
+model Schedule {
+  id                      String                 @id @default(cuid())
+  windowId                String                 @unique
+  window                  AvailabilityWindow     @relation(fields: [windowId], references: [id], onDelete: Cascade)
+  status                  ScheduleStatus         @default(DRAFT)
+  createdById             String
+  createdBy               User                   @relation("ScheduleCreatedBy", fields: [createdById], references: [id])
+  createdAt               DateTime               @default(now())
+  publishedById           String?
+  publishedBy             User?                  @relation("SchedulePublishedBy", fields: [publishedById], references: [id])
+  publishedAt             DateTime?
+  /// This schedule's own compensation offer, replacing the window's as a
+  /// **whole unit** when set at all — never field-wise (`resolveCompensationOffer`,
+  /// D4). The post-close escape hatch: the window's own offer freezes once
+  /// it closes (submissions were made against it), but a rate may still need
+  /// correcting — or withdrawing (`compensationKind = NONE`) — afterwards.
+  /// Same hand-written CHECK constraint as `AvailabilityWindow`'s own fields
+  /// (`HOURLY` ⇒ rate set, no amount; `FIXED` the mirror; both null
+  /// otherwise), and no note column — the window's own note is what members
+  /// read before submitting; this is a figures-only override.
+  compensationKind        CompensationOfferKind?
+  compensationRateCents   Int?
+  compensationAmountCents Int?
+  compensationSetById     String?
+  compensationSetBy       User?                  @relation("ScheduleCompensationSetBy", fields: [compensationSetById], references: [id])
+  compensationSetAt       DateTime?
+  updatedAt               DateTime               @updatedAt
+
+  assignments           ScheduleAssignment[]
+  /// Reports whose crew was pre-filled from a shift of this schedule.
+  eventReports          EventReport[]
+  /// Runs in progress whose crew came from a shift of this schedule.
+  liveRuns              LiveRun[]
+  shiftOverrides        ScheduleShiftOverride[]
+  /// Volunteer-hours entries generated from this schedule's assignments.
+  volunteerHoursEntries VolunteerHoursEntry[]
+
+  @@index([status])
+}
+
+/// One person on one shift of one schedule, in at most one role.
+model ScheduleAssignment {
+  id                          String                     @id @default(cuid())
+  scheduleId                  String
+  schedule                    Schedule                   @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  /// Identified the same way a submission is — by (date, slot) rather than a
+  /// foreign key to the shift row. Slots never move once a window is opened, and
+  /// this keeps a legacy window with no materialised shifts schedulable.
+  date                        DateTime                   @db.Date
+  slot                        Int
+  userId                      String
+  user                        User                       @relation("ScheduleAssignedTo", fields: [userId], references: [id], onDelete: Cascade)
+  /// Null only when the window defines no roles at all.
+  roleId                      String?
+  role                        AvailabilityWindowRole?    @relation(fields: [roleId], references: [id], onDelete: SetNull)
+  /// The person had not submitted availability for this shift when they were
+  /// assigned. Computed server-side and never recomputed afterwards: it records
+  /// a decision, so a later change of availability must not rewrite history.
+  isOverride                  Boolean                    @default(false)
+  /// Set when this assignment was made against the post's own
+  /// `requiredCertification` — non-null exactly when a reason was given.
+  /// Distinct from `isOverride`, which is about availability, not
+  /// certification: an assignment may carry either, both, or neither.
+  certificationOverrideReason String?
+  /// How this one shift is classified for pay. Resolved and stored at write
+  /// time (assignment create, or a later `setCompensation` call) — never
+  /// derived at read, so a later contract edit never retro-reclassifies a
+  /// past shift. See the shared `AssignmentCompensationKind` doc comment for
+  /// the resolution rule, and `resolveAssignmentCompensation`.
+  compensation                AssignmentCompensationKind @default(VOLUNTEER)
+  /// Who last set `compensation` explicitly, and when — null for a row still
+  /// at its resolved default. Distinct from `assignedBy`/`assignedAt`: those
+  /// record who put the person on the shift, this records who classified
+  /// their pay, which is very often someone else, later.
+  compensationSetById         String?
+  compensationSetBy           User?                      @relation("ScheduleAssignmentCompensationSetBy", fields: [compensationSetById], references: [id])
+  compensationSetAt           DateTime?
+  assignedById                String
+  assignedBy                  User                       @relation("ScheduleAssignedBy", fields: [assignedById], references: [id])
+  assignedAt                  DateTime                   @default(now())
+  /// Set once the 24h-ahead shift-reminder scan has enqueued a notification
+  /// for this assignment, so a later scan tick never double-sends it. Not
+  /// cleared or reused — one reminder per assignment, ever.
+  reminderSentAt              DateTime?
+
+  /// The volunteer-hours entry generated from this assignment, if any. Not
+  /// every assignment has one yet — generation is lazy, on read (#164).
+  volunteerHoursEntry VolunteerHoursEntry?
+
+  /// One person at most once per shift — the same person in two roles on one
+  /// shift is a data error, not a conflict to report.
+  @@unique([scheduleId, date, slot, userId])
+  @@index([scheduleId])
+  @@index([userId, date])
+  @@index([date])
+  @@index([reminderSentAt])
+}
+
+/// A coordinator's correction to one shift's hours, for one schedule alone.
+///
+/// The availability window's own `AvailabilityWindowShift` is never edited
+/// after opening — it is the record of what people were asked about, and
+/// submissions were made against it. Reality sometimes differs from the
+/// pattern once the schedule is being built (a shift genuinely starts an hour
+/// early, or runs late), and this is where that correction lives: keyed the
+/// same way an assignment is, by `(scheduleId, date, slot)` rather than a
+/// foreign key to the shift row, so it works even for a legacy window whose
+/// shifts are derived rather than materialised.
+///
+/// Carries no `vehiclesNeeded` — only clock times move here, so coverage
+/// maths and list-page fill stats never need to look at this table at all.
+model ScheduleShiftOverride {
+  id           String   @id @default(cuid())
+  scheduleId   String
+  schedule     Schedule @relation(fields: [scheduleId], references: [id], onDelete: Cascade)
+  date         DateTime @db.Date
+  slot         Int
+  /// Minutes from midnight the shift now starts, 0–1439.
+  startMinute  Int
+  /// Minutes from midnight it now ends, 1–1440 (1440 = midnight).
+  endMinute    Int
+  adjustedById String
+  adjustedBy   User     @relation("ScheduleShiftAdjustedBy", fields: [adjustedById], references: [id])
+  adjustedAt   DateTime @default(now())
+
+  @@unique([scheduleId, date, slot])
+  @@index([scheduleId])
+}
+
+/// Tri-state response tracking: "submitted" is derived from
+/// AvailabilitySubmission rows existing, "declined" needs its own record since
+/// row-absence alone cannot tell it apart from "not yet responded".
+model AvailabilityResponse {
+  id          String                     @id @default(cuid())
+  windowId    String
+  window      AvailabilityWindow         @relation(fields: [windowId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User                       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status      AvailabilityResponseStatus @default(DECLINED)
+  respondedAt DateTime                   @default(now())
+
+  @@unique([windowId, userId])
+  @@index([windowId])
+}
+
+// ─── Paid staff schedule (#245) ─────────────────────────────────────────────────
+
+enum EmploymentContractKind {
+  FULL_TIME
+  PART_TIME
+}
+
+/// A dated fact — "this person is on contract Mar–Oct" — replacing #223's
+/// timeless `User.isPaidStaff` flag. The contract's own `startDate`/`endDate`
+/// is the authoritative gate `isOnContractClock` (shared) checks first, ahead
+/// of any `PaidStaffSchedule` block or override: outside it, the person is
+/// never on the clock no matter what pattern is on file.
+model EmploymentContract {
+  id          String                 @id @default(cuid())
+  userId      String
+  user        User                   @relation("EmploymentContractOwner", fields: [userId], references: [id], onDelete: Cascade)
+  kind        EmploymentContractKind
+  startDate   DateTime               @db.Date
+  /// Inclusive. Null = still in effect.
+  endDate     DateTime?              @db.Date
+  /// Nullable: a migration-backfilled contract (from #223's flag) has no real
+  /// actor — there is no system user — but the DTO enforces it non-null for
+  /// every contract created through the API. Same pattern as `User.roles`.
+  createdById String?
+  createdBy   User?                  @relation("EmploymentContractCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+
+  schedules PaidStaffSchedule[]
+
+  @@index([userId, startDate])
+}
+
+/// A paid staffer's recurring on-the-clock hours, within one `EmploymentContract`.
+/// A contract change (new hours) is a new row — the old row's `effectiveTo`
+/// gets set rather than the row edited — so resolving a past assignment's
+/// on-clock status never rewrites itself under a later change.
+model PaidStaffSchedule {
+  id            String             @id @default(cuid())
+  userId        String
+  user          User               @relation("PaidStaffScheduleOwner", fields: [userId], references: [id], onDelete: Cascade)
+  contractId    String
+  contract      EmploymentContract @relation(fields: [contractId], references: [id], onDelete: Cascade)
+  /// `Date#getDay()` convention: 0 = Sunday … 6 = Saturday.
+  dayOfWeek     Int
+  /// Minutes from midnight the block starts, 0–1439.
+  startMinute   Int
+  /// Minutes from midnight it ends, 1–1440 (1440 = midnight).
+  endMinute     Int
+  effectiveFrom DateTime           @db.Date
+  /// Inclusive. Null = still in effect.
+  effectiveTo   DateTime?          @db.Date
+  createdById   String
+  createdBy     User               @relation("PaidStaffScheduleCreatedBy", fields: [createdById], references: [id])
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+
+  @@index([userId, dayOfWeek])
+  @@index([contractId])
+}
+
+/// A one-off exception to the recurring pattern for a single date — a full
+/// day off, or custom hours replacing the pattern for that date alone.
+/// Independent of the staff absence calendar (#224): that records vacation
+/// and sick leave as a durable HR fact, this records an ad-hoc schedule
+/// shuffle. Where a row exists for a date it wins outright over every
+/// `PaidStaffSchedule` block for that date — see `isOnPaidClock` (shared).
+model PaidStaffScheduleOverride {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation("PaidStaffScheduleOverrideOwner", fields: [userId], references: [id], onDelete: Cascade)
+  date        DateTime @db.Date
+  isOff       Boolean  @default(false)
+  /// Required, and only meaningful, when `isOff` is false.
+  startMinute Int?
+  endMinute   Int?
+  notes       String?
+  createdById String
+  createdBy   User     @relation("PaidStaffScheduleOverrideCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime @default(now())
+  /// Missing from the original #245 shape despite `setOverride` upserting —
+  /// an edited override looked untouched.
+  updatedAt   DateTime @updatedAt
+
+  /// One override per person per date — a correction edits the existing row.
+  @@unique([userId, date])
+}
+
+// ─── Staff absences (#224) ──────────────────────────────────────────────────────
+
+/// A durable HR fact — not an ad-hoc schedule shuffle (`PaidStaffScheduleOverride`
+/// is that). Entitlement balances, accrual, carry-over and approval workflow are
+/// explicitly out of scope: that is HR software, and #219 rules it out by name.
+enum StaffAbsenceKind {
+  VACATION
+  SICK_LEAVE
+  OTHER_PAID_LEAVE
+}
+
+/// A dated range someone is off — vacation, sick leave or other paid leave —
+/// so the roster and (later) the trip planner can warn a coordinator before
+/// assigning them, never block it. The range is inclusive; overlapping ranges
+/// for the same person are rejected at the service layer, not here.
+/// `startTime`/`endTime` ("HH:mm") make it a partial day — a medical
+/// appointment, say — the rare case, opted into by setting both; the default
+/// is neither set (a full day).
+model StaffAbsence {
+  id          String           @id @default(cuid())
+  userId      String
+  user        User             @relation("StaffAbsenceOwner", fields: [userId], references: [id], onDelete: Cascade)
+  kind        StaffAbsenceKind
+  startDate   DateTime         @db.Date
+  endDate     DateTime         @db.Date
+  startTime   String?
+  endTime     String?
+  notes       String?
+  createdById String
+  createdBy   User             @relation("StaffAbsenceCreatedBy", fields: [createdById], references: [id])
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@index([userId, startDate, endDate])
+}
+
+// ─── Volunteer hours ────────────────────────────────────────────────────────────
+
+/// Where an entry's default came from. A `SCHEDULED` entry is proposed by the
+/// system from a `ScheduleAssignment`; a `MANUAL` one has no shift behind it
+/// at all (a meeting, training, or anything else a volunteer logs by hand)
+/// and always needs a coordinator's eyes — there is nothing to auto-validate
+/// it against.
+enum VolunteerHoursSource {
+  SCHEDULED
+  MANUAL
+}
+
+/// What the hours were for. The rota categories double as activity types for
+/// `SCHEDULED` entries (one per `AvailabilityWindowCategory`); the other
+/// three exist only for `MANUAL` entries.
+enum VolunteerActivityType {
+  EMERGENCY
+  LOCAL_SUPPORT
+  CNE_SUPPORT
+  MEETING
+  TRAINING
+  OTHER
+}
+
+/// Two states, not four: an entry is either still waiting on someone (a
+/// coordinator, or the grace-period sweep), or it counts. There is no
+/// separate "rejected" — disputing a `MANUAL` entry or a `SCHEDULED` one that
+/// overclaims is done by approving it with `minutes` corrected down (to zero,
+/// if nothing should count at all) and a `correctionReason`.
+enum VolunteerHoursStatus {
+  PENDING
+  APPROVED
+}
+
+/// One volunteer's credited time for one activity — either derived from a
+/// shift they were scheduled on, or logged by hand for something that never
+/// had one (#164).
+///
+/// Generation is lazy (on read), not a timer sweep: a `SCHEDULED` entry is
+/// materialised the first time anything asks about a past assignment, which
+/// means "does this entry exist yet" is never itself a correctness question
+/// (see `identity-purge.service.ts` for the same argument made about a
+/// different cleanup job).
+model VolunteerHoursEntry {
+  id     String @id @default(cuid())
+  userId String
+  user   User   @relation("VolunteerHoursOwner", fields: [userId], references: [id], onDelete: Cascade)
+
+  source       VolunteerHoursSource
+  activityType VolunteerActivityType
+
+  /// The assignment this was generated from. Null for a MANUAL entry, and
+  /// SetNull rather than Cascade when the assignment itself is later removed
+  /// — unassigning someone must not erase an approval already on record, only
+  /// the live link back to the roster.
+  assignmentId String?             @unique
+  assignment   ScheduleAssignment? @relation(fields: [assignmentId], references: [id], onDelete: SetNull)
+  /// Denormalised alongside `assignmentId` so the schedule this came from is
+  /// still known after the assignment link itself is gone.
+  scheduleId   String?
+  schedule     Schedule?           @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
+  /// The shift's own date for a SCHEDULED entry, or the date logged for a
+  /// MANUAL one. Drives grace-period timing and every aggregation view.
+  date         DateTime            @db.Date
+
+  /// Optional free text for a MANUAL entry (what the meeting/training/other
+  /// activity was) — required only when activityType is OTHER; unused for
+  /// SCHEDULED, where the shift itself is the description.
+  description String? @db.Text
+
+  /// The shift's own duration in minutes, snapshotted at generation time so a
+  /// later `ScheduleShiftOverride` never silently rewrites an entry already
+  /// reviewed. Null for MANUAL, which has no shift to snapshot.
+  baselineMinutes Int?
+  /// What the system proposes crediting: `baselineMinutes` plus any
+  /// auto-credited run-over for SCHEDULED, or exactly what the volunteer
+  /// typed for MANUAL.
+  proposedMinutes Int
+  /// What actually counts towards totals. Equal to `proposedMinutes` until a
+  /// coordinator corrects it.
+  minutes         Int
+
+  /// The wall-clock span a MANUAL entry was reported for, minutes from
+  /// midnight (mirrors `ShiftTimes`). Null for SCHEDULED — a shift's own
+  /// times come from the window pattern, not this — and null for a MANUAL
+  /// entry logged before this field existed. `minutes` remains the
+  /// authoritative duration either way; these are descriptive.
+  startMinute Int?
+  endMinute   Int?
+
+  /// Exception codes raised by detection — e.g. `RAN_OVER`,
+  /// `POSSIBLY_LEFT_EARLY`. Always empty for MANUAL, and for a SCHEDULED
+  /// entry with nothing to flag. Never generated at all for a shift whose
+  /// mandatory roles were not filled — that shift most likely did not run, so
+  /// there is nothing to flag rather than something to credit and flag.
+  flags       String[] @default([])
+  /// Evidence behind each flag (which report, how many minutes over, …), read
+  /// only by the review screen — nothing queries into it, so it is one block
+  /// rather than a child table.
+  flagDetails Json?
+
+  status           VolunteerHoursStatus @default(PENDING)
+  approvedById     String?
+  approvedBy       User?                @relation("VolunteerHoursApprovedBy", fields: [approvedById], references: [id])
+  approvedAt       DateTime?
+  /// True when PENDING became APPROVED through the grace-period sweep rather
+  /// than a person's own action. Never true for MANUAL, or once corrected.
+  autoApproved     Boolean              @default(false)
+  /// Present exactly when `minutes` differs from `proposedMinutes`.
+  correctionReason String?
+
+  /// Who logged this, for a MANUAL entry — null for SCHEDULED, which nobody
+  /// files by hand.
+  loggedById String?
+  loggedBy   User?    @relation("VolunteerHoursLoggedBy", fields: [loggedById], references: [id])
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  /// Set when a coordinator sent an APPROVED entry back to PENDING. Read by
+  /// `isEligibleForAutoApproval` so the grace-period sweep never re-approves
+  /// something a person deliberately reopened.
+  reopenedAt   DateTime?
+  reopenedById String?
+  reopenedBy   User?     @relation("VolunteerHoursReopenedBy", fields: [reopenedById], references: [id])
+
+  /// Soft delete. The row is retained rather than removed because
+  /// `ensureGenerated` treats an assignment with no entry as one still to
+  /// generate — hard-deleting a SCHEDULED entry would resurrect it on the very
+  /// next read of any hours endpoint.
+  deletedAt       DateTime?
+  deletedById     String?
+  deletedBy       User?     @relation("VolunteerHoursDeletedBy", fields: [deletedById], references: [id])
+  deletionReason  String?   @db.Text
+  /// True when the system (`reconcileEntryForCompensation`, on a coordinator
+  /// reclassifying the assignment to SALARY/PAID) did the soft delete, rather
+  /// than a coordinator dismissing it by hand. The discriminator that lets
+  /// reclassifying the assignment back to VOLUNTEER safely un-delete this
+  /// same row — a manual dismissal must never be resurrected that way.
+  deletedBySystem Boolean   @default(false)
+
+  @@index([userId, date])
+  @@index([status])
+  @@index([scheduleId])
+  @@index([date])
+  @@index([status, date])
+  @@index([deletedAt])
+}
+
+// ─── Geography ────────────────────────────────────────────────────────────────
+
+/// A Portuguese municipality (concelho).
+///
+/// Seeded from `prisma/data/pt-localities.json` (regenerated by
+/// `scripts/fetch-pt-localities.mjs`) and never edited in the app: the
+/// administrative map is not ours to change.
+///
+/// The coordinate lives here rather than on `Locality` because its only job is
+/// ordering facilities by distance from where an event happened. Facilities
+/// are tens of kilometres apart and a municipality is a few across, so one
+/// coordinate per municipality is precise enough for that ordering — and keeps
+/// 3,259 freguesias from each carrying a number nothing reads.
+model Municipality {
+  id String @id @default(cuid())
+
+  /// INE `dtmn` code, e.g. "0603" for Coimbra. Stable national identifier, and
+  /// what the seed matches on so re-seeding updates rather than duplicates.
+  ineCode  String @unique
+  name     String
+  /// District on the mainland, island in the Azores and Madeira — as INE
+  /// scopes them. Free text rather than an enum: it is a label to group by,
+  /// carries no behaviour, and the seed is its only writer.
+  district String
+
+  latitude  Float
+  longitude Float
+
+  localities Locality[]
+  facilities Facility[]
+
+  @@unique([name, district])
+  @@index([district])
+}
+
+/// A freguesia — the granularity Portuguese emergency reporting uses for
+/// "where did this happen", and what the UI calls a "localidade".
+model Locality {
+  id             String       @id @default(cuid())
+  name           String
+  municipalityId String
+  municipality   Municipality @relation(fields: [municipalityId], references: [id], onDelete: Cascade)
+
+  /// `name` folded to lowercase ASCII with punctuation stripped, so a crew
+  /// typing "sao martinho" finds "São Martinho do Bispo". Written by the seed
+  /// via `foldForSearch` (shared) — never by hand.
+  searchName String
+
+  /// The freguesia's own position, when the seed's source (Wikidata) has one
+  /// for it — most do. Null falls back to the municipality centroid, the same
+  /// "own point, else the area's" pattern `Facility.latitude/longitude` uses,
+  /// because a município can be tens of kilometres across and its centroid is
+  /// a poor stand-in for any one freguesia inside it.
+  latitude  Float?
+  longitude Float?
+
+  eventReports EventReport[]
+  liveRuns     LiveRun[]
+  users        User[]
+  patients     Patient[]
+
+  trafficFactorsAsOrigin      TrafficCorridorFactor[] @relation("TrafficFactorOriginLocality")
+  trafficFactorsAsDestination TrafficCorridorFactor[] @relation("TrafficFactorDestinationLocality")
+
+  @@unique([municipalityId, name])
+  @@index([searchName])
+  @@index([municipalityId])
+}
+
+/// The self-hosted geocoder's answer for one address, cached forever (#231) —
+/// there is no volume argument for re-asking Nominatim the same question
+/// twice. `addressHash` is the lookup key, a sha256 of the address folded
+/// through shared's `foldForSearch`, so two spellings of the same street
+/// share a row; `rawAddress` is kept only so a bad geocode can be spotted by
+/// eye, never used to look one up.
+model GeocodedAddress {
+  id          String   @id @default(cuid())
+  addressHash String   @unique
+  rawAddress  String
+  latitude    Float
+  longitude   Float
+  createdAt   DateTime @default(now())
+}
+
+// ─── Facilities ─────────────────────────────────────────────────────────────
+
+/// A hospital, clinic or private medical facility — somewhere a victim can be
+/// taken or a scheduled transport can be sent to. Coordinator-managed, the
+/// same way holidays are: seeded with a starting set, then maintained in the
+/// app.
+///
+/// `isEmergencyDestination` and `isTransportDestination` are independent
+/// capability flags, not a type enum: a hospital with an emergency room is
+/// routinely both, a private physiotherapy clinic is transport-only, and the
+/// two lists must never mix — a crew choosing where to take a casualty must
+/// never see a clinic that isn't equipped for one. Default-deny: both flags
+/// start false, so a new row is invisible to every picker until someone
+/// explicitly opts it in to at least one.
+model Facility {
+  id             String       @id @default(cuid())
+  name           String
+  municipalityId String
+  municipality   Municipality @relation(fields: [municipalityId], references: [id], onDelete: Restrict)
+
+  /// Street address. Only meaningful for a transport destination — an
+  /// emergency destination is picked and reasoned about by name and distance.
+  addressLine String?
+  postalCode  String?
+
+  /// The facility's own position, when someone has bothered to fill it in.
+  /// Null falls back to the municipality centroid, which is only acceptable
+  /// for emergency distance ranking — a centroid can be kilometres from the
+  /// actual door, so a transport destination is required to carry its own
+  /// coordinates (enforced in the service, see `validateFacility` in shared).
+  latitude  Float?
+  longitude Float?
+
+  isEmergencyDestination Boolean @default(false)
+  isTransportDestination Boolean @default(false)
+
+  /// Retired rather than deleted: reports already filed against a facility
+  /// must keep naming it. False hides it from new pickers only.
+  isActive Boolean @default(true)
+
+  /// Arrival window overrides (#233), each independently nullable — a
+  /// facility with no override on a given field inherits
+  /// `DelegationSettings`' delegation-wide default for it. Facilities differ
+  /// in how strictly they hold their appointment times: plan tightly against
+  /// a strict one, take liberties with a relaxed one.
+  arrivalWindowEarliestMinutesOverride Int?
+  arrivalWindowLatestMinutesOverride   Int?
+  arrivalToleranceMinutesOverride      Int?
+
+  victims           EventReportVictim[]
+  inemSupportUnits  EventReportInemSupportUnit[]
+  liveRuns          LiveRun[]
+  transportRequests TransportRequest[]
+  treatmentPlans    TreatmentPlan[]
+  originLegs        TransportLeg[] @relation("TransportLegOrigin")
+  destinationLegs   TransportLeg[] @relation("TransportLegDestination")
+  tripStops         TripStop[]
+
+  trafficFactorsAsOrigin      TrafficCorridorFactor[] @relation("TrafficFactorOriginFacility")
+  trafficFactorsAsDestination TrafficCorridorFactor[] @relation("TrafficFactorDestinationFacility")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([name, municipalityId])
+  @@index([isActive])
+  @@index([municipalityId])
+  @@index([isEmergencyDestination])
+  @@index([isTransportDestination])
+}
+
+// ─── Traffic ─────────────────────────────────────────────────────────────────
+
+/// Where a stored `TrafficCorridorFactor` came from (#232). Both sources
+/// write the exact same table shape, which is the point: swapping a
+/// corridor from bought factors to ones measured from the delegation's own
+/// captured actual times later is a data-loading change, never a schema or
+/// code change.
+enum TrafficFactorSource {
+  PURCHASED
+  MEASURED
+}
+
+/// The three traffic rhythms that matter for planning (#232) — a Saturday
+/// isn't a weekday and isn't a Sunday either, and a public holiday behaves
+/// like a Sunday regardless of which weekday it lands on, so it folds in
+/// rather than getting a fourth bucket.
+enum TrafficDayType {
+  WEEKDAY
+  SATURDAY
+  SUNDAY_HOLIDAY
+}
+
+/// Planning traffic and dispatch traffic are different problems (#232, off
+/// Feature #219's split): planning recomputes a full stop-by-stop matrix
+/// every time the planner moves something, so it needs traffic knowledge
+/// that costs nothing per lookup — the opposite of a live, per-request
+/// traffic API's pricing. This table is that knowledge, sampled quarterly:
+/// the ratio of a traffic-aware duration to OSRM's free-flow duration for
+/// one corridor/departure-hour/day-type. A planned duration is always
+/// `OSRM free-flow duration × factor` (`PlannedDurationService`); a missing
+/// row means factor `1.0`, resolved explicitly by
+/// `TrafficCorridorFactorService.lookup` (which also reports `source: null`)
+/// rather than left for a caller to infer from absence.
+///
+/// A corridor endpoint is a `Locality` centroid or a `Facility`'s own
+/// coordinates — public geography already sitting in this schema, never a
+/// patient's address; see `routing.module.ts`'s doc comment for why that
+/// boundary matters.
+model TrafficCorridorFactor {
+  id String @id @default(cuid())
+
+  originLocalityId String?
+  originLocality   Locality? @relation("TrafficFactorOriginLocality", fields: [originLocalityId], references: [id], onDelete: Restrict)
+  originFacilityId String?
+  originFacility   Facility? @relation("TrafficFactorOriginFacility", fields: [originFacilityId], references: [id], onDelete: Restrict)
+
+  destinationLocalityId String?
+  destinationLocality   Locality? @relation("TrafficFactorDestinationLocality", fields: [destinationLocalityId], references: [id], onDelete: Restrict)
+  destinationFacilityId String?
+  destinationFacility   Facility? @relation("TrafficFactorDestinationFacility", fields: [destinationFacilityId], references: [id], onDelete: Restrict)
+
+  /// A dedup key, not a domain field — `TrafficCorridorFactorService` alone
+  /// computes and writes it. Exists because Postgres treats `NULL` as
+  /// distinct from `NULL` inside a unique index, so a compound unique
+  /// straight over the four nullable endpoint columns above would silently
+  /// let a re-sample insert a duplicate row instead of updating the
+  /// existing one — every row here has two of those four columns null by
+  /// construction (an endpoint is a locality *or* a facility, never both).
+  corridorKey String
+
+  /// Hour of departure in delegation-local time, 0–23.
+  departureBucket Int
+  dayType         TrafficDayType
+
+  /// Traffic-aware duration ÷ OSRM free-flow duration for this
+  /// corridor/hour/day type. `1.0` is free-flow; slower than free-flow is
+  /// `> 1.0`.
+  factor Float
+  source TrafficFactorSource
+  /// When the sample behind this factor was taken — not a write-audit
+  /// timestamp, `createdAt`/`updatedAt` already cover that.
+  sampledAt DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// No `source` in the key: replacing this corridor's PURCHASED factors
+  /// with MEASURED ones is an upsert against the same row, never a second
+  /// row competing with the first (#232's "swappable source" requirement).
+  @@unique([corridorKey, departureBucket, dayType])
+  @@index([departureBucket, dayType])
+}
+
+// ─── Event Reports ────────────────────────────────────────────────────────────
+
+/// What kind of activity a report accounts for.
+///
+/// Deliberately the same three kinds as `AvailabilityWindowCategory`: the type
+/// is what tells a report which rota its crew came from, so the two sets have
+/// to line up. A type is a fixed kind with pre-defined behaviour — never
+/// configured per report.
+enum EventReportType {
+  EMERGENCY
+  LOCAL_SUPPORT
+  CNE_SUPPORT
+}
+
+/// Where an event happened, as the operational sees it — not an address.
+enum EventLocationType {
+  HOME
+  ROAD
+  PUBLIC_SPACE
+  OTHER_PUBLIC_LOCATION
+  WORK_PLACE
+}
+
+enum Gender {
+  FEMALE
+  MALE
+  UNKNOWN
+}
+
+/// What became of one victim.
+///
+/// `HOSPITAL` is the only value that pairs with a hospital row; the other four
+/// are the ways a call ends with nobody transported. A database CHECK
+/// constraint (see the migration) keeps the pairing honest, so no query has to
+/// defend against "transported to nowhere".
+enum VictimDestinationKind {
+  HOSPITAL
+  TREATED_ON_SCENE
+  REFUSED_TRANSPORT
+  DECEASED_ON_SCENE
+  CANCELLED
+}
+
+/// Additional INEM means that responded alongside the crew's own vehicle.
+enum InemSupportUnitType {
+  VMER
+  SIV
+  UMIP
+}
+
+/// Level of consciousness on the Portuguese AVDS scale, replacing the Glasgow
+/// Coma Scale: A = Alerta, V = resposta a estímulos Verbais, D = resposta a
+/// estímulos Dolorosos, S = Sem resposta.
+enum AvdsLevel {
+  A
+  V
+  D
+  S
+}
+
+/// A completed account of one activity: an emergency, a local-support event, or
+/// a CNE support job.
+///
+/// Identity is `(type, year, number)` — the number is a per-type, per-year
+/// sequence, so the three kinds count independently and 2027 starts at 1
+/// again. The rendered form ("EMG 128/2026") is *not* stored: it is derived by
+/// `formatEventReportCode` in `@redinfo/shared`, which keeps one spelling of
+/// the rule and leaves the columns something a report can group by.
+///
+/// Drafts *are* here, since live mode (ADO #154). A run that closes becomes a
+/// draft report immediately — a row whose `submittedAt` is null — so a crew that
+/// forgets the paperwork still leaves something visible behind. The device is
+/// still where a run in progress lives; this table takes over the moment the
+/// ambulance is available again.
+model EventReport {
+  id           String          @id @default(cuid())
+  type         EventReportType
+  /// Position within `(type, year)`, 1-based, assigned when the report is
+  /// **submitted** and recomputed whenever the partition changes. Null while
+  /// the report is a draft: a report with no number is a report nobody has
+  /// filed yet, and Postgres treats NULLs as distinct so the unique constraint
+  /// stays quiet about drafts.
+  number       Int?
+  /// What this report was called before the sequence was last recomputed. Kept
+  /// forever and searchable, so paper filed as "EMG 042/2026" stays findable
+  /// after a renumber.
+  legacyNumber Int?
+  /// Calendar year the sequence belongs to, taken from `occurredOn`. Stored
+  /// rather than derived so the unique index below can hold the numbering
+  /// rule, and so a year's reports are one index seek away.
+  year         Int
+
+  /// Who filed it and when. An actor-and-timestamp pair rather than a boolean,
+  /// matching `Schedule.publishedBy/publishedAt`: a transition is a fact about a
+  /// person and a moment. `submittedAt IS NULL` *is* the draft state — there is
+  /// no status enum to disagree with it, and no `unsubmit`, because un-filing a
+  /// report would re-punch the hole in the numbering.
+  submittedAt   DateTime?
+  submittedById String?
+  submittedBy   User?     @relation("EventReportSubmittedBy", fields: [submittedById], references: [id], onDelete: SetNull)
+
+  /// The day the activity happened — the date on the paper form. Separate from
+  /// `startedAt` because it is what reports group by, and because a service
+  /// running past midnight still belongs to the day it started.
+  occurredOn DateTime  @db.Date
+  startedAt  DateTime
+  /// Null while the crew has not said when they finished. A report is filed
+  /// with what is known; the rest is completed later.
+  endedAt    DateTime?
+
+  /// CODU record number on an emergency, a free reference on the other types.
+  /// One column because it is one fact — where it came from is `type`.
+  externalReference String?
+
+  locationType EventLocationType
+  localityId   String
+  /// Restrict, not Cascade: geography is seeded and only ever replaced by a
+  /// newer seed. A locality disappearing must not take incident history with it.
+  locality     Locality          @relation(fields: [localityId], references: [id], onDelete: Restrict)
+
+  // ── Emergency-only chronology ──
+  /// All five are optional, individually: a crew stamps what it has time to
+  /// stamp. Present only on EMERGENCY reports — enforced in
+  /// `validateEventReport` (shared) rather than by five more CHECK
+  /// constraints, since the rule is "these belong to one type" and that is
+  /// stated once there.
+  activationAt      DateTime?
+  sceneArrivalAt    DateTime?
+  sceneDepartureAt  DateTime?
+  hospitalArrivalAt DateTime?
+  availableAt       DateTime?
+
+  /// The shift the crew was pre-filled from, when there was one. Kept so a
+  /// coordinator can ask "which rota produced this report" and so future
+  /// reporting can join activity back to the schedule that covered it. Null
+  /// when the crew was picked by hand — a perfectly ordinary case.
+  scheduleId String?
+  schedule   Schedule? @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
+  /// Which shift of that schedule, as `(date, slot)` — the same coordinates
+  /// `ScheduleAssignment` uses. Only meaningful together with `scheduleId`.
+  shiftDate  DateTime? @db.Date
+  shiftSlot  Int?
+
+  /// TipTap output stored as HTML. Sanitized on write by `sanitizeReportHtml`
+  /// and again on render by the frontend viewer — stored markup is trusted at
+  /// neither end.
+  operationalReport String @db.Text
+
+  // ── The clinical record (emergencies only) ──
+  /// CHAMU, as five columns rather than one JSON blob: the set is fixed by a
+  /// national form, each is shown as its own labelled field, and a blob would
+  /// make "which reports mention an allergy" unanswerable for no gain.
+  ///
+  /// These carry no names — the screens say "sem nomes" on the fields — but they
+  /// are free text a crew types, so they are treated as clinical data rather
+  /// than as safe.
+  chamuCircumstances String? @db.Text
+  chamuHistory       String? @db.Text
+  chamuAllergies     String? @db.Text
+  chamuMedication    String? @db.Text
+  chamuLastMeal      String? @db.Text
+
+  /// Five optional `{ status, note }` pairs. JSON *because nothing queries a
+  /// letter*: it is read as one block, written as one block, and its shape is
+  /// INEM's to change rather than ours.
+  abcde Json?
+
+  crew             EventReportCrewMember[]
+  vehicles         EventReportVehicle[]
+  victims          EventReportVictim[]
+  inemSupportUnits EventReportInemSupportUnit[]
+  materials        EventReportMaterial[]
+  attachments      EventReportAttachment[]
+  assessments      EventReportAssessment[]
+  stockMovements   StockMovement[]
+
+  /// The run this report was closed out of, if there was one. The run owns the
+  /// link, so this side is read-only provenance.
+  liveRun LiveRun?
+
+  createdById String
+  createdBy   User     @relation("EventReportCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  /// The numbering rule, as a constraint rather than a convention.
+  ///
+  /// The migration replaces the index Prisma would create with a same-named
+  /// **DEFERRABLE** unique constraint: shifting a whole partition along by one
+  /// transiently collides with itself, and a row-by-row check would reject the
+  /// UPDATE halfway through. Deferrability is not something Prisma models, so
+  /// this line and the database still agree.
+  @@unique([type, year, number])
+  @@index([occurredOn])
+  @@index([type, occurredOn])
+  @@index([localityId])
+  @@index([createdById])
+  @@index([scheduleId])
+  /// Numbering reads a whole `(type, year)` partition in activation order.
+  @@index([type, year, activationAt])
+  /// The *Pendentes* grouping, and the purge's "has this been filed yet".
+  @@index([submittedAt])
+  @@index([type, year, legacyNumber])
+}
+
+/// One set of observations, taken at one moment.
+///
+/// A child table because a set of vitals is something taken *at a time*:
+/// usually once on scene, but a deteriorating victim is measured again on the
+/// way in, and "what were the vitals when they left" must not overwrite "what
+/// were they when we arrived".
+///
+/// Every measurement is individually optional and each has a CHECK for its own
+/// plausible-instrument range (see the migration). Two are worth naming:
+/// `heartRate` allows **0**, because asystole is a real recordable finding
+/// rather than a missing value, and a row with nothing measured in it at all is
+/// refused — an assessment with no measurement is not an assessment.
+model EventReportAssessment {
+  id       String      @id @default(cuid())
+  reportId String
+  report   EventReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  /// Display order within the report, 0-based — the order they were taken.
+  position Int
+  takenAt  DateTime
+
+  /// mg/dL
+  bloodGlucose    Int?
+  /// mmHg
+  systolic        Int?
+  diastolic       Int?
+  /// °C. Decimal rather than Float, following `MaintenanceEntry.cost`: 36.8 is
+  /// a number, not a float to be surprised by.
+  temperature     Decimal?   @db.Decimal(3, 1)
+  /// bpm
+  heartRate       Int?
+  /// cpm
+  respiratoryRate Int?
+  /// %
+  spo2            Int?
+  /// A = Alerta, V = resposta a estímulos Verbais, D = resposta a estímulos
+  /// Dolorosos, S = Sem resposta.
+  avds            AvdsLevel?
+  /// 0–10
+  painScore       Int?
+
+  /// How the victim was found or placed. Named `bodyPosition` because
+  /// `position` above already means display order in every sibling table.
+  bodyPosition String?
+
+  @@unique([reportId, position])
+  @@index([reportId])
+}
+
+/// Who was on the activity, and in what post.
+///
+/// `roleName` is a *snapshot* of the post as it was named on the schedule, not
+/// a link to `AvailabilityWindowRole`: roles belong to a window and a
+/// coordinator may rename or drop them, which must not rewrite what a filed
+/// report says. Null when nobody was assigned a post.
+model EventReportCrewMember {
+  id       String      @id @default(cuid())
+  reportId String
+  report   EventReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  userId   String
+  /// Restrict: people who leave are deactivated, never deleted, so an archived
+  /// report never loses the name of who attended.
+  user     User        @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  roleName String?
+  /// Display order within the report, 0-based — the order the crew was entered.
+  position Int
+
+  /// One person cannot be on the same activity twice.
+  @@unique([reportId, userId])
+  @@index([reportId])
+  @@index([userId])
+}
+
+/// One vehicle used, and the distance it covered.
+///
+/// A row per vehicle rather than columns on the report: an emergency uses one
+/// and a support job may use several, and "sum the kilometres per vehicle per
+/// month" should be one GROUP BY, not a union over numbered columns. The
+/// one-vehicle rule for emergencies is a validation rule, not a schema one.
+model EventReportVehicle {
+  id        String      @id @default(cuid())
+  reportId  String
+  report    EventReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+  vehicleId String
+  /// Restrict: vehicles are retired via `isDeleted`, never removed.
+  vehicle   Vehicle     @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+
+  /// Whole kilometres covered by this vehicle on this activity.
+  kilometres Int
+  /// Display order within the report, 0-based.
+  position   Int
+
+  /// The legs `kilometres` was computed from — Base → occurrence → hospital →
+  /// Base — as returned by the Google Routes API. Stored so "28 km" is
+  /// explainable a year later rather than being a number with no provenance.
+  /// Null on a report whose distance was typed, or not computed yet.
+  routeLegs    Json?
+  /// A human changed the computed figure. Kept so an edited number is visibly
+  /// an edit rather than silently replacing a measurement.
+  isOverridden Boolean @default(false)
+
+  @@unique([reportId, vehicleId])
+  @@index([reportId])
+  @@index([vehicleId])
+}
+
+/// One item consumed on the activity, and by which vehicle — the report's
+/// material consumption line. `quantity` is null only for an `UNLIMITED`
+/// item: logged as used, with nothing to count and no stock effect. Stock
+/// itself only moves when the report is submitted — see
+/// `StockMovementsService.applyReportConsumption`.
+model EventReportMaterial {
+  id       String      @id @default(cuid())
+  reportId String
+  report   EventReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  materialItemId String
+  /// Restrict: a filed report's line must not lose what it points at.
+  materialItem   MaterialItem @relation(fields: [materialItemId], references: [id], onDelete: Restrict)
+  vehicleId      String
+  /// Restrict, matching `EventReportVehicle`: a vehicle is retired via
+  /// `isDeleted`, never removed.
+  vehicle        Vehicle      @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+
+  quantity Int?
+  /// Display order within the report, 0-based.
+  position Int
+
+  /// One line per item per vehicle — using the same item on two vehicles on
+  /// one report is two lines, not a merge.
+  @@unique([reportId, materialItemId, vehicleId])
+  @@index([reportId])
+  @@index([materialItemId])
+  @@index([vehicleId])
+}
+
+/// One person assisted, and where they ended up.
+///
+/// The destination hangs off the victim rather than the report because a
+/// multi-victim event can send people to different places — and an emergency,
+/// with its single victim, is then just the one-row case of the same shape.
+///
+/// No name, no address, no clinical detail: the report records how many people
+/// were assisted, roughly who they were, and where they went. Anything more
+/// identifying belongs to the clinical record, not here.
+model EventReportVictim {
+  id       String      @id @default(cuid())
+  reportId String
+  report   EventReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  /// Display order within the report, 0-based. Also what the UI counts by
+  /// ("Vítima 1", "Vítima 2").
+  position Int
+
+  gender Gender
+  age    Int
+
+  destinationKind       VictimDestinationKind
+  /// Set exactly when `destinationKind` is HOSPITAL — a CHECK constraint in
+  /// the migration enforces both directions.
+  destinationFacilityId String?
+  destinationFacility   Facility?             @relation(fields: [destinationFacilityId], references: [id], onDelete: Restrict)
+  /// The "número de episódio de urgência" the ER issues on admission, written
+  /// down by the crew. Only allowed alongside a HOSPITAL destination — see
+  /// `EventReportVictim_episode_requires_hospital`.
+  hospitalEpisodeNumber String?
+
+  @@unique([reportId, position])
+  @@index([reportId])
+  @@index([destinationFacilityId])
+  @@index([destinationKind])
+}
+
+/// One VMER, SIV or UMIP that responded alongside the crew's own vehicle, and
+/// the base it was dispatched from — captured only on emergencies (see
+/// `EventReportTypeRules.hasInemSupportUnits` in `@redinfo/shared`), and only
+/// in the report editor, after the fact.
+///
+/// Neither the per-type cap of 3 nor the "emergency only" rule is a database
+/// constraint: the cap is an aggregate over sibling rows and "emergency only"
+/// would need this row to know its parent's `type`, so both stay in
+/// `validateInemSupportUnits` (shared), same call as `EventReportAssessment`'s
+/// range checks. `facilityId` being required and FK'd is the one rule the
+/// schema *can* express.
+model EventReportInemSupportUnit {
+  id       String      @id @default(cuid())
+  reportId String
+  report   EventReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  unitType InemSupportUnitType
+
+  /// The base the unit was dispatched from — not a destination. Restrict, not
+  /// Cascade: a facility is retired via `isActive`, never deleted, so a filed
+  /// report never loses the name of it.
+  facilityId String
+  facility   Facility @relation(fields: [facilityId], references: [id], onDelete: Restrict)
+
+  /// Display order within the report, 0-based. Not unique per `(reportId,
+  /// unitType)` — two VMER from different bases on the same report is exactly
+  /// the case this table exists for.
+  position Int
+
+  @@unique([reportId, position])
+  @@index([reportId])
+  @@index([facilityId])
+  @@index([unitType])
+}
+
+/// A photo or document attached to a report.
+///
+/// Bytes live on disk under the uploads volume, keyed by `storageKey`; only
+/// the metadata is in the database. Keeping multi-megabyte photos out of
+/// Postgres is what lets the reports table stay cheap to query.
+model EventReportAttachment {
+  id       String      @id @default(cuid())
+  reportId String
+  report   EventReport @relation(fields: [reportId], references: [id], onDelete: Cascade)
+
+  /// What the file *is*, as distinct from what it contains. A discriminator
+  /// rather than a second table: the bytes, the MIME allow-list, the size cap,
+  /// the storage keys and the download route are all identical. A partial unique
+  /// index (see the migration) holds "at most one Verbete per report"; the
+  /// service refuses the second one first, with a message worth reading.
+  kind EventReportAttachmentKind @default(GENERAL)
+
+  /// Name as the uploader's device gave it, for display and download only.
+  /// Never used to build a path.
+  filename   String
+  mimeType   String
+  byteSize   Int
+  /// Path relative to the uploads root, generated server-side. Unique so a
+  /// stored file belongs to exactly one row.
+  storageKey String @unique
+
+  uploadedById String
+  uploadedBy   User     @relation("EventReportAttachmentUploadedBy", fields: [uploadedById], references: [id], onDelete: Restrict)
+  createdAt    DateTime @default(now())
+
+  @@index([reportId])
+  @@index([uploadedById])
+}
+
+/// What an attachment *is*. See `EventReportAttachment.kind`.
+enum EventReportAttachmentKind {
+  /// The paper INEM *Verbete de Socorro*. At most one per report.
+  VERBETE
+  /// Photographs taken on scene, and anything else.
+  GENERAL
+}
+
+// ─── Live emergency runs ──────────────────────────────────────────────────────
+
+/// Where a run has got to. `CLOSED` is reachable from every stage — a call can
+/// be stood down at any point. Which stamp each transition writes lives in
+/// `LIVE_RUN_STATE_RULES` in `@redinfo/shared`, not in a chain here, following
+/// the `EVENT_REPORT_TYPE_RULES` pattern.
+enum LiveRunState {
+  INTAKE
+  EN_ROUTE
+  ON_SCENE
+  EN_ROUTE_TO_HOSPITAL
+  AT_HOSPITAL
+  CLOSED
+}
+
+/// The server's mirror of what one phone is capturing during an emergency.
+///
+/// **The device is the source of truth.** This row exists so a dead phone, a
+/// lost phone or a back-to-back call loses nothing, and so a coordinator can see
+/// what is running. `PUT /live-runs/:id` is an idempotent whole-row replace
+/// guarded by the device-owned `revision`; a PUT at or below the stored revision
+/// is a stale replay from a phone that has been in a cellar, and is answered 200
+/// with the stored row rather than 409.
+///
+/// `id` has **no** `@default(cuid())` on purpose: the client owns it, so a run
+/// created with no coverage syncs an hour later into the row it would have
+/// created at the time.
+model LiveRun {
+  id       String       @id
+  revision Int          @default(0)
+  state    LiveRunState @default(INTAKE)
+
+  /// When the crew opened the screen — before activation, while still on the
+  /// call from CODU.
+  startedAt DateTime
+
+  // ── Plaintext: everything the coordinator's board sorts, filters or counts ──
+  externalReference String?
+  /// The reason for the call as CODU gave it, e.g. "queda com traumatismo".
+  chiefComplaint    String?
+  locationType      EventLocationType?
+  localityId        String?
+  locality          Locality?          @relation(fields: [localityId], references: [id], onDelete: Restrict)
+  victimGender      Gender?
+  victimAge         Int?
+  vehicleId         String?
+  vehicle           Vehicle?           @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+
+  scheduleId String?
+  schedule   Schedule? @relation(fields: [scheduleId], references: [id], onDelete: SetNull)
+  shiftDate  DateTime? @db.Date
+  shiftSlot  Int?
+
+  activationAt      DateTime?
+  sceneArrivalAt    DateTime?
+  sceneDepartureAt  DateTime?
+  hospitalArrivalAt DateTime?
+  availableAt       DateTime?
+
+  destinationKind       VictimDestinationKind?
+  destinationFacilityId String?
+  destinationFacility   Facility?              @relation(fields: [destinationFacilityId], references: [id], onDelete: Restrict)
+  /// The "número de episódio de urgência" the ER issues on admission, written
+  /// down by the crew at the hospital.
+  hospitalEpisodeNumber String?
+
+  /// Vitals, CHAMU, ABCDE and the narrative in progress. JSON because this is a
+  /// *mirror, not a model*: the server never edits a field of it, it replaces
+  /// the whole thing. Columns would mean migrating this table every time the
+  /// phone's form gains a box.
+  capture Json?
+
+  /// One AES-256-GCM blob: victim name, date of birth, SNS number, occurrence
+  /// address, reference points, home address. Sealed with the run id as
+  /// additional authenticated data, so copying row A's blob into row B fails to
+  /// open — which matters here more than usual, because rows are keyed by
+  /// client-supplied ids.
+  identity         Bytes?
+  /// Set when the blob was destroyed, so "we never had it" and "we had it and it
+  /// is gone" are different facts.
+  identityPurgedAt DateTime?
+
+  closedAt DateTime?
+
+  /// The draft report this run became. One report per run.
+  reportId String?      @unique
+  report   EventReport? @relation(fields: [reportId], references: [id], onDelete: SetNull)
+
+  createdById String
+  createdBy   User     @relation("LiveRunCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  crew LiveRunCrewMember[]
+
+  @@index([state])
+  /// The purge sweep, and the 48h readability gate.
+  @@index([closedAt])
+  @@index([createdById])
+  /// Force-closing abandoned runs reads this.
+  @@index([updatedAt])
+  @@index([localityId])
+}
+
+/// Who is on a run in progress.
+///
+/// The one part of a run that stays relational, because "may this person read
+/// this run" is the table's hottest query and the coordinator's board shows
+/// names. Replaced wholesale on every PUT, the same way a report's children are.
+model LiveRunCrewMember {
+  id     String  @id @default(cuid())
+  runId  String
+  run    LiveRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+  userId String
+  user   User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  roleName String?
+  position Int
+
+  @@unique([runId, userId])
+  @@index([runId])
+  @@index([userId])
+}
+
+/// The handful of values that are the same for every run of this delegation.
+///
+/// A table rather than environment variables so a coordinator can change the
+/// freephone number without a deploy, and so "where is our base" has one answer
+/// the reports and the distance calculation both read. Exactly one row: the id
+/// is fixed by a CHECK in the migration, so an accidental second row is
+/// impossible rather than merely unlikely.
+model DelegationSettings {
+  id             String   @id @default("delegation")
+  baseName       String
+  baseLatitude   Float
+  baseLongitude  Float
+  /// Dialled from the live-run overflow menu; the dial time is stamped on the run.
+  coduDadosPhone String
+
+  /// Arrival window thresholds (#233) — policy, not physics, hence a table a
+  /// coordinator can change without a deploy. Delegation-wide defaults,
+  /// overridable per facility (see `Facility`'s own override columns). The
+  /// hard constraint is delivering by treatment start; these are a softer
+  /// customer-experience goal routinely traded away on purpose.
+  arrivalWindowEarliestMinutes Int @default(30)
+  arrivalWindowLatestMinutes   Int @default(5)
+  arrivalToleranceMinutes      Int @default(10)
+
+  updatedAt DateTime @updatedAt
+}
+
+/// A duration floor and a softer default per occurrence type (#233) — the
+/// argument that keeps a leg's estimated end from ever being blank (see
+/// `TransportLeg.estimatedEndAt`). One row per `TransportRequestOccurrenceType`
+/// value, seeded by the migration the same way `DelegationSettings` is.
+model OccurrenceTypePolicy {
+  occurrenceType TransportRequestOccurrenceType @id
+
+  /// The earliest-possible-ready time is appointment plus this floor —
+  /// deliberately the minimum, not the softer default below.
+  minimumDurationMinutes Int
+  /// A planning suggestion only. Actual treatment duration is a per-patient
+  /// input that varies far more than this table models (about 20 minutes to
+  /// over 4 hours), so this is never used as a floor.
+  defaultDurationMinutes Int
+
+  updatedAt DateTime @updatedAt
+}
+
+// ─── Legacy migration ─────────────────────────────────────────────────────────
+
+/// Maps a row in the legacy MySQL system to the row it became here.
+///
+/// Kept out of the domain models on purpose: `User`, `Vehicle` and
+/// `EventReport` carry no `legacyId` column, so nothing in the application
+/// can accidentally depend on where a row came from, and dropping this one
+/// table is the whole of "forget the migration ever happened".
+///
+/// The loader is re-runnable and legacy always wins: on every run it looks a
+/// legacy key up here, and either updates the row it points at or creates one
+/// and records it. `sourceHash` is the SHA-256 of the normalised source tuple,
+/// stored so a future "only overwrite rows the app hasn't touched" mode has
+/// something to compare against — nothing reads it today.
+model LegacyIdMap {
+  id       String @id @default(cuid())
+  /// The target model name, e.g. "User", "EventReport", "VehicleInventoryItem".
+  entity   String
+  /// The legacy primary key, rendered as a single string. Composite keys are
+  /// joined with "|" in the source table's own PK order — e.g. a `saidas` row
+  /// is "1835|2026" and a `Material` row is "12|Luvas M". One spelling of that
+  /// rule lives in `legacyKey()`; never build one by hand at a call site.
+  legacyId String
+  /// The cuid of the row in this database.
+  newId    String
+
+  /// SHA-256 (hex) of the normalised source tuple this row was last written
+  /// from. Written on every apply run; read by nothing yet.
+  sourceHash  String
+  /// Which run first created the mapping, and which last confirmed it — a
+  /// mapping whose `lastRunId` is stale means the legacy row has disappeared.
+  firstRunId  String
+  lastRunId   String
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @updatedAt
+
+  /// One legacy row maps to at most one target row, and one target row is
+  /// claimed by at most one legacy row — both directions, so a bug that
+  /// re-points a mapping fails loudly instead of orphaning a row.
+  @@unique([entity, legacyId])
+  @@unique([entity, newId])
+  @@index([entity])
+  @@index([lastRunId])
+}
+
+// ── Notices & notifications (#165) ──
+//
+// `Notice` is legacy-parity for operational alerts/notices. Delivery
+// (`NotificationDelivery`, `PushSubscription`, the two preference tables) is a
+// pluggable framework meant to outlive this one feature — see the matching
+// banner in `@redinfo/shared`. `IN_APP` delivery has no row of its own: the
+// `Notice`/`NoticeReceipt` rows existing *are* the in-app delivery.
+
+enum NoticeTargetType {
+  ALL
+  ROLES
+}
+
+enum NotificationChannel {
+  IN_APP
+  EMAIL
+  WEB_PUSH
+}
+
+enum NotificationType {
+  NOTICE
+  /// 24h-ahead reminder to everyone assigned to a shift (#schedules).
+  SHIFT_REMINDER
+  /// Sent to the person themselves, on their birthday.
+  BIRTHDAY_GREETING
+  /// Sent to everyone else, telling them it's a teammate's birthday today.
+  BIRTHDAY_ANNOUNCEMENT
+}
+
+enum NotificationDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
+model Notice {
+  id          String           @id @default(cuid())
+  title       String
+  body        String
+  createdById String
+  createdBy   User             @relation("NoticeCreatedBy", fields: [createdById], references: [id])
+  targetType  NoticeTargetType
+  /// Null/absent means "never expires" — auto-deactivation is `expiresAt < now()` at read time, not a cron.
+  expiresAt   DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  targetRoles NoticeTargetRole[]
+  channels    NoticeChannel[]
+  receipts    NoticeReceipt[]
+  deliveries  NotificationDelivery[]
+
+  @@index([expiresAt])
+  @@index([createdById])
+}
+
+/// Only present when `Notice.targetType` is `ROLES`.
+model NoticeTargetRole {
+  id       String   @id @default(cuid())
+  noticeId String
+  notice   Notice   @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+  role     UserRole
+
+  @@unique([noticeId, role])
+  @@index([noticeId])
+}
+
+/// Which channels the coordinator chose when sending this notice. `IN_APP` is
+/// never stored here — see the banner note above.
+model NoticeChannel {
+  id       String              @id @default(cuid())
+  noticeId String
+  notice   Notice              @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+  channel  NotificationChannel
+
+  @@unique([noticeId, channel])
+  @@index([noticeId])
+}
+
+/// Per-recipient state. One row per (notice, user), created when the notice is
+/// sent to that user. Covers both "unread vs read" and "acknowledge/dismiss".
+model NoticeReceipt {
+  id             String    @id @default(cuid())
+  noticeId       String
+  notice         Notice    @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+  userId         String
+  user           User      @relation("NoticeReceiptOwner", fields: [userId], references: [id], onDelete: Cascade)
+  readAt         DateTime?
+  acknowledgedAt DateTime?
+
+  @@unique([noticeId, userId])
+  @@index([noticeId])
+  @@index([userId])
+}
+
+/// One send attempt per (recipient, channel) on a non-`IN_APP` channel — the
+/// audit trail behind the coordinator's recipient view (for `NOTICE`) and
+/// behind the system-triggered producers (shift reminders, birthdays), updated
+/// by the email provider's delivery webhook when that lands after the initial
+/// send. `noticeId` is only ever set for `type: NOTICE`; every other type
+/// carries no source row, so `title`/`body`/push copy are captured here
+/// instead of joined from one, keeping this delivery record generic across
+/// producers rather than coupled to `Notice` specifically.
+model NotificationDelivery {
+  id                String                     @id @default(cuid())
+  type              NotificationType           @default(NOTICE)
+  noticeId          String?
+  notice            Notice?                    @relation(fields: [noticeId], references: [id], onDelete: Cascade)
+  userId            String
+  user              User                       @relation("NotificationDeliveryRecipient", fields: [userId], references: [id], onDelete: Cascade)
+  channel           NotificationChannel
+  /// Subject line for `EMAIL`, unused for `WEB_PUSH`.
+  emailSubject      String
+  emailBody         String
+  /// Notification title/body for `WEB_PUSH`, unused for `EMAIL`.
+  pushTitle         String
+  pushBody          String
+  status            NotificationDeliveryStatus @default(PENDING)
+  error             String?
+  /// The provider's own id for this send (e.g. Resend's email id), so a
+  /// webhook event can be matched back to this row without guessing.
+  providerMessageId String?
+  attemptedAt       DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+
+  @@index([noticeId])
+  @@index([userId])
+  @@index([userId, type])
+  @@index([providerMessageId])
+}
+
+/// A registered browser/device for Web Push. A user may have several (one per
+/// device); each is pushed to independently and a dead one just fails alone.
+model PushSubscription {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation("PushSubscriptionOwner", fields: [userId], references: [id], onDelete: Cascade)
+  endpoint  String   @unique
+  p256dh    String
+  auth      String
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+/// Org-wide default: is this channel used at all for this notification type?
+/// The notification config page. Absence of a row means "not yet configured" —
+/// callers treat that as disabled rather than defaulting silently to on.
+model NotificationTypeSetting {
+  id      String              @id @default(cuid())
+  type    NotificationType
+  channel NotificationChannel
+  enabled Boolean             @default(true)
+
+  @@unique([type, channel])
+}
+
+/// A member's own per-channel opt-out, set from their profile. Absence of a
+/// row means "no preference set", which callers treat as enabled.
+model UserNotificationPreference {
+  id      String              @id @default(cuid())
+  userId  String
+  user    User                @relation("NotificationPreferenceOwner", fields: [userId], references: [id], onDelete: Cascade)
+  channel NotificationChannel
+  enabled Boolean             @default(true)
+
+  @@unique([userId, channel])
+}
+
+/// A member's own on/off switch for one system-triggered notification type
+/// (shift reminders, birthdays) — coarser than `UserNotificationPreference`,
+/// which is per-channel: this turns the whole type off regardless of channel.
+/// Absence of a row means "never touched" — callers fall back to
+/// `NOTIFICATION_TYPE_DEFAULT_ENABLED` in `@redinfo/shared`, which is why there
+/// is no `enabled @default` here (the default lives with the type, not here).
+/// Not used for `NOTICE`, which stays governed by `NotificationTypeSetting`
+/// (org policy) and `UserNotificationPreference` (channel) alone.
+model UserNotificationTypeSetting {
+  id      String           @id @default(cuid())
+  userId  String
+  user    User             @relation("NotificationTypeSettingOwner", fields: [userId], references: [id], onDelete: Cascade)
+  type    NotificationType
+  enabled Boolean
+
+  @@unique([userId, type])
+}
+
+// ─── INEM integration (#211) ───────────────────────────────────────────────────
+//
+// Lets CVP crews set ambulance operational status for INEM's own portal
+// (portalpem.inem.pt) from redinfo. Everything here is backend-owned state —
+// see docs/inem-portal-contract.md for the wire contract this models, and
+// src/inem/ (#214) and packages/inem-worker (#215) for what reads/writes it.
+// `INEMSession`/`OWASession` are singletons, the same shape as
+// `DelegationSettings`: the id is fixed by a CHECK in the migration, so an
+// accidental second row is impossible rather than merely unlikely.
+
+enum INEMSessionStatus {
+  UNKNOWN
+  LOGGING_IN
+  ACTIVE
+  EXPIRED
+  FAILED
+}
+
+enum OWASessionStatus {
+  /// The bootstrap script (#215) has never been run.
+  UNSET
+  /// storageState present and presumed valid.
+  ACTIVE
+  /// The worker landed on a login page instead of the inbox — recovery is
+  /// re-running the bootstrap script, not retrying.
+  EXPIRED
+}
+
+/// The INEM portal session (`alAuth` + friends). One row, sealed with
+/// `IdentityCipher` the same way `LiveRun.identity` is.
+model INEMSession {
+  id                    String            @id @default("inem")
+  status                INEMSessionStatus @default(UNKNOWN)
+  /// IdentityCipher-sealed cookie jar (alAuth + the FortiWeb affinity cookie).
+  cookies               Bytes?
+  expiresAt             DateTime?
+  /// Consecutive login failures. The circuit breaker in #214 trips at 2 and
+  /// stops retrying — automated retries are the most likely thing to wake
+  /// the (currently dormant) login captcha.
+  failureCount          Int               @default(0)
+  lastError             String?
+  /// Identifies the in-flight cold-login attempt (#215's worker job) while
+  /// `status` is `LOGGING_IN`. A generated id rather than a separate job
+  /// table: single-flight (the advisory lock in `InemSessionService`) means
+  /// there is never more than one attempt in flight, so "the current one" is
+  /// all a poll-based worker needs. `null` outside `LOGGING_IN`.
+  pendingLoginId        String?
+  /// So the worker only accepts an OTP mail newer than this attempt — see
+  /// `INEMLoginJob.startedAt` in the shared contract.
+  pendingLoginStartedAt DateTime?
+  /// The last `GET /api/INOP` map the reconciler actually fetched from INEM
+  /// (code → label), so a process restart re-hydrates from real production
+  /// data instead of falling straight back to the compile-time
+  /// `INEM_INOP_REASONS` guess (#218). Display data, not secret — stored
+  /// plain, unlike `cookies`.
+  cachedInopReasons     Json?
+  updatedAt             DateTime          @updatedAt
+}
+
+/// The Outlook Web Access session the worker reads the INEM OTP mail from.
+/// Bootstrapped once by hand (a human completes MFA); the worker then only
+/// ever reads it, and must write the refreshed storageState back after every
+/// use — it is a sliding window, not a fixed-lifetime token.
+model OWASession {
+  id           String           @id @default("owa")
+  status       OWASessionStatus @default(UNSET)
+  /// IdentityCipher-sealed Playwright `storageState()` JSON.
+  storageState Bytes?
+  updatedAt    DateTime         @updatedAt
+}
+
+/// One INEM-visible unit. Keyed by INEM's own `unitId` (e.g. `CVCAMPO1`)
+/// rather than a generated id — there is exactly one INEM record per unit,
+/// and the id is how every other table here would want to reference it.
+///
+/// Desired and reported state each collapse to a single nullable INOP code
+/// (never an active/reason pair — see docs/inem-portal-contract.md for why).
+/// `vehicleId` is nullable and `SetNull` on delete: INEM may list a unit
+/// redinfo has no matching `Vehicle` row for, and it must still sync.
+model INEMUnit {
+  unitId             String    @id
+  station            String?
+  /// The licence plate INEM knows the unit by — the join key to
+  /// `Vehicle.licensePlate`.
+  carId              String?
+  unitType           String?
+  /// What redinfo wants INEM to show: `'00'` (available) or an INEM INOP
+  /// code. Null means no one has set a desired state yet.
+  desiredInopCode    String?
+  /// What the reconciler last read back from `GET /api/unit`.
+  reportedInopCode   String?
+  /// The INOP code the reconciler's own last successful `PUT /api/unit` last
+  /// asked INEM to set — distinct from `reportedInopCode`, which also gets
+  /// optimistically pre-set to the same value right after that push. The gap
+  /// between the two is what lets the reconciler tell "our push just hasn't
+  /// been confirmed by the next GET yet" apart from "INEM's own portal moved
+  /// since then" — the latter means a coordinator changed this unit's status
+  /// directly in INEM, which must win over redinfo's stale desired state.
+  /// Null means redinfo has never successfully pushed a status for this unit.
+  lastPushedInopCode String?
+  /// INEM's own read-only Portuguese label (`Active`), display only — never
+  /// treated as desired state.
+  reportedActive     String?
+  lastSyncedAt       DateTime?
+  lastError          String?
+  vehicleId          String?
+  vehicle            Vehicle?  @relation(fields: [vehicleId], references: [id], onDelete: SetNull)
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@index([vehicleId])
+}
+
+/// Accountability trail for INEM status changes. Every action collapses onto
+/// one shared INEM identity, so this table — not `AuditInterceptor` — is what
+/// answers "who told INEM this unit was out of service". `unitId` is
+/// deliberately not an FK: the audit trail must outlive a unit INEM stops
+/// listing.
+model INEMStatusAudit {
+  id        String   @id @default(cuid())
+  unitId    String
+  userId    String
+  user      User     @relation("INEMStatusAuditActor", fields: [userId], references: [id], onDelete: Restrict)
+  inopCode  String
+  createdAt DateTime @default(now())
+
+  @@index([unitId])
+  @@index([userId])
+}
+
+/// One confirmed-state interval per unit, sourced from what the reconciler
+/// actually reads back from INEM (`reportedInopCode`) — never from the merely
+/// desired state, which is intent, not fact. This is what answers "how long
+/// was this vehicle really unavailable, and why" for `/statistics/inem`.
+/// `endedAt: null` is the currently open interval. `unitId`/`vehicleId` are
+/// deliberately not FKs — same reasoning as `INEMStatusAudit` above: the
+/// trail must outlive the unit INEM stops listing or the vehicle it was
+/// linked to at the time.
+model INEMUnitStatusPeriod {
+  id        String    @id @default(cuid())
+  unitId    String
+  vehicleId String?
+  inopCode  String
+  startedAt DateTime
+  endedAt   DateTime?
+  createdAt DateTime  @default(now())
+
+  @@index([unitId, startedAt])
+  @@index([vehicleId, startedAt])
+}
+
+// ─── Patients (#219, #226) ──────────────────────────────────────────────────────
+
+enum PatientMobility {
+  AMBULATORY
+  WHEELCHAIR
+  STRETCHER
+}
+
+/// A non-urgent transport patient: a durable, months-long relationship, unlike
+/// `EventReportVictim` which is scoped to a single incident — and the most
+/// sensitive data this Feature persists.
+///
+/// Identity is sealed the same way as `LiveRun`'s victim fields: one
+/// AES-256-GCM blob (`IdentityCipher`, scope `'patient'`), bound to the row id
+/// as additional authenticated data, so copying one patient's blob into
+/// another row fails to open. `identityPurgedAt` distinguishes "never had
+/// identity" from "had it, and it is gone" — see `PatientIdentityPurgeService`.
+///
+/// `MANAGE_PATIENTS` covers every column here except `identity` itself, which
+/// needs `VIEW_PATIENT_IDENTITY` too — deliberately not implied, the same
+/// narrower-than-its-neighbour shape as `LiveRun`'s emergency-board split.
+/// Serializers omit `identity` entirely for a caller without it.
+model Patient {
+  id String @id @default(cuid())
+
+  /// One AES-256-GCM blob: full name, telephone, home address, reference
+  /// contact name/relationship/telephone. See `PatientIdentity` (shared) for
+  /// its shape — written and read as one unit, never field-by-field.
+  identity         Bytes?
+  /// Set when the blob was destroyed. Retention policy is still an open
+  /// question on the Feature (see the data-protection spike):
+  /// `PatientIdentityPurgeService` reads `PATIENT_IDENTITY_RETENTION_DAYS` (an
+  /// env var, deliberately not a hard-coded constant like `LiveRun`'s) so the
+  /// window can move without a deploy once that spike lands, and defaults
+  /// conservatively — long enough that an active patient is never purged out
+  /// from under daily use — pending an actual answer.
+  identityPurgedAt DateTime?
+
+  // ── Unsealed: planning needs these without opening the blob ────────────────
+  mobility       PatientMobility @default(AMBULATORY)
+  needsOxygen    Boolean         @default(false)
+  escortRequired Boolean         @default(false)
+  isBariatric    Boolean         @default(false)
+
+  /// The geocoded home, coordinates only. Kept unsealed **on purpose**:
+  /// every planning/routing query needs them, and sealing them would make
+  /// routing impossible. They are still personal data — recorded here as a
+  /// decision, not an oversight, so it is on the record rather than
+  /// rediscovered later (#226).
+  defaultLatitude  Float?
+  defaultLongitude Float?
+
+  /// For traffic-corridor lookups. Kept unsealed for the same reason as the
+  /// coordinates above — unlike `LiveRun.victimHomeLocalityId`, which stays
+  /// inside that model's identity blob: a live run's locality is read once,
+  /// a patient's is read by every planning query for as long as they remain
+  /// a patient.
+  localityId String?
+  locality   Locality? @relation(fields: [localityId], references: [id], onDelete: SetNull)
+
+  /// The reference contact may be an institution rather than a person — e.g.
+  /// the care home a patient lives in, which is then the address and the
+  /// contact at once. One contact, not a priority-ordered list: modelling
+  /// more would be inventing a problem the business does not have.
+  referenceContactIsOrganisation Boolean @default(false)
+  /// Whether the patient authorised naming this contact — a recorded fact,
+  /// never an assumption baked into notification code: telling a third party
+  /// about a transport can disclose the fact of the patient's treatment.
+  contactAuthorisationRecorded   Boolean @default(false)
+  contactAuthorisationNote       String?
+
+  isActive Boolean @default(true)
+
+  createdById String
+  createdBy   User     @relation("PatientCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  transportRequests TransportRequest[]
+
+  @@index([localityId])
+  @@index([isActive])
+  /// The purge sweep's cutoff.
+  @@index([updatedAt])
+}
+
+/// A third party to a transport (#227): the body that requests it, the one
+/// that pays for it, or both — role flags on one model, not separate tables,
+/// because the same body routinely requests one transport and pays for
+/// another (#219). Deliberately no tariff or rate fields: billing is
+/// modelled here, never performed.
+model Organisation {
+  id String @id @default(cuid())
+
+  name         String
+  taxId        String?
+  contactEmail String?
+  contactPhone String?
+
+  isRequester Boolean @default(false)
+  isPayer     Boolean @default(false)
+
+  notes    String?
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  references OrganisationReference[]
+  agreements Agreement[]
+
+  requestedTransportRequests TransportRequest[] @relation("TransportRequestRequester")
+  paidTransportRequests      TransportRequest[] @relation("TransportRequestPayer")
+
+  @@index([isActive])
+}
+
+/// One of an organisation's own reference codes. A collection rather than a
+/// single column: the worked example carries two distinct codes at once — an
+/// envelope-level account code and a per-row insurer code.
+model OrganisationReference {
+  id             String       @id @default(cuid())
+  organisationId String
+  organisation   Organisation @relation(fields: [organisationId], references: [id], onDelete: Cascade)
+
+  code        String
+  description String?
+
+  @@unique([organisationId, code])
+}
+
+/// The terms a given transport falls under — the national health service
+/// agreement, an insurer's, a private arrangement — scoped to the
+/// organisation paying under it (#227). No tariff or rate fields, same
+/// reasoning as `Organisation`.
+model Agreement {
+  id                  String       @id @default(cuid())
+  payerOrganisationId String
+  payerOrganisation   Organisation @relation(fields: [payerOrganisationId], references: [id], onDelete: Restrict)
+
+  name              String
+  externalReference String?
+
+  validFrom DateTime  @db.Date
+  validTo   DateTime? @db.Date
+
+  notes    String?
+  isActive Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  transportRequests TransportRequest[]
+
+  @@index([payerOrganisationId])
+  @@index([isActive])
+}
+
+// ─── Transport requests ─────────────────────────────────────────────────────
+
+/// Ocorrência on the referral — what the appointment is for. Seed values;
+/// the real list is an open question (see the governmental-platform spike),
+/// so model it as an enum but expect to extend it.
+enum TransportRequestOccurrenceType {
+  CONSULTA
+  TRATAMENTO
+  ALTA
+  EXAME
+  OUTRO
+}
+
+/// Transporte on the referral — the vehicle type the requester is asking
+/// for, which constrains vehicle choice at planning time. Same "seeded, not
+/// final" caveat as `TransportRequestOccurrenceType`.
+enum TransportRequestVehicleType {
+  AMBULANCIA
+  TRANSPORTE
+  OUTRO
+}
+
+/// Whether the delegation has accepted the referral. `ACCEPTED`/`REJECTED`
+/// are terminal — see `decidedAt`/`decidedByUserId`.
+enum TransportRequestDecision {
+  PENDING
+  ACCEPTED
+  REJECTED
+}
+
+/// A non-urgent transport referral, entered by hand from the source referral
+/// (email today; a governmental-platform integration is unscoped, see #219's
+/// spikes) — one row per service, field order and grouping mirroring the
+/// referral's own layout rather than an idealised one (#228).
+///
+/// Envelope fields (`batchReference`, `communicatedAt`, `requesterAccountCode`,
+/// `responseDueAt`) are the referral email's own header, denormalised onto
+/// every row it covers rather than split into a separate batch table — the
+/// same one-model-not-two bias `Organisation` uses for requester/payer.
+model TransportRequest {
+  id String @id @default(cuid())
+
+  /// The communication's own reference (Email Nº). Batch-level, shared by
+  /// every row the same email covered.
+  batchReference       String
+  communicatedAt       DateTime
+  /// The envelope-level `Cliente` account code — distinct from any per-row
+  /// reference code an organisation carries (`OrganisationReference`).
+  requesterAccountCode String
+  /// The referral's stated deadline for a decision.
+  responseDueAt        DateTime
+
+  /// The requester's own reference for this one transport. An external key,
+  /// not redinfo's own id — unique per requesting organisation, never
+  /// globally, since two requesters can reuse the same numbering.
+  externalServiceNumber String
+  /// Data — date and time of the appointment.
+  appointmentAt         DateTime
+
+  requestingOrganisationId String
+  requestingOrganisation   Organisation @relation("TransportRequestRequester", fields: [requestingOrganisationId], references: [id], onDelete: Restrict)
+  payingOrganisationId     String
+  payingOrganisation       Organisation @relation("TransportRequestPayer", fields: [payingOrganisationId], references: [id], onDelete: Restrict)
+  agreementId              String?
+  agreement                Agreement?   @relation(fields: [agreementId], references: [id], onDelete: Restrict)
+
+  patientId String
+  patient   Patient @relation(fields: [patientId], references: [id], onDelete: Restrict)
+
+  occurrenceType       TransportRequestOccurrenceType
+  requestedVehicleType TransportRequestVehicleType
+
+  /// Accom — whether an escort travels with the patient.
+  escortTravels Boolean @default(false)
+  /// Ida-Volta.
+  isRoundTrip   Boolean @default(false)
+
+  /// Origin arrives as a door — a house number and a postcode — not a
+  /// locality, unlike `Patient.localityId`.
+  originAddress   String
+  originLatitude  Float?
+  originLongitude Float?
+
+  destinationFacilityId String
+  destinationFacility   Facility @relation(fields: [destinationFacilityId], references: [id], onDelete: Restrict)
+
+  /// Msg.
+  freeTextMessage  String?
+  /// The purpose of the referral's `Coord` column is unresolved (see the
+  /// referral-field-list spike) — parked verbatim rather than dropped.
+  coordColumnValue String?
+
+  decision               TransportRequestDecision @default(PENDING)
+  decidedByUserId        String?
+  decidedBy              User?                    @relation("TransportRequestDecidedBy", fields: [decidedByUserId], references: [id], onDelete: SetNull)
+  decidedAt              DateTime?
+  rejectionReason        String?
+  /// The moment somebody actually clicked Aceitar on the requester's own
+  /// platform — a shadow of a decision made outside redinfo, and the two can
+  /// silently diverge. Accepting a request in redinfo must **not** set this.
+  externallyRegisteredAt DateTime?
+
+  createdById String
+  createdBy   User     @relation("TransportRequestCreatedBy", fields: [createdById], references: [id], onDelete: Restrict)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  /// The requester's own numbering, not redinfo's — unique per requester,
+  /// never globally.
+  treatmentPlans TreatmentPlan[]
+  legs           TransportLeg[]
+
+  @@unique([requestingOrganisationId, externalServiceNumber])
+  @@index([decision])
+  /// The ageing query's own sort.
+  @@index([responseDueAt])
+  @@index([payingOrganisationId])
+  @@index([agreementId])
+  @@index([patientId])
+  @@index([destinationFacilityId])
+}
+
+// ─── Treatment plans & transport legs (#230) ───────────────────────────────────
+//
+// The central modelling decision for recurring non-urgent transport (#219):
+// the recurrence rule stays separate from the materialised occurrences — the
+// leg is the durable, billable unit, the plan only a generator. A one-off
+// referral produces legs with `treatmentPlanId = null` and no plan row above
+// them at all; building it the other way round (plan as a mandatory parent)
+// would force every ad-hoc journey to invent a series of one.
+
+enum LegDirection {
+  OUTBOUND
+  RETURN
+}
+
+enum LegStatus {
+  PLANNED
+  ASSIGNED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+/// Who/what caused a cancellation (patient, facility, delegation) — a fixed
+/// vocabulary rather than free text, since it is the fact billing/support
+/// actually filters and reports on. `cancellationReason` stays free text
+/// alongside it for the human detail.
+enum LegCancellationSource {
+  PATIENT
+  FACILITY
+  DELEGATION
+}
+
+/// Who supplied `TransportLeg.estimatedEndAt` (#233) — provenance, not
+/// confidence. No reliability/firm-vs-soft grading field exists anywhere
+/// alongside this on purpose: every estimate is of broadly similar quality,
+/// so keep the source for later calibration against actuals, not a score
+/// nobody could fill in honestly.
+enum EstimatedEndSource {
+  FACILITY_SUPPLIED
+  COORDINATOR_JUDGED
+}
+
+/// A recurring treatment series (e.g. dialysis three times a week) — the
+/// generator, never the durable record. Optional: a one-off referral has no
+/// row here at all.
+model TreatmentPlan {
+  id String @id @default(cuid())
+
+  transportRequestId String
+  transportRequest   TransportRequest @relation(fields: [transportRequestId], references: [id], onDelete: Cascade)
+
+  destinationFacilityId String
+  destinationFacility   Facility @relation(fields: [destinationFacilityId], references: [id], onDelete: Restrict)
+
+  /// `Date#getDay()` convention (0 = Sunday … 6 = Saturday), matching
+  /// `PaidStaffSchedule.dayOfWeek`/`isoDayOfWeek` elsewhere in this schema —
+  /// not the 1..7 numbering a referral form might use.
+  daysOfWeek Int[]
+  /// Local time-of-day, `HH:mm` — a recurring wall-clock time, not one instant.
+  treatmentStartTime String
+  treatmentEndTime   String?
+  validFrom          DateTime @db.Date
+  validTo            DateTime @db.Date
+  notes              String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  legs TransportLeg[]
+
+  @@index([transportRequestId])
+  @@index([destinationFacilityId])
+}
+
+/// One dated, direction-specific journey — the durable, billable unit.
+/// Carries its own origin and destination rather than deriving them from the
+/// plan/request on every read: the return trip is usually the patient's own
+/// pickup address, but occasionally isn't, and that exception must be
+/// representable per leg without touching the plan (or, for a one-off
+/// referral, without there being a plan at all).
+model TransportLeg {
+  id String @id @default(cuid())
+
+  transportRequestId String
+  transportRequest   TransportRequest @relation(fields: [transportRequestId], references: [id], onDelete: Cascade)
+  /// Null for a one-off referral's leg.
+  treatmentPlanId String?
+  treatmentPlan   TreatmentPlan? @relation(fields: [treatmentPlanId], references: [id], onDelete: SetNull)
+
+  /// The day this leg actually serves. Editable — rescheduling a leg means
+  /// changing this, never its identity.
+  date DateTime @db.Date
+  /// The recurrence slot this leg was generated for, frozen at creation and
+  /// never touched afterwards (only `TransportRequestLegsService`'s
+  /// generator writes it). This is the idempotency key: rescheduling a leg
+  /// moves `date` without freeing up the slot it was generated for, so
+  /// re-running the generator never resurrects a duplicate for the date the
+  /// leg was originally meant to cover. Equal to `date` until rescheduled.
+  generatedForDate DateTime @db.Date
+  direction        LegDirection
+
+  originAddress   String?
+  originLatitude  Float?
+  originLongitude Float?
+  originFacilityId String?
+  originFacility   Facility? @relation("TransportLegOrigin", fields: [originFacilityId], references: [id], onDelete: SetNull)
+
+  destinationAddress   String?
+  destinationLatitude  Float?
+  destinationLongitude Float?
+  destinationFacilityId String?
+  destinationFacility    Facility? @relation("TransportLegDestination", fields: [destinationFacilityId], references: [id], onDelete: SetNull)
+
+  plannedPickupAt  DateTime?
+  plannedDropoffAt DateTime?
+  actualPickupAt   DateTime?
+  actualDropoffAt  DateTime?
+
+  status LegStatus @default(PLANNED)
+
+  cancellationReason String?
+  cancellationSource LegCancellationSource?
+
+  /// When the facility said, or the coordinator judged, the occurrence will
+  /// end (#233) — editable and internal, never stored as though the referral
+  /// had stated it as fact. Null until someone supplies one; a leg with no
+  /// supplied end time still gets appointment-plus-floor at read time (see
+  /// `resolveEstimatedEnd` in shared) rather than a blank.
+  estimatedEndAt       DateTime?
+  estimatedEndSource   EstimatedEndSource?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// A leg maps to at most two stops (one `PICKUP`, one `DROPOFF`) on
+  /// whichever `Trip` it's currently assigned to — see `TripStop` (#234).
+  /// Superseded the old bare `tripStopId` placeholder, which was never
+  /// written by anything.
+  tripStops TripStop[]
+
+  @@index([transportRequestId])
+  @@index([treatmentPlanId])
+  @@index([date])
+  @@index([status])
+  /// The generator's idempotency query: "which slots does this plan already cover".
+  @@index([treatmentPlanId, generatedForDate, direction])
+}
+
+// ─── Trips (#234) ───────────────────────────────────────────────────────────
+//
+// The model and API behind the planning board (#235 builds the board itself).
+// A trip is not a patient's round journey: a leg's `PICKUP`+`DROPOFF` pair
+// moves between trips in one call, so the outbound and return legs of the
+// same patient on the same day may sit on different trips, with different
+// vehicles and different crews. `WAIT`/`RETURN_TO_BASE` stops carry no leg.
+
+enum TripStatus {
+  PLANNED
+  COMPLETED
+  CANCELLED
+}
+
+enum TripStopKind {
+  PICKUP
+  DROPOFF
+  WAIT
+  RETURN_TO_BASE
+}
+
+/// Decided in advance and recorded, never inferred after the fact — the two
+/// choices produce completely different vehicle occupancy. Only meaningful
+/// on a `WAIT` stop.
+enum TripStopDwell {
+  WAIT
+  RELEASE
+}
+
+model Trip {
+  id        String     @id @default(cuid())
+  date      DateTime   @db.Date
+  vehicleId String
+  vehicle   Vehicle    @relation(fields: [vehicleId], references: [id], onDelete: Restrict)
+  status    TripStatus @default(PLANNED)
+  notes     String?
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  crewMembers TripCrewMember[]
+  stops       TripStop[]
+
+  @@index([date])
+  @@index([vehicleId])
+}
+
+model TripCrewMember {
+  id     String            @id @default(cuid())
+  tripId String
+  trip   Trip              @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  userId String
+  user   User              @relation(fields: [userId], references: [id], onDelete: Restrict)
+  /// Reuses the platform's existing crew-role vocabulary
+  /// (`UserCertification.type`) rather than inventing a second one.
+  role   CertificationType
+
+  /// Set when added despite a `StaffAbsence` covering the trip's date —
+  /// mirrors `ScheduleAssignment.certificationOverrideReason`: a recorded
+  /// reason, never a block.
+  overrideReason String?
+  createdAt      DateTime @default(now())
+
+  @@unique([tripId, userId])
+}
+
+/// One stop in a trip's ordered sequence. `PICKUP`/`DROPOFF` always arrive as
+/// a pair for the same leg — see `TransportLeg.tripStops` — created or moved
+/// together by the leg-assignment call, never one without the other.
+model TripStop {
+  id     String       @id @default(cuid())
+  tripId String
+  trip   Trip         @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  /// Assignment always appends (`max(sequence)+1`); reordering goes through
+  /// a dedicated full-list renumbering call, so this is never written to a
+  /// caller-chosen value that could collide.
+  sequence Int
+  kind     TripStopKind
+
+  /// Null for `WAIT`/`RETURN_TO_BASE` — those carry no leg.
+  transportLegId String?
+  transportLeg   TransportLeg? @relation(fields: [transportLegId], references: [id], onDelete: SetNull)
+  /// The facility being waited at (`WAIT`) — not used for `RETURN_TO_BASE`,
+  /// which always targets `DelegationSettings`' own base.
+  facilityId     String?
+  facility       Facility?     @relation(fields: [facilityId], references: [id], onDelete: SetNull)
+  address        String?
+  latitude       Float?
+  longitude      Float?
+
+  /// The crew's instruction, stored once planned — never recomputed on read.
+  plannedAt DateTime
+  actualAt  DateTime?
+
+  /// Only meaningful on a `WAIT` stop. `dwellMinutes` is what makes the
+  /// dwell real vehicle occupancy: see `computeTripOccupancyWindow` (shared).
+  dwellDecision TripStopDwell?
+  dwellMinutes  Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([tripId, sequence])
+  @@index([transportLegId])
+  @@index([facilityId])
 }

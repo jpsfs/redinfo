@@ -1,0 +1,155 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    :root{
+      --red:#ED1B24; --redDark:#B01218;
+      --g50:#FAFAFA; --g100:#F5F5F5; --g200:#E0E0E0; --g400:#BDBDBD; --g500:#9E9E9E; --g700:#616161; --g900:#212121;
+      --err:#D32F2F; --warn:#F57C00; --warnD:#C46300; --ok:#388E3C;
+    }
+    body{margin:0;font-family:"Inter","Roboto","Helvetica Neue","Arial",sans-serif;color:var(--g900);background:var(--g100);}
+    a{color:var(--red);} a:hover{color:var(--redDark);}
+    .paper{background:#fff;border:1px solid var(--g200);border-radius:4px;}
+    .h6{font-size:1rem;font-weight:600;line-height:1.5;margin:0;}
+    .body2{font-size:.875rem;line-height:1.5;}
+    .cap{font-size:.75rem;line-height:1.5;}
+    .sec{color:var(--g700);} .dis{color:var(--g500);}
+    .chip{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 8px;border-radius:12px;
+      font-size:.8125rem;font-weight:500;border:1px solid;background:transparent;white-space:nowrap;}
+    .chip.ok{color:var(--ok);border-color:var(--ok);}
+    .chip.warn{color:var(--warnD);border-color:var(--warn);}
+    .chip.mute{color:var(--g700);border-color:var(--g400);}
+    .chip.dashed{border-style:dashed;}
+    .appbar{background:var(--red);color:#fff;min-height:56px;display:flex;align-items:center;gap:12px;padding:0 12px;}
+    .btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 16px;
+      border-radius:8px;font-size:.875rem;font-weight:500;font-family:inherit;border:1px solid transparent;cursor:pointer;}
+    .btn.out{background:#fff;border-color:var(--g200);color:var(--g900);}
+    .btn.sm{min-height:36px;padding:0 12px;font-size:.8125rem;}
+    .avatar{width:72px;height:72px;border-radius:50%;background:var(--g200);color:var(--g700);
+      display:flex;align-items:center;justify-content:center;font-size:1.5rem;font-weight:600;flex:none;}
+    .row{display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--g200);min-height:44px;}
+    .row:last-child{border-bottom:none;}
+    .row .k{flex:1;min-width:0;}
+    .alert{display:flex;gap:10px;padding:10px 12px;border-radius:4px;font-size:.875rem;line-height:1.5;}
+    .alert.warn{background:#FFF4E5;color:#663C00;}
+    .icon{width:18px;height:18px;flex:none;}
+  </style>
+</helmet>
+
+<div style="min-height:1180px;display:flex;flex-direction:column;">
+
+  <div class="appbar">
+    <svg style="width:24px;height:24px;" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m15 18-6-6 6-6"/></svg>
+    <span style="font-size:1.125rem;font-weight:600;flex:1;">O meu perfil</span>
+  </div>
+
+  <div style="padding:16px;display:flex;flex-direction:column;gap:12px;">
+
+    <!-- Identity -->
+    <div class="paper" style="padding:16px;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;">
+      <div class="avatar">BC</div>
+      <button class="btn out sm">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8a2 2 0 0 1 2-2h2l1.5-2h7L17 6h2a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><circle cx="12" cy="12" r="3.5"/></svg>
+        Alterar foto
+      </button>
+      <div style="display:flex;flex-direction:column;gap:4px;align-items:center;">
+        <span style="font-size:1.125rem;font-weight:700;">Bruno Miguel Costa</span>
+        <span class="chip ok">Operacional</span>
+        <span class="cap dis" style="font-variant-numeric:tabular-nums;">Nº Nacional CVP 120915 · Voluntário 41</span>
+      </div>
+    </div>
+
+    <!-- Expiry warning -->
+    <div class="alert warn">
+      <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-top:2px;">
+        <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/>
+      </svg>
+      <span>O seu <strong>TAT expira a 30 de novembro de 2026</strong> — daqui a 98 dias. Depois dessa data continua a ter acesso, mas deixa de poder ser escalado.</span>
+    </div>
+
+    <!-- Certifications, read-only -->
+    <div class="paper" style="padding:16px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:4px;">
+        <h2 class="h6">As minhas certificações</h2>
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="color:var(--g500);"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+      </div>
+      <p class="cap sec" style="margin:0 0 12px;">Mantidas pelo coordenador. Se algo estiver errado, fale com ele.</p>
+
+      <div style="border:1px solid var(--g200);border-radius:4px;padding:12px;display:flex;flex-direction:column;gap:6px;margin-bottom:8px;">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <span class="body2" style="font-weight:600;">TAT</span>
+          <span class="chip warn">Válido até 30 nov 2026</span>
+        </div>
+        <span class="cap sec">Tripulante de Ambulância de Transporte</span>
+        <a href="#" class="cap" style="text-decoration:none;">Ver certificado (PDF)</a>
+      </div>
+
+      <div style="border-top:1px solid var(--g200);padding-top:12px;">
+        <div class="cap sec" style="font-weight:600;margin-bottom:8px;">Também concedido pelo TAT</div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <span class="chip warn dashed">SBV · até 30 nov 2026</span>
+          <span class="cap dis">herda a data do TAT</span>
+        </div>
+      </div>
+
+      <div style="border-top:1px solid var(--g200);margin-top:12px;padding-top:12px;">
+        <div class="cap sec">Não tem <strong>Condutor</strong> nem <strong>TAS</strong> registados, por isso não aparece para postos que os exijam.</div>
+      </div>
+    </div>
+
+    <!-- Editable personal data -->
+    <div class="paper" style="padding:16px;">
+      <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">
+        <h2 class="h6">Dados pessoais</h2>
+        <button class="btn out sm">Editar</button>
+      </div>
+      <div class="row"><span class="k"><span class="cap sec" style="display:block;">Telefone</span><span class="body2" style="font-weight:500;">+351 917 445 200</span></span></div>
+      <div class="row"><span class="k"><span class="cap sec" style="display:block;">Morada</span><span class="body2" style="font-weight:500;">Travessa da Igreja 24, 4755-320</span></span></div>
+      <div class="row"><span class="k"><span class="cap sec" style="display:block;">Localidade</span><span class="body2" style="font-weight:500;">Campo, Barcelos</span></span></div>
+      <div class="row"><span class="k"><span class="cap sec" style="display:block;">Data de nascimento</span><span class="body2" style="font-weight:500;">17 de abril de 1988</span></span></div>
+      <div class="row"><span class="k"><span class="cap sec" style="display:block;">Contacto de emergência</span><span class="body2" style="font-weight:500;">Sónia Costa · +351 933 110 908</span></span></div>
+    </div>
+
+    <!-- Read-only assigned data -->
+    <div class="paper" style="padding:16px;">
+      <h2 class="h6" style="margin-bottom:4px;">Identificação</h2>
+      <p class="cap sec" style="margin:0 0 8px;">Atribuída pela delegação. Para corrigir, fale com o coordenador.</p>
+      <div class="row">
+        <span class="k"><span class="cap sec" style="display:block;">Nº Nacional CVP</span><span class="body2" style="font-weight:500;font-variant-numeric:tabular-nums;">120915</span></span>
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="color:var(--g400);"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+      </div>
+      <div class="row">
+        <span class="k"><span class="cap sec" style="display:block;">Nº de Voluntário</span><span class="body2" style="font-weight:500;font-variant-numeric:tabular-nums;">41</span></span>
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="color:var(--g400);"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+      </div>
+      <div class="row">
+        <span class="k"><span class="cap sec" style="display:block;">Data de admissão</span><span class="body2" style="font-weight:500;">2 de fevereiro de 2021</span></span>
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="color:var(--g400);"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+      </div>
+      <div class="row">
+        <span class="k"><span class="cap sec" style="display:block;">Grupo sanguíneo</span><span class="body2" style="font-weight:500;">A+</span></span>
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="color:var(--g400);"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+      </div>
+      <div class="row">
+        <span class="k"><span class="cap sec" style="display:block;">NIF</span><span class="body2" style="font-weight:500;font-variant-numeric:tabular-nums;">218 442 907</span></span>
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="color:var(--g400);"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+      </div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+<script data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

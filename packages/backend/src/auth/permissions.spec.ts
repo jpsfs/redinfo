@@ -2,7 +2,15 @@ import { Reflector } from '@nestjs/core';
 import { ExecutionContext } from '@nestjs/common';
 import { RolesGuard } from './guards/roles.guard';
 import { ROLES_KEY, ACTIONS_KEY } from './decorators/roles.decorator';
-import { UserRole, Action, hasPermission, ROLE_METADATA, ROLE_PERMISSIONS } from '@redinfo/shared';
+import {
+  UserRole,
+  Action,
+  hasPermission,
+  normalizeRoles,
+  sameRoleSet,
+  ROLE_METADATA,
+  ROLE_PERMISSIONS,
+} from '@redinfo/shared';
 
 // ── hasPermission unit tests ──────────────────────────────────────────────────
 
@@ -19,6 +27,22 @@ describe('hasPermission', () => {
 
   it('EMERGENCY_OPERATIONAL cannot perform MANAGE_USERS', () => {
     expect(hasPermission(UserRole.EMERGENCY_OPERATIONAL, Action.MANAGE_USERS)).toBe(false);
+  });
+
+  it('EMERGENCY_OPERATIONAL cannot perform MANAGE_PERSONNEL', () => {
+    expect(hasPermission(UserRole.EMERGENCY_OPERATIONAL, Action.MANAGE_PERSONNEL)).toBe(false);
+  });
+
+  it('EMERGENCY_COORDINATOR can perform MANAGE_PERSONNEL (may enable/disable people and maintain certifications)', () => {
+    expect(hasPermission(UserRole.EMERGENCY_COORDINATOR, Action.MANAGE_PERSONNEL)).toBe(true);
+  });
+
+  it('EMERGENCY_COORDINATOR cannot perform MANAGE_USERS (account-level stays admin-only)', () => {
+    expect(hasPermission(UserRole.EMERGENCY_COORDINATOR, Action.MANAGE_USERS)).toBe(false);
+  });
+
+  it('LOGISTICS_COORDINATOR cannot perform MANAGE_PERSONNEL', () => {
+    expect(hasPermission(UserRole.LOGISTICS_COORDINATOR, Action.MANAGE_PERSONNEL)).toBe(false);
   });
 
   it('EMERGENCY_OPERATIONAL cannot perform MANAGE_LOGISTICS', () => {
@@ -71,6 +95,166 @@ describe('hasPermission', () => {
     expect(hasPermission(UserRole.EMERGENCY_OPERATIONAL, Action.MANAGE_VEHICLES)).toBe(false);
   });
 
+  // ── Availability permissions ──────────────────────────────────────────────────
+
+  it('EMERGENCY_OPERATIONAL can perform SUBMIT_AVAILABILITY', () => {
+    expect(hasPermission(UserRole.EMERGENCY_OPERATIONAL, Action.SUBMIT_AVAILABILITY)).toBe(true);
+  });
+
+  it('EMERGENCY_OPERATIONAL cannot manage availability windows', () => {
+    expect(
+      hasPermission(UserRole.EMERGENCY_OPERATIONAL, Action.MANAGE_AVAILABILITY_WINDOWS),
+    ).toBe(false);
+  });
+
+  it('EMERGENCY_OPERATIONAL cannot manage holidays', () => {
+    expect(hasPermission(UserRole.EMERGENCY_OPERATIONAL, Action.MANAGE_HOLIDAYS)).toBe(false);
+  });
+
+  it('EMERGENCY_OPERATIONAL cannot view the availability matrix (own data only)', () => {
+    expect(
+      hasPermission(UserRole.EMERGENCY_OPERATIONAL, Action.VIEW_AVAILABILITY_MATRIX),
+    ).toBe(false);
+  });
+
+  it('EMERGENCY_COORDINATOR can manage availability windows and holidays', () => {
+    expect(
+      hasPermission(UserRole.EMERGENCY_COORDINATOR, Action.MANAGE_AVAILABILITY_WINDOWS),
+    ).toBe(true);
+    expect(hasPermission(UserRole.EMERGENCY_COORDINATOR, Action.MANAGE_HOLIDAYS)).toBe(true);
+  });
+
+  it('EMERGENCY_COORDINATOR can view the availability matrix', () => {
+    expect(
+      hasPermission(UserRole.EMERGENCY_COORDINATOR, Action.VIEW_AVAILABILITY_MATRIX),
+    ).toBe(true);
+  });
+
+  it('EMERGENCY_COORDINATOR can submit their own availability', () => {
+    expect(hasPermission(UserRole.EMERGENCY_COORDINATOR, Action.SUBMIT_AVAILABILITY)).toBe(true);
+  });
+
+  it('EMERGENCY_COORDINATOR can manage and view volunteer hours', () => {
+    expect(hasPermission(UserRole.EMERGENCY_COORDINATOR, Action.MANAGE_VOLUNTEER_HOURS)).toBe(true);
+    expect(hasPermission(UserRole.EMERGENCY_COORDINATOR, Action.VIEW_VOLUNTEER_HOURS)).toBe(true);
+  });
+
+  it.each([Action.MANAGE_VOLUNTEER_HOURS, Action.VIEW_VOLUNTEER_HOURS])(
+    // Logging and viewing your own hours needs no action at all — those
+    // routes are self-scoped, like `GET /schedules/me`. This is about the
+    // review queue and the cross-volunteer summary specifically.
+    'EMERGENCY_OPERATIONAL cannot %s (only the review queue and summary, not their own hours)',
+    (action) => {
+      expect(hasPermission(UserRole.EMERGENCY_OPERATIONAL, action)).toBe(false);
+    },
+  );
+
+  it.each([
+    Action.SUBMIT_AVAILABILITY,
+    Action.MANAGE_AVAILABILITY_WINDOWS,
+    Action.MANAGE_HOLIDAYS,
+    Action.VIEW_AVAILABILITY_MATRIX,
+    Action.MANAGE_VOLUNTEER_HOURS,
+    Action.VIEW_VOLUNTEER_HOURS,
+    Action.MANAGE_INEM_STATUS,
+    Action.MANAGE_COMPENSATION,
+  ])('LOGISTICS_COORDINATOR cannot %s (cross-domain denied)', (action) => {
+    expect(hasPermission(UserRole.LOGISTICS_COORDINATOR, action)).toBe(false);
+  });
+
+  it('EMERGENCY_COORDINATOR and LOGISTICS_COORDINATOR can manage notices', () => {
+    expect(hasPermission(UserRole.EMERGENCY_COORDINATOR, Action.MANAGE_NOTICES)).toBe(true);
+    expect(hasPermission(UserRole.LOGISTICS_COORDINATOR, Action.MANAGE_NOTICES)).toBe(true);
+  });
+
+  it('EMERGENCY_OPERATIONAL cannot manage notices (reading your own is self-scoped, unactioned)', () => {
+    expect(hasPermission(UserRole.EMERGENCY_OPERATIONAL, Action.MANAGE_NOTICES)).toBe(false);
+  });
+
+  // ── INEM status permissions (#211) ────────────────────────────────────────────
+
+  it('EMERGENCY_OPERATIONAL can perform MANAGE_INEM_STATUS (the crew on shift knows a unit is out of service)', () => {
+    expect(hasPermission(UserRole.EMERGENCY_OPERATIONAL, Action.MANAGE_INEM_STATUS)).toBe(true);
+  });
+
+  it('EMERGENCY_COORDINATOR can perform MANAGE_INEM_STATUS', () => {
+    expect(hasPermission(UserRole.EMERGENCY_COORDINATOR, Action.MANAGE_INEM_STATUS)).toBe(true);
+  });
+
+  it('EMERGENCY_COORDINATOR can perform RESET_INEM_SESSION', () => {
+    expect(hasPermission(UserRole.EMERGENCY_COORDINATOR, Action.RESET_INEM_SESSION)).toBe(true);
+  });
+
+  it('EMERGENCY_OPERATIONAL cannot perform RESET_INEM_SESSION — resetting the shared session is a coordinator/admin call, not a field one', () => {
+    expect(hasPermission(UserRole.EMERGENCY_OPERATIONAL, Action.RESET_INEM_SESSION)).toBe(false);
+  });
+
+  it.each([UserRole.LOGISTICS_COORDINATOR, UserRole.TRANSPORT_COORDINATOR])(
+    '%s cannot perform RESET_INEM_SESSION (cross-domain denied)',
+    (role) => {
+      expect(hasPermission(role, Action.RESET_INEM_SESSION)).toBe(false);
+    },
+  );
+
+  // ── Compensation permissions (Stage 1 of the paid-staff rework) ────────────
+
+  it('EMERGENCY_COORDINATOR can perform MANAGE_COMPENSATION', () => {
+    expect(hasPermission(UserRole.EMERGENCY_COORDINATOR, Action.MANAGE_COMPENSATION)).toBe(true);
+  });
+
+  it('EMERGENCY_OPERATIONAL cannot perform MANAGE_COMPENSATION — a colleague’s pay is not everyone’s business', () => {
+    expect(hasPermission(UserRole.EMERGENCY_OPERATIONAL, Action.MANAGE_COMPENSATION)).toBe(false);
+  });
+
+  // ── Transport permissions (#219, #225) ──────────────────────────────────────
+
+  it.each([
+    Action.MANAGE_TRANSPORT_REQUESTS,
+    Action.MANAGE_PATIENTS,
+    Action.VIEW_PATIENT_IDENTITY,
+    Action.MANAGE_TREATMENT_PLANS,
+    Action.PLAN_TRANSPORT_TRIPS,
+    Action.MANAGE_TRANSPORT_CONFIG,
+  ])('TRANSPORT_COORDINATOR can %s', (action) => {
+    expect(hasPermission(UserRole.TRANSPORT_COORDINATOR, action)).toBe(true);
+  });
+
+  it.each([Action.EMERGENCY_OPERATION, Action.MANAGE_EMERGENCY_CONFIG, Action.MANAGE_LOGISTICS])(
+    'TRANSPORT_COORDINATOR cannot %s (emergency/logistics-only routes stay refused)',
+    (action) => {
+      expect(hasPermission(UserRole.TRANSPORT_COORDINATOR, action)).toBe(false);
+    },
+  );
+
+  it.each([
+    Action.MANAGE_TRANSPORT_REQUESTS,
+    Action.MANAGE_PATIENTS,
+    Action.VIEW_PATIENT_IDENTITY,
+    Action.MANAGE_TREATMENT_PLANS,
+    Action.PLAN_TRANSPORT_TRIPS,
+    Action.MANAGE_TRANSPORT_CONFIG,
+  ])('EMERGENCY_COORDINATOR cannot %s (transport routes stay refused)', (action) => {
+    expect(hasPermission(UserRole.EMERGENCY_COORDINATOR, action)).toBe(false);
+  });
+
+  it('EMERGENCY_COORDINATOR and TRANSPORT_COORDINATOR may be held by the same person, each keeping their own routes', () => {
+    const both = [UserRole.EMERGENCY_COORDINATOR, UserRole.TRANSPORT_COORDINATOR];
+    expect(hasPermission(both, Action.MANAGE_EMERGENCY_CONFIG)).toBe(true);
+    expect(hasPermission(both, Action.MANAGE_TRANSPORT_REQUESTS)).toBe(true);
+  });
+
+  it('MANAGE_PATIENTS does not imply VIEW_PATIENT_IDENTITY — the two are independently grantable', () => {
+    // Simulate a role holding MANAGE_PATIENTS but not the narrower identity
+    // action, to prove hasPermission never infers one from the other.
+    const permissions = ROLE_PERMISSIONS[UserRole.TRANSPORT_COORDINATOR];
+    const identityIndex = permissions.indexOf(Action.VIEW_PATIENT_IDENTITY);
+    permissions.splice(identityIndex, 1);
+    expect(hasPermission(UserRole.TRANSPORT_COORDINATOR, Action.MANAGE_PATIENTS)).toBe(true);
+    expect(hasPermission(UserRole.TRANSPORT_COORDINATOR, Action.VIEW_PATIENT_IDENTITY)).toBe(false);
+    // Restore.
+    permissions.splice(identityIndex, 0, Action.VIEW_PATIENT_IDENTITY);
+  });
+
   // Scenario 3: new emergency action added → EMERGENCY_OPERATIONAL gains it after mapping
   it('new emergency action is accessible to EMERGENCY_OPERATIONAL once added to ROLE_PERMISSIONS', () => {
     const DISPATCH_AMBULANCE = 'DISPATCH_AMBULANCE' as Action;
@@ -82,21 +266,93 @@ describe('hasPermission', () => {
   });
 });
 
+// ── Multi-role union ─────────────────────────────────────────────────────────
+//
+// A person now holds a *set* of roles (#multi-role) — an Emergency
+// Coordinator who is also a System Administrator, or also Emergency
+// Operational. Permissions are the union: holding any one role that grants an
+// action is enough, and a second role never takes an action away.
+
+describe('hasPermission — multi-role union', () => {
+  const OPS_AND_LOGISTICS = [UserRole.EMERGENCY_OPERATIONAL, UserRole.LOGISTICS_COORDINATOR];
+
+  it('unions capabilities across roles', () => {
+    expect(hasPermission(OPS_AND_LOGISTICS, Action.SUBMIT_AVAILABILITY)).toBe(true); // from OPERATIONAL
+    expect(hasPermission(OPS_AND_LOGISTICS, Action.MANAGE_LOGISTICS)).toBe(true); // from LOGISTICS
+  });
+
+  it('a second role never subtracts from the first', () => {
+    expect(
+      hasPermission([UserRole.EMERGENCY_COORDINATOR, UserRole.EMERGENCY_OPERATIONAL], Action.MANAGE_PERSONNEL),
+    ).toBe(true);
+  });
+
+  it('grants nothing no held role grants', () => {
+    expect(hasPermission(OPS_AND_LOGISTICS, Action.MANAGE_USERS)).toBe(false);
+    expect(hasPermission(OPS_AND_LOGISTICS, Action.MANAGE_EMERGENCY_CONFIG)).toBe(false);
+  });
+
+  it('SYSTEM_ADMIN anywhere in the set grants everything', () => {
+    Object.values(Action).forEach((action) => {
+      expect(hasPermission([UserRole.EMERGENCY_OPERATIONAL, UserRole.SYSTEM_ADMIN], action as Action)).toBe(true);
+    });
+  });
+
+  it('an empty set grants nothing', () => {
+    Object.values(Action).forEach((action) => {
+      expect(hasPermission([], action as Action)).toBe(false);
+    });
+  });
+
+  it('a single role and its one-element array agree for every action', () => {
+    Object.values(UserRole).forEach((role) => {
+      Object.values(Action).forEach((action) => {
+        expect(hasPermission([role as UserRole], action as Action)).toBe(
+          hasPermission(role as UserRole, action as Action),
+        );
+      });
+    });
+  });
+});
+
+describe('normalizeRoles', () => {
+  it('dedupes and canonicalises to UserRole declaration order', () => {
+    expect(
+      normalizeRoles([UserRole.LOGISTICS_COORDINATOR, UserRole.SYSTEM_ADMIN, UserRole.SYSTEM_ADMIN]),
+    ).toEqual([UserRole.SYSTEM_ADMIN, UserRole.LOGISTICS_COORDINATOR]);
+  });
+});
+
+describe('sameRoleSet', () => {
+  it('ignores order and duplicates but not membership', () => {
+    const a = UserRole.EMERGENCY_COORDINATOR;
+    const b = UserRole.LOGISTICS_COORDINATOR;
+    expect(sameRoleSet([a, b], [b, a])).toBe(true);
+    expect(sameRoleSet([a, a], [a])).toBe(true);
+    expect(sameRoleSet([a, b], [a, a])).toBe(false); // the length-only-compare trap
+    expect(sameRoleSet([a], [a, b])).toBe(false);
+  });
+});
+
 // ── ROLE_METADATA tests ───────────────────────────────────────────────────────
+//
+// `displayName`/`description` moved to the frontend catalogue in #180 phase
+// 2 (`accountRole.*`/`accountRoleDescription.*` in `i18n/labels.ts`, covered
+// by that file's own exhaustive-coverage test) — `domain` is the one field
+// that stays here, since it groups roles for permission logic rather than
+// for display.
 
 describe('ROLE_METADATA', () => {
-  it('every role has a displayName, description and domain', () => {
+  it('every role has a domain', () => {
     Object.values(UserRole).forEach((role) => {
       const meta = ROLE_METADATA[role as UserRole];
       expect(meta).toBeDefined();
-      expect(meta.displayName).toBeTruthy();
-      expect(meta.description).toBeTruthy();
       expect(meta.domain).toBeTruthy();
     });
   });
 
-  it('System Administrator display name is correct', () => {
-    expect(ROLE_METADATA[UserRole.SYSTEM_ADMIN].displayName).toBe('System Administrator');
+  it('the System Administrator role is in the system domain', () => {
+    expect(ROLE_METADATA[UserRole.SYSTEM_ADMIN].domain).toBe('system');
   });
 });
 
@@ -110,12 +366,12 @@ function spyReflectorWith(reflector: Reflector, fn: MetadataMock): void {
   (spy as jest.Mock).mockImplementation(fn);
 }
 
-function makeCtx(role: UserRole | null): ExecutionContext {
+function makeCtx(roles: UserRole[] | null): ExecutionContext {
   return {
     getHandler: jest.fn(),
     getClass: jest.fn(),
     switchToHttp: jest.fn().mockReturnValue({
-      getRequest: jest.fn().mockReturnValue({ user: role ? { role } : null }),
+      getRequest: jest.fn().mockReturnValue({ user: roles ? { roles } : null }),
     }),
   } as unknown as ExecutionContext;
 }
@@ -130,42 +386,96 @@ describe('RolesGuard', () => {
   it('allows all requests when no roles or actions required', () => {
     const guard = new RolesGuard(reflector);
     jest.spyOn(reflector, 'getAllAndOverride').mockReturnValue(undefined);
-    expect(guard.canActivate(makeCtx(UserRole.EMERGENCY_OPERATIONAL))).toBe(true);
+    expect(guard.canActivate(makeCtx([UserRole.EMERGENCY_OPERATIONAL]))).toBe(true);
   });
 
   it('SYSTEM_ADMIN passes action-based guard for MANAGE_USERS', () => {
     const guard = new RolesGuard(reflector);
     spyReflectorWith(reflector, (key) => key === ACTIONS_KEY ? [Action.MANAGE_USERS] : undefined);
-    expect(guard.canActivate(makeCtx(UserRole.SYSTEM_ADMIN))).toBe(true);
+    expect(guard.canActivate(makeCtx([UserRole.SYSTEM_ADMIN]))).toBe(true);
   });
 
   it('EMERGENCY_OPERATIONAL is denied for MANAGE_USERS (Scenario 2)', () => {
     const guard = new RolesGuard(reflector);
     spyReflectorWith(reflector, (key) => key === ACTIONS_KEY ? [Action.MANAGE_USERS] : undefined);
-    expect(guard.canActivate(makeCtx(UserRole.EMERGENCY_OPERATIONAL))).toBe(false);
+    expect(guard.canActivate(makeCtx([UserRole.EMERGENCY_OPERATIONAL]))).toBe(false);
   });
 
   it('EMERGENCY_COORDINATOR passes MANAGE_EMERGENCY_CONFIG guard (Scenario 4)', () => {
     const guard = new RolesGuard(reflector);
     spyReflectorWith(reflector, (key) => key === ACTIONS_KEY ? [Action.MANAGE_EMERGENCY_CONFIG] : undefined);
-    expect(guard.canActivate(makeCtx(UserRole.EMERGENCY_COORDINATOR))).toBe(true);
+    expect(guard.canActivate(makeCtx([UserRole.EMERGENCY_COORDINATOR]))).toBe(true);
   });
 
   it('EMERGENCY_COORDINATOR is denied for MANAGE_LOGISTICS (Scenario 4 cross-domain)', () => {
     const guard = new RolesGuard(reflector);
     spyReflectorWith(reflector, (key) => key === ACTIONS_KEY ? [Action.MANAGE_LOGISTICS] : undefined);
-    expect(guard.canActivate(makeCtx(UserRole.EMERGENCY_COORDINATOR))).toBe(false);
+    expect(guard.canActivate(makeCtx([UserRole.EMERGENCY_COORDINATOR]))).toBe(false);
   });
 
   it('SYSTEM_ADMIN passes role-based guard (Scenario 1)', () => {
     const guard = new RolesGuard(reflector);
     spyReflectorWith(reflector, (key) => key === ROLES_KEY ? [UserRole.SYSTEM_ADMIN] : undefined);
-    expect(guard.canActivate(makeCtx(UserRole.SYSTEM_ADMIN))).toBe(true);
+    expect(guard.canActivate(makeCtx([UserRole.SYSTEM_ADMIN]))).toBe(true);
   });
 
-  it('returns false when user has no role', () => {
+  it('returns false when user has no roles', () => {
     const guard = new RolesGuard(reflector);
     spyReflectorWith(reflector, (key) => key === ACTIONS_KEY ? [Action.MANAGE_USERS] : undefined);
     expect(guard.canActivate(makeCtx(null))).toBe(false);
+  });
+
+  it('returns false when user holds an empty role list', () => {
+    const guard = new RolesGuard(reflector);
+    spyReflectorWith(reflector, (key) => key === ACTIONS_KEY ? [Action.MANAGE_USERS] : undefined);
+    expect(guard.canActivate(makeCtx([]))).toBe(false);
+  });
+
+  it('a dual-role user passes an @Actions guard satisfied by only one of their roles', () => {
+    const guard = new RolesGuard(reflector);
+    spyReflectorWith(reflector, (key) => key === ACTIONS_KEY ? [Action.MANAGE_LOGISTICS] : undefined);
+    expect(
+      guard.canActivate(makeCtx([UserRole.EMERGENCY_OPERATIONAL, UserRole.LOGISTICS_COORDINATOR])),
+    ).toBe(true);
+  });
+
+  it('@Actions with two actions is still AND, satisfied across two different roles', () => {
+    const guard = new RolesGuard(reflector);
+    spyReflectorWith(reflector, (key) =>
+      key === ACTIONS_KEY ? [Action.MANAGE_LOGISTICS, Action.SUBMIT_AVAILABILITY] : undefined,
+    );
+    expect(
+      guard.canActivate(makeCtx([UserRole.EMERGENCY_OPERATIONAL, UserRole.LOGISTICS_COORDINATOR])),
+    ).toBe(true);
+  });
+
+  it('@Roles passes when the user holds one of several listed roles', () => {
+    const guard = new RolesGuard(reflector);
+    spyReflectorWith(reflector, (key) =>
+      key === ROLES_KEY ? [UserRole.SYSTEM_ADMIN, UserRole.EMERGENCY_COORDINATOR] : undefined,
+    );
+    expect(
+      guard.canActivate(makeCtx([UserRole.EMERGENCY_OPERATIONAL, UserRole.EMERGENCY_COORDINATOR])),
+    ).toBe(true);
+  });
+
+  it('TRANSPORT_COORDINATOR is denied for an emergency-only @Actions guard (#225)', () => {
+    const guard = new RolesGuard(reflector);
+    spyReflectorWith(reflector, (key) => (key === ACTIONS_KEY ? [Action.MANAGE_EMERGENCY_CONFIG] : undefined));
+    expect(guard.canActivate(makeCtx([UserRole.TRANSPORT_COORDINATOR]))).toBe(false);
+  });
+
+  it('EMERGENCY_COORDINATOR is denied for a transport-only @Actions guard (#225)', () => {
+    const guard = new RolesGuard(reflector);
+    spyReflectorWith(reflector, (key) => (key === ACTIONS_KEY ? [Action.MANAGE_TRANSPORT_REQUESTS] : undefined));
+    expect(guard.canActivate(makeCtx([UserRole.EMERGENCY_COORDINATOR]))).toBe(false);
+  });
+
+  it('@Roles fails on an empty intersection', () => {
+    const guard = new RolesGuard(reflector);
+    spyReflectorWith(reflector, (key) => key === ROLES_KEY ? [UserRole.SYSTEM_ADMIN] : undefined);
+    expect(
+      guard.canActivate(makeCtx([UserRole.EMERGENCY_OPERATIONAL, UserRole.LOGISTICS_COORDINATOR])),
+    ).toBe(false);
   });
 });

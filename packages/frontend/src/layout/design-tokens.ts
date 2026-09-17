@@ -13,6 +13,19 @@
 
 // ─── Brand colors ────────────────────────────────────────────────────────────
 export const colorRedCrossRed = '#ED1B24';
+/**
+ * The red to put white text on.
+ *
+ * Measured, not chosen: white on `#ED1B24` is **4.39:1**, which clears WCAG AA
+ * only for large text (bold ≥ 18.66px / normal ≥ 24px). White on `#B01218` is
+ * **7.2:1** and clears AA at every size.
+ *
+ * So the rule for any red surface carrying white text is: `colorRedCrossRed`
+ * for a bold headline and nothing else; `colorRedCrossRedDark` wherever a
+ * caption, a chip or ordinary body text sits on red. Live mode's chrome is all
+ * dark red for exactly this reason — a crew reads it at arm's length, in a
+ * moving vehicle, sometimes in sunlight.
+ */
 export const colorRedCrossRedDark = '#B01218';
 export const colorRedCrossRedLight = '#F8878B';
 
@@ -85,9 +98,90 @@ export const borderRadiusLarge = 12; // px
 export const elevationCard = 1;
 export const elevationAppBar = 2;
 
+// ─── Activity category colors ──────────────────────────────────────────────────
+/**
+ * One color per activity category, used everywhere `EventReportType` or
+ * `AvailabilityWindowCategory` is shown — the two enums are deliberately the
+ * same three values (see the doc comment on `EventReportType` in
+ * `@redinfo/shared`), so report screens, schedules and availability windows
+ * all read the same color for the same category. See `CategoryChip` in
+ * `components/CategoryChip.tsx`.
+ *
+ * Confirmed with the delegation 2026-08-23: new, non-overlapping hues rather
+ * than reusing the semantic `error`/`warning`/`success`/`info` slots above,
+ * which the rest of the app already uses for status (published/open/ok vs.
+ * declined/holiday/low-stock) — a category color and a status color are
+ * never the same hue anywhere in the app.
+ */
+export const colorCategoryEmergency = colorRedCrossRed;
+/**
+ * `#00897B`, not the original `#0E7C86`: the original measures OKLCH chroma
+ * 0.089, under the 0.10 floor the `dataviz` skill's palette checker enforces
+ * — at chart scale (a 14px bar segment, a 10px legend swatch) it drifts
+ * toward grey and stops doing identity work. Confirmed with the delegation
+ * 2026-08-28 alongside the statistics dashboards
+ * (docs/plans/estatisticas-dashboards.md §6) that introduced the check.
+ */
+export const colorCategoryLocalSupport = '#00897B'; // teal
+export const colorCategoryCneSupport = '#6B4FA0'; // violet
+/**
+ * The remaining two `VolunteerActivityType` values that never appear as an
+ * `EventReportType`/`AvailabilityWindowCategory` — only the statistics
+ * dashboards' "hours by activity type" chart needs them. Same palette family
+ * as the three above (validated together, see the design doc §6).
+ */
+export const colorCategoryMeeting = '#B26A00'; // amber
+export const colorCategoryTraining = '#1F6FB2'; // blue
+/** `VolunteerActivityType.OTHER` — de-emphasis grey, not a categorical slot. */
+export const colorCategoryOther = colorGrey500;
+
+// ─── Statistics chart tokens ────────────────────────────────────────────────
+/**
+ * Sequential scale (light → dark, one hue) for the activation heatmap in
+ * `docs/plans/estatisticas-dashboards.md` §6 — the lightest step legitimately
+ * means "near zero", never "no data".
+ */
+export const colorSequentialScale = [
+  '#FDE7E8',
+  '#FAC7C9',
+  '#F59BA0',
+  '#EF6B72',
+  '#ED1B24',
+  '#C41520',
+  '#8C0E13',
+] as const;
+
+/** Single-series ranked bars (localities, hospitals, outcomes, km): one colour for every bar. */
+export const colorChartSingleSeries = colorRedCrossRed;
+
+// ─── Transport planning journey identity (#247 stage 1) ────────────────────
+/**
+ * One hue per journey, cycling every 8 — see
+ * `docs/plans/planeamento-transportes-redesign.md` §4. Identity only:
+ * direction is a shape (`journeyColorForOrdinal`'s callers draw outbound
+ * solid, return dashed), status is an outline, mobility stays an icon. Never
+ * `colorRedCrossRed` — brand red stays reserved for a problem (over capacity,
+ * a crew shortfall, a missed arrival window), so a journey drawn in it would
+ * train the planner to stop noticing it.
+ *
+ * Fixed by the delegation 2026-08 alongside the statistics dashboards'
+ * categorical palette: the eight hold their separation under deuteranopia
+ * and in greyscale, which matters here because the crew sheet prints.
+ */
+export const journeyColorRamp = [
+  '#1F6FB2',
+  '#00897B',
+  '#B26A00',
+  '#6B4FA0',
+  '#C2185B',
+  '#2E7D32',
+  '#0097A7',
+  '#8D6E63',
+] as const;
+
 // ─── Logo assets ──────────────────────────────────────────────────────────────
 /** Primary local path for the full Delegação de Campo logotype (/public). */
-export const logoDelegacaoCampoUrl = '/logo-delegacao-campo.jpg';
+export const logoDelegacaoCampoUrl = '/logo-delegacao.jpg';
 
 /** Remote URL fallback for the full Delegação de Campo logotype (HTTPS). */
 export const logoDelegacaoCampoRemoteUrl =

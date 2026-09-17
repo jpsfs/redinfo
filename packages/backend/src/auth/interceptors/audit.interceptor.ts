@@ -35,7 +35,7 @@ export class AuditInterceptor implements NestInterceptor {
         this.logger.log(
           JSON.stringify({
             userId: user?.id,
-            role: user?.role,
+            roles: user?.roles,
             method: req.method,
             path: req.path,
             requiredActions: actions ?? [],

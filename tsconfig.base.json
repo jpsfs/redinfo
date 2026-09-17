@@ -12,6 +12,9 @@
     "declaration": true,
     "declarationMap": true,
     "sourceMap": true,
-    "baseUrl": "."
+    "baseUrl": ".",
+    "paths": {
+      "@redinfo/shared": ["packages/shared/src/index.ts"]
+    }
   }
 }

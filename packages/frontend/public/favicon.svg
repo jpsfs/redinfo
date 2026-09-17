@@ -1,5 +1,13 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
-  <rect width="100" height="100" fill="#ED1B24"/>
-  <rect x="40" y="15" width="20" height="70" fill="white"/>
-  <rect x="15" y="40" width="70" height="20" fill="white"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="RedInfo">
+  <!--
+    Red cross centered on a white background, generously padded so the mark
+    stays legible at 16px (browser tab) and survives the circular/squircle
+    crop most Android launchers and iOS apply to home-screen icons — the
+    cross's outer corners sit well inside the ~80%-diameter "safe zone" that
+    maskable icons are expected to respect (see icons/icon-maskable-512.png,
+    rendered from this same file).
+  -->
+  <rect width="100" height="100" fill="#FFFFFF"/>
+  <rect x="40" y="20" width="20" height="60" fill="#ED1B24"/>
+  <rect x="20" y="40" width="60" height="20" fill="#ED1B24"/>
 </svg>

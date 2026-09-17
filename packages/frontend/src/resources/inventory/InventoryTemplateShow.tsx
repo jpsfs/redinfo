@@ -22,22 +22,25 @@ import {
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import LocalShippingIcon from '@mui/icons-material/LocalShipping';
 import DownloadIcon from '@mui/icons-material/Download';
+import { useT } from '../../i18n/useT';
 
 const API_URL = import.meta.env.VITE_API_URL ?? '';
 
 const AddItemButton = () => {
+  const t = useT();
   const record = useRecordContext();
   if (!record) return null;
   return (
     <CreateButton
       resource="inventory-template-items"
       state={{ record: { templateId: record.id } }}
-      label="Add Item"
+      label={t('inventoryTemplateShow.addItem')}
     />
   );
 };
 
 const ExportCsvButton = () => {
+  const t = useT();
   const record = useRecordContext();
   if (!record) return null;
   return (
@@ -49,7 +52,7 @@ const ExportCsvButton = () => {
       target="_blank"
       rel="noopener noreferrer"
     >
-      Export CSV
+      {t('inventoryTemplateShow.exportCsv')}
     </Button>
   );
 };
@@ -60,79 +63,83 @@ const InventoryTemplateShowActions = () => (
   </TopToolbar>
 );
 
-const ItemTypeChip = ({ type }: { type: string }) => (
-  <Chip
-    size="small"
-    label={type === 'UNLIMITED' ? 'Unlimited' : 'Countable'}
-    color={type === 'UNLIMITED' ? 'secondary' : 'default'}
-    variant="outlined"
-  />
-);
+const ItemTypeChip = ({ type }: { type: string }) => {
+  const t = useT();
+  return (
+    <Chip
+      size="small"
+      label={type === 'UNLIMITED' ? t('inventoryTemplateShow.unlimited') : t('inventoryTemplateShow.countable')}
+      color={type === 'UNLIMITED' ? 'secondary' : 'default'}
+      variant="outlined"
+    />
+  );
+};
 
-export const InventoryTemplateShow = () => (
-  <Show actions={<InventoryTemplateShowActions />}>
-    <SimpleShowLayout>
-      <FunctionField
-        label="Vehicle Type"
-        render={(record: { vehicleType?: string }) =>
-          record.vehicleType === 'EMERGENCY' ? (
-            <Chip
-              label="Emergency"
-              color="error"
-              icon={<DirectionsCarIcon fontSize="small" />}
-            />
-          ) : (
-            <Chip
-              label="Transport"
-              color="primary"
-              icon={<LocalShippingIcon fontSize="small" />}
-            />
-          )
-        }
-      />
-      <NumberField source="version" label="Template Version" />
-      <TextField source="notes" label="Notes" emptyText="—" />
+export const InventoryTemplateShow = () => {
+  const t = useT();
+  return (
+    <Show actions={<InventoryTemplateShowActions />}>
+      <SimpleShowLayout>
+        <FunctionField
+          source="vehicleType"
+          render={(record: { vehicleType?: string }) =>
+            record.vehicleType === 'EMERGENCY' ? (
+              <Chip
+                label={t('vehicleType.EMERGENCY')}
+                color="error"
+                icon={<DirectionsCarIcon fontSize="small" />}
+              />
+            ) : (
+              <Chip
+                label={t('vehicleType.TRANSPORT')}
+                color="primary"
+                icon={<LocalShippingIcon fontSize="small" />}
+              />
+            )
+          }
+        />
+        <NumberField source="version" />
+        <TextField source="notes" emptyText="—" />
 
-      <Divider sx={{ my: 2 }} />
+        <Divider sx={{ my: 2 }} />
 
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
-        <Typography variant="h6">Inventory Items</Typography>
-        <Box sx={{ display: 'flex', gap: 1 }}>
-          <ExportCsvButton />
-          <AddItemButton />
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 1 }}>
+          <Typography variant="h6">{t('inventoryTemplateShow.itemsHeading')}</Typography>
+          <Box sx={{ display: 'flex', gap: 1 }}>
+            <ExportCsvButton />
+            <AddItemButton />
+          </Box>
         </Box>
-      </Box>
 
-      <ReferenceManyField
-        reference="inventory-template-items"
-        target="templateId"
-        label={false}
-        sort={{ field: 'order', order: 'ASC' }}
-      >
-        <Datagrid rowClick="edit" bulkActionButtons={false}>
-          <TextField source="name" label="Item Name" />
-          <FunctionField
-            label="Type"
-            render={(record: { type?: string }) => (
-              <ItemTypeChip type={record.type ?? 'COUNTABLE'} />
-            )}
-          />
-          <FunctionField
-            label="Recommended Qty"
-            render={(record: { type?: string; recommendedQuantity?: number | null }) =>
-              record.type === 'UNLIMITED' ? (
-                <Chip size="small" label="∞ Unlimited" color="secondary" variant="outlined" />
-              ) : (
-                record.recommendedQuantity ?? 0
-              )
-            }
-          />
-          <TextField source="unit" label="Unit" />
-          <NumberField source="order" label="Order" />
-          <TextField source="notes" label="Notes" emptyText="—" />
-          <DeleteButton redirect={false} />
-        </Datagrid>
-      </ReferenceManyField>
-    </SimpleShowLayout>
-  </Show>
-);
+        <ReferenceManyField
+          reference="inventory-template-items"
+          target="templateId"
+          label={false}
+          sort={{ field: 'order', order: 'ASC' }}
+        >
+          <Datagrid rowClick="edit" bulkActionButtons={false}>
+            <TextField source="name" />
+            <FunctionField
+              source="type"
+              render={(record: { type?: string }) => <ItemTypeChip type={record.type ?? 'COUNTABLE'} />}
+            />
+            <FunctionField
+              source="recommendedQuantity"
+              render={(record: { type?: string; recommendedQuantity?: number | null }) =>
+                record.type === 'UNLIMITED' ? (
+                  <Chip size="small" label="∞" color="secondary" variant="outlined" />
+                ) : (
+                  record.recommendedQuantity ?? 0
+                )
+              }
+            />
+            <TextField source="unit" />
+            <NumberField source="order" />
+            <TextField source="notes" emptyText="—" />
+            <DeleteButton redirect={false} />
+          </Datagrid>
+        </ReferenceManyField>
+      </SimpleShowLayout>
+    </Show>
+  );
+};

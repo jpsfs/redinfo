@@ -1,0 +1,632 @@
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ApiBadRequestException,
+  ApiConflictException,
+  ApiForbiddenException,
+} from '../common/api-error.exception';
+import {
+  Action,
+  AssignmentAvailability,
+  AssignmentCompensationKind,
+  AvailabilityWindowRole,
+  availabilityEligibleRoles,
+  availabilityWindowLabel,
+  CERTIFICATION_LABEL,
+  formatRoleCapacity,
+  generatesVolunteerHours,
+  hasPermission,
+  holdsCertification,
+  isOnContractClock,
+  resolveAssignmentCompensation,
+  ScheduleAssignment,
+  ScheduleCandidate,
+  ScheduleCandidatesResponse,
+  ScheduleStatus,
+  ShiftDefinition,
+  roleCanTakeMore,
+  shiftsOverlap,
+} from '@redinfo/shared';
+import { PrismaService } from '../prisma/prisma.service';
+import { ShiftScheduleService } from '../availability/shift-schedule.service';
+import { PaidStaffScheduleService } from '../paid-staff-schedule/paid-staff-schedule.service';
+import { VolunteerHoursService } from '../volunteer-hours/volunteer-hours.service';
+import { toIsoDate } from '../utils/date.util';
+import {
+  CERT_HELD_SELECT,
+  today,
+  toHeldCertifications,
+  toSchedulePerson,
+} from '../users/certifications.util';
+import { CreateScheduleAssignmentDto, SelfAssignDto } from './dto/create-assignment.dto';
+import { SetShiftCompensationDto } from './dto/set-compensation.dto';
+import {
+  canSeeCompensation,
+  RequestUser,
+  ScheduleContext,
+  SchedulesService,
+  serializeAssignment,
+  shiftKey,
+} from './schedules.service';
+
+const ASSIGNMENT_INCLUDE = {
+  user: {
+    select: {
+      id: true,
+      firstName: true,
+      lastName: true,
+      certifications: { select: CERT_HELD_SELECT },
+    },
+  },
+  role: true,
+  assignedBy: { select: { id: true, firstName: true, lastName: true } },
+} as const;
+
+const PERSON_SELECT = {
+  id: true,
+  firstName: true,
+  lastName: true,
+  certifications: { select: CERT_HELD_SELECT },
+} as const;
+
+/**
+ * Putting people on shifts, and working out who could go on one.
+ *
+ * The governing rule of #161 lives here: **availability guides the schedule, it
+ * does not constrain it**. Cover is agreed by phone and in person as well as on
+ * the platform, so a coordinator may place anyone — including someone who never
+ * submitted, or who declared they had none. What the platform owes in return is
+ * honesty: every such assignment is stamped as an override, with who and when.
+ *
+ * A post's `requiredCertification` is enforceable, not absolute: a coordinator
+ * may still assign someone who lacks it, but only with a reason, recorded as
+ * `certificationOverrideReason`. Self-assignment has no such door — see
+ * `selfAssignBlockedReason` (shared).
+ */
+@Injectable()
+export class ScheduleAssignmentsService {
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly schedules: SchedulesService,
+    private readonly shiftSchedule: ShiftScheduleService,
+    private readonly paidStaffSchedule: PaidStaffScheduleService,
+    private readonly volunteerHours: VolunteerHoursService,
+  ) {}
+
+  async assign(
+    scheduleId: string,
+    dto: CreateScheduleAssignmentDto,
+    assignedById: string,
+    /**
+     * Whether the caller may see `compensation` on the response — see
+     * `canSeeCompensation` in `schedules.service.ts`. A required argument
+     * computed by each caller from the *actual* requesting viewer, not
+     * inferred here from, say, "this DTO has no compensation field today" —
+     * that is a property of the DTO's current shape, not an invariant, and
+     * would silently reopen the leak the day it changes. Defaults closed
+     * (`false`) only so the many existing unit fixtures that pass a bare
+     * assigner id — and never assert on this field — keep compiling; every
+     * real caller (the controller route, `selfAssign`) passes an explicit,
+     * per-viewer value.
+     */
+    canSeeCompensation = false,
+  ): Promise<ScheduleAssignment> {
+    const context = await this.schedules.loadContext(scheduleId);
+    const shift = this.assertShift(context, dto.date, dto.slot);
+    const role = this.assertRole(context, dto.roleId ?? null);
+
+    // SALARY is resolved, never chosen — a client asking for it explicitly
+    // is almost certainly a bug (echoing a redacted read back as a write),
+    // not a real intent, so this refuses rather than silently letting
+    // `resolveAssignmentCompensation` override it.
+    if (dto.compensation === AssignmentCompensationKind.SALARY) {
+      throw new BadRequestException(
+        'SALARY cannot be set explicitly — it is resolved from the contract clock.',
+      );
+    }
+
+    const person = await this.prisma.user.findUnique({
+      where: { id: dto.userId },
+      select: { ...PERSON_SELECT, isActive: true, roles: true },
+    });
+    if (!person) throw new NotFoundException(`User ${dto.userId} not found`);
+    const personName = `${person.firstName} ${person.lastName}`;
+    if (!person.isActive) {
+      throw new ApiBadRequestException(
+        'ASSIGNMENT_PERSON_INACTIVE',
+        `${personName} is not an active member and cannot be scheduled.`,
+        { person: personName },
+      );
+    }
+    const eligibleRoles = availabilityEligibleRoles();
+    if (!person.roles.some((role) => eligibleRoles.includes(role as never))) {
+      throw new ApiBadRequestException(
+        'ASSIGNMENT_PERSON_NOT_FIELD_PERSONNEL',
+        `${personName} is not field personnel and cannot be scheduled.`,
+        { person: personName },
+      );
+    }
+
+    // Every requirement is overridable, the driver post included — but never
+    // without a reason, recorded on the assignment rather than merely implied
+    // by it existing.
+    const overrideReason = dto.overrideReason?.trim() || undefined;
+    const meetsRequirement =
+      !role?.requiredCertification ||
+      holdsCertification(toHeldCertifications(person.certifications), role.requiredCertification, today());
+    if (!meetsRequirement && !overrideReason) {
+      const certification = CERTIFICATION_LABEL[role!.requiredCertification!];
+      throw new ApiBadRequestException(
+        'ASSIGNMENT_CERTIFICATION_REQUIRED',
+        `${role!.name} requires the ${certification} certification, ` +
+          `which ${personName} does not hold. Assigning them needs a reason.`,
+        { role: role!.name, certification, person: personName },
+      );
+    }
+
+    const onShift = await this.prisma.scheduleAssignment.findMany({
+      where: { scheduleId, date: parseDate(dto.date), slot: dto.slot },
+      include: { role: true, user: { select: PERSON_SELECT } },
+    });
+
+    const already = onShift.find((row) => row.userId === dto.userId);
+    if (already) {
+      throw new ApiConflictException(
+        'ASSIGNMENT_ALREADY_ON_SHIFT',
+        `${personName} is already on this shift` +
+          (already.role ? ` as ${already.role.name}` : '') +
+          ' — one person cannot hold two places on one shift.',
+        { person: personName, role: already.role?.name ?? '' },
+      );
+    }
+
+    if (role) {
+      const filled = onShift.filter((row) => row.roleId === role.id).length;
+      if (!roleCanTakeMore(role, filled)) {
+        const capacity = formatRoleCapacity(role.maxPeople);
+        throw new ApiConflictException(
+          'ASSIGNMENT_ROLE_FULL',
+          `${role.name} is full on this shift (${capacity}). Remove someone first, or use another role.`,
+          { role: role.name, capacity },
+        );
+      }
+    }
+
+    // Computed, never taken from the request: whether this contradicts what the
+    // person submitted is a finding, not a claim the caller gets to make.
+    const submission = await this.prisma.availabilitySubmission.findFirst({
+      where: {
+        windowId: context.window.id,
+        userId: dto.userId,
+        date: parseDate(dto.date),
+        slot: dto.slot,
+      },
+      select: { id: true },
+    });
+
+    // D3: resolved and stored once, here, at write time — never derived at
+    // read. A later contract edit must never retroactively reclassify this
+    // shift.
+    const onContractClock = await this.paidStaffSchedule.isOnClock(
+      dto.userId,
+      dto.date,
+      shift.startMinute,
+      shift.endMinute,
+    );
+    const compensation = resolveAssignmentCompensation({
+      explicit: dto.compensation,
+      onContractClock,
+    });
+
+    const created = await this.prisma.scheduleAssignment.create({
+      data: {
+        scheduleId,
+        date: parseDate(dto.date),
+        slot: dto.slot,
+        userId: dto.userId,
+        roleId: role?.id ?? null,
+        isOverride: submission === null,
+        certificationOverrideReason: meetsRequirement ? null : (overrideReason as string),
+        compensation,
+        // Only stamped when the caller actually made an explicit call —
+        // otherwise this row is still at its resolved default, nobody's
+        // decision to record.
+        ...(dto.compensation !== undefined
+          ? { compensationSetById: assignedById, compensationSetAt: new Date() }
+          : {}),
+        assignedById,
+      },
+      include: ASSIGNMENT_INCLUDE,
+    });
+
+    const declined = await this.schedules.loadDeclinedUserIds(context.window.id);
+    return serializeAssignment(
+      created,
+      dto.date,
+      {
+        submitted: submission !== null,
+        declined: declined.has(dto.userId),
+      },
+      canSeeCompensation,
+    );
+  }
+
+  /**
+   * Someone adding *themselves* to a published schedule.
+   *
+   * A published rota is posted to the whole platform, and anyone who sees an
+   * open place they can cover may take it. Three things make this safe to hand
+   * to every member rather than only to coordinators:
+   *
+   *  - the caller is always the subject, so nobody can be volunteered by
+   *    someone else;
+   *  - the schedule has to be published, so nobody walks into a draft;
+   *  - every rule a coordinator is held to still applies, the driver
+   *    certification above all.
+   *
+   * It is deliberately one-way: filling an open place is the member's to do,
+   * vacating it is not. Coming off a rota other people are relying on goes
+   * through a coordinator, who can find the replacement at the same time.
+   *
+   * And only forwards in time. Signing up says "I will be there"; a shift
+   * that has already happened cannot be volunteered for, only reported on,
+   * which is what volunteer hours are for. Correcting a past rota afterwards
+   * is real work, but it is a coordinator's — hence `MANAGE_SCHEDULES` as the
+   * one key that opens this door, held by administrators and emergency
+   * coordinators alike.
+   */
+  async selfAssign(
+    scheduleId: string,
+    dto: SelfAssignDto,
+    user: RequestUser,
+  ): Promise<ScheduleAssignment> {
+    const context = await this.schedules.loadContext(scheduleId);
+    if (context.status !== ScheduleStatus.PUBLISHED) {
+      throw new ApiForbiddenException(
+        'SELF_ASSIGN_SCHEDULE_NOT_PUBLISHED',
+        'This schedule has not been published yet, so it is not open to sign up to.',
+      );
+    }
+
+    // ISO dates compare correctly as strings, so this needs no parsing and
+    // carries no timezone of its own — `today()` is already the app's day.
+    if (dto.date < today() && !hasPermission(user.roles, Action.MANAGE_SCHEDULES)) {
+      throw new ApiForbiddenException(
+        'SELF_ASSIGN_PAST_SHIFT',
+        'This shift has already passed, so it is no longer open to sign up to. ' +
+          'Ask a coordinator if you were there and it is missing from the rota.',
+      );
+    }
+
+    const shift = this.assertShift(context, dto.date, dto.slot);
+
+    // Their own duties elsewhere on this schedule: a coordinator may knowingly
+    // create a clash mid-swap, but nobody should be able to double-book
+    // themselves by accident.
+    const own = await this.prisma.scheduleAssignment.findMany({
+      where: { scheduleId, userId: user.id },
+      select: { date: true, slot: true },
+    });
+    for (const other of own) {
+      const otherDate = toIsoDate(other.date);
+      if (otherDate !== dto.date || other.slot === dto.slot) continue;
+      const otherShift = context.shifts.get(shiftKey(otherDate, other.slot));
+      if (otherShift && shiftsOverlap(shift, otherShift)) {
+        throw new ApiConflictException(
+          'SELF_ASSIGN_OVERLAPPING_SHIFT',
+          `You are already on ${otherShift.label} that day, which overlaps this shift.`,
+          { shift: otherShift.label },
+        );
+      }
+    }
+
+    // Real per-viewer check, not an assumption that self-assign can never
+    // carry a compensation call: `SelfAssignDto` has no such field *today*,
+    // but that is a property of the DTO, not a guarantee — computing this
+    // from `user`'s actual roles means it stays correct if that ever changes.
+    return this.assign(scheduleId, { ...dto, userId: user.id }, user.id, canSeeCompensation(user));
+  }
+
+  async unassign(scheduleId: string, assignmentId: string): Promise<{ id: string }> {
+    const row = await this.prisma.scheduleAssignment.findUnique({
+      where: { id: assignmentId },
+      select: { id: true, scheduleId: true },
+    });
+    if (!row || row.scheduleId !== scheduleId) {
+      throw new NotFoundException(`Assignment ${assignmentId} not found on schedule ${scheduleId}`);
+    }
+    await this.prisma.scheduleAssignment.delete({ where: { id: assignmentId } });
+    return { id: assignmentId };
+  }
+
+  /**
+   * A coordinator's classification for a whole shift's crew, in one call
+   * (`Action.MANAGE_COMPENSATION`) — the edit path #223/#245 never had:
+   * `assign()` only wrote compensation once, at creation, with no way back
+   * in afterwards. Batches the clock lookup across every assignee via
+   * `PaidStaffScheduleService.loadClockContext` rather than awaiting
+   * `isOnClock` once per assignment — the thing that made the crew dialog
+   * untenable over a real board.
+   *
+   * Validates every entry before writing any of them: an assignee on their
+   * contract's clock is rejected outright (D2's veto — silently dropping a
+   * coordinator's explicit instruction would be worse than telling them why
+   * it didn't apply), and a violation partway through a batch must not leave
+   * the earlier half already written.
+   */
+  async setCompensation(
+    scheduleId: string,
+    date: string,
+    slot: number,
+    dto: SetShiftCompensationDto,
+    actorId: string,
+  ): Promise<ScheduleAssignment[]> {
+    const assignmentIds = dto.assignments.map((entry) => entry.assignmentId);
+    const rows = await this.prisma.scheduleAssignment.findMany({
+      where: { id: { in: assignmentIds }, scheduleId, date: parseDate(date), slot },
+      include: ASSIGNMENT_INCLUDE,
+    });
+    if (rows.length !== assignmentIds.length) {
+      throw new NotFoundException('One or more assignments were not found on this shift.');
+    }
+    const byId = new Map(rows.map((row) => [row.id, row]));
+
+    const context = await this.schedules.loadContext(scheduleId);
+    const shift = this.assertShift(context, date, slot);
+
+    const clockContext = await this.paidStaffSchedule.loadClockContext(
+      rows.map((row) => row.userId),
+      { start: date, end: date },
+    );
+
+    // Pass 1: resolve and validate every entry before writing any of them.
+    const resolved = dto.assignments.map((entry) => {
+      const row = byId.get(entry.assignmentId)!;
+      if (entry.compensation === AssignmentCompensationKind.SALARY) {
+        throw new BadRequestException(
+          'SALARY cannot be set explicitly — it is resolved from the contract clock.',
+        );
+      }
+      const userClock = clockContext.get(row.userId) ?? { contracts: [], blocks: [], overrides: [] };
+      const onContractClock = isOnContractClock({
+        contracts: userClock.contracts,
+        blocks: userClock.blocks,
+        overrides: userClock.overrides,
+        date,
+        startMinute: shift.startMinute,
+        endMinute: shift.endMinute,
+      });
+      if (onContractClock) {
+        throw new BadRequestException(
+          `${row.user.firstName} ${row.user.lastName} is on their contract's clock for this shift ` +
+            'and cannot be reclassified — it always resolves SALARY.',
+        );
+      }
+      return { row, compensation: resolveAssignmentCompensation({ explicit: entry.compensation, onContractClock: false }) };
+    });
+
+    // Pass 2: write. `reconcileEntryForCompensation` keeps any already-
+    // generated volunteer-hours entry in step with the new classification.
+    const updatedRows: (typeof rows)[number][] = [];
+    for (const { row, compensation } of resolved) {
+      const updatedRow = await this.prisma.scheduleAssignment.update({
+        where: { id: row.id },
+        data: { compensation, compensationSetById: actorId, compensationSetAt: new Date() },
+        include: ASSIGNMENT_INCLUDE,
+      });
+      await this.volunteerHours.reconcileEntryForCompensation({
+        assignmentId: row.id,
+        date,
+        newCompensation: compensation,
+        actorId,
+      });
+      updatedRows.push(updatedRow);
+    }
+
+    const [submissions, declined] = await Promise.all([
+      this.prisma.availabilitySubmission.findMany({
+        where: { windowId: context.window.id, date: parseDate(date), slot },
+        select: { userId: true },
+      }),
+      this.schedules.loadDeclinedUserIds(context.window.id),
+    ]);
+    const submittedUserIds = new Set(submissions.map((row) => row.userId));
+
+    return updatedRows.map((row) =>
+      serializeAssignment(
+        row,
+        date,
+        { submitted: submittedUserIds.has(row.userId), declined: declined.has(row.userId) },
+        true, // reachable only via the MANAGE_COMPENSATION-gated route
+      ),
+    );
+  }
+
+  /**
+   * Who the coordinator could put on this shift, availability first.
+   *
+   * `available` is the easy path — people who submitted for exactly this shift.
+   * `others` is everyone else eligible, each assignable but each an override.
+   * Nobody is excluded for lacking the role's `requiredCertification` — every
+   * requirement is overridable now, so the client checks each candidate's own
+   * `certifications` against it and flags rather than hides them.
+   */
+  async getCandidates(
+    scheduleId: string,
+    date: string,
+    slot: number,
+    roleId?: string,
+  ): Promise<ScheduleCandidatesResponse> {
+    const context = await this.schedules.loadContext(scheduleId);
+    const shift = this.assertShift(context, date, slot);
+    // Validates roleId belongs to this window; nothing further is read from it.
+    if (roleId) this.assertRole(context, roleId);
+
+    const [roster, submissions, declined, assignments] = await Promise.all([
+      this.prisma.user.findMany({
+        where: { isActive: true, roles: { hasSome: availabilityEligibleRoles() as never[] } },
+        select: PERSON_SELECT,
+        orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+      }),
+      this.prisma.availabilitySubmission.findMany({
+        where: { windowId: context.window.id, date: parseDate(date), slot },
+        select: { userId: true },
+      }),
+      this.schedules.loadDeclinedUserIds(context.window.id),
+      this.prisma.scheduleAssignment.findMany({
+        where: { scheduleId },
+        include: { role: { select: { name: true } } },
+      }),
+    ]);
+
+    const submittedForShift = new Set(submissions.map((row) => row.userId));
+    const dutyCounts = new Map<string, number>();
+    const onThisShift = new Map<string, string | null>();
+    const byUserAndDate = new Map<string, Array<{ slot: number }>>();
+
+    for (const assignment of assignments) {
+      dutyCounts.set(assignment.userId, (dutyCounts.get(assignment.userId) ?? 0) + 1);
+      const assignmentDate = toIsoDate(assignment.date);
+      if (assignmentDate === date && assignment.slot === slot) {
+        onThisShift.set(assignment.userId, assignment.role?.name ?? null);
+      }
+      const key = `${assignment.userId}#${assignmentDate}`;
+      const bucket = byUserAndDate.get(key) ?? [];
+      bucket.push({ slot: assignment.slot });
+      byUserAndDate.set(key, bucket);
+    }
+
+    const available: ScheduleCandidate[] = [];
+    const others: ScheduleCandidate[] = [];
+    const asOf = today();
+
+    for (const personRow of roster) {
+      const person = toSchedulePerson(personRow, asOf);
+      const submitted = submittedForShift.has(person.id);
+
+      // No longer excluded when a role has a requirement they lack — every
+      // requirement is now overridable, so they are listed and flagged
+      // instead. `ScheduleCandidate.certifications` (via `SchedulePerson`)
+      // is what the assign dialog checks against `role.requiredCertification`.
+
+      const availability: AssignmentAvailability = submitted
+        ? 'submitted'
+        : declined.has(person.id)
+          ? 'declined'
+          : 'pending';
+
+      const candidate: ScheduleCandidate = {
+        ...person,
+        availability,
+        submittedForShift: submitted,
+        alreadyOnShift: onThisShift.has(person.id),
+        currentRoleName: onThisShift.get(person.id) ?? null,
+        dutyCount: dutyCounts.get(person.id) ?? 0,
+        conflictLabel: this.overlapLabel(context, byUserAndDate, person.id, date, shift),
+      };
+
+      if (submitted) available.push(candidate);
+      else others.push(candidate);
+    }
+
+    // Fewest duties first inside each group, then by name: the fair pick is the
+    // one at the top, and ties never reorder between reloads.
+    const byLoadThenName = (a: ScheduleCandidate, b: ScheduleCandidate) =>
+      a.dutyCount - b.dutyCount ||
+      a.lastName.localeCompare(b.lastName) ||
+      a.firstName.localeCompare(b.firstName);
+
+    available.sort(byLoadThenName);
+    others.sort(byLoadThenName);
+
+    return { available, others };
+  }
+
+  /** An overlapping duty this person already holds on the same day, if any. */
+  private overlapLabel(
+    context: ScheduleContext,
+    byUserAndDate: Map<string, Array<{ slot: number }>>,
+    userId: string,
+    date: string,
+    shift: ShiftDefinition,
+  ): string | null {
+    const sameDay = byUserAndDate.get(`${userId}#${date}`) ?? [];
+    for (const other of sameDay) {
+      if (other.slot === shift.slot) continue;
+      const otherShift = context.shifts.get(shiftKey(date, other.slot));
+      if (otherShift && shiftsOverlap(shift, otherShift)) {
+        return `Already on ${otherShift.label} this day`;
+      }
+    }
+    return null;
+  }
+
+  /**
+   * The shift must be one the window actually has that day. Reuses the window's
+   * own grid rather than re-deriving it from the day type — the whole reason
+   * `ShiftScheduleService` exists.
+   */
+  private assertShift(
+    context: ScheduleContext,
+    date: string,
+    slot: number,
+  ): ShiftDefinition & { date: string } {
+    const day = context.pattern.find((entry) => entry.date === date);
+    if (!day) {
+      const windowLabel = availabilityWindowLabel(context.window);
+      throw new ApiBadRequestException(
+        'ASSIGNMENT_DATE_OUTSIDE_WINDOW',
+        `${date} is outside ${windowLabel} (${context.window.startDate} – ${context.window.endDate})`,
+        { date, window: windowLabel, startDate: context.window.startDate, endDate: context.window.endDate },
+      );
+    }
+    this.shiftSchedule.assertSlotValidForPattern(day, slot);
+    return context.shifts.get(shiftKey(date, slot))!;
+  }
+
+  /**
+   * A window with roles schedules people *into* one: leaving it out would make
+   * the board unable to say where the person stands. A window with none takes
+   * no role at all.
+   */
+  private assertRole(
+    context: ScheduleContext,
+    roleId: string | null,
+  ): AvailabilityWindowRole | null {
+    if (context.roles.length === 0) {
+      if (roleId) {
+        const windowLabel = availabilityWindowLabel(context.window);
+        throw new ApiBadRequestException(
+          'ASSIGNMENT_WINDOW_HAS_NO_ROLES',
+          `${windowLabel} defines no roles — people are scheduled onto it without one.`,
+          { window: windowLabel },
+        );
+      }
+      return null;
+    }
+
+    if (!roleId) {
+      const roleNames = context.roles.map((role) => role.name).join(', ');
+      throw new ApiBadRequestException(
+        'ASSIGNMENT_ROLE_ID_REQUIRED',
+        `roleId is required: this window defines ${roleNames}.`,
+        { roles: roleNames },
+      );
+    }
+
+    const role = context.roles.find((entry) => entry.id === roleId);
+    if (!role) {
+      const windowLabel = availabilityWindowLabel(context.window);
+      throw new ApiBadRequestException(
+        'ASSIGNMENT_ROLE_NOT_IN_WINDOW',
+        `Role ${roleId} does not belong to ${windowLabel}`,
+        { window: windowLabel },
+      );
+    }
+    return role;
+  }
+}
+
+/** `@db.Date` columns round-trip through UTC midnight — never local midnight. */
+function parseDate(value: string): Date {
+  return new Date(`${value}T00:00:00.000Z`);
+}

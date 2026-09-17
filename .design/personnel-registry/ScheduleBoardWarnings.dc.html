@@ -1,0 +1,238 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
+  <style>
+    :root{
+      --red:#ED1B24; --redDark:#B01218;
+      --g50:#FAFAFA; --g100:#F5F5F5; --g200:#E0E0E0; --g400:#BDBDBD; --g500:#9E9E9E; --g700:#616161; --g900:#212121;
+      --err:#D32F2F; --errD:#A92626; --warn:#F57C00; --warnD:#C46300;
+      --ok:#388E3C; --okD:#2D7230; --info:#1976D2; --infoD:#145EA8;
+    }
+    body{margin:0;font-family:"Inter","Roboto","Helvetica Neue","Arial",sans-serif;color:var(--g900);background:var(--g100);}
+    a{color:var(--red);} a:hover{color:var(--redDark);}
+    .paper{background:#fff;border:1px solid var(--g200);border-radius:4px;}
+    .h6{font-size:1rem;font-weight:600;line-height:1.5;margin:0;}
+    .body2{font-size:.875rem;line-height:1.5;}
+    .cap{font-size:.75rem;line-height:1.5;}
+    .sec{color:var(--g700);} .dis{color:var(--g500);}
+    table{border-collapse:collapse;width:100%;}
+    th,td{padding:6px 16px;text-align:left;border-bottom:1px solid var(--g200);vertical-align:top;}
+    th{background:var(--g100);font-size:.875rem;font-weight:400;}
+    tr:last-child td{border-bottom:none;}
+    /* MUI Chip small */
+    .chip{display:inline-flex;align-items:center;gap:4px;height:24px;padding:0 8px;border-radius:12px;
+      font-size:.8125rem;font-weight:500;white-space:nowrap;border:1px solid transparent;}
+    .chip.plain{background:rgba(0,0,0,.08);color:var(--g900);}
+    .chip.ok{color:var(--ok);border-color:var(--ok);}
+    .chip.warnO{color:var(--warnD);border-color:var(--warn);}
+    .chip.errO{color:var(--err);border-color:var(--err);}
+    .chip.mute{color:var(--g700);border-color:var(--g400);}
+    .x{width:16px;height:16px;border-radius:8px;background:rgba(0,0,0,.26);color:#fff;
+      display:flex;align-items:center;justify-content:center;flex:none;}
+    .slot{display:flex;align-items:center;gap:8px;width:100%;min-height:32px;padding:0 8px;
+      border:1px dashed var(--g400);border-radius:8px;color:var(--g700);background:transparent;
+      font-size:.8125rem;font-family:inherit;font-weight:500;cursor:pointer;}
+    .note{display:flex;align-items:flex-start;gap:4px;margin-top:4px;}
+    .note .cap{line-height:1.35;}
+    .tile{display:flex;align-items:baseline;gap:8px;padding:8px 16px;background:#fff;
+      border:1px solid var(--g200);border-radius:4px;}
+    .tile .v{font-size:1.125rem;font-weight:700;}
+    .icon{width:14px;height:14px;flex:none;}
+    .cell{display:flex;flex-direction:column;gap:4px;min-width:170px;}
+  </style>
+</helmet>
+
+<div style="padding:24px;display:flex;flex-direction:column;gap:12px;">
+
+  <!-- Header -->
+  <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;">
+    <div>
+      <h1 class="h6" style="font-size:1.25rem;">Emergency · September 2026</h1>
+      <span class="body2 sec">Draft · last edited by Rui Barbosa</span>
+    </div>
+    <div style="display:flex;gap:8px;">
+      <div class="tile"><span class="v" style="color:var(--errD);">2</span><span class="cap sec" style="font-weight:600;">gaps</span></div>
+      <div class="tile"><span class="v" style="color:var(--warnD);">3</span><span class="cap sec" style="font-weight:600;">certification exceptions</span></div>
+    </div>
+  </div>
+
+  <!-- Board -->
+  <div class="paper" style="overflow:hidden;">
+    <table>
+      <thead>
+        <tr>
+          <th style="min-width:150px;"><strong>Date</strong></th>
+          <th style="min-width:130px;"><strong>Shift</strong></th>
+          <th><strong>Condutor</strong>
+            <div class="cap sec">1 person · requires Driver</div>
+          </th>
+          <th><strong>Chefe de Equipa</strong>
+            <div class="cap sec">1 person · requires TAS</div>
+          </th>
+          <th><strong>Socorrista</strong>
+            <div class="cap sec">up to 2 people · requires TAT</div>
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        <!-- Sat 12 Sep, day shift -->
+        <tr>
+          <td>
+            <div class="body2" style="font-weight:600;">Sat, 12 Sep</div>
+          </td>
+          <td><div class="body2" style="font-weight:600;">08:00–20:00</div></td>
+          <td>
+            <div class="cell">
+              <span class="chip plain">Ana Sofia Ribeiro <span class="x"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></span></span>
+            </div>
+          </td>
+          <td>
+            <div class="cell">
+              <span class="chip warnO">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M8 21H3v-5"/><path d="M21 3 3 21"/></svg>
+                Bruno Miguel Costa
+                <span class="x"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></span>
+              </span>
+              <div class="note">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--warnD);margin-top:2px;"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                <span class="cap" style="color:var(--warnD);">No TAS — assigned by exception<br><span class="dis">“TAS de serviço em formação…” · Rui Barbosa</span></span>
+              </div>
+            </div>
+          </td>
+          <td>
+            <div class="cell">
+              <span class="chip plain">Helena Pinto Sousa <span class="x"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></span></span>
+              <div class="note">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--warnD);margin-top:2px;"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                <span class="cap" style="color:var(--warnD);">No TAT — assigned by exception</span>
+              </div>
+              <button class="slot">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                Assign
+              </button>
+            </div>
+          </td>
+        </tr>
+
+        <!-- Sat 12 Sep, night shift -->
+        <tr>
+          <td></td>
+          <td><div class="body2" style="font-weight:600;">20:00–08:00</div></td>
+          <td>
+            <div class="cell">
+              <span class="chip plain">Diogo Alves Fernandes <span class="x"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></span></span>
+              <div class="note">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="color:var(--g500);margin-top:2px;"><circle cx="12" cy="12" r="9"/><path d="M12 11v5"/><path d="M12 8h.01"/></svg>
+                <span class="cap dis">Driver held, no expiry date on file</span>
+              </div>
+            </div>
+          </td>
+          <td>
+            <div class="cell">
+              <span class="chip errO">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3h5v5"/><path d="M8 21H3v-5"/><path d="M21 3 3 21"/></svg>
+                Carla Marques Dias
+                <span class="x"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></span>
+              </span>
+              <div class="note">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--err);margin-top:2px;"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                <span class="cap" style="color:var(--err);">TAS lapsed 30 Jun 2026, after this shift was built<br><span class="dis">Kept on purpose — replace or confirm</span></span>
+              </div>
+            </div>
+          </td>
+          <td>
+            <div class="cell">
+              <button class="slot">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                Assign
+              </button>
+              <button class="slot">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                Assign
+              </button>
+            </div>
+          </td>
+        </tr>
+
+        <!-- Sun 13 Sep, weekend -->
+        <tr style="background:rgba(0,0,0,.015);">
+          <td>
+            <div class="body2" style="font-weight:600;">Sun, 13 Sep</div>
+            <span class="chip mute" style="margin-top:4px;">Weekend</span>
+          </td>
+          <td><div class="body2" style="font-weight:600;">08:00–20:00</div></td>
+          <td>
+            <div class="cell">
+              <button class="slot">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                Assign
+              </button>
+              <div class="note">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--errD);margin-top:2px;"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+                <span class="cap" style="color:var(--errD);">No driver for the vehicle</span>
+              </div>
+            </div>
+          </td>
+          <td>
+            <div class="cell">
+              <span class="chip plain">Rui Manuel Barbosa <span class="x"><svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></span></span>
+            </div>
+          </td>
+          <td>
+            <div class="cell">
+              <button class="slot">
+                <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+                Assign
+              </button>
+            </div>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Legend + publish summary -->
+  <div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap;">
+    <div style="flex:1;min-width:420px;display:flex;gap:20px;flex-wrap:wrap;align-items:center;">
+      <div style="display:flex;align-items:center;gap:6px;"><span class="chip plain">Name</span><span class="cap sec">Meets the post's requirement</span></div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--warnD);width:16px;height:16px;"><path d="M16 3h5v5"/><path d="M8 21H3v-5"/><path d="M21 3 3 21"/></svg>
+        <span class="cap sec">Exception — certification not held</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:var(--err);width:16px;height:16px;"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+        <span class="cap sec">Lapsed since the shift was built</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <span style="width:16px;height:16px;border:1px dashed var(--g400);border-radius:4px;"></span>
+        <span class="cap sec">An open place</span>
+      </div>
+    </div>
+
+    <div class="paper" style="padding:12px 16px;width:340px;">
+      <div class="body2" style="font-weight:600;margin-bottom:6px;">Before publishing</div>
+      <div style="display:flex;flex-direction:column;gap:4px;">
+        <span class="cap" style="color:var(--errD);">1 shift has no driver</span>
+        <span class="cap" style="color:var(--warnD);">3 people assigned without the post's certification</span>
+        <span class="cap" style="color:var(--err);">1 certification lapsed after assignment</span>
+        <span class="cap sec" style="margin-top:4px;">Publishing is allowed — every exception carries a recorded reason and an author.</span>
+      </div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+<script data-dc-script data-props='{}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
