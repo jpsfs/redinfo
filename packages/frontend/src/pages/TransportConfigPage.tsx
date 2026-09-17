@@ -19,14 +19,17 @@ import {
   ArrivalWindowThresholds,
   OccurrenceTypePolicy,
   OccurrenceTypePolicyInput,
+  PatientHandlingThresholds,
   TransportRequestOccurrenceType,
   validateArrivalWindowThresholds,
   validateOccurrenceTypePolicy,
+  validatePatientHandlingThresholds,
 } from '@redinfo/shared';
 import { apiFetch } from '../api';
 import { useT } from '../i18n/useT';
 
 const THRESHOLDS_URL = '/transport-config/arrival-window-thresholds';
+const HANDLING_URL = '/transport-config/patient-handling-thresholds';
 const POLICIES_URL = '/transport-config/occurrence-type-policies';
 
 /**
@@ -37,6 +40,9 @@ const POLICIES_URL = '/transport-config/occurrence-type-policies';
  * - The delegation-wide arrival window thresholds. A facility can carry its
  *   own override of any of the three fields on its own form
  *   (`resources/facilities`); this screen only ever edits the default.
+ * - The per-patient pickup/drop-off handling time — how long it actually
+ *   takes to get someone in or out of the vehicle, folded into the board's
+ *   suggested pickup/home-arrival times (`suggestLegTimes`).
  * - The duration floor/default per `TransportRequestOccurrenceType`, one row
  *   each, always present (seeded by migration).
  *
@@ -51,6 +57,10 @@ export const TransportConfigPage = () => {
   const [thresholdsError, setThresholdsError] = useState<string | null>(null);
   const [savingThresholds, setSavingThresholds] = useState(false);
 
+  const [handlingDraft, setHandlingDraft] = useState<PatientHandlingThresholds | null>(null);
+  const [handlingError, setHandlingError] = useState<string | null>(null);
+  const [savingHandling, setSavingHandling] = useState(false);
+
   const [policies, setPolicies] = useState<OccurrenceTypePolicy[] | null>(null);
   const [policiesError, setPoliciesError] = useState<string | null>(null);
   const [policyDrafts, setPolicyDrafts] = useState<Record<string, OccurrenceTypePolicyInput>>({});
@@ -62,6 +72,15 @@ export const TransportConfigPage = () => {
       setThresholdsDraft(await apiFetch<ArrivalWindowThresholds>(THRESHOLDS_URL));
     } catch (e) {
       setThresholdsError(e instanceof Error ? e.message : t('transportConfig.loadFailed'));
+    }
+  }, [t]);
+
+  const loadHandling = useCallback(async () => {
+    setHandlingError(null);
+    try {
+      setHandlingDraft(await apiFetch<PatientHandlingThresholds>(HANDLING_URL));
+    } catch (e) {
+      setHandlingError(e instanceof Error ? e.message : t('transportConfig.loadFailed'));
     }
   }, [t]);
 
@@ -88,8 +107,9 @@ export const TransportConfigPage = () => {
 
   useEffect(() => {
     void loadThresholds();
+    void loadHandling();
     void loadPolicies();
-  }, [loadThresholds, loadPolicies]);
+  }, [loadThresholds, loadHandling, loadPolicies]);
 
   const thresholdsFieldError = thresholdsDraft ? validateArrivalWindowThresholds(thresholdsDraft) : null;
 
@@ -103,6 +123,21 @@ export const TransportConfigPage = () => {
       notify(e instanceof Error ? e.message : t('transportConfig.saveFailed'), { type: 'warning' });
     } finally {
       setSavingThresholds(false);
+    }
+  };
+
+  const handlingFieldError = handlingDraft ? validatePatientHandlingThresholds(handlingDraft) : null;
+
+  const saveHandling = async () => {
+    if (!handlingDraft || handlingFieldError) return;
+    setSavingHandling(true);
+    try {
+      setHandlingDraft(await apiFetch<PatientHandlingThresholds>(HANDLING_URL, { method: 'PUT', body: handlingDraft }));
+      notify(t('transportConfig.saved'), { type: 'success' });
+    } catch (e) {
+      notify(e instanceof Error ? e.message : t('transportConfig.saveFailed'), { type: 'warning' });
+    } finally {
+      setSavingHandling(false);
     }
   };
 
@@ -171,6 +206,43 @@ export const TransportConfigPage = () => {
               </Stack>
               {thresholdsFieldError && <Alert severity="warning">{thresholdsFieldError}</Alert>}
               <Button variant="contained" disabled={savingThresholds || !!thresholdsFieldError} onClick={() => void saveThresholds()}>
+                {t('transportConfig.save')}
+              </Button>
+            </Stack>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardContent>
+          <Typography variant="h6">{t('transportConfig.handlingHeading')}</Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            {t('transportConfig.handlingSubheading')}
+          </Typography>
+
+          {!handlingDraft && !handlingError && <CircularProgress size={24} />}
+          {handlingError && <Alert severity="warning">{handlingError}</Alert>}
+
+          {handlingDraft && (
+            <Stack spacing={2} alignItems="flex-start">
+              <Stack direction={{ xs: 'column', sm: 'row' }} spacing={2}>
+                <TextField
+                  type="number"
+                  label={t('transportConfig.pickupHandlingMinutes')}
+                  value={handlingDraft.pickupHandlingMinutes}
+                  onChange={(e) => setHandlingDraft({ ...handlingDraft, pickupHandlingMinutes: Number(e.target.value) })}
+                  inputProps={{ min: 0 }}
+                />
+                <TextField
+                  type="number"
+                  label={t('transportConfig.dropoffHandlingMinutes')}
+                  value={handlingDraft.dropoffHandlingMinutes}
+                  onChange={(e) => setHandlingDraft({ ...handlingDraft, dropoffHandlingMinutes: Number(e.target.value) })}
+                  inputProps={{ min: 0 }}
+                />
+              </Stack>
+              {handlingFieldError && <Alert severity="warning">{handlingFieldError}</Alert>}
+              <Button variant="contained" disabled={savingHandling || !!handlingFieldError} onClick={() => void saveHandling()}>
                 {t('transportConfig.save')}
               </Button>
             </Stack>

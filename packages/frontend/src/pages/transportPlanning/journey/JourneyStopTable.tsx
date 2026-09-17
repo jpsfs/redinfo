@@ -2,7 +2,7 @@ import { Button, Chip, Table, TableBody, TableCell, TableHead, TableRow, Tooltip
 import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 import { TransportPlanningLeg, TripStop, TripStopKind } from '@redinfo/shared';
 import { useT } from '../../../i18n/useT';
-import { legFacilityName, needsWaitReleaseDecision } from '../legFacts';
+import { needsWaitReleaseDecision, stopLocationLabel } from '../legFacts';
 import { durationLabel, timeLabel } from '../planningTime';
 
 const STOP_KIND_KEY: Record<TripStopKind, string> = {
@@ -57,16 +57,16 @@ export const JourneyStopTable = ({
       <TableBody>
         {ordered.map((stop) => {
           const leg = stop.transportLegId ? legsById[stop.transportLegId] : undefined;
-          const facilityName = leg ? legFacilityName(leg) : null;
+          const locationLabel = stopLocationLabel(stop, leg);
           const showWaitRelease = stop.kind === TripStopKind.DROPOFF && needsWaitReleaseDecision(stop, stops, leg);
           return (
             <TableRow key={stop.id}>
               <TableCell sx={{ fontVariantNumeric: 'tabular-nums' }}>{timeLabel(stop.plannedAt)}</TableCell>
               <TableCell>
                 {t(STOP_KIND_KEY[stop.kind])}
-                {facilityName && (
+                {locationLabel && (
                   <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
-                    {facilityName}
+                    {locationLabel}
                   </Typography>
                 )}
               </TableCell>

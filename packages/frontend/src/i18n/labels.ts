@@ -1866,6 +1866,13 @@ const MESSAGES = {
   'transportConfig.arrivalWindowEarliestMinutes': { pt: 'Não chegar mais de X minutos antes', en: 'Do not arrive more than X minutes early' },
   'transportConfig.arrivalWindowLatestMinutes': { pt: 'Não chegar depois de X minutos antes', en: 'Do not arrive later than X minutes before' },
   'transportConfig.arrivalToleranceMinutes': { pt: 'Tolerância de atraso', en: 'Late-arrival tolerance' },
+  'transportConfig.handlingHeading': { pt: 'Tempo de embarque e desembarque', en: 'Pickup and drop-off handling time' },
+  'transportConfig.handlingSubheading': {
+    pt: 'Quanto tempo demora, por doente, a colocá-lo no veículo ou a retirá-lo — incluído nas horas de recolha/entrega sugeridas no quadro de planeamento.',
+    en: 'How long it takes, per patient, to get them into or out of the vehicle — folded into the pickup/drop-off times the planning board suggests.',
+  },
+  'transportConfig.pickupHandlingMinutes': { pt: 'Recolha (min)', en: 'Pickup (min)' },
+  'transportConfig.dropoffHandlingMinutes': { pt: 'Entrega (min)', en: 'Drop-off (min)' },
   'transportConfig.policiesHeading': { pt: 'Duração por tipo de ocorrência', en: 'Duration by occurrence type' },
   'transportConfig.policiesSubheading': {
     pt: 'O mínimo é o tempo mais cedo em que o veículo pode ficar livre quando não há uma hora de fim indicada para a viagem; o valor por omissão é apenas uma sugestão de planeamento.',

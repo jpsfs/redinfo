@@ -29,10 +29,14 @@ import './transportPlanning/journey/journeyPage.css';
  * `TransportPlanningJourneyPage` — a vehicle's day is a detail view of a
  * record already reachable from the board, not a screen of its own.
  *
- * Shaped like the single-journey page stacked N times, plus one thing the
- * single-journey page doesn't need on its own: the aggregated summary row
- * (`JourneySummaryHeader`, fed by `summarizeJourneys`) rolled up across every
- * journey the vehicle runs that day, rather than just the one.
+ * Shaped like the single-journey page stacked N times — each journey block
+ * gets its own stop table *and* its own collapsible map, collapsed
+ * independently of its neighbours, the same `CollapsibleMapColumn` +
+ * `MapPanel` pairing the standalone journey page uses for its one lane —
+ * plus one thing the single-journey page doesn't need on its own: the
+ * aggregated summary row (`JourneySummaryHeader`, fed by `summarizeJourneys`)
+ * rolled up across every journey the vehicle runs that day, rather than just
+ * the one.
  */
 export const TransportPlanningVehiclePage = () => {
   const { vehicleId } = useParams<{ vehicleId: string }>();
@@ -46,11 +50,10 @@ export const TransportPlanningVehiclePage = () => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [crewTarget, setCrewTarget] = useState<CrewDialogTarget | null>(null);
   const [waitReleaseTarget, setWaitReleaseTarget] = useState<WaitReleaseTarget | null>(null);
-  const [mapCollapsed, setMapCollapsed] = useState(false);
-  // Which of this vehicle's own journeys the map is focused on — a click on
-  // a journey's heading or its own route on the map, same toggle as the
-  // board's `selectJourney`.
-  const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
+  // Each journey collapses its own map independently — a `Set` of collapsed
+  // trip ids rather than one page-wide flag, since a planner reading
+  // journey 3's stops has no reason to also lose journey 1's map.
+  const [collapsedMapTripIds, setCollapsedMapTripIds] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
     if (!vehicleId) return;
@@ -69,21 +72,17 @@ export const TransportPlanningVehiclePage = () => {
     load();
   }, [load]);
 
-  const toggleSelect = useCallback(
-    (tripId: string) => setSelectedTripId((current) => (current === tripId ? null : tripId)),
-    [],
-  );
+  const toggleMapCollapsed = useCallback((tripId: string) => {
+    setCollapsedMapTripIds((current) => {
+      const next = new Set(current);
+      if (next.has(tripId)) next.delete(tripId);
+      else next.add(tripId);
+      return next;
+    });
+  }, []);
 
   const orderedLanes = useMemo(
     () => (day ? [...day.lanes].sort((a, b) => a.journeyNumber - b.journeyNumber) : []),
-    [day],
-  );
-
-  // Every lane at once — `MapPanel` already expects exactly this shape for
-  // the multi-journey planning board, and this page's lanes are already
-  // scoped to one vehicle server-side.
-  const dayBoard = useMemo(
-    () => (day ? { lanes: day.lanes, legsById: day.legsById, unassignedLegIds: [] } : null),
     [day],
   );
 
@@ -149,70 +148,66 @@ export const TransportPlanningVehiclePage = () => {
             {t('transportJourney.dateLabel')} {day.date}
           </Typography>
 
-          <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} sx={{ alignItems: 'flex-start' }}>
-            <Box sx={{ flexGrow: 1, minWidth: 0 }}>
-              <Typography variant="subtitle1" sx={{ mb: 1 }}>
-                {t('transportVehicleDay.journeysTitle')}
-              </Typography>
+          <Typography variant="subtitle1" sx={{ mb: 1 }}>
+            {t('transportVehicleDay.journeysTitle')}
+          </Typography>
 
-              {orderedLanes.length === 0 && (
-                <Typography variant="body2" color="text.secondary">
-                  {t('transportVehicleDay.noJourneys')}
-                </Typography>
-              )}
+          {orderedLanes.length === 0 && (
+            <Typography variant="body2" color="text.secondary">
+              {t('transportVehicleDay.noJourneys')}
+            </Typography>
+          )}
 
-              <Stack spacing={2}>
-                {orderedLanes.map((lane, index) => {
-                  const destinations = journeyDestinations(
-                    lane.stops.map((stop) => (stop.transportLegId ? day.legsById[stop.transportLegId] : undefined)),
-                  );
-                  const journeyTitle = destinations.length
-                    ? `${t('transportJourney.pageTitle', { number: lane.journeyNumber })} — ${destinations.join(' / ')}`
-                    : t('transportJourney.pageTitle', { number: lane.journeyNumber });
+          <Stack spacing={2}>
+            {orderedLanes.map((lane, index) => {
+              const destinations = journeyDestinations(
+                lane.stops.map((stop) => (stop.transportLegId ? day.legsById[stop.transportLegId] : undefined)),
+              );
+              const journeyTitle = destinations.length
+                ? `${t('transportJourney.pageTitle', { number: lane.journeyNumber })} — ${destinations.join(' / ')}`
+                : t('transportJourney.pageTitle', { number: lane.journeyNumber });
+              // A single-lane `board` — see `TransportPlanningJourneyPage`'s
+              // own `journeyBoard`, the same shape for the same reason: this
+              // journey's map shows only its own route, never its siblings'.
+              const journeyBoard = { lanes: [lane], legsById: day.legsById, unassignedLegIds: [] };
 
-                  return (
-                    <Box key={lane.trip.id}>
-                      {index > 0 && <Divider sx={{ mb: 2 }} />}
-                      <Stack
-                        direction="row"
-                        alignItems="center"
-                        spacing={1}
-                        flexWrap="wrap"
-                        useFlexGap
-                        sx={{ mb: 1, cursor: 'pointer' }}
-                        onClick={() => toggleSelect(lane.trip.id)}
-                      >
-                        <Box
-                          sx={{
-                            width: 12,
-                            height: 12,
-                            borderRadius: '50%',
-                            flexShrink: 0,
-                            bgcolor: journeyColorForOrdinal(lane.journeyNumber),
-                          }}
-                        />
-                        <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
-                          {journeyTitle}
-                        </Typography>
-                        <Chip size="small" label={t(`tripStatus.${lane.trip.status}`)} variant="outlined" />
-                      </Stack>
+              return (
+                <Box key={lane.trip.id}>
+                  {index > 0 && <Divider sx={{ mb: 2 }} />}
+                  <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: 1 }}>
+                    <Box
+                      sx={{
+                        width: 12,
+                        height: 12,
+                        borderRadius: '50%',
+                        flexShrink: 0,
+                        bgcolor: journeyColorForOrdinal(lane.journeyNumber),
+                      }}
+                    />
+                    <Typography variant="subtitle1" sx={{ fontWeight: 700 }}>
+                      {journeyTitle}
+                    </Typography>
+                    <Chip size="small" label={t(`tripStatus.${lane.trip.status}`)} variant="outlined" />
+                  </Stack>
 
-                      <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
-                        <Button
-                          size="small"
-                          startIcon={<OpenInNewIcon fontSize="small" />}
-                          onClick={() => navigate(`/transport-planning/journeys/${lane.trip.id}`)}
-                        >
-                          {t('transportVehicleDay.openJourney')}
-                        </Button>
-                        <Button
-                          size="small"
-                          onClick={() => setCrewTarget({ lane, journeyNumber: lane.journeyNumber, date: lane.trip.date })}
-                        >
-                          {t('transportPlanning.inspectorEditCrew')}
-                        </Button>
-                      </Stack>
+                  <Stack direction="row" spacing={1} sx={{ mb: 1 }}>
+                    <Button
+                      size="small"
+                      startIcon={<OpenInNewIcon fontSize="small" />}
+                      onClick={() => navigate(`/transport-planning/journeys/${lane.trip.id}`)}
+                    >
+                      {t('transportVehicleDay.openJourney')}
+                    </Button>
+                    <Button
+                      size="small"
+                      onClick={() => setCrewTarget({ lane, journeyNumber: lane.journeyNumber, date: lane.trip.date })}
+                    >
+                      {t('transportPlanning.inspectorEditCrew')}
+                    </Button>
+                  </Stack>
 
+                  <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} sx={{ alignItems: 'flex-start' }}>
+                    <Box sx={{ flexGrow: 1, minWidth: 0 }}>
                       <JourneyStopTable
                         stops={lane.stops}
                         legsById={day.legsById}
@@ -241,14 +236,17 @@ export const TransportPlanningVehiclePage = () => {
                         </Stack>
                       )}
                     </Box>
-                  );
-                })}
-              </Stack>
-            </Box>
 
-            <CollapsibleMapColumn collapsed={mapCollapsed} onToggle={() => setMapCollapsed((collapsed) => !collapsed)}>
-              {dayBoard && <MapPanel board={dayBoard} selectedTripId={selectedTripId} onSelectTrip={toggleSelect} />}
-            </CollapsibleMapColumn>
+                    <CollapsibleMapColumn
+                      collapsed={collapsedMapTripIds.has(lane.trip.id)}
+                      onToggle={() => toggleMapCollapsed(lane.trip.id)}
+                    >
+                      <MapPanel board={journeyBoard} selectedTripId={lane.trip.id} onSelectTrip={() => {}} />
+                    </CollapsibleMapColumn>
+                  </Stack>
+                </Box>
+              );
+            })}
           </Stack>
         </Paper>
       )}

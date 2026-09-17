@@ -5892,6 +5892,41 @@ export function targetArrivalAt(appointmentAt: string, thresholds: ArrivalWindow
 }
 
 /**
+ * How long it actually takes to get a patient into or out of the vehicle —
+ * distinct from `TripStopDwell`'s WAIT-at-facility decision, which is about
+ * whether the crew stays with the vehicle while the patient is *inside* the
+ * facility, not the seconds-to-minutes of loading/unloading them at the
+ * vehicle's door. Policy, not physics, hence adjustable the same way
+ * `ArrivalWindowThresholds` is (#233's precedent): a coordinator can widen
+ * or narrow it without a deploy as the fleet's own wheelchair/stretcher mix
+ * changes.
+ */
+export interface PatientHandlingThresholds {
+  /** Minutes to get the patient aboard at a `PICKUP` stop. */
+  pickupHandlingMinutes: number;
+  /** Minutes to get the patient off at a `DROPOFF` stop. */
+  dropoffHandlingMinutes: number;
+}
+
+export const DEFAULT_PATIENT_HANDLING_THRESHOLDS: PatientHandlingThresholds = {
+  pickupHandlingMinutes: 3,
+  dropoffHandlingMinutes: 1,
+};
+
+/** Same "message or null" shape as `validateArrivalWindowThresholds`. */
+export function validatePatientHandlingThresholds(
+  input: Partial<Record<keyof PatientHandlingThresholds, number | null | undefined>>,
+): string | null {
+  for (const value of Object.values(input)) {
+    if (value === null || value === undefined) continue;
+    if (!Number.isInteger(value) || value < 0) {
+      return 'Patient handling times must be whole numbers of minutes, zero or more.';
+    }
+  }
+  return null;
+}
+
+/**
  * The two times the crew currently works out from experience, and the reason
  * the planning board exists: when to collect the patient, and when they get
  * home again. Neither is on the delegation's printed daily sheet today — it
@@ -5913,6 +5948,13 @@ export function targetArrivalAt(appointmentAt: string, thresholds: ArrivalWindow
  * `null` travel time (no route, no coordinates) yields `null` times rather
  * than a fabricated guess: a blank the planner fills in is honest, a made-up
  * time is not.
+ *
+ * The anchored end (arrival for `OUTBOUND`, departure for `RETURN`) is a
+ * fact the plan is built around and stays exactly where the raw travel time
+ * puts it; `handling` only widens the *other* end, so the suggested span
+ * between `pickupAt` and `dropoffAt` reflects the whole time the leg
+ * realistically consumes — travel plus actually getting the patient aboard
+ * and off again — rather than pretending loading is instantaneous.
  */
 export interface SuggestedLegTimes {
   /** ISO datetime — leaving the origin. Home for `OUTBOUND`, the facility for `RETURN`. */
@@ -5930,22 +5972,25 @@ export function suggestLegTimes(input: {
   /** Planned travel time for this leg, traffic-corrected. Null when unroutable. */
   travelMinutes: number | null;
   thresholds: ArrivalWindowThresholds;
+  /** Per-patient loading/unloading time — adjustable, see `DEFAULT_PATIENT_HANDLING_THRESHOLDS`. */
+  handling: PatientHandlingThresholds;
 }): SuggestedLegTimes {
-  const { direction, appointmentAt, effectiveEstimatedEndAt, travelMinutes, thresholds } = input;
+  const { direction, appointmentAt, effectiveEstimatedEndAt, travelMinutes, thresholds, handling } = input;
   if (travelMinutes == null) return { pickupAt: null, dropoffAt: null };
   const travelMs = travelMinutes * 60_000;
+  const handlingMs = (handling.pickupHandlingMinutes + handling.dropoffHandlingMinutes) * 60_000;
 
   if (direction === LegDirection.RETURN) {
     const pickup = new Date(effectiveEstimatedEndAt);
     return {
       pickupAt: pickup.toISOString(),
-      dropoffAt: new Date(pickup.getTime() + travelMs).toISOString(),
+      dropoffAt: new Date(pickup.getTime() + travelMs + handlingMs).toISOString(),
     };
   }
 
   const dropoff = new Date(targetArrivalAt(appointmentAt, thresholds));
   return {
-    pickupAt: new Date(dropoff.getTime() - travelMs).toISOString(),
+    pickupAt: new Date(dropoff.getTime() - travelMs - handlingMs).toISOString(),
     dropoffAt: dropoff.toISOString(),
   };
 }
@@ -5957,7 +6002,7 @@ export function suggestLegTimes(input: {
  * run, and changeable without a deploy when the delegation moves or the
  * freephone number changes.
  */
-export interface DelegationSettings extends ArrivalWindowThresholds {
+export interface DelegationSettings extends ArrivalWindowThresholds, PatientHandlingThresholds {
   baseName: string;
   baseLatitude: number;
   baseLongitude: number;
@@ -5977,6 +6022,7 @@ export const DEFAULT_DELEGATION_SETTINGS: DelegationSettings = {
   baseLongitude: -8.6117829,
   coduDadosPhone: '+351800203264',
   ...DEFAULT_ARRIVAL_WINDOW_THRESHOLDS,
+  ...DEFAULT_PATIENT_HANDLING_THRESHOLDS,
 };
 
 // ─── Live emergency runs ──────────────────────────────────────────────────────
@@ -8690,6 +8736,30 @@ export function decodePolyline(encoded: string, precision = 6): Array<{ latitude
   }
 
   return coordinates;
+}
+
+/**
+ * A lane's own driven distance, in kilometres — the sum of consecutive
+ * decoded-polyline vertices' great-circle distances, not a per-leg sum.
+ *
+ * `journeySummary`'s total distance used to add up each carried leg's own
+ * `travelDistanceMeters` — the distance *that patient's* pickup→dropoff would
+ * cover driven alone — which double-counts every road segment two
+ * co-routed patients happen to share and, just as often, undercounts the
+ * empty runs between stops the plan never routes stand-alone. `routeGeometry`
+ * is already the vehicle's one real path through every stop in sequence
+ * (`TripsService.attachRouteGeometry`), so walking its own vertices is the
+ * only distance that actually matches what the crew drives. A dense
+ * polyline's vertex-to-vertex chord length converges on the road distance
+ * closely enough that this needs no OSRM round trip of its own.
+ */
+export function polylineDistanceKm(encoded: string, precision = 6): number {
+  const points = decodePolyline(encoded, precision);
+  let total = 0;
+  for (let i = 1; i < points.length; i++) {
+    total += distanceInKm(points[i - 1], points[i]);
+  }
+  return total;
 }
 //
 // `GET /trips/board?date=` — everything `TransportPlanningPage` needs for one

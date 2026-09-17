@@ -1,4 +1,4 @@
-import { LegDirection, TransportPlanningLane, TransportPlanningLeg, TripStopKind } from '@redinfo/shared';
+import { LegDirection, TransportPlanningLane, TransportPlanningLeg, TripStopKind, polylineDistanceKm } from '@redinfo/shared';
 
 /** `checkTripCrew`/`checkCrewAvailability`'s own ERROR codes (`trips.service.ts`,
  * shared's `checkTripCrew`) — the set a journey's crew must clear to earn the
@@ -7,9 +7,13 @@ import { LegDirection, TransportPlanningLane, TransportPlanningLeg, TripStopKind
 const CREW_ISSUE_CODES = new Set(['CREW_TOO_FEW', 'VEHICLE_NOT_EMERGENCY', 'CREW_UNAVAILABLE']);
 
 export interface JourneySummary {
-  /** Sum of each carried leg's own routed distance — null when none of the
-   * lanes' legs have a resolvable one, same "honest blank" posture as
-   * `JourneyStopTable`'s own distance column. */
+  /** Sum of each lane's own driven path (`routeGeometry`, walked with
+   * `polylineDistanceKm`) — null when none of the lanes could be routed.
+   * Deliberately not a sum of each carried leg's own `travelDistanceMeters`:
+   * that figure is the distance *that one patient's* pickup→dropoff would
+   * cover driven alone, and summing it double-counts every road segment two
+   * co-routed patients share while missing the empty runs between stops —
+   * see `polylineDistanceKm`'s own doc comment. */
   distanceKm: number | null;
   /** Sum of each lane's own occupancy window, not the span between the
    * earliest start and the latest end — a vehicle idle between two journeys
@@ -34,7 +38,7 @@ export function summarizeJourneys(
   lanes: TransportPlanningLane[],
   legsById: Record<string, TransportPlanningLeg>,
 ): JourneySummary {
-  let distanceMeters = 0;
+  let distanceKm = 0;
   let hasDistance = false;
   let occupiedMinutes = 0;
   let hasOccupancy = false;
@@ -44,16 +48,16 @@ export function summarizeJourneys(
 
   for (const lane of lanes) {
     for (const stop of lane.stops) {
-      if (stop.kind !== TripStopKind.PICKUP && stop.kind !== TripStopKind.DROPOFF) continue;
+      if (stop.kind !== TripStopKind.PICKUP) continue;
       const leg = stop.transportLegId ? legsById[stop.transportLegId] : undefined;
       if (!leg) continue;
-      if (stop.kind === TripStopKind.PICKUP) {
-        patientIds.add(leg.patientId);
-        directions.add(leg.direction);
-      } else if (leg.travelDistanceMeters != null) {
-        distanceMeters += leg.travelDistanceMeters;
-        hasDistance = true;
-      }
+      patientIds.add(leg.patientId);
+      directions.add(leg.direction);
+    }
+
+    if (lane.routeGeometry) {
+      distanceKm += polylineDistanceKm(lane.routeGeometry);
+      hasDistance = true;
     }
 
     if (lane.occupancyWindow) {
@@ -68,7 +72,7 @@ export function summarizeJourneys(
   }
 
   return {
-    distanceKm: hasDistance ? distanceMeters / 1000 : null,
+    distanceKm: hasDistance ? distanceKm : null,
     occupiedMinutes: hasOccupancy ? occupiedMinutes : null,
     patientCount: patientIds.size,
     roundTrip: directions.has(LegDirection.OUTBOUND) && directions.has(LegDirection.RETURN),

@@ -13,10 +13,17 @@ import {
   TripStatus,
   TripStopKind,
   VehicleType,
+  distanceInKm,
 } from '@redinfo/shared';
 import { messages } from '../i18n/i18nProvider';
+import { encodePolyline } from '../test/polyline';
 import { TransportPlanningJourneyPage } from './TransportPlanningJourneyPage';
 import { apiFetch, ApiError } from '../api';
+
+// Campo, Barcelos → Hospital de São João, Porto — real, well-separated
+// points so the aggregated-distance assertion below is meaningfully non-zero.
+const BARCELOS = { latitude: 41.5388, longitude: -8.6151 };
+const PORTO = { latitude: 41.1579, longitude: -8.6291 };
 
 vi.mock('../api', () => ({
   apiFetch: vi.fn(),
@@ -142,7 +149,7 @@ const journey = (overrides: Partial<TripJourneyDetail> = {}): TripJourneyDetail 
   occupancyWindow: { startsAt: '2026-09-15T08:00:00.000Z', endsAt: '2026-09-15T08:45:00.000Z' },
   emptyLegs: [],
   issues: [],
-  routeGeometry: null,
+  routeGeometry: encodePolyline([BARCELOS, PORTO]),
   legsById: { [LEG.id]: LEG } as never,
   ...overrides,
 });
@@ -235,7 +242,10 @@ describe('TransportPlanningJourneyPage', () => {
     renderPage();
 
     await screen.findByText('101 · Journey 2 — Hospital de São João');
-    expect(screen.getByText('30 km')).toBeInTheDocument();
+    // The journey's own driven route (`routeGeometry`), not the leg's
+    // stand-alone pickup→dropoff distance — see `journeySummary`'s doc comment.
+    const expectedKm = Math.round(distanceInKm(BARCELOS, PORTO));
+    expect(screen.getByText(`${expectedKm} km`)).toBeInTheDocument();
     expect(screen.getByText('45 min')).toBeInTheDocument();
     // "Distance" is also the stop table's own column header — the summary
     // block reuses the same word, so this only asserts it appears at all.

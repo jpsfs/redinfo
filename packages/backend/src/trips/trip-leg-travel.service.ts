@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import {
   ArrivalWindowThresholds,
   LegDirection,
+  PatientHandlingThresholds,
   SuggestedLegTimes,
   TransportLeg,
   resolveArrivalWindowThresholds,
@@ -40,6 +41,11 @@ export interface LegPatientContext {
   latitude: number | null;
   longitude: number | null;
 }
+
+/** What `estimate` needs from `DelegationSettingsService.get()` beyond the
+ * arrival window thresholds — `DelegationSettings` already satisfies this
+ * structurally, so callers pass the same settings object they already load. */
+type LegTimingPolicy = ArrivalWindowThresholds & PatientHandlingThresholds;
 
 const NO_TRAVEL = { pickupAt: null, dropoffAt: null };
 
@@ -119,7 +125,7 @@ export class TripLegTravelService {
   async estimateMany(
     legs: TransportLeg[],
     patientByLegId: Map<string, LegPatientContext>,
-    defaults: ArrivalWindowThresholds,
+    defaults: LegTimingPolicy,
   ): Promise<Map<string, LegTravelEstimate>> {
     const entries = await Promise.all(
       legs.map(async (leg) => [leg.id, await this.estimate(leg, patientByLegId.get(leg.id), defaults)] as const),
@@ -130,7 +136,7 @@ export class TripLegTravelService {
   private async estimate(
     leg: TransportLeg,
     patient: LegPatientContext | undefined,
-    defaults: ArrivalWindowThresholds,
+    defaults: LegTimingPolicy,
   ): Promise<LegTravelEstimate> {
     // An outbound leg runs home → facility; a return leg runs facility → home.
     const outbound = leg.direction === LegDirection.OUTBOUND;
@@ -185,6 +191,7 @@ export class TripLegTravelService {
           effectiveEstimatedEndAt: leg.effectiveEstimatedEndAt,
           travelMinutes,
           thresholds: resolveArrivalWindowThresholds(defaults, leg.destinationFacility),
+          handling: defaults,
         }),
         door,
       };

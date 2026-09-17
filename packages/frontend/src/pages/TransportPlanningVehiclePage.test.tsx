@@ -15,10 +15,17 @@ import {
   TripStopKind,
   VehicleDayJourneys,
   VehicleType,
+  distanceInKm,
 } from '@redinfo/shared';
 import { messages } from '../i18n/i18nProvider';
+import { encodePolyline } from '../test/polyline';
 import { TransportPlanningVehiclePage } from './TransportPlanningVehiclePage';
 import { apiFetch, ApiError } from '../api';
+
+// Campo, Barcelos → Hospital de São João, Porto — real, well-separated
+// points so the aggregated-distance assertion below is meaningfully non-zero.
+const BARCELOS = { latitude: 41.5388, longitude: -8.6151 };
+const PORTO = { latitude: 41.1579, longitude: -8.6291 };
 
 vi.mock('../api', () => ({
   apiFetch: vi.fn(),
@@ -196,12 +203,18 @@ describe('TransportPlanningVehiclePage', () => {
         ? Promise.resolve(
             vehicleDay({
               lanes: [
-                lane({ journeyNumber: 1, trip: { ...lane().trip, id: 'trip-1' }, stops: stopsFor('leg-1') }),
+                lane({
+                  journeyNumber: 1,
+                  trip: { ...lane().trip, id: 'trip-1' },
+                  stops: stopsFor('leg-1'),
+                  routeGeometry: encodePolyline([BARCELOS, PORTO]),
+                }),
                 lane({
                   journeyNumber: 2,
                   trip: { ...lane().trip, id: 'trip-2' },
                   stops: stopsFor('leg-2'),
                   occupancyWindow: { startsAt: '2026-09-15T14:00:00.000Z', endsAt: '2026-09-15T14:30:00.000Z' },
+                  routeGeometry: encodePolyline([PORTO, BARCELOS]),
                 }),
               ],
               legsById: { 'leg-1': leg({ id: 'leg-1' }), 'leg-2': leg({ id: 'leg-2', patientId: 'pat-2', travelDistanceMeters: 10_000 }) },
@@ -214,8 +227,10 @@ describe('TransportPlanningVehiclePage', () => {
     expect(await screen.findByText('Journey 1 — Hospital de São João')).toBeInTheDocument();
     expect(screen.getByText('Journey 2 — Hospital de São João')).toBeInTheDocument();
     expect(screen.getByText('2 journeys')).toBeInTheDocument();
-    // 30 km + 10 km, 45 min + 30 min, 2 distinct patients.
-    expect(screen.getByText('40 km')).toBeInTheDocument();
+    // Each journey's own driven route, summed — not each leg's stand-alone
+    // pickup→dropoff distance (see `journeySummary`'s own doc comment).
+    const expectedKm = Math.round(2 * distanceInKm(BARCELOS, PORTO));
+    expect(screen.getByText(`${expectedKm} km`)).toBeInTheDocument();
     expect(screen.getByText('1h 15')).toBeInTheDocument();
     expect(screen.getByText('2')).toBeInTheDocument();
   });
@@ -234,6 +249,43 @@ describe('TransportPlanningVehiclePage', () => {
     renderPage();
 
     expect(await screen.findByText('Vehicle not found')).toBeInTheDocument();
+  });
+
+  it('gives each journey its own map, collapsible independently of the others', async () => {
+    const user = userEvent.setup();
+    mockApiFetch.mockImplementation((path: string) =>
+      path === '/trips/vehicle/veh-1?date=2026-09-15'
+        ? Promise.resolve(
+            vehicleDay({
+              lanes: [
+                lane({
+                  journeyNumber: 1,
+                  trip: { ...lane().trip, id: 'trip-1' },
+                  stops: stopsFor('leg-1'),
+                  routeGeometry: encodePolyline([BARCELOS, PORTO]),
+                }),
+                lane({
+                  journeyNumber: 2,
+                  trip: { ...lane().trip, id: 'trip-2' },
+                  stops: stopsFor('leg-2'),
+                  routeGeometry: encodePolyline([PORTO, BARCELOS]),
+                }),
+              ],
+              legsById: { 'leg-1': leg({ id: 'leg-1' }), 'leg-2': leg({ id: 'leg-2', patientId: 'pat-2' }) },
+            }),
+          )
+        : Promise.resolve([]),
+    );
+    renderPage();
+
+    // One map per journey, both expanded by default.
+    expect(await screen.findAllByText('Route')).toHaveLength(2);
+
+    // Collapsing journey 1's map leaves journey 2's own map alone.
+    const collapseButtons = screen.getAllByRole('button', { name: 'Collapse the map' });
+    await user.click(collapseButtons[0]);
+    expect(screen.getAllByText('Route')).toHaveLength(1);
+    expect(screen.getByRole('button', { name: 'Expand the map' })).toBeInTheDocument();
   });
 
   it('opens the corresponding journey page from the journey list', async () => {

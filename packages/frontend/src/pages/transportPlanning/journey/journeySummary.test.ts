@@ -8,8 +8,15 @@ import {
   TripStatus,
   TripStopKind,
   VehicleType,
+  distanceInKm,
 } from '@redinfo/shared';
+import { encodePolyline } from '../../../test/polyline';
 import { summarizeJourneys } from './journeySummary';
+
+// Campo, Barcelos → Porto city centre — real, well-separated points so the
+// distance assertion below is meaningfully non-zero.
+const BARCELOS = { latitude: 41.5388, longitude: -8.6151 };
+const PORTO = { latitude: 41.1579, longitude: -8.6291 };
 
 function leg(overrides: Partial<TransportPlanningLeg> = {}): TransportPlanningLeg {
   return {
@@ -80,18 +87,40 @@ function lane(overrides: Partial<TransportPlanningLane> = {}): TransportPlanning
 
 function pickupAndDropoff(legId: string) {
   return [
-    { id: 'p', tripId: 'trip-1', sequence: 1, kind: TripStopKind.PICKUP, transportLegId: legId, facilityId: null, address: null, latitude: null, longitude: null, plannedAt: '2026-09-15T08:00:00.000Z', actualAt: null, dwellDecision: null, dwellMinutes: null, createdAt: '', updatedAt: '' },
-    { id: 'd', tripId: 'trip-1', sequence: 2, kind: TripStopKind.DROPOFF, transportLegId: legId, facilityId: null, address: null, latitude: null, longitude: null, plannedAt: '2026-09-15T08:45:00.000Z', actualAt: null, dwellDecision: null, dwellMinutes: null, createdAt: '', updatedAt: '' },
+    { id: `p-${legId}`, tripId: 'trip-1', sequence: 1, kind: TripStopKind.PICKUP, transportLegId: legId, facilityId: null, address: null, latitude: null, longitude: null, plannedAt: '2026-09-15T08:00:00.000Z', actualAt: null, dwellDecision: null, dwellMinutes: null, createdAt: '', updatedAt: '' },
+    { id: `d-${legId}`, tripId: 'trip-1', sequence: 2, kind: TripStopKind.DROPOFF, transportLegId: legId, facilityId: null, address: null, latitude: null, longitude: null, plannedAt: '2026-09-15T08:45:00.000Z', actualAt: null, dwellDecision: null, dwellMinutes: null, createdAt: '', updatedAt: '' },
   ] as never;
 }
 
 describe('summarizeJourneys', () => {
-  it('sums distance once per leg and counts distinct patients', () => {
-    const legsById = { 'leg-1': leg({ id: 'leg-1', patientId: 'pat-1', travelDistanceMeters: 30_000 }) };
-    const result = summarizeJourneys([lane({ stops: pickupAndDropoff('leg-1') })], legsById);
+  it('sums each lane\'s own driven route, not each leg\'s stand-alone distance', () => {
+    const legsById = {
+      'leg-1': leg({ id: 'leg-1', patientId: 'pat-1' }),
+      'leg-2': leg({ id: 'leg-2', patientId: 'pat-2' }),
+    };
+    const routeGeometry = encodePolyline([BARCELOS, PORTO]);
+    const result = summarizeJourneys(
+      [
+        lane({
+          stops: [...pickupAndDropoff('leg-1'), ...pickupAndDropoff('leg-2')],
+          routeGeometry,
+        }),
+      ],
+      legsById,
+    );
 
-    expect(result.distanceKm).toBe(30);
-    expect(result.patientCount).toBe(1);
+    // The lane's one driven path, not 2×`travelDistanceMeters` for the two
+    // co-routed legs it carries — see `journeySummary`'s own doc comment.
+    expect(result.distanceKm).toBeCloseTo(distanceInKm(BARCELOS, PORTO), 3);
+    expect(result.patientCount).toBe(2);
+  });
+
+  it('sums distance across lanes, one driven path each', () => {
+    const laneA = lane({ routeGeometry: encodePolyline([BARCELOS, PORTO]) });
+    const laneB = lane({ trip: { ...lane().trip, id: 'trip-2' }, routeGeometry: encodePolyline([PORTO, BARCELOS]) });
+
+    const result = summarizeJourneys([laneA, laneB], {});
+    expect(result.distanceKm).toBeCloseTo(2 * distanceInKm(BARCELOS, PORTO), 3);
   });
 
   it('sums occupied minutes across lanes rather than spanning the day', () => {
