@@ -47,6 +47,12 @@ function fakeLegacyIdMapClient(): LegacyIdMapClient {
         Object.assign(row, data);
         return row;
       },
+      delete: async ({ where }: any) => {
+        const row = [...rows.values()].find((r) => r.id === where.id)!;
+        rows.delete(`${row.entity}::${row.legacyId}`);
+        newIdsTaken.delete(`${row.entity}::${row.newId}`);
+        return row;
+      },
     },
   } as unknown as LegacyIdMapClient;
 }
@@ -204,5 +210,85 @@ describe('adoptOrCreate', () => {
     expect(result).toEqual({ newId: 'assignment-1', outcome: 'duplicate' });
     expect(update).toHaveBeenCalledWith('assignment-1');
     expect(create).not.toHaveBeenCalled();
+  });
+
+  it('recovers when the mapped target was deleted directly in the app, instead of crashing every future run', async () => {
+    // Mirrors the real incident: a coordinator deleted a ScheduleAssignment
+    // outright, leaving its LegacyIdMap row pointing at nothing. update()
+    // rejects with the same shape Prisma throws for a real "0 rows matched"
+    // UPDATE (P2025) — a client-side check, not a constraint violation, so
+    // it must not be treated like create()'s P2002 above.
+    const tx = fakeLegacyIdMapClient();
+    await adoptOrCreate({
+      ...baseParams,
+      tx,
+      sourceHash: 'hash-1',
+      naturalKeyLookup: async () => null,
+      create: async () => 'assignment-1',
+      update: async () => {},
+    });
+
+    const notFound = new Prisma.PrismaClientKnownRequestError('Record to update not found.', {
+      code: 'P2025',
+      clientVersion: '5.22.0',
+      meta: { modelName: 'ScheduleAssignment', cause: 'Record to update not found.' },
+    });
+    const update = jest
+      .fn()
+      .mockRejectedValueOnce(notFound)
+      .mockResolvedValue(undefined);
+    const result = await adoptOrCreate({
+      ...baseParams,
+      tx,
+      sourceHash: 'hash-2',
+      naturalKeyLookup: async () => null,
+      create: async () => 'assignment-2',
+      update,
+    });
+
+    // Re-created under a fresh id, not left crashed — and the stale mapping
+    // is gone, so a third run against the same legacyId adopts this new row
+    // by natural key rather than tripping the same P2025 again.
+    expect(result).toEqual({ newId: 'assignment-2', outcome: 'created' });
+
+    const thirdRun = await adoptOrCreate({
+      ...baseParams,
+      tx,
+      sourceHash: 'hash-2',
+      naturalKeyLookup: async () => 'assignment-2',
+      create: async () => {
+        throw new Error('must not create a second row for the same target');
+      },
+      update: async () => {},
+    });
+    expect(thirdRun).toEqual({ newId: 'assignment-2', outcome: 'unchanged' });
+  });
+
+  it('still lets a genuine non-P2025 update failure abort the run', async () => {
+    const tx = fakeLegacyIdMapClient();
+    await adoptOrCreate({
+      ...baseParams,
+      tx,
+      sourceHash: 'hash-1',
+      naturalKeyLookup: async () => null,
+      create: async () => 'row-id',
+      update: async () => {},
+    });
+
+    const boom = new Error('connection reset');
+    await expect(
+      adoptOrCreate({
+        ...baseParams,
+        tx,
+        sourceHash: 'hash-2',
+        naturalKeyLookup: async () => null,
+        create: async () => {
+          throw new Error('must not create a duplicate');
+        },
+        update: async () => {
+          throw boom;
+        },
+      }),
+    ).rejects.toThrow(boom);
   });
 });
