@@ -9,6 +9,8 @@ import {
   Paper,
   Stack,
   TextField,
+  ToggleButton,
+  ToggleButtonGroup,
   Tooltip,
   Typography,
 } from '@mui/material';
@@ -21,6 +23,7 @@ import ZoomOutIcon from '@mui/icons-material/ZoomOut';
 import {
   TransportPlanningBoard,
   TransportPlanningLane,
+  TransportPlanningLeg,
   TripStopKind,
   VehicleOccupancy,
   VehicleOccupancySource,
@@ -29,12 +32,16 @@ import { apiFetch, ApiError } from '../api';
 import { apiErrorLabel } from '../i18n/labels';
 import { useT } from '../i18n/useT';
 import { toIsoDate } from '../utils/dates';
+import { AssignGroupDialog } from './transportPlanning/AssignGroupDialog';
 import { AssignLegDialog, AssignLegDialogTarget } from './transportPlanning/AssignLegDialog';
 import { AddVehicleLaneDialog } from './transportPlanning/AddVehicleLaneDialog';
 import { CrewDialog, CrewDialogTarget } from './transportPlanning/CrewDialog';
+import { JourneyInspector } from './transportPlanning/JourneyInspector';
 import { WaitReleaseDialog, WaitReleaseTarget } from './transportPlanning/WaitReleaseDialog';
 import { PlanningLegend } from './transportPlanning/PlanningLegend';
 import { UnassignedLegCard } from './transportPlanning/UnassignedLegCard';
+import { UnplannedGroup, groupUnplannedLegs } from './transportPlanning/unplannedGroups';
+import { UnplannedGroupCard } from './transportPlanning/UnplannedGroupCard';
 import { VehicleGroup } from './transportPlanning/VehicleGroup';
 import { LANE_LABEL_WIDTH } from './transportPlanning/PlanningLane';
 import { TimelineRuler } from './transportPlanning/TimelineRuler';
@@ -71,6 +78,19 @@ function legDurationMinutes(board: TransportPlanningBoard, legId: string): numbe
   if (leg?.plannedPickupAt && leg?.plannedDropoffAt) return diffMinutes(leg.plannedPickupAt, leg.plannedDropoffAt);
   if (leg?.travelMinutes != null && leg.travelMinutes > 0) return leg.travelMinutes;
   return DEFAULT_LEG_DURATION_MINUTES;
+}
+
+/** The dialog target for a fresh assignment out of the unassigned rail —
+ * shared by the flat "por pessoa" card and a group card's per-person row,
+ * so the two ever disagree on a leg's default pickup/dropoff. */
+function assignTargetForLeg(legId: string, leg: TransportPlanningLeg) {
+  return {
+    legId,
+    tripId: '',
+    pickupPlannedAt: leg.plannedPickupAt ?? leg.suggested.pickupAt ?? new Date().toISOString(),
+    dropoffPlannedAt:
+      leg.plannedDropoffAt ?? leg.suggested.dropoffAt ?? new Date(Date.now() + DEFAULT_LEG_DURATION_MINUTES * 60_000).toISOString(),
+  };
 }
 
 /** One group per vehicle, each holding that vehicle's journeys in the order
@@ -111,6 +131,15 @@ export const TransportPlanningPage = () => {
   const [zoomIndex, setZoomIndex] = useState(0);
   const [isDragActive, setDragActive] = useState(false);
   const [trackWidth, setTrackWidth] = useState(0);
+  // Focus mode (#247 stage 1) — the one journey every other surface dims
+  // around. A second click on the same journey clears it, same as clicking
+  // away; see the board's own background `onClick` below for that path.
+  const [selectedTripId, setSelectedTripId] = useState<string | null>(null);
+  // The unplanned rail's own view (#247 stage 2) — grouped by default, since
+  // that's the unit a planning decision is actually made in; "por pessoa"
+  // reverts to the flat, one-card-per-leg list #235 shipped.
+  const [perPersonView, setPerPersonView] = useState(false);
+  const [assignGroupTarget, setAssignGroupTarget] = useState<UnplannedGroup | null>(null);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const loadBoard = useCallback(async () => {
@@ -178,6 +207,19 @@ export const TransportPlanningPage = () => {
 
   const vehicleGroups = useMemo(() => (board ? groupLanesByVehicle(board.lanes) : []), [board]);
 
+  const unplannedGroups = useMemo(
+    () => (board ? groupUnplannedLegs(board.unassignedLegIds, board.legsById) : []),
+    [board],
+  );
+
+  // The selected journey's own lane, re-read from the freshly-loaded board
+  // every render — same reasoning as `crewDialogTarget` above: the inspector
+  // must never show one edit stale.
+  const selectedLane = useMemo(
+    () => (board && selectedTripId ? board.lanes.find((candidate) => candidate.trip.id === selectedTripId) ?? null : null),
+    [board, selectedTripId],
+  );
+
   // The dialog stays open across an add/remove, so it must read the lane from
   // the board that was just reloaded rather than from the snapshot taken when
   // it was opened — otherwise the crew list it shows is always one edit stale.
@@ -220,6 +262,10 @@ export const TransportPlanningPage = () => {
     },
     [board, date, notify, t, loadBoard],
   );
+
+  const selectJourney = useCallback((tripId: string) => {
+    setSelectedTripId((current) => (current === tripId ? null : tripId));
+  }, []);
 
   const handleAddJourney = useCallback(
     async (vehicleId: string) => {
@@ -285,39 +331,57 @@ export const TransportPlanningPage = () => {
       {!loading && board && (
         <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} sx={{ minWidth: 0, alignItems: 'flex-start' }}>
           <Box sx={{ width: { xs: '100%', lg: 280 }, flexShrink: 0, minWidth: 0 }}>
-            <Typography variant="subtitle1" sx={{ mb: 1 }}>
-              {t('transportPlanning.railTitle')}
-            </Typography>
+            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
+              <Typography variant="subtitle1">{t('transportPlanning.railTitle')}</Typography>
+              {board.unassignedLegIds.length > 0 && (
+                <ToggleButtonGroup
+                  size="small"
+                  exclusive
+                  value={perPersonView ? 'person' : 'group'}
+                  onChange={(_e, value) => value && setPerPersonView(value === 'person')}
+                >
+                  <ToggleButton value="group" aria-label={t('transportPlanning.railViewGrouped')}>
+                    {t('transportPlanning.railViewGrouped')}
+                  </ToggleButton>
+                  <ToggleButton value="person" aria-label={t('transportPlanning.railViewPerPerson')}>
+                    {t('transportPlanning.railViewPerPerson')}
+                  </ToggleButton>
+                </ToggleButtonGroup>
+              )}
+            </Stack>
             {board.unassignedLegIds.length === 0 && (
               <Typography variant="body2" color="text.secondary">
                 {t('transportPlanning.railEmpty')}
               </Typography>
             )}
             <Stack spacing={1}>
-              {board.unassignedLegIds.map((legId) => {
-                const leg = board.legsById[legId];
-                if (!leg) return null;
-                return (
-                  <UnassignedLegCard
-                    key={legId}
-                    leg={leg}
-                    onDragStart={() => setDragActive(true)}
-                    onDragEnd={() => setDragActive(false)}
-                    onAssign={() =>
-                      setAssignTarget({
-                        legId,
-                        tripId: '',
-                        pickupPlannedAt:
-                          leg.plannedPickupAt ?? leg.suggested.pickupAt ?? new Date().toISOString(),
-                        dropoffPlannedAt:
-                          leg.plannedDropoffAt ??
-                          leg.suggested.dropoffAt ??
-                          new Date(Date.now() + DEFAULT_LEG_DURATION_MINUTES * 60_000).toISOString(),
-                      })
-                    }
-                  />
-                );
-              })}
+              {perPersonView
+                ? board.unassignedLegIds.map((legId) => {
+                    const leg = board.legsById[legId];
+                    if (!leg) return null;
+                    return (
+                      <UnassignedLegCard
+                        key={legId}
+                        leg={leg}
+                        onDragStart={() => setDragActive(true)}
+                        onDragEnd={() => setDragActive(false)}
+                        onAssign={() => setAssignTarget(assignTargetForLeg(legId, leg))}
+                      />
+                    );
+                  })
+                : unplannedGroups.map((group) => (
+                    <UnplannedGroupCard
+                      key={group.key}
+                      group={group}
+                      legsById={board.legsById}
+                      vehicles={board.lanes.map((lane) => lane.vehicle)}
+                      onAssignGroup={() => setAssignGroupTarget(group)}
+                      onAssignPerson={(legId) => {
+                        const leg = board.legsById[legId];
+                        if (leg) setAssignTarget(assignTargetForLeg(legId, leg));
+                      }}
+                    />
+                  ))}
             </Stack>
           </Box>
 
@@ -360,9 +424,21 @@ export const TransportPlanningPage = () => {
               </Typography>
             )}
 
-            <Paper variant="outlined" sx={{ minWidth: 0, overflow: 'hidden' }}>
+            <Paper
+              variant="outlined"
+              sx={{ minWidth: 0, overflow: 'hidden' }}
+              // Clicking the board's own background — never a lane, which
+              // stops the click reaching here — restores the full board
+              // (#247 stage 1's "clicking away" acceptance criterion).
+              onClick={(e) => {
+                if (e.target === e.currentTarget) setSelectedTripId(null);
+              }}
+            >
               <Box
                 ref={scrollRef}
+                onClick={(e) => {
+                  if (e.target === e.currentTarget) setSelectedTripId(null);
+                }}
                 sx={{
                   overflowX: 'auto',
                   overflowY: 'visible',
@@ -387,6 +463,8 @@ export const TransportPlanningPage = () => {
                       timelineWindow={timelineWindow}
                       occupancy={occupancy.filter((block) => block.vehicleId === group.vehicle.id)}
                       isDragActive={isDragActive}
+                      selectedTripId={selectedTripId}
+                      onSelectJourney={selectJourney}
                       onAddJourney={handleAddJourney}
                       onDropLeg={handleDropLeg}
                       onEditAssignment={(legId, tripId, pickup, dropoff) =>
@@ -439,6 +517,17 @@ export const TransportPlanningPage = () => {
               </Stack>
             </Paper>
           </Box>
+
+          {selectedLane && (
+            <Box sx={{ width: { xs: '100%', lg: 300 }, flexShrink: 0, minWidth: 0 }}>
+              <JourneyInspector
+                lane={selectedLane}
+                legsById={board.legsById}
+                onClose={() => setSelectedTripId(null)}
+                onEditCrew={() => setCrewTarget({ lane: selectedLane, journeyNumber: selectedLane.journeyNumber, date })}
+              />
+            </Box>
+          )}
         </Stack>
       )}
 
@@ -473,6 +562,15 @@ export const TransportPlanningPage = () => {
         excludeVehicleIds={board?.lanes.map((lane) => lane.vehicle.id) ?? []}
         onClose={() => setAddVehicleOpen(false)}
         onCreated={() => loadBoard()}
+      />
+      <AssignGroupDialog
+        group={assignGroupTarget}
+        lanes={board?.lanes ?? []}
+        onClose={() => setAssignGroupTarget(null)}
+        onSaved={() => {
+          notify(t('transportPlanning.assigned'));
+          loadBoard();
+        }}
       />
     </Box>
   );

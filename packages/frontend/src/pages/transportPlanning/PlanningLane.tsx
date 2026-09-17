@@ -15,13 +15,15 @@ import {
   PatientMobility,
   TransportPlanningLane,
   TransportPlanningLeg,
+  TripStatus,
   TripStop,
   TripStopDwell,
   TripStopKind,
   VehicleOccupancy,
 } from '@redinfo/shared';
+import { colorWhite } from '../../layout/design-tokens';
 import { useT } from '../../i18n/useT';
-import { journeyDestinations, legFacilityName, treatmentMinutes } from './legFacts';
+import { journeyDestinations, legFacilityName, needsWaitReleaseDecision, treatmentMinutes } from './legFacts';
 import {
   TimelineWindow,
   clockLabel,
@@ -142,16 +144,6 @@ function backgroundSegments(stops: TripStop[]): BackgroundSegment[] {
   return segments;
 }
 
-/** Whether a `DROPOFF` stop still needs a wait-or-release decision — an
- * outbound leg's dropoff with no `WAIT` stop already recorded at the same
- * facility right after it. */
-function needsWaitReleaseDecision(stop: TripStop, allStops: TripStop[], leg: TransportPlanningLeg | undefined): boolean {
-  if (!leg || leg.direction !== LegDirection.OUTBOUND) return false;
-  return !allStops.some(
-    (s) => s.kind === TripStopKind.WAIT && s.facilityId === stop.facilityId && s.plannedAt >= stop.plannedAt,
-  );
-}
-
 /**
  * One journey — one `Trip` — as a row on the time axis (#235).
  *
@@ -163,6 +155,10 @@ function needsWaitReleaseDecision(stop: TripStop, allStops: TripStop[], leg: Tra
 export const PlanningLane = ({
   lane,
   journeyNumber,
+  journeyColor,
+  isFocused,
+  isDimmed,
+  onSelectJourney,
   showDividerAbove = false,
   legsById,
   timelineWindow,
@@ -175,6 +171,17 @@ export const PlanningLane = ({
 }: {
   lane: TransportPlanningLane;
   journeyNumber: number;
+  /** This journey's identity colour — see `journeyColorForOrdinal`. Carries
+   * identity only; direction is a shape (outbound solid, return dashed) and
+   * status an outline, so the same hue never has to mean two things. */
+  journeyColor: string;
+  /** True when this is the selected journey — focus mode's positive case. */
+  isFocused: boolean;
+  /** True when another journey is selected and this isn't it (#247 stage 1)
+   * — dropped to ~20% opacity, the thing that keeps a heavy day legible
+   * without a bigger palette. */
+  isDimmed: boolean;
+  onSelectJourney: () => void;
   /** Hairline above this journey — set for every journey of a vehicle except
    * the first, which the vehicle header already separates. */
   showDividerAbove?: boolean;
@@ -217,6 +224,8 @@ export const PlanningLane = ({
       sx={{
         display: 'flex',
         alignItems: 'stretch',
+        opacity: isDimmed ? 0.2 : 1,
+        transition: 'opacity 150ms',
         ...(showDividerAbove ? { borderTop: 1, borderColor: 'divider' } : {}),
       }}
     >
@@ -238,7 +247,42 @@ export const PlanningLane = ({
           borderColor: 'divider',
         }}
       >
-        <Stack direction="row" spacing={0.5} alignItems="center">
+        <Stack
+          direction="row"
+          spacing={0.5}
+          alignItems="center"
+          role="button"
+          tabIndex={0}
+          aria-pressed={isFocused}
+          aria-label={t('transportPlanning.selectJourneyLabel', { number: journeyNumber })}
+          onClick={onSelectJourney}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              onSelectJourney();
+            }
+          }}
+          sx={{
+            cursor: 'pointer',
+            borderRadius: 0.5,
+            px: 0.25,
+            mx: -0.25,
+            '&:hover': { bgcolor: 'action.hover' },
+            '&:focus-visible': { outline: 2, outlineColor: 'primary.main', outlineOffset: 1 },
+          }}
+        >
+          {/* The journey's own identity colour (#247 stage 1) — the same
+              swatch the leg blocks, the inspector and the journey page use. */}
+          <Box
+            sx={{
+              width: 10,
+              height: 10,
+              borderRadius: '50%',
+              flexShrink: 0,
+              bgcolor: journeyColor,
+              boxShadow: isFocused ? `0 0 0 2px ${journeyColor}55` : 'none',
+            }}
+          />
           {/* A quiet numbered token, not a filled pill. Red is reserved for
               a patient being carried; a journey's ordinal is navigation. */}
           <Box
@@ -561,18 +605,26 @@ export const PlanningLane = ({
                     width,
                     top: rowTop,
                     height: RIDE_HEIGHT,
-                    color: isOutbound ? 'primary.contrastText' : 'secondary.contrastText',
-                    // A soft vertical gradient rather than a flat fill, and a
-                    // solid edge where the patient boards. Square on that
-                    // edge, round on the alighting one: at a glance the bar
-                    // reads as a direction of travel, not an anonymous span.
-                    background: (theme) => {
-                      const base = isOutbound ? theme.palette.primary : theme.palette.secondary;
-                      return `linear-gradient(180deg, ${alpha(base.light, 0.96)} 0%, ${base.main} 100%)`;
-                    },
+                    color: colorWhite,
+                    // The journey's own identity colour (#247 stage 1) — a
+                    // soft vertical gradient rather than a flat fill, round
+                    // on the alighting edge. Direction no longer lives here:
+                    // it's the border style below, so it survives
+                    // greyscale.
+                    background: `linear-gradient(180deg, ${alpha(journeyColor, 0.88)} 0%, ${journeyColor} 100%)`,
+                    // Solid outbound, dashed return — legible without colour.
+                    border: '1.5px solid',
+                    borderStyle: isOutbound ? 'solid' : 'dashed',
+                    borderColor: alpha(colorWhite, 0.55),
+                    // The boarding edge stays square and solid regardless of
+                    // direction; the alighting edge is what's rounded below.
                     borderLeft: 3,
-                    borderColor: isOutbound ? 'primary.dark' : 'secondary.dark',
+                    borderLeftColor: journeyColor,
                     borderRadius: '2px 10px 10px 2px',
+                    // Status as an outline: a journey with an ERROR issue
+                    // gets a red hairline ring, a completed one is muted.
+                    ...(errorCount > 0 ? { boxShadow: (theme) => `0 0 0 1.5px ${theme.palette.error.main}` } : { boxShadow: 1 }),
+                    opacity: lane.trip.status === TripStatus.COMPLETED ? 0.6 : 1,
                     px: 0.25,
                     display: 'flex',
                     alignItems: 'center',
@@ -583,7 +635,6 @@ export const PlanningLane = ({
                     '&:hover': { filter: 'brightness(1.1)' },
                     '&:focus-visible': { outline: 2, outlineColor: 'text.primary', outlineOffset: 1 },
                     whiteSpace: 'nowrap',
-                    boxShadow: 1,
                   }}
                 >
                   <MobilityIcon sx={{ fontSize: 13, flexShrink: 0 }} />

@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import { AdminContext, testDataProvider } from 'react-admin';
 import polyglotI18nProvider from 'ra-i18n-polyglot';
 import userEvent from '@testing-library/user-event';
+import { MemoryRouter } from 'react-router-dom';
 import {
   CertificationType,
   LegDirection,
@@ -86,7 +87,11 @@ const LEG_UNASSIGNED = {
   suggested: { pickupAt: '2026-09-15T07:57:30.000Z', dropoffAt: '2026-09-15T08:42:30.000Z' },
 };
 
-const lane = (id: string, vehicle: { id: string; numeroCauda: string; licensePlate: string }) => ({
+const lane = (
+  id: string,
+  vehicle: { id: string; numeroCauda: string; licensePlate: string },
+  journeyNumber = 1,
+) => ({
   trip: {
     id,
     date: '2026-09-15',
@@ -96,6 +101,7 @@ const lane = (id: string, vehicle: { id: string; numeroCauda: string; licensePla
     createdAt: '2026-09-01T00:00:00.000Z',
     updatedAt: '2026-09-01T00:00:00.000Z',
   },
+  journeyNumber,
   vehicle: {
     ...vehicle,
     vehicleType: VehicleType.TRANSPORT,
@@ -177,9 +183,11 @@ const board = (overrides: Partial<TransportPlanningBoard> = {}): TransportPlanni
 
 const renderPage = () =>
   render(
-    <AdminContext dataProvider={testDataProvider()} i18nProvider={polyglotI18nProvider(messages, 'en')}>
-      <TransportPlanningPage />
-    </AdminContext>,
+    <MemoryRouter>
+      <AdminContext dataProvider={testDataProvider()} i18nProvider={polyglotI18nProvider(messages, 'en')}>
+        <TransportPlanningPage />
+      </AdminContext>
+    </MemoryRouter>,
   );
 
 describe('TransportPlanningPage', () => {
@@ -208,10 +216,14 @@ describe('TransportPlanningPage', () => {
   });
 
   it('shows H.I., H.F. and the collection time, marking the collection as a suggestion until it is planned', async () => {
+    const user = userEvent.setup();
     mockApiFetch.mockImplementation((path: string) =>
       Promise.resolve(path.startsWith('/trips/board') ? board() : []),
     );
     renderPage();
+    // This level of per-leg detail is the flat "por pessoa" card's job
+    // (#247 stage 2) — the grouped default shows only name and mobility.
+    await user.click(await screen.findByRole('button', { name: 'Per person' }));
 
     // The two times the referral states, under the delegation's own headings.
     expect(await screen.findByText('H.I.')).toBeInTheDocument();
@@ -222,10 +234,12 @@ describe('TransportPlanningPage', () => {
   });
 
   it('shows the travel and treatment durations, the two different questions a planner asks', async () => {
+    const user = userEvent.setup();
     mockApiFetch.mockImplementation((path: string) =>
       Promise.resolve(path.startsWith('/trips/board') ? board() : []),
     );
     renderPage();
+    await user.click(await screen.findByRole('button', { name: 'Per person' }));
 
     expect(await screen.findByText('Travel 45 min')).toBeInTheDocument();
     expect(screen.getByText('Treatment 1h 30')).toBeInTheDocument();
@@ -249,7 +263,7 @@ describe('TransportPlanningPage', () => {
     mockApiFetch.mockImplementation((path: string) =>
       Promise.resolve(
         path.startsWith('/trips/board')
-          ? board({ lanes: [lane('trip-1', VEHICLE_101), lane('trip-2', VEHICLE_101)] as never })
+          ? board({ lanes: [lane('trip-1', VEHICLE_101, 1), lane('trip-2', VEHICLE_101, 2)] as never })
           : [],
       ),
     );
@@ -426,8 +440,8 @@ describe('TransportPlanningPage', () => {
           path.startsWith('/trips/board')
             ? board({
                 lanes: [
-                  { ...lane('trip-1', VEHICLE_101), crewRequirement: STANDARD_TRIP_CREW_REQUIREMENT },
-                  { ...lane('trip-2', VEHICLE_101), crewRequirement: STRETCHER_TRIP_CREW_REQUIREMENT },
+                  { ...lane('trip-1', VEHICLE_101, 1), crewRequirement: STANDARD_TRIP_CREW_REQUIREMENT },
+                  { ...lane('trip-2', VEHICLE_101, 2), crewRequirement: STRETCHER_TRIP_CREW_REQUIREMENT },
                 ] as never,
               })
             : [],
@@ -540,6 +554,81 @@ describe('TransportPlanningPage', () => {
       expect(addButton).toBeDisabled();
       await user.type(within(dialog).getByLabelText('Override reason'), 'Agreed to come in');
       expect(addButton).not.toBeDisabled();
+    });
+  });
+
+  // ── Journey identity and focus mode (#247 stage 1) ──────────────────────
+
+  describe('focus mode', () => {
+    it('opens the inspector for the selected journey, and closes it on a second click', async () => {
+      const user = userEvent.setup();
+      mockApiFetch.mockImplementation((path: string) =>
+        Promise.resolve(path.startsWith('/trips/board') ? board() : []),
+      );
+      renderPage();
+
+      const selectButton = await screen.findByRole('button', { name: 'Select journey 1' });
+      await user.click(selectButton);
+
+      expect(await screen.findByText('Journey 1 · 101')).toBeInTheDocument();
+      expect(selectButton).toHaveAttribute('aria-pressed', 'true');
+
+      await user.click(selectButton);
+      expect(screen.queryByText('Journey 1 · 101')).not.toBeInTheDocument();
+    });
+  });
+
+  // ── Grouped unplanned rail (#247 stage 2) ────────────────────────────────
+
+  describe('unplanned rail grouping', () => {
+    const LEG_SAME_GROUP = { ...LEG_UNASSIGNED, id: 'leg-2', patientId: 'pat-2', patientName: 'João Silva' };
+
+    const groupedBoard = () =>
+      board({
+        legsById: { [LEG_UNASSIGNED.id]: LEG_UNASSIGNED, [LEG_SAME_GROUP.id]: LEG_SAME_GROUP } as never,
+        unassignedLegIds: [LEG_UNASSIGNED.id, LEG_SAME_GROUP.id],
+      });
+
+    it('groups two people bound for the same facility within 15 minutes into one card', async () => {
+      const user = userEvent.setup();
+      mockApiFetch.mockImplementation((path: string) => Promise.resolve(path.startsWith('/trips/board') ? groupedBoard() : []));
+      renderPage();
+
+      expect(await screen.findByText('2 people')).toBeInTheDocument();
+      // Both names listed inside the one card — the whole point of grouping
+      // is that they stay visible, not that they disappear into a count.
+      expect(screen.getByText('Maria Costa')).toBeInTheDocument();
+      expect(screen.getByText('João Silva')).toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Per person' }));
+      // Two flat cards now, each with its own "Assign" button — no group
+      // action, and no group-size chip.
+      expect(await screen.findAllByRole('button', { name: 'Assign' })).toHaveLength(2);
+      expect(screen.queryByRole('button', { name: 'Assign group' })).not.toBeInTheDocument();
+      expect(screen.queryByText('2 people')).not.toBeInTheDocument();
+    });
+
+    it('assigns every person in a group to the same journey with one dialog', async () => {
+      const user = userEvent.setup();
+      const assignedLegIds: string[] = [];
+      mockApiFetch.mockImplementation((path: string, options?: { method?: string; body?: Record<string, unknown> }) => {
+        if (path.startsWith('/trips/board')) return Promise.resolve(groupedBoard());
+        if (path.startsWith('/vehicle-occupancy')) return Promise.resolve([]);
+        if (path === '/trips/trip-1/legs' && options?.method === 'POST') {
+          assignedLegIds.push(options.body?.transportLegId as string);
+          return Promise.resolve({});
+        }
+        return Promise.resolve([]);
+      });
+      renderPage();
+
+      await user.click(await screen.findByRole('button', { name: 'Assign group' }));
+      const dialog = await screen.findByRole('dialog');
+      await user.click(within(dialog).getByLabelText('Vehicle'));
+      await user.click(await screen.findByRole('option', { name: /101/ }));
+      await user.click(within(dialog).getByRole('button', { name: 'Confirm' }));
+
+      await waitFor(() => expect(assignedLegIds).toEqual(['leg-unassigned', 'leg-2']));
     });
   });
 });

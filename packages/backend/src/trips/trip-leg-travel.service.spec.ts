@@ -126,6 +126,9 @@ describe('TripLegTravelService', () => {
     expect(origin.corridor).toEqual({ kind: 'locality', localityId: 'loc-1' });
     expect(destination.corridor).toEqual({ kind: 'facility', facilityId: 'fac-1' });
     expect(result.get('leg-1')?.travelMinutes).toBe(45);
+    // `planBetweenPoints` already computed this; carried through rather than
+    // discarded, for #247 stage 3's journey page distance column.
+    expect(result.get('leg-1')?.travelDistanceMeters).toBe(30_000);
   });
 
   it('puts the facility at the origin end of a return leg, where it actually is', async () => {
@@ -183,6 +186,7 @@ describe('TripLegTravelService', () => {
     expect(result.get('leg-1')).toEqual({
       travelMinutes: null,
       travelEstimated: false,
+      travelDistanceMeters: null,
       suggested: { pickupAt: null, dropoffAt: null },
     });
   });

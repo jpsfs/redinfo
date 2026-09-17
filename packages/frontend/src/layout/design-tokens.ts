@@ -154,6 +154,31 @@ export const colorSequentialScale = [
 /** Single-series ranked bars (localities, hospitals, outcomes, km): one colour for every bar. */
 export const colorChartSingleSeries = colorRedCrossRed;
 
+// ─── Transport planning journey identity (#247 stage 1) ────────────────────
+/**
+ * One hue per journey, cycling every 8 — see
+ * `docs/plans/planeamento-transportes-redesign.md` §4. Identity only:
+ * direction is a shape (`journeyColorForOrdinal`'s callers draw outbound
+ * solid, return dashed), status is an outline, mobility stays an icon. Never
+ * `colorRedCrossRed` — brand red stays reserved for a problem (over capacity,
+ * a crew shortfall, a missed arrival window), so a journey drawn in it would
+ * train the planner to stop noticing it.
+ *
+ * Fixed by the delegation 2026-08 alongside the statistics dashboards'
+ * categorical palette: the eight hold their separation under deuteranopia
+ * and in greyscale, which matters here because the crew sheet prints.
+ */
+export const journeyColorRamp = [
+  '#1F6FB2',
+  '#00897B',
+  '#B26A00',
+  '#6B4FA0',
+  '#C2185B',
+  '#2E7D32',
+  '#0097A7',
+  '#8D6E63',
+] as const;
+
 // ─── Logo assets ──────────────────────────────────────────────────────────────
 /** Primary local path for the full Delegação de Campo logotype (/public). */
 export const logoDelegacaoCampoUrl = '/logo-delegacao.jpg';

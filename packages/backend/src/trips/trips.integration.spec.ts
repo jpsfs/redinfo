@@ -78,6 +78,9 @@ describeIntegration('TripsService/TripStopsService/TripCrewService (integration)
   const crewManifest = new TripCrewManifestService(prisma, transportRequestLegs, patients);
 
   let coordinator: { id: string };
+  /** `getDetail`'s caller (#247 stage 3) — a function, not a constant,
+   * since `coordinator` itself is only assigned inside `beforeAll`. */
+  const callerUser = () => ({ id: coordinator.id, roles: [UserRole.TRANSPORT_COORDINATOR] });
   let crewMember: { id: string };
   let municipality: { id: string };
   let requester: { id: string };
@@ -229,7 +232,7 @@ describeIntegration('TripsService/TripStopsService/TripCrewService (integration)
     expect(occupancy?.startsAt.toISOString()).toBe('2026-09-16T08:00:00.000Z');
     expect(occupancy?.endsAt.toISOString()).toBe('2026-09-16T08:30:00.000Z');
 
-    const detailBefore = await trips.getDetail(trip.id);
+    const detailBefore = await trips.getDetail(trip.id, callerUser());
     const dropoffStop = detailBefore.stops.find((s) => s.kind === TripStopKind.DROPOFF)!;
 
     await stops.addStop(trip.id, {
@@ -326,7 +329,7 @@ describeIntegration('TripsService/TripStopsService/TripCrewService (integration)
     });
     expect(added.overrideReason).toBe('Asked to come in despite the recorded leave');
 
-    const detail = await trips.getDetail(trip.id);
+    const detail = await trips.getDetail(trip.id, callerUser());
     expect(detail.issues.some((issue) => issue.code === 'CREW_UNAVAILABLE')).toBe(false);
   });
 
@@ -440,7 +443,7 @@ describeIntegration('TripsService/TripStopsService/TripCrewService (integration)
     });
     await crew.add(trip.id, { userId: crewMember.id, role: CertificationType.TAS });
 
-    const short = await trips.getDetail(trip.id);
+    const short = await trips.getDetail(trip.id, callerUser());
     expect(short.crewRequirement).toMatchObject({ minimumCrew: 2, minimumCertification: CertificationType.TAT });
     // vehicleC carries a stretcher but is a TRANSPORT vehicle, and one
     // qualified crew member is one short of the two a maca needs.
@@ -449,7 +452,7 @@ describeIntegration('TripsService/TripStopsService/TripCrewService (integration)
 
     // The coordinator holds nothing — adding them does not clear the count.
     await crew.add(trip.id, { userId: coordinator.id, role: CertificationType.DRIVER });
-    const stillShort = await trips.getDetail(trip.id);
+    const stillShort = await trips.getDetail(trip.id, callerUser());
     expect(stillShort.issues).toContainEqual(expect.objectContaining({ code: 'CREW_TOO_FEW' }));
 
     // Certify them and the shortfall clears without anything else changing.
@@ -461,7 +464,7 @@ describeIntegration('TripsService/TripStopsService/TripCrewService (integration)
         createdById: coordinator.id,
       },
     });
-    const crewed = await trips.getDetail(trip.id);
+    const crewed = await trips.getDetail(trip.id, callerUser());
     expect(crewed.issues.some((issue) => issue.code === 'CREW_TOO_FEW')).toBe(false);
     // The board gets each member already joined to their name and effective
     // certifications, so it never has to ask `users` a second time. Compared

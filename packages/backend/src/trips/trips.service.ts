@@ -4,11 +4,13 @@ import {
   ArrivalWindowWarning,
   LegDirection,
   PatientMobility,
+  TransportLeg,
   TransportPlanningBoard,
   TransportPlanningCrewMember,
   TransportPlanningLane,
   TransportPlanningLeg,
   TripCrewRequirement,
+  TripJourneyDetail,
   TripPlanIssue,
   TripStopKind,
   TripStopSegment,
@@ -83,6 +85,37 @@ type LoadedCrewMember = TransportPlanningCrewMember & {
   held: ReturnType<typeof toHeldCertifications>;
 };
 
+/** The `vehicle` field both `getBoard`'s lanes and `getDetail`'s journey
+ * carry — `TRIP_INCLUDE`'s selected columns, reshaped once instead of
+ * inline at each call site. */
+function vehicleSummary(row: TripDetailRow): TransportPlanningLane['vehicle'] {
+  return {
+    id: row.vehicleId,
+    licensePlate: row.vehicle.licensePlate,
+    numeroCauda: row.vehicle.numeroCauda,
+    vehicleType: row.vehicle.vehicleType as never,
+    seatedCapacity: row.vehicle.seatedCapacity,
+    wheelchairPositions: row.vehicle.wheelchairPositions,
+    stretcherPositions: row.vehicle.stretcherPositions,
+  };
+}
+
+/**
+ * The 1-based ordinal `TransportPlanningLane.journeyNumber` carries, one
+ * vehicle's trips at a time — earliest first stop first, same as
+ * `groupLanesByVehicle`/`VehicleGroup` order the lanes for display on the
+ * frontend board. Computed here, once, so `getDetail`'s single-trip journey
+ * page (which has no sibling trip loaded to sort against) lands on the same
+ * number as the board does for the same trip, rather than a second,
+ * independent implementation of this sort drifting from this one.
+ */
+function journeyNumbersByTripId(rows: { id: string; stops: { plannedAt: Date }[] }[]): Map<string, number> {
+  const firstStopAt = (row: { stops: { plannedAt: Date }[] }) =>
+    row.stops.length ? Math.min(...row.stops.map((s) => s.plannedAt.getTime())) : Number.MAX_SAFE_INTEGER;
+  const ordered = [...rows].sort((a, b) => firstStopAt(a) - firstStopAt(b));
+  return new Map(ordered.map((row, index) => [row.id, index + 1]));
+}
+
 /** Maps the leg-level arrival-timing read (#233) onto this story's ranked
  * severity — soft, informational, never a block. */
 function toIssueLevel(warning: ArrivalWindowWarning): 'NOTE' | 'WARNING' | null {
@@ -147,10 +180,32 @@ export class TripsService {
     await this.vehicleOccupancy.removeForSource(VehicleOccupancySource.TRANSPORT_TRIP, id);
   }
 
-  async getDetail(id: string): Promise<TripDetail> {
+  /**
+   * One journey's own page (#247 stage 3) — the same ranked validation the
+   * board computes for this trip, plus what a standalone page needs and the
+   * board gets for free by being loaded alongside every other lane: the
+   * vehicle, this journey's `journeyNumber` (via a small sibling query — the
+   * one extra round trip a single-trip page can't avoid) and `legsById` for
+   * its own stops.
+   */
+  async getDetail(id: string, user: RequestUser): Promise<TripJourneyDetail> {
     const row = await this.prisma.trip.findUnique({ where: { id }, include: TRIP_INCLUDE });
     if (!row) throw new NotFoundException(`Trip ${id} not found`);
-    return this.buildDetail(row);
+    const detail = await this.buildDetail(row);
+
+    const siblings = await this.prisma.trip.findMany({
+      where: { vehicleId: row.vehicleId, date: row.date },
+      select: { id: true, stops: { select: { plannedAt: true } } },
+    });
+    const journeyNumber = journeyNumbersByTripId(siblings).get(row.id) ?? 1;
+
+    const legIds = [
+      ...new Set((row.stops as TripStopRow[]).map((stop) => stop.transportLegId).filter((legId): legId is string => !!legId)),
+    ];
+    const legs = await this.transportRequestLegs.findByIds(legIds);
+    const legsById = await this.loadLegsById(legs, user);
+
+    return { ...detail, journeyNumber, vehicle: vehicleSummary(row), legsById };
   }
 
   /**
@@ -168,18 +223,19 @@ export class TripsService {
       orderBy: [{ createdAt: 'asc' }],
     });
 
+    // Per vehicle, not across the whole date — see `journeyNumbersByTripId`.
+    const journeyNumberByTripId = new Map<string, number>();
+    const rowsByVehicle = new Map<string, typeof rows>();
+    for (const row of rows) rowsByVehicle.set(row.vehicleId, [...(rowsByVehicle.get(row.vehicleId) ?? []), row]);
+    for (const vehicleRows of rowsByVehicle.values()) {
+      for (const [tripId, number] of journeyNumbersByTripId(vehicleRows)) journeyNumberByTripId.set(tripId, number);
+    }
+
     const lanes: TransportPlanningLane[] = await Promise.all(
       rows.map(async (row) => ({
         ...(await this.buildDetail(row)),
-        vehicle: {
-          id: row.vehicleId,
-          licensePlate: row.vehicle.licensePlate,
-          numeroCauda: row.vehicle.numeroCauda,
-          vehicleType: row.vehicle.vehicleType as never,
-          seatedCapacity: row.vehicle.seatedCapacity,
-          wheelchairPositions: row.vehicle.wheelchairPositions,
-          stretcherPositions: row.vehicle.stretcherPositions,
-        },
+        journeyNumber: journeyNumberByTripId.get(row.id) ?? 1,
+        vehicle: vehicleSummary(row),
       })),
     );
 
@@ -192,9 +248,29 @@ export class TripsService {
       this.transportRequestLegs.findByIds(assignedLegIds),
       this.transportRequestLegs.findUnassignedForDate(date),
     ]);
-    const allLegs = [...assignedLegs, ...unassignedLegs];
+    const legsById = await this.loadLegsById([...assignedLegs, ...unassignedLegs], user);
 
-    const requestIds = [...new Set(allLegs.map((leg) => leg.transportRequestId))];
+    return {
+      date,
+      lanes,
+      legsById,
+      unassignedLegIds: unassignedLegs.map((leg) => leg.id),
+    };
+  }
+
+  /**
+   * Every already-loaded `TransportLeg` joined to what a board card (or a
+   * journey page's stop table) needs to display it: the patient's id, name
+   * (degraded per `VIEW_PATIENT_IDENTITY`, same as `findManyForDisplay`
+   * itself) and mobility, and the advisory travel estimate (#219/#247).
+   * Shared by `getBoard` (the whole date's legs, assigned and not) and
+   * `getDetail` (one trip's own assigned legs only) so the two surfaces
+   * never compute a leg's facts two different ways.
+   */
+  private async loadLegsById(legs: TransportLeg[], user: RequestUser): Promise<Record<string, TransportPlanningLeg>> {
+    if (legs.length === 0) return {};
+
+    const requestIds = [...new Set(legs.map((leg) => leg.transportRequestId))];
     const requests = await this.prisma.transportRequest.findMany({
       where: { id: { in: requestIds } },
       select: { id: true, patientId: true },
@@ -207,9 +283,9 @@ export class TripsService {
     // (#219) — advisory only, and never allowed to fail the board: see
     // `TripLegTravelService`.
     const travel = await this.legTravel.estimateMany(
-      allLegs,
+      legs,
       new Map(
-        allLegs.map((leg) => {
+        legs.map((leg) => {
           const patient = patientDisplay.get(patientIdByRequestId.get(leg.transportRequestId) ?? '');
           return [
             leg.id,
@@ -225,7 +301,7 @@ export class TripsService {
     );
 
     const legsById: Record<string, TransportPlanningLeg> = {};
-    for (const leg of allLegs) {
+    for (const leg of legs) {
       const patientId = patientIdByRequestId.get(leg.transportRequestId) ?? '';
       const display = patientDisplay.get(patientId);
       const estimate = travel.get(leg.id);
@@ -236,16 +312,11 @@ export class TripsService {
         ...(display?.fullName ? { patientName: display.fullName } : {}),
         travelMinutes: estimate?.travelMinutes ?? null,
         travelEstimated: estimate?.travelEstimated ?? false,
+        travelDistanceMeters: estimate?.travelDistanceMeters ?? null,
         suggested: estimate?.suggested ?? { pickupAt: null, dropoffAt: null },
       };
     }
-
-    return {
-      date,
-      lanes,
-      legsById,
-      unassignedLegIds: unassignedLegs.map((leg) => leg.id),
-    };
+    return legsById;
   }
 
   private async buildDetail(row: TripDetailRow): Promise<TripDetail> {

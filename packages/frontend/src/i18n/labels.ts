@@ -3113,6 +3113,78 @@ const MESSAGES = {
     en: 'Arrival late, beyond tolerance',
   },
 
+  // ── Journey identity and focus mode (#247 stage 1) ──
+  'transportPlanning.selectJourneyLabel': { pt: 'Selecionar viagem %{number}', en: 'Select journey %{number}' },
+
+  // ── Grouped unplanned rail (#247 stage 2) ──
+  'transportPlanning.railViewGrouped': { pt: 'Agrupado', en: 'Grouped' },
+  'transportPlanning.railViewPerPerson': { pt: 'Por pessoa', en: 'Per person' },
+  'transportPlanning.groupSize': { pt: '%{count} pessoas', en: '%{count} people' },
+  'transportPlanning.assignGroupButton': { pt: 'Atribuir o grupo', en: 'Assign group' },
+  'transportPlanning.assignGroupDialogTitle': {
+    pt: 'Atribuir %{count} pessoas a uma viagem',
+    en: 'Assign %{count} people to a journey',
+  },
+  'transportPlanning.assignGroupDialogHint': {
+    pt: 'Todas ficam com a mesma recolha e entrega — para tratar alguém em separado, usa a vista "Por pessoa".',
+    en: 'Everyone gets the same pickup and dropoff — to place someone separately, use the "Per person" view.',
+  },
+  'transportPlanning.assignGroupPartial': {
+    pt: '%{count} já atribuídas.',
+    en: '%{count} already assigned.',
+  },
+  'transportPlanning.groupInfeasible.WHEELCHAIR': {
+    pt: 'Nenhuma viatura de hoje tem lugares de cadeira de rodas suficientes para o grupo todo.',
+    en: 'No vehicle on today’s board has enough wheelchair positions for the whole group.',
+  },
+  'transportPlanning.groupInfeasible.STRETCHER': {
+    pt: 'Nenhuma viatura de hoje tem lugares de maca suficientes para o grupo todo.',
+    en: 'No vehicle on today’s board has enough stretcher positions for the whole group.',
+  },
+  'transportPlanning.groupInfeasible.SEATS': {
+    pt: 'Nenhuma viatura de hoje tem lugares sentados suficientes para o grupo todo.',
+    en: 'No vehicle on today’s board has enough seats for the whole group.',
+  },
+
+  // ── Journey inspector panel (#247 stage 2) ──
+  'transportPlanning.inspectorTitle': { pt: 'Viagem %{number} · %{vehicle}', en: 'Journey %{number} · %{vehicle}' },
+  'transportPlanning.inspectorClose': { pt: 'Fechar', en: 'Close' },
+  'transportPlanning.inspectorStopsTitle': { pt: 'Paragens', en: 'Stops' },
+  'transportPlanning.inspectorStopPickup': { pt: 'Recolha', en: 'Pickup' },
+  'transportPlanning.inspectorStopDropoff': { pt: 'Entrega', en: 'Drop-off' },
+  'transportPlanning.inspectorStopWait': { pt: 'Espera', en: 'Wait' },
+  'transportPlanning.inspectorStopReturnToBase': { pt: 'Regresso à base', en: 'Return to base' },
+  'transportPlanning.inspectorEditCrew': { pt: 'Editar equipa', en: 'Edit crew' },
+  'transportPlanning.inspectorOpenJourney': { pt: 'Abrir a viagem', en: 'Open journey' },
+
+  // ── Journey page and crew sheet (#247 stage 3) ──
+  'transportJourney.pageTitle': { pt: 'Viagem %{number}', en: 'Journey %{number}' },
+  'transportJourney.pageTitleLoading': { pt: 'Viagem', en: 'Journey' },
+  'transportJourney.backToBoard': { pt: 'Voltar ao quadro', en: 'Back to board' },
+  'transportJourney.printButton': { pt: 'Imprimir', en: 'Print' },
+  'transportJourney.loadFailed': { pt: 'Não foi possível carregar a viagem.', en: 'Could not load the journey.' },
+  'transportJourney.dateLabel': { pt: 'Data:', en: 'Date:' },
+  'transportJourney.stopsTitle': { pt: 'Paragens', en: 'Stops' },
+  'transportJourney.stopColumnTime': { pt: 'Hora', en: 'Time' },
+  'transportJourney.stopColumnKind': { pt: 'Paragem', en: 'Stop' },
+  'transportJourney.stopColumnPatient': { pt: 'Pessoa', en: 'Person' },
+  'transportJourney.stopColumnDistance': { pt: 'Distância', en: 'Distance' },
+  'transportJourney.stopColumnDwell': { pt: 'Espera', en: 'Dwell' },
+  'transportJourney.stopPickup': { pt: 'Recolha', en: 'Pickup' },
+  'transportJourney.stopDropoff': { pt: 'Entrega', en: 'Drop-off' },
+  'transportJourney.stopWait': { pt: 'Espera', en: 'Wait' },
+  'transportJourney.stopReturnToBase': { pt: 'Regresso à base', en: 'Return to base' },
+  'transportJourney.patientNameHidden': { pt: '(identidade não visível)', en: '(identity hidden)' },
+  'transportJourney.dwellDecision.WAIT': { pt: 'A equipa espera no local', en: 'Crew waits on site' },
+  'transportJourney.dwellDecision.RELEASE': { pt: 'Viatura libertada', en: 'Vehicle released' },
+  'transportJourney.dwellDecision.PENDING': { pt: 'Decisão por tomar', en: 'Decision pending' },
+  'transportJourney.decideWaitRelease': { pt: 'Esperar ou libertar', en: 'Decide wait/release' },
+
+  // ── Trip status (#234) ──
+  'tripStatus.PLANNED': { pt: 'Planeada', en: 'Planned' },
+  'tripStatus.COMPLETED': { pt: 'Concluída', en: 'Completed' },
+  'tripStatus.CANCELLED': { pt: 'Cancelada', en: 'Cancelled' },
+
   // ── Rich text editor (#180 phase 3) — shared by crew and coordinator forms ──
   'richText.bold': { pt: 'Negrito', en: 'Bold' },
   'richText.italic': { pt: 'Itálico', en: 'Italic' },

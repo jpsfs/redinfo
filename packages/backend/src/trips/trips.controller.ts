@@ -80,10 +80,12 @@ export class TripsController {
     return this.crewManifest.getMyTrips(user.id, date);
   }
 
+  /** One journey's own page (#247 stage 3) — vehicle, crew, ordered stops
+   * with the legs they carry, issues, and a printable crew sheet. */
   @Get(':id')
   @Actions(Action.PLAN_TRANSPORT_TRIPS)
-  getDetail(@Param('id') id: string) {
-    return this.trips.getDetail(id);
+  getDetail(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.trips.getDetail(id, user);
   }
 
   @Post()

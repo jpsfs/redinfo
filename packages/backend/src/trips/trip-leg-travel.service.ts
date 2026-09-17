@@ -14,6 +14,11 @@ import { Coordinates } from '../routing/routing.interface';
 export interface LegTravelEstimate {
   travelMinutes: number | null;
   travelEstimated: boolean;
+  /** `PlannedDurationService.planBetweenPoints` already returns this
+   * alongside the duration; null under the same conditions as
+   * `travelMinutes` (#247 stage 3's journey page needs a distance, not just
+   * a time). */
+  travelDistanceMeters: number | null;
   suggested: SuggestedLegTimes;
 }
 
@@ -32,6 +37,7 @@ export interface LegPatientContext {
 const NO_ESTIMATE: LegTravelEstimate = {
   travelMinutes: null,
   travelEstimated: false,
+  travelDistanceMeters: null,
   suggested: { pickupAt: null, dropoffAt: null },
 };
 
@@ -160,6 +166,7 @@ export class TripLegTravelService {
       return {
         travelMinutes,
         travelEstimated: planned.estimated,
+        travelDistanceMeters: planned.distanceMeters,
         suggested: suggestLegTimes({
           direction: leg.direction,
           appointmentAt: leg.appointmentAt,

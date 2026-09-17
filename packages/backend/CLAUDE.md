@@ -136,6 +136,19 @@ precedent: ungated, scoped to the caller inside the service (trips where they're
 comment for why the crew executing a trip see the patient's name regardless of
 `VIEW_PATIENT_IDENTITY`, structurally scoped rather than capability-gated.
 
+The planning board redesign's first three stages (#247, journey identity/focus mode, the
+grouped rail + inspector, and the standalone journey page) widen two existing endpoints rather
+than adding new ones. `GET /trips/board?date=` now attaches a server-computed `journeyNumber`
+per lane and `travelDistanceMeters` per leg (`journeyNumbersByTripId`, `TripLegTravelService`'s
+now-unwasted `PlannedDurationService.planBetweenPoints` distance) — the ordinal is computed once
+per vehicle, grouped from the same `rows` the board already loaded, so it costs no extra query.
+`GET /trips/:id` (`TripsService.getDetail`) now returns `TripJourneyDetail`: the same ranked
+lane shape plus `vehicle` and a `legsById` scoped to just this trip's own stops, built through
+the new shared `loadLegsById` helper both `getBoard` and `getDetail` call — one small extra
+`trip.findMany` for `getDetail`'s own `journeyNumber` (its one unavoidable second query, since a
+single-trip load has no sibling rows to sort against). Stages 4-6 (map panel, placement
+suggestions, week strip) are not built — see `docs/plans/planeamento-transportes-redesign.md`.
+
 ## Controller pattern
 
 - Class-level `@UseGuards(JwtAuthGuard, RolesGuard)` + `@UseInterceptors(AuditInterceptor)`.

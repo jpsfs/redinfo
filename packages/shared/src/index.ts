@@ -8681,6 +8681,11 @@ export interface TransportPlanningLeg extends TransportLeg {
    * routed one (out-of-region), so the board can say so instead of implying a
    * precision it does not have. */
   travelEstimated: boolean;
+  /** The same routed pair's distance, alongside `travelMinutes` — null under
+   * the same conditions (#247 stage 3, the journey page's "distance"
+   * column). `PlannedDurationService.planBetweenPoints` already computed
+   * this; `TripLegTravelService` only had to stop discarding it. */
+  travelDistanceMeters: number | null;
   /** The pickup/dropoff times the crew infers by experience today, computed —
    * see `suggestLegTimes`. Advisory: `plannedPickupAt`/`plannedDropoffAt` are
    * what the plan actually commits to once the planner has placed the block. */
@@ -8708,6 +8713,17 @@ export interface TransportPlanningCrewMember extends TripCrewMember {
  * re-derives capacity/availability/arrival-timing issues itself. */
 export interface TransportPlanningLane {
   trip: Trip;
+  /**
+   * This journey's 1-based ordinal among its vehicle's journeys for the
+   * date, earliest-first-stop first — the same order `VehicleGroup` stacks
+   * the lanes in. Computed server-side (#247 stage 1) rather than left to
+   * each surface's own array index, because it also drives the journey's
+   * colour (`journeyColorForOrdinal`): the board, the inspector and the
+   * standalone journey page (`TripJourneyDetail`) must all land on the same
+   * number for the same trip, and two independent sort implementations
+   * would eventually drift.
+   */
+  journeyNumber: number;
   vehicle: {
     id: string;
     licensePlate: string;
@@ -8740,6 +8756,19 @@ export interface TransportPlanningBoard {
   lanes: TransportPlanningLane[];
   legsById: Record<string, TransportPlanningLeg>;
   unassignedLegIds: string[];
+}
+
+/**
+ * `GET /trips/:id` (#247 stage 3) — one journey's own page and printable
+ * crew sheet. The same `TransportPlanningLane` shape the board already
+ * computes for this trip, plus the legs its stops carry (keyed exactly like
+ * the board's own `legsById`) since a standalone page has no board-wide map
+ * to look them up in. Still no new endpoint: `GET /trips/:id` already
+ * existed for `TripsService.getDetail`'s ranked validation — this only
+ * widens what it returns.
+ */
+export interface TripJourneyDetail extends TransportPlanningLane {
+  legsById: Record<string, TransportPlanningLeg>;
 }
 
 // ─── Crew manifest (#236) ───────────────────────────────────────────────────

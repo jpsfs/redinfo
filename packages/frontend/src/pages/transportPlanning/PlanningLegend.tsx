@@ -11,12 +11,19 @@ const Swatch = ({ sx }: { sx: object }) => (
  * a commitment from outside transport — and without a key the difference
  * between "the vehicle is busy" and "the vehicle is wasting a journey" is a
  * shade of grey nobody can be expected to remember.
+ *
+ * Direction is a border style, not a colour (#247 stage 1) — colour now
+ * carries journey identity instead, one hue per journey rather than one per
+ * direction, so the swatches below teach the shape.
  */
 export const PlanningLegend = () => {
   const t = useT();
   const items = [
-    { label: t('transportLeg.direction.OUTBOUND'), sx: { bgcolor: 'primary.main' } },
-    { label: t('transportLeg.direction.RETURN'), sx: { bgcolor: 'secondary.main' } },
+    { label: t('transportLeg.direction.OUTBOUND'), sx: { bgcolor: 'grey.400', border: '1.5px solid', borderColor: 'text.secondary' } },
+    {
+      label: t('transportLeg.direction.RETURN'),
+      sx: { bgcolor: 'grey.400', border: '1.5px dashed', borderColor: 'text.secondary' },
+    },
     {
       label: t('transportPlanning.emptyLegLabel'),
       sx: {

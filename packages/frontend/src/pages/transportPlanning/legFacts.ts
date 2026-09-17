@@ -1,4 +1,4 @@
-import { LegDirection, TransportPlanningLeg } from '@redinfo/shared';
+import { LegDirection, TransportPlanningLeg, TripStop, TripStopKind } from '@redinfo/shared';
 import { diffMinutes } from './planningTime';
 
 /**
@@ -8,9 +8,30 @@ import { diffMinutes } from './planningTime';
  * the candidates for sharing a journey, which is the single judgement the
  * board exists to support.
  */
-export function legFacilityName(leg: TransportPlanningLeg): string | null {
+function legFacility(leg: TransportPlanningLeg): { id: string; name: string } | null {
   const facility = leg.direction === LegDirection.OUTBOUND ? leg.destinationFacility : leg.originFacility;
-  return facility?.name ?? null;
+  return facility ?? null;
+}
+
+export function legFacilityName(leg: TransportPlanningLeg): string | null {
+  return legFacility(leg)?.name ?? null;
+}
+
+/** As `legFacilityName`, but the id — what the unplanned rail groups by
+ * (#247 stage 2), since two facilities can share a name across localities. */
+export function legFacilityId(leg: TransportPlanningLeg): string | null {
+  return legFacility(leg)?.id ?? null;
+}
+
+/**
+ * When the vehicle needs to be *at the facility* for this leg — the instant
+ * the unplanned rail groups around (#247 stage 2, ±15 minutes). An outbound
+ * leg is anchored on arrival, H.I.; a return leg is anchored on when the
+ * patient is ready, H.F. — both are "when a vehicle must be at this door",
+ * just at opposite ends of the leg.
+ */
+export function legFacilityArrivalInstant(leg: TransportPlanningLeg): string {
+  return leg.direction === LegDirection.OUTBOUND ? leg.appointmentAt : leg.effectiveEstimatedEndAt;
 }
 
 /**
@@ -61,4 +82,20 @@ export function effectiveLegTimes(leg: TransportPlanningLeg): {
     return { pickupAt: leg.plannedPickupAt, dropoffAt: leg.plannedDropoffAt, isSuggested: false };
   }
   return { pickupAt: leg.suggested.pickupAt, dropoffAt: leg.suggested.dropoffAt, isSuggested: true };
+}
+
+/** Whether a `DROPOFF` stop still needs a wait-or-release decision — an
+ * outbound leg's dropoff with no `WAIT` stop already recorded at the same
+ * facility right after it. Shared by `PlanningLane` (the board) and
+ * `JourneyStopTable` (#247 stage 3's journey page), so the two surfaces
+ * never disagree about which dropoff still needs deciding. */
+export function needsWaitReleaseDecision(
+  stop: TripStop,
+  allStops: TripStop[],
+  leg: TransportPlanningLeg | undefined,
+): boolean {
+  if (!leg || leg.direction !== LegDirection.OUTBOUND) return false;
+  return !allStops.some(
+    (s) => s.kind === TripStopKind.WAIT && s.facilityId === stop.facilityId && s.plannedAt >= stop.plannedAt,
+  );
 }

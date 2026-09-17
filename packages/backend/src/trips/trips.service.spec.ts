@@ -73,24 +73,38 @@ function stop(overrides: Record<string, unknown> = {}) {
 }
 
 function buildPrismaStub(overrides: Record<string, unknown> = {}) {
+  const defaultTrip = {
+    findUnique: jest.fn().mockResolvedValue(buildTripRow()),
+    // Doubles as `getDetail`'s sibling-journey-number lookup (#247 stage 3)
+    // — empty by default, same as a trip whose own row wasn't in its
+    // result, which only affects `journeyNumber` and not the fields these
+    // tests assert on.
+    findMany: jest.fn().mockResolvedValue([]),
+    create: jest
+      .fn()
+      .mockImplementation((args) =>
+        Promise.resolve({ id: 'trip-1', createdAt: new Date(), updatedAt: new Date(), ...args.data }),
+      ),
+    update: jest.fn().mockImplementation((args) => Promise.resolve({ ...buildTripRow(), ...args.data })),
+    delete: jest.fn().mockResolvedValue(undefined),
+  };
   return {
-    trip: {
-      findUnique: jest.fn().mockResolvedValue(buildTripRow()),
-      findMany: jest.fn().mockResolvedValue([]),
-      create: jest
-        .fn()
-        .mockImplementation((args) =>
-          Promise.resolve({ id: 'trip-1', createdAt: new Date(), updatedAt: new Date(), ...args.data }),
-        ),
-      update: jest.fn().mockImplementation((args) => Promise.resolve({ ...buildTripRow(), ...args.data })),
-      delete: jest.fn().mockResolvedValue(undefined),
-    },
     vehicle: { count: jest.fn().mockResolvedValue(1) },
     transportLeg: { findMany: jest.fn().mockResolvedValue([]) },
+    // Only reached once a stop actually carries a `transportLegId` — most
+    // `getDetail` fixtures below have none, so this default is never hit;
+    // the tests that do set one legIds's worth of stops resolve to no
+    // matching request, same as a leg the loader can't join.
+    transportRequest: { findMany: jest.fn().mockResolvedValue([]) },
     user: { findMany: jest.fn().mockResolvedValue([crewUser('u1')]) },
     ...overrides,
+    // Merged rather than replaced: a test overriding only `trip.findUnique`
+    // must not silently lose `trip.findMany` underneath it.
+    trip: { ...defaultTrip, ...((overrides.trip as object) ?? {}) },
   };
 }
+
+const USER = { id: 'user-1', roles: [] as never[] };
 
 function buildDeps(overrides: Record<string, unknown> = {}) {
   return {
@@ -161,7 +175,7 @@ describe('TripsService', () => {
     it('404s for an unknown trip', async () => {
       const prisma = buildPrismaStub({ trip: { findUnique: jest.fn().mockResolvedValue(null) } });
       const service = makeService(prisma);
-      await expect(service.getDetail('nope')).rejects.toThrow(NotFoundException);
+      await expect(service.getDetail('nope', USER)).rejects.toThrow(NotFoundException);
     });
 
     it('flags over-capacity as an ERROR, unconditionally', async () => {
@@ -179,7 +193,7 @@ describe('TripsService', () => {
         },
       });
       const service = makeService(prisma);
-      const result = await service.getDetail('trip-1');
+      const result = await service.getDetail('trip-1', USER);
       expect(result.issues).toContainEqual(expect.objectContaining({ level: 'ERROR', code: 'OVER_CAPACITY_WHEELCHAIR' }));
     });
 
@@ -189,7 +203,7 @@ describe('TripsService', () => {
       });
       const deps = buildDeps({ staffAbsences: { findOverlapping: jest.fn().mockResolvedValue([{ userId: 'u1' }]) } });
       const service = makeService(prisma, deps);
-      const result = await service.getDetail('trip-1');
+      const result = await service.getDetail('trip-1', USER);
       expect(result.issues).toContainEqual(
         expect.objectContaining({ level: 'ERROR', code: 'CREW_UNAVAILABLE', message: expect.stringContaining('Ana Dias') }),
       );
@@ -205,7 +219,7 @@ describe('TripsService', () => {
       });
       const deps = buildDeps({ staffAbsences: { findOverlapping: jest.fn().mockResolvedValue([{ userId: 'u1' }]) } });
       const service = makeService(prisma, deps);
-      const result = await service.getDetail('trip-1');
+      const result = await service.getDetail('trip-1', USER);
       expect(result.issues.some((i) => i.code === 'CREW_UNAVAILABLE')).toBe(false);
     });
 
@@ -253,7 +267,7 @@ describe('TripsService', () => {
         carryingTrip(PatientMobility.STRETCHER, { vehicle: { ...VEHICLE, stretcherPositions: 1 } }),
       );
       const service = makeService(prisma);
-      const result = await service.getDetail('trip-1');
+      const result = await service.getDetail('trip-1', USER);
       expect(result.issues).toContainEqual(expect.objectContaining({ level: 'ERROR', code: 'VEHICLE_NOT_EMERGENCY' }));
       expect(result.crewRequirement).toMatchObject({ minimumCrew: 2, minimumCertification: CertificationType.TAT });
     });
@@ -267,7 +281,7 @@ describe('TripsService', () => {
         user: { findMany: jest.fn().mockResolvedValue([crewUser('u1', validTat)]) },
       });
       const service = makeService(prisma);
-      const result = await service.getDetail('trip-1');
+      const result = await service.getDetail('trip-1', USER);
       expect(result.issues).toContainEqual(expect.objectContaining({ code: 'CREW_TOO_FEW' }));
       expect(result.issues.some((i) => i.code === 'VEHICLE_NOT_EMERGENCY')).toBe(false);
     });
@@ -287,7 +301,7 @@ describe('TripsService', () => {
         },
       });
       const service = makeService(prisma);
-      const result = await service.getDetail('trip-1');
+      const result = await service.getDetail('trip-1', USER);
       expect(result.issues.filter((i) => i.code.startsWith('CREW_') || i.code === 'VEHICLE_NOT_EMERGENCY')).toEqual([]);
     });
 
@@ -297,7 +311,7 @@ describe('TripsService', () => {
         user: { findMany: jest.fn().mockResolvedValue([crewUser('u1', validSbv)]) },
       });
       const service = makeService(prisma);
-      const result = await service.getDetail('trip-1');
+      const result = await service.getDetail('trip-1', USER);
       expect(result.issues.filter((i) => i.code.startsWith('CREW_'))).toEqual([]);
       expect(result.crewRequirement).toMatchObject({
         minimumCrew: 1,
@@ -312,7 +326,7 @@ describe('TripsService', () => {
         user: { findMany: jest.fn().mockResolvedValue([crewUser('u1', [{ type: CertificationType.DRIVER, validUntil: null }])]) },
       });
       const service = makeService(prisma);
-      const result = await service.getDetail('trip-1');
+      const result = await service.getDetail('trip-1', USER);
       expect(result.issues).toContainEqual(expect.objectContaining({ code: 'CREW_TOO_FEW' }));
     });
 
@@ -331,7 +345,7 @@ describe('TripsService', () => {
         },
       });
       const service = makeService(prisma);
-      const result = await service.getDetail('trip-1');
+      const result = await service.getDetail('trip-1', USER);
       expect(result.issues.filter((i) => i.code.startsWith('CREW_'))).toEqual([]);
     });
 
@@ -346,14 +360,14 @@ describe('TripsService', () => {
         },
       });
       const service = makeService(prisma);
-      const result = await service.getDetail('trip-1');
+      const result = await service.getDetail('trip-1', USER);
       expect(result.issues).toContainEqual(expect.objectContaining({ code: 'CREW_TOO_FEW' }));
     });
 
     it('says nothing about crew for a journey with nothing aboard yet', async () => {
       const prisma = buildPrismaStub();
       const service = makeService(prisma);
-      const result = await service.getDetail('trip-1');
+      const result = await service.getDetail('trip-1', USER);
       expect(result.issues.filter((i) => i.code.startsWith('CREW_'))).toEqual([]);
     });
 
@@ -369,7 +383,7 @@ describe('TripsService', () => {
         },
       });
       const service = makeService(prisma, deps);
-      const result = await service.getDetail('trip-1');
+      const result = await service.getDetail('trip-1', USER);
       expect(result.issues).toContainEqual(expect.objectContaining({ level: 'ERROR', code: 'VEHICLE_UNAVAILABLE' }));
     });
 
@@ -385,7 +399,7 @@ describe('TripsService', () => {
         },
       });
       const service = makeService(prisma, deps);
-      const result = await service.getDetail('trip-1');
+      const result = await service.getDetail('trip-1', USER);
       expect(result.issues.some((i) => i.code === 'VEHICLE_UNAVAILABLE')).toBe(false);
     });
 
@@ -415,7 +429,7 @@ describe('TripsService', () => {
         },
       });
       const service = makeService(prisma);
-      const result = await service.getDetail('trip-1');
+      const result = await service.getDetail('trip-1', USER);
       expect(result.issues).toContainEqual(expect.objectContaining({ level: 'NOTE', code: 'ARRIVAL_TOO_EARLY' }));
     });
 
@@ -445,24 +459,74 @@ describe('TripsService', () => {
         },
       });
       const service = makeService(prisma);
-      const result = await service.getDetail('trip-1');
+      const result = await service.getDetail('trip-1', USER);
       expect(result.issues.filter((i) => i.code.startsWith('ARRIVAL_'))).toHaveLength(0);
     });
 
     it('computes the occupancy window and empty legs, and is null/empty with no stops', async () => {
       const prisma = buildPrismaStub();
       const service = makeService(prisma);
-      const result = await service.getDetail('trip-1');
+      const result = await service.getDetail('trip-1', USER);
       expect(result.occupancyWindow).toBeNull();
       expect(result.emptyLegs).toEqual([]);
+    });
+
+    // ── The standalone journey page (#247 stage 3) ──────────────────────────
+
+    it('serves the vehicle and this trip’s own legsById, which the board gets for free but a single trip does not', async () => {
+      const stops = [
+        stop({ id: 's1', sequence: 1, kind: TripStopKind.PICKUP, transportLegId: 'leg-1' }),
+        stop({ id: 's2', sequence: 2, kind: TripStopKind.DROPOFF, transportLegId: 'leg-1' }),
+      ];
+      const prisma = buildPrismaStub({
+        trip: {
+          findUnique: jest.fn().mockResolvedValue(
+            buildTripRow({ vehicle: { ...VEHICLE, licensePlate: 'AA-11-BB', numeroCauda: '101' }, stops }),
+          ),
+        },
+        transportRequest: { findMany: jest.fn().mockResolvedValue([{ id: 'req-1', patientId: 'pat-1' }]) },
+      });
+      const deps = buildDeps({
+        transportRequestLegs: {
+          findByIds: jest.fn().mockResolvedValue([{ id: 'leg-1', transportRequestId: 'req-1', direction: LegDirection.OUTBOUND }]),
+          findUnassignedForDate: jest.fn().mockResolvedValue([]),
+        },
+        patients: {
+          findManyForDisplay: jest
+            .fn()
+            .mockResolvedValue(new Map([['pat-1', { mobility: PatientMobility.WHEELCHAIR, fullName: 'Ana Reis' }]])),
+        },
+      });
+      const service = makeService(prisma, deps);
+      const result = await service.getDetail('trip-1', USER);
+
+      expect(result.vehicle).toMatchObject({ licensePlate: 'AA-11-BB', numeroCauda: '101' });
+      expect(result.legsById['leg-1']).toMatchObject({ patientId: 'pat-1', patientName: 'Ana Reis' });
+      // Only this trip's own legs — never the whole date's, unlike the board.
+      expect(deps.transportRequestLegs.findByIds).toHaveBeenCalledWith(['leg-1']);
+    });
+
+    it('numbers this journey the same way the board would, off its siblings on the same vehicle and date', async () => {
+      const prisma = buildPrismaStub({
+        trip: {
+          findUnique: jest.fn().mockResolvedValue(
+            buildTripRow({ id: 'trip-2', stops: [stop({ plannedAt: new Date('2026-09-15T10:00:00.000Z') })] }),
+          ),
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'trip-1', stops: [{ plannedAt: new Date('2026-09-15T08:00:00.000Z') }] },
+            { id: 'trip-2', stops: [{ plannedAt: new Date('2026-09-15T10:00:00.000Z') }] },
+          ]),
+        },
+      });
+      const service = makeService(prisma);
+      const result = await service.getDetail('trip-2', USER);
+      expect(result.journeyNumber).toBe(2);
     });
   });
 
   // ── Planning board (#235) ─────────────────────────────────────────────────
 
   describe('getBoard', () => {
-    const USER = { id: 'user-1', roles: [] as never[] };
-
     it('composes lanes and a legsById map from batched leg/patient lookups', async () => {
       const laneStops = [stop({ id: 'pickup-1', kind: TripStopKind.PICKUP, transportLegId: 'leg-1' })];
       const prisma = buildPrismaStub({
@@ -513,6 +577,28 @@ describe('TripsService', () => {
       expect(board.unassignedLegIds).toEqual(['leg-2']);
       // The assigned leg is only ever looked up by id, never re-derived from the date.
       expect(deps.transportRequestLegs.findByIds).toHaveBeenCalledWith(['leg-1']);
+    });
+
+    it('numbers each vehicle’s own journeys from 1, independently of the other vehicles on the board', async () => {
+      const prisma = buildPrismaStub({
+        trip: {
+          findMany: jest.fn().mockResolvedValue([
+            buildTripRow({ id: 'v1-early', vehicleId: 'v1', stops: [stop({ plannedAt: new Date('2026-09-15T08:00:00.000Z') })] }),
+            buildTripRow({ id: 'v1-late', vehicleId: 'v1', stops: [stop({ plannedAt: new Date('2026-09-15T12:00:00.000Z') })] }),
+            buildTripRow({ id: 'v2-only', vehicleId: 'v2', stops: [stop({ plannedAt: new Date('2026-09-15T09:00:00.000Z') })] }),
+          ]),
+        },
+      });
+      const service = makeService(prisma);
+
+      const board = await service.getBoard('2026-09-15', USER);
+
+      const numberById = new Map(board.lanes.map((lane) => [lane.trip.id, lane.journeyNumber]));
+      expect(numberById.get('v1-early')).toBe(1);
+      expect(numberById.get('v1-late')).toBe(2);
+      // A different vehicle's first journey is also 1 — the colour ramp
+      // deliberately repeats across vehicles (#247 stage 1's decision table).
+      expect(numberById.get('v2-only')).toBe(1);
     });
   });
 });

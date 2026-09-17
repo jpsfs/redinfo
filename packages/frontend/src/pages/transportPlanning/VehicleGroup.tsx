@@ -1,9 +1,10 @@
-import { Box, Button, Stack, Tooltip, Typography, alpha } from '@mui/material';
+import { Box, Button, Tooltip, Typography, alpha } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import AirportShuttleOutlinedIcon from '@mui/icons-material/AirportShuttleOutlined';
 import LocalHospitalOutlinedIcon from '@mui/icons-material/LocalHospitalOutlined';
 import { TransportPlanningLane, TransportPlanningLeg, TripStop, VehicleOccupancy, VehicleType } from '@redinfo/shared';
 import { useT } from '../../i18n/useT';
+import { journeyColorForOrdinal } from './journeyColor';
 import { LANE_LABEL_WIDTH, PlanningLane } from './PlanningLane';
 import { TimelineWindow } from './planningTime';
 
@@ -34,6 +35,8 @@ export const VehicleGroup = ({
   timelineWindow,
   occupancy,
   isDragActive,
+  selectedTripId,
+  onSelectJourney,
   onAddJourney,
   onDropLeg,
   onEditAssignment,
@@ -47,6 +50,10 @@ export const VehicleGroup = ({
   timelineWindow: TimelineWindow;
   occupancy: VehicleOccupancy[];
   isDragActive: boolean;
+  /** The focused journey's trip id, board-wide (#247 stage 1) — `null` when
+   * nothing is selected, in which case every lane renders at full opacity. */
+  selectedTripId: string | null;
+  onSelectJourney: (tripId: string) => void;
   onAddJourney: (vehicleId: string) => void;
   onDropLeg: (params: { tripId: string; legId: string; dropMinutes: number }) => void;
   onEditAssignment: (legId: string, tripId: string, pickup: TripStop, dropoff: TripStop) => void;
@@ -126,7 +133,11 @@ export const VehicleGroup = ({
           <PlanningLane
             key={lane.trip.id}
             lane={lane}
-            journeyNumber={index + 1}
+            journeyNumber={lane.journeyNumber}
+            journeyColor={journeyColorForOrdinal(lane.journeyNumber)}
+            isFocused={selectedTripId === lane.trip.id}
+            isDimmed={selectedTripId != null && selectedTripId !== lane.trip.id}
+            onSelectJourney={() => onSelectJourney(lane.trip.id)}
             // A hairline between journeys of the same vehicle, never above the
             // first — the tinted header already separates that one.
             showDividerAbove={index > 0}
@@ -136,7 +147,7 @@ export const VehicleGroup = ({
             isDragActive={isDragActive}
             onDropLeg={onDropLeg}
             onEditAssignment={onEditAssignment}
-            onEditCrew={(target) => onEditCrew(target, index + 1)}
+            onEditCrew={(target) => onEditCrew(target, lane.journeyNumber)}
             onWaitRelease={onWaitRelease}
           />
         ))}

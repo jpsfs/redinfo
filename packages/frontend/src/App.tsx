@@ -73,6 +73,7 @@ import { StaffAbsencesPage } from './pages/StaffAbsencesPage';
 import { TransportReferralsPage } from './pages/TransportReferralsPage';
 import { TransportConfigPage } from './pages/TransportConfigPage';
 import { TransportPlanningPage } from './pages/TransportPlanningPage';
+import { TransportPlanningJourneyPage } from './pages/TransportPlanningJourneyPage';
 import PeopleIcon from '@mui/icons-material/People';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import BuildIcon from '@mui/icons-material/Build';
@@ -212,6 +213,12 @@ export default function App() {
             board Feature #219 builds ahead of any route optimisation, gated
             by PLAN_TRANSPORT_TRIPS in the drawer manifest. */}
         <Route path="/transport-planning" element={<TransportPlanningPage />} />
+        {/* One journey's own page and printable crew sheet (#247 stage 3),
+            reached from the board's inspector ("Open journey") or a direct
+            link — no separate drawer entry, same as any other record's
+            detail page; `GET /trips/:id` still gates on
+            PLAN_TRANSPORT_TRIPS. */}
+        <Route path="/transport-planning/journeys/:tripId" element={<TransportPlanningJourneyPage />} />
         {/* The delegation's INEM units — availability toggle, INOP reason,
             syncing badge and degraded-session banner (#216), gated by
             MANAGE_INEM_STATUS in the drawer manifest. Not react-admin CRUD:
