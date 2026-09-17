@@ -225,3 +225,40 @@ variable "cloud_firewall_enabled" {
   type        = bool
   default     = false
 }
+
+# ───────────────────────── azure devops agent ────────────────────────────
+#
+# cloud-init stages the agent but does NOT register it — registration needs a
+# PAT, and a PAT in user_data would be stored in Terraform state, visible in
+# the Contabo panel, and (because user_data changes reinstall the machine)
+# would make rotating it mean rebuilding production. One command on the host
+# finishes the job; see infra/README.md.
+
+variable "ado_organization_url" {
+  description = "Azure DevOps organization the agent registers into."
+  type        = string
+  default     = "https://dev.azure.com/jpsfs"
+}
+
+variable "ado_agent_pool" {
+  description = <<-EOT
+    Agent pool this host joins. `contabo-production` is a pool of its own
+    rather than a second agent in `vm-redcross`: a pool is the unit a pipeline
+    stage targets, so keeping them separate is what lets the old and new
+    production hosts be deployed to independently during the migration — and
+    what stops a job meant for one landing on the other.
+  EOT
+  type        = string
+  default     = "contabo-production"
+}
+
+variable "ado_agent_version" {
+  description = <<-EOT
+    Pinned agent release (https://github.com/microsoft/azure-pipelines-agent).
+    Pinned rather than "latest" so a rebuild of this machine installs the same
+    agent; the agent self-updates when the service requires it anyway, so this
+    is a floor, not a ceiling.
+  EOT
+  type        = string
+  default     = "5.279.0"
+}

@@ -5,7 +5,7 @@
 # — it cannot be managed by this state, since it is what stores this state.
 bucket = "redinfo-terraform-state"
 key    = "contabo/production.tfstate"
-region = "eu-west-1"
+region = "eu-central-1"
 
 # Server-side encryption, and S3-native locking (conditional writes) instead
 # of a DynamoDB lock table — Terraform 1.10+ only, hence the required_version
