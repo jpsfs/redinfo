@@ -91,6 +91,15 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           rewrite: (path) => path.replace(/^\/api/, ''),
         },
+        // Self-hosted basemap tiles (#247 stage 4) — mirrors nginx's prod
+        // behaviour (nginx/nginx.conf) exactly like /api above, so the map
+        // panel fetches `/tiles/portugal.pmtiles` the same way in dev and
+        // prod, never a third-party host.
+        '/tiles': {
+          target: 'http://tiles:80',
+          changeOrigin: true,
+          rewrite: (path) => path.replace(/^\/tiles/, ''),
+        },
         '/auth': {
           target: 'http://backend:3000',
           changeOrigin: true,
@@ -122,6 +131,16 @@ export default defineConfig(({ mode }) => {
         '/register': { target: 'http://backend:3000', changeOrigin: true },
         '/revoke': { target: 'http://backend:3000', changeOrigin: true },
       },
+    },
+    optimizeDeps: {
+      // maplibre-gl loads its tile-parsing web worker as a separate chunk at
+      // runtime (#247 stage 4). Vite's dep pre-bundler rewrites the package
+      // into `deps/maplibre-gl.js` but never emits the `maplibre-gl-worker.mjs`
+      // that bundle then asks for — the request 404s, the worker never
+      // starts, and the map renders as an empty background with no tiles and
+      // no error on screen. Excluding it from pre-bundling leaves Vite to
+      // serve the package's own ESM, where the worker URL resolves normally.
+      exclude: ['maplibre-gl'],
     },
     resolve: {
       alias: [

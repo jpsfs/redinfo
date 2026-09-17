@@ -37,6 +37,7 @@ import { AssignLegDialog, AssignLegDialogTarget } from './transportPlanning/Assi
 import { AddVehicleLaneDialog } from './transportPlanning/AddVehicleLaneDialog';
 import { CrewDialog, CrewDialogTarget } from './transportPlanning/CrewDialog';
 import { JourneyInspector } from './transportPlanning/JourneyInspector';
+import { MapPanel } from './transportPlanning/map/MapPanel';
 import { WaitReleaseDialog, WaitReleaseTarget } from './transportPlanning/WaitReleaseDialog';
 import { PlanningLegend } from './transportPlanning/PlanningLegend';
 import { UnassignedLegCard } from './transportPlanning/UnassignedLegCard';
@@ -411,6 +412,18 @@ export const TransportPlanningPage = () => {
               gridTemplateColumns: 'minmax(0, 1fr)',
             }}
           >
+            {/*
+              Above the timeline, per the design doc's §2 layout decision —
+              never a separate tab, the same shared selection
+              (`selectedTripId`) as the rail/timeline/inspector. Hidden below
+              `md`: this is a desktop planning tool (§7), and a WebGL canvas
+              has no useful degrade at tablet width the way the timeline's
+              own horizontal scroll does.
+            */}
+            <Box sx={{ display: { xs: 'none', md: 'block' } }}>
+              <MapPanel board={board} selectedTripId={selectedTripId} onSelectTrip={selectJourney} />
+            </Box>
+
             <Stack direction="row" alignItems="center" justifyContent="space-between" flexWrap="wrap" gap={1} sx={{ mb: 1 }}>
               <Button size="small" startIcon={<AddIcon />} onClick={() => setAddVehicleOpen(true)}>
                 {t('transportPlanning.addVehicleButton')}

@@ -64,6 +64,10 @@ describeIntegration('TripsService/TripStopsService/TripCrewService (integration)
       corridorFactorSource: null,
     }),
   } as never);
+  // Same reasoning as `legTravel` above — a fixed stub rather than a real
+  // OSRM `/route` call, since this suite is about what the database does
+  // (#247 stage 4's routing itself is covered by `routing.integration.spec.ts`).
+  const routing = { routeGeometry: async () => null } as never;
   const trips = new TripsService(
     prisma,
     delegationSettings,
@@ -72,6 +76,7 @@ describeIntegration('TripsService/TripStopsService/TripCrewService (integration)
     transportRequestLegs,
     patients,
     legTravel,
+    routing,
   );
   const crew = new TripCrewService(prisma, staffAbsences);
   const stops = new TripStopsService(prisma, delegationSettings, vehicleOccupancy);

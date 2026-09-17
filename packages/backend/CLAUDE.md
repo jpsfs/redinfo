@@ -146,8 +146,18 @@ per vehicle, grouped from the same `rows` the board already loaded, so it costs 
 lane shape plus `vehicle` and a `legsById` scoped to just this trip's own stops, built through
 the new shared `loadLegsById` helper both `getBoard` and `getDetail` call — one small extra
 `trip.findMany` for `getDetail`'s own `journeyNumber` (its one unavoidable second query, since a
-single-trip load has no sibling rows to sort against). Stages 4-6 (map panel, placement
-suggestions, week strip) are not built — see `docs/plans/planeamento-transportes-redesign.md`.
+single-trip load has no sibling rows to sort against).
+
+Stage 4 (map panel) widens the same two endpoints again, still no new route: a leg gains `door`
+(`TripLegTravelService`'s already-resolved origin/destination coordinates, carried through
+independently of whether the pair could be routed — see that service's doc comment) and a lane
+gains `routeGeometry` (`TripsService.attachRouteGeometry`, one `RoutingService.routeGeometry`
+polyline6 call per lane, through the ordered stop sequence's resolved points — `null` on fewer
+than two resolvable points or a routing outage, the board stays usable either way). The tile
+infrastructure itself (self-hosted PMTiles behind the `tiles` compose service, proxied at
+`/tiles/` exactly like `/api/`) is frontend/ops, not this module — see
+`scripts/prepare-basemap.sh` and `nginx/nginx.conf`. Stages 5-6 (placement suggestions, week
+strip) are not built — see `docs/plans/planeamento-transportes-redesign.md`.
 
 ## Controller pattern
 

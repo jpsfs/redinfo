@@ -24,6 +24,8 @@
     "@tiptap/starter-kit": "^3.30.2",
     "@zxing/browser": "^0.2.1",
     "dompurify": "^3.4.14",
+    "maplibre-gl": "^6.10.0",
+    "pmtiles": "^4.5.0",
     "ra-data-json-server": "^5.3.1",
     "ra-i18n-polyglot": "^5.14.4",
     "ra-language-english": "^5.14.4",

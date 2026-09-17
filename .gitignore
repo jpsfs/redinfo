@@ -185,3 +185,8 @@ docs/manual-operador/manual_emergencyoperator.pdf
 # files. Multi-hundred-MB, reproducible from scripts/prepare-osrm-data.sh —
 # never committed.
 /data/routing/
+
+# Self-hosted basemap (#247 stage 4): the PMTiles extract the `tiles`
+# service serves. Multi-hundred-MB, reproducible from
+# scripts/prepare-basemap.sh — never committed.
+/data/basemap/

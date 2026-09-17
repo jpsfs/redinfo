@@ -3157,6 +3157,27 @@ const MESSAGES = {
   'transportPlanning.inspectorEditCrew': { pt: 'Editar equipa', en: 'Edit crew' },
   'transportPlanning.inspectorOpenJourney': { pt: 'Abrir a viagem', en: 'Open journey' },
 
+  // ── Map panel (#247 stage 4) ──
+  'transportPlanning.mapUnavailable': {
+    pt: 'O mapa base não está disponível nesta instalação.',
+    en: 'The basemap is not available on this install.',
+  },
+  'transportPlanning.mapUnavailableHint': {
+    pt: 'Peça a um administrador para correr scripts/prepare-basemap.sh. O quadro continua totalmente utilizável sem o mapa.',
+    en: 'Ask an administrator to run scripts/prepare-basemap.sh. The board stays fully usable without the map.',
+  },
+  'transportPlanning.mapLoading': { pt: 'A carregar o mapa…', en: 'Loading the map…' },
+  'transportPlanning.mapFitToDay': { pt: 'Enquadrar o dia todo', en: 'Fit the whole day' },
+  'transportPlanning.mapLegendRoute': { pt: 'percurso de uma viagem', en: 'a journey’s route' },
+  'transportPlanning.mapLegendStop': { pt: 'paragem planeada', en: 'planned stop' },
+  'transportPlanning.mapLegendUnplanned': { pt: 'por planear', en: 'unplanned' },
+  'transportPlanning.mapOffFrame': { pt: '%{distanceKm} km · viagem %{number}', en: '%{distanceKm} km · journey %{number}' },
+  'transportPlanning.mapOverlapHintTitle': { pt: 'Possíveis partilhas de percurso', en: 'Possible corridor overlaps' },
+  'transportPlanning.mapOverlapHint': {
+    pt: 'Viagem %{a} e viagem %{b} passam a menos de %{distanceKm} km uma da outra.',
+    en: 'Journey %{a} and journey %{b} pass within %{distanceKm} km of each other.',
+  },
+
   // ── Journey page and crew sheet (#247 stage 3) ──
   'transportJourney.pageTitle': { pt: 'Viagem %{number}', en: 'Journey %{number}' },
   'transportJourney.pageTitleLoading': { pt: 'Viagem', en: 'Journey' },

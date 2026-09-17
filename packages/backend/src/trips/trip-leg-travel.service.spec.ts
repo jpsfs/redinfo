@@ -188,6 +188,30 @@ describe('TripLegTravelService', () => {
       travelEstimated: false,
       travelDistanceMeters: null,
       suggested: { pickupAt: null, dropoffAt: null },
+      // The origin genuinely has no coordinates anywhere (no leg column, no
+      // patient in the map); the destination's own columns still resolve —
+      // door is per-end, never all-or-nothing (#247 stage 4).
+      door: { origin: null, destination: { latitude: 41.18, longitude: -8.6 } },
+    });
+  });
+
+  it('carries the door through even when routing itself fails, since both endpoints were already known', async () => {
+    const plan = jest.fn().mockRejectedValue(new Error('OSRM unreachable'));
+    const result = await serviceWith(plan).estimateMany([leg()], new Map([['leg-1', PATIENT]]), THRESHOLDS);
+
+    expect(result.get('leg-1')?.door).toEqual({
+      origin: { latitude: 41.53, longitude: -8.62 },
+      destination: { latitude: 41.18, longitude: -8.6 },
+    });
+  });
+
+  it('carries the door through on a routed leg too', async () => {
+    const plan = jest.fn().mockResolvedValue(planned(45 * 60));
+    const result = await serviceWith(plan).estimateMany([leg()], new Map([['leg-1', PATIENT]]), THRESHOLDS);
+
+    expect(result.get('leg-1')?.door).toEqual({
+      origin: { latitude: 41.53, longitude: -8.62 },
+      destination: { latitude: 41.18, longitude: -8.6 },
     });
   });
 

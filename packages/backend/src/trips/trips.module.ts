@@ -26,7 +26,9 @@ import { TripsController } from './trips.controller';
  * `TransportRequestsModule` (`TransportRequestLegsService`) and
  * `PatientsModule` feed `getBoard` (#235) — the planning board's leg cards,
  * assigned and unassigned alike. `RoutingModule` serves `TripLegTravelService`
- * on that same path, for the pickup and home-arrival times the board suggests.
+ * on that same path, for the pickup and home-arrival times the board suggests
+ * — and, directly on `TripsService` itself (#247 stage 4), for each lane's
+ * drawn route (`TripsService.attachRouteGeometry`, `ROUTING_SERVICE`).
  */
 @Module({
   imports: [

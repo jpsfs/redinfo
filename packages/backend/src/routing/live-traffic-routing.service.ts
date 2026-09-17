@@ -34,6 +34,13 @@ export class LiveTrafficRoutingService implements RoutingService {
     return this.osrm.geocode(address);
   }
 
+  // Route geometry is a planning-time, drawn-once-per-lane concern (#247
+  // stage 4), never a live, per-request question the way a duration is —
+  // delegates straight to the free-flow engine, same as `geocode`.
+  routeGeometry(points: Coordinates[]): Promise<string | null> {
+    return this.osrm.routeGeometry(points);
+  }
+
   async distanceMatrix(
     origins: Coordinates[],
     destinations: Coordinates[],

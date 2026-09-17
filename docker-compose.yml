@@ -134,6 +134,25 @@ services:
       retries: 5
       start_period: 2h
 
+  # ── Basemap tiles (#247 stage 4) ────────────────────────────────────────────
+  # Self-hosted PMTiles behind our own nginx — see
+  # `docs/plans/planeamento-transportes-redesign.md` §5 for why: a tile
+  # request centred on a patient's house is that address leaving the
+  # building, the same reasoning that keeps routing/geocoding self-hosted
+  # (`routing.module.ts`). Plain `nginx:alpine` rather than `pmtiles serve` —
+  # the map panel fetches the raw `.pmtiles` file itself (byte-range
+  # requests via `pmtiles.js`'s own protocol handler), and the CLI's own
+  # docs say a standard web server is what serves that, not `pmtiles serve`
+  # (which exposes a decoded ZXY API instead). Serves `./data/basemap`,
+  # produced by `scripts/prepare-basemap.sh` — optional: `MapPanel` degrades
+  # to a placeholder when `portugal.pmtiles` isn't there yet, same fail-soft
+  # posture as `osrm`'s `.osrm*` files above.
+  tiles:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    volumes:
+      - ./data/basemap:/usr/share/nginx/html:ro
+
   # ── INEM worker (#215) ──────────────────────────────────────────────────────
   # Stateless Playwright session-minter — see packages/inem-worker/README.md.
   # Off by default (profile-gated): `docker compose --profile inem-worker up`.
@@ -165,6 +184,7 @@ services:
     env_file: .env
     depends_on:
       - backend
+      - tiles
     ports:
       - "5173:5173"
 

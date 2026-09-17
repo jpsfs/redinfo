@@ -142,6 +142,7 @@ const journey = (overrides: Partial<TripJourneyDetail> = {}): TripJourneyDetail 
   occupancyWindow: { startsAt: '2026-09-15T08:00:00.000Z', endsAt: '2026-09-15T08:45:00.000Z' },
   emptyLegs: [],
   issues: [],
+  routeGeometry: null,
   legsById: { [LEG.id]: LEG } as never,
   ...overrides,
 });

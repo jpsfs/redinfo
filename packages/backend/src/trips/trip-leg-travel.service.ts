@@ -20,6 +20,13 @@ export interface LegTravelEstimate {
    * a time). */
   travelDistanceMeters: number | null;
   suggested: SuggestedLegTimes;
+  /**
+   * The same two endpoints `endpointCoordinates` resolves below, carried
+   * out independently of whether the *pair* could be routed (#247 stage 4).
+   * A leg with a known home but an unmapped facility still has a door worth
+   * pinning on the map — unlike `travelMinutes`, this is never all-or-nothing.
+   */
+  door: { origin: Coordinates | null; destination: Coordinates | null };
 }
 
 /**
@@ -34,12 +41,11 @@ export interface LegPatientContext {
   longitude: number | null;
 }
 
-const NO_ESTIMATE: LegTravelEstimate = {
-  travelMinutes: null,
-  travelEstimated: false,
-  travelDistanceMeters: null,
-  suggested: { pickupAt: null, dropoffAt: null },
-};
+const NO_TRAVEL = { pickupAt: null, dropoffAt: null };
+
+function noEstimate(door: LegTravelEstimate['door']): LegTravelEstimate {
+  return { travelMinutes: null, travelEstimated: false, travelDistanceMeters: null, suggested: NO_TRAVEL, door };
+}
 
 function coordinatesOf(
   latitude: number | null | undefined,
@@ -92,6 +98,11 @@ function endpointCoordinates(
  * route, no coordinates on the facility — yields nulls, not a fabricated time.
  * A blank the planner fills in is honest; a plausible-looking wrong pickup time
  * silently strands a patient.
+ *
+ * `door` (#247 stage 4) rides alongside every estimate, resolved end
+ * independently of end — the map panel's unplanned pin needs a patient's
+ * home even on the many legs whose destination facility has no coordinates
+ * on file yet.
  */
 @Injectable()
 export class TripLegTravelService {
@@ -135,7 +146,8 @@ export class TripLegTravelService {
       patient,
       outbound,
     );
-    if (!origin || !destination) return NO_ESTIMATE;
+    const door = { origin, destination };
+    if (!origin || !destination) return noEstimate(door);
 
     // The corridor the traffic factor is keyed by is public geography at both
     // ends — the patient's locality, the facility — while the coordinates
@@ -174,12 +186,15 @@ export class TripLegTravelService {
           travelMinutes,
           thresholds: resolveArrivalWindowThresholds(defaults, leg.destinationFacility),
         }),
+        door,
       };
     } catch (cause) {
       // The board is still useful without a travel estimate; it is not useful
-      // at all if a routing outage 500s the whole day's plan.
+      // at all if a routing outage 500s the whole day's plan. The door itself
+      // is already resolved above — a routing outage costs the estimate, not
+      // the map pin.
       this.logger.warn(`Travel estimate failed for leg ${leg.id}: ${String(cause)}`);
-      return NO_ESTIMATE;
+      return noEstimate(door);
     }
   }
 }

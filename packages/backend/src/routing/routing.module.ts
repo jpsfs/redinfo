@@ -6,6 +6,7 @@ import { GeocodeCacheService } from './geocode-cache.service';
 import { LiveTrafficRoutingService } from './live-traffic-routing.service';
 import { NominatimGeocodingClient } from './nominatim-geocoding.client';
 import { OsrmMatrixClient } from './osrm-matrix.client';
+import { OsrmRouteClient } from './osrm-route.client';
 import { OsrmRoutingService } from './osrm-routing.service';
 import { PlannedDurationService } from './planned-duration.service';
 import { ROUTING_SERVICE } from './routing.interface';
@@ -21,10 +22,11 @@ import { TRAFFIC_SAMPLING_CLIENT } from './traffic-sampling.interface';
  * (`PlannedDurationService`/`TrafficDayType` resolution needs to know
  * whether a departure date is a holiday).
  *
- * `NominatimGeocodingClient`/`OsrmMatrixClient` are factories for the same
- * reason `InemModule`'s `InemApiClient`/`IdentityCipher` are: each takes a
- * plain string-with-a-default constructor arg, and `useClass` would have
- * Nest try to inject that string by type and fail to start.
+ * `NominatimGeocodingClient`/`OsrmMatrixClient`/`OsrmRouteClient` are
+ * factories for the same reason `InemModule`'s `InemApiClient`/
+ * `IdentityCipher` are: each takes a plain string-with-a-default constructor
+ * arg, and `useClass` would have Nest try to inject that string by type and
+ * fail to start.
  *
  * `OsrmRoutingService` is listed as its own provider (not only behind
  * `ROUTING_SERVICE` via `useClass`) and bound to that token with
@@ -48,6 +50,7 @@ import { TRAFFIC_SAMPLING_CLIENT } from './traffic-sampling.interface';
   providers: [
     { provide: NominatimGeocodingClient, useFactory: () => new NominatimGeocodingClient() },
     { provide: OsrmMatrixClient, useFactory: () => new OsrmMatrixClient() },
+    { provide: OsrmRouteClient, useFactory: () => new OsrmRouteClient() },
     GeocodeCacheService,
     OsrmRoutingService,
     { provide: ROUTING_SERVICE, useExisting: OsrmRoutingService },

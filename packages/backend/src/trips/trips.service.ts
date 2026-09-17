@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import {
   ArrivalWindowWarning,
@@ -29,6 +29,7 @@ import {
   walkTripStops,
 } from '@redinfo/shared';
 import { PrismaService } from '../prisma/prisma.service';
+import { Coordinates, ROUTING_SERVICE, RoutingService } from '../routing/routing.interface';
 import { CERT_HELD_SELECT, toHeldCertifications } from '../users/certifications.util';
 import { parseIsoDate, toIsoDate } from '../utils/date.util';
 import { shiftBoundaryToInstant } from '../utils/timezone.util';
@@ -133,6 +134,8 @@ function toIssueLevel(warning: ArrivalWindowWarning): 'NOTE' | 'WARNING' | null 
  */
 @Injectable()
 export class TripsService {
+  private readonly logger = new Logger(TripsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly delegationSettings: DelegationSettingsService,
@@ -141,6 +144,7 @@ export class TripsService {
     private readonly transportRequestLegs: TransportRequestLegsService,
     private readonly patients: PatientsService,
     private readonly legTravel: TripLegTravelService,
+    @Inject(ROUTING_SERVICE) private readonly routing: RoutingService,
   ) {}
 
   async create(dto: CreateTripDto) {
@@ -205,7 +209,11 @@ export class TripsService {
     const legs = await this.transportRequestLegs.findByIds(legIds);
     const legsById = await this.loadLegsById(legs, user);
 
-    return { ...detail, journeyNumber, vehicle: vehicleSummary(row), legsById };
+    const lane = await this.attachRouteGeometry(
+      { ...detail, journeyNumber, vehicle: vehicleSummary(row) },
+      legsById,
+    );
+    return { ...lane, legsById };
   }
 
   /**
@@ -231,7 +239,7 @@ export class TripsService {
       for (const [tripId, number] of journeyNumbersByTripId(vehicleRows)) journeyNumberByTripId.set(tripId, number);
     }
 
-    const lanes: TransportPlanningLane[] = await Promise.all(
+    const lanes: Array<Omit<TransportPlanningLane, 'routeGeometry'>> = await Promise.all(
       rows.map(async (row) => ({
         ...(await this.buildDetail(row)),
         journeyNumber: journeyNumberByTripId.get(row.id) ?? 1,
@@ -250,12 +258,59 @@ export class TripsService {
     ]);
     const legsById = await this.loadLegsById([...assignedLegs, ...unassignedLegs], user);
 
+    const lanesWithGeometry = await Promise.all(
+      lanes.map((lane) => this.attachRouteGeometry(lane, legsById)),
+    );
+
     return {
       date,
-      lanes,
+      lanes: lanesWithGeometry,
       legsById,
       unassignedLegIds: unassignedLegs.map((leg) => leg.id),
     };
+  }
+
+  /**
+   * This journey's road path, one continuous line through every stop in
+   * plan order (#247 stage 4's map panel). Deliberately one line for the
+   * whole trip rather than one dashed segment per leg direction: OSRM's
+   * `/route` returns a single geometry for the sequence it's given, and
+   * splitting it back into per-leg direction segments would mean one OSRM
+   * call per leg instead of one per journey — for a corridor-overlap map,
+   * a milk-run's full path is the thing worth drawing; direction already
+   * reads off the numbered stop markers and the timeline/inspector next to
+   * it. A `PICKUP`/`DROPOFF` stop takes its point from the leg's own
+   * resolved `door` (its own coordinates rarely carry one, see
+   * `TripLegTravelService`'s doc comment); `WAIT`/`RETURN_TO_BASE` already
+   * carry their own resolved point (`TripStopsService` copies it from the
+   * facility or the base at creation).
+   */
+  private async attachRouteGeometry(
+    lane: Omit<TransportPlanningLane, 'routeGeometry'>,
+    legsById: Record<string, TransportPlanningLeg>,
+  ): Promise<TransportPlanningLane> {
+    const points: Coordinates[] = [];
+    for (const stop of lane.stops) {
+      if (stop.kind === TripStopKind.PICKUP || stop.kind === TripStopKind.DROPOFF) {
+        const leg = stop.transportLegId ? legsById[stop.transportLegId] : undefined;
+        const point = stop.kind === TripStopKind.PICKUP ? leg?.door.origin : leg?.door.destination;
+        if (point) points.push(point);
+      } else if (stop.latitude != null && stop.longitude != null) {
+        points.push({ latitude: stop.latitude, longitude: stop.longitude });
+      }
+    }
+
+    if (points.length < 2) return { ...lane, routeGeometry: null };
+
+    try {
+      const routeGeometry = await this.routing.routeGeometry(points);
+      return { ...lane, routeGeometry };
+    } catch (cause) {
+      // The board is still a usable board without a drawn route — same
+      // fail-soft posture as `TripLegTravelService.estimate`.
+      this.logger.warn(`Route geometry failed for trip ${lane.trip.id}: ${String(cause)}`);
+      return { ...lane, routeGeometry: null };
+    }
   }
 
   /**
@@ -314,6 +369,7 @@ export class TripsService {
         travelEstimated: estimate?.travelEstimated ?? false,
         travelDistanceMeters: estimate?.travelDistanceMeters ?? null,
         suggested: estimate?.suggested ?? { pickupAt: null, dropoffAt: null },
+        door: estimate?.door ?? { origin: null, destination: null },
       };
     }
     return legsById;

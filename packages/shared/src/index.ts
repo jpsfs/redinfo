@@ -8650,6 +8650,48 @@ export interface TripCrewCandidate {
 
 // ─── Planning board (#235) ──────────────────────────────────────────────────
 //
+/**
+ * Decodes a Google-encoded polyline into an ordered list of coordinates.
+ * `precision` matches the encoder's own digit count — 6 for polyline6, the
+ * format `RoutingService.routeGeometry` always asks OSRM for (#247 stage 4),
+ * so a lane's `routeGeometry` decodes with the default. Pure and dependency-free
+ * on purpose: both the map panel (decoding to draw a route) and a future test
+ * fixture need this, and it is a well-known, stable algorithm — not worth a
+ * third frontend dependency alongside maplibre-gl and pmtiles.
+ */
+export function decodePolyline(encoded: string, precision = 6): Array<{ latitude: number; longitude: number }> {
+  const factor = 10 ** precision;
+  const coordinates: Array<{ latitude: number; longitude: number }> = [];
+  let index = 0;
+  let lat = 0;
+  let lng = 0;
+
+  while (index < encoded.length) {
+    let result = 0;
+    let shift = 0;
+    let byte: number;
+    do {
+      byte = encoded.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20);
+    lat += result & 1 ? ~(result >> 1) : result >> 1;
+
+    result = 0;
+    shift = 0;
+    do {
+      byte = encoded.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20);
+    lng += result & 1 ? ~(result >> 1) : result >> 1;
+
+    coordinates.push({ latitude: lat / factor, longitude: lng / factor });
+  }
+
+  return coordinates;
+}
+//
 // `GET /trips/board?date=` — everything `TransportPlanningPage` needs for one
 // date in a single call. The board never re-derives `TripsService.getDetail`'s
 // ranked validation; it only adds the patient-facing facts a leg card needs
@@ -8690,6 +8732,19 @@ export interface TransportPlanningLeg extends TransportLeg {
    * see `suggestLegTimes`. Advisory: `plannedPickupAt`/`plannedDropoffAt` are
    * what the plan actually commits to once the planner has placed the block. */
   suggested: SuggestedLegTimes;
+  /**
+   * This leg's two endpoints, resolved the same way `travelMinutes` is —
+   * the leg's own address if it has one, else the facility's own entrance or
+   * the patient's own geocoded home (#247 stage 4). Null on whichever end
+   * couldn't be resolved; a leg still carries whichever door it does know,
+   * independent of whether the pair as a whole could be routed. This is what
+   * lets the map panel drop an unplanned pin at a patient's home before a
+   * vehicle has ever been suggested for them.
+   */
+  door: {
+    origin: { latitude: number; longitude: number } | null;
+    destination: { latitude: number; longitude: number } | null;
+  };
 }
 
 /**
@@ -8743,6 +8798,17 @@ export interface TransportPlanningLane {
   occupancyWindow: { startsAt: string; endsAt: string } | null;
   emptyLegs: TripStopSegment[];
   issues: TripPlanIssue[];
+  /**
+   * This journey's road path, one continuous line through every stop in
+   * sequence, encoded as a polyline6 (`decodePolyline` above decodes it) —
+   * the map panel's route layer (#247 stage 4). Null with fewer than two
+   * resolvable stop coordinates, or when OSRM couldn't route the pair; a
+   * lane is still fully usable without it; see `RoutingService.routeGeometry`.
+   * Deliberately one line for the whole trip rather than one dashed segment
+   * per leg direction — see `TripsService.attachRouteGeometry`'s doc comment
+   * for why that's the line this stage draws.
+   */
+  routeGeometry: string | null;
 }
 
 /**

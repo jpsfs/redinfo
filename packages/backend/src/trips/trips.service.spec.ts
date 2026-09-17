@@ -121,6 +121,10 @@ function buildDeps(overrides: Record<string, unknown> = {}) {
     },
     patients: { findManyForDisplay: jest.fn().mockResolvedValue(new Map()) },
     legTravel: { estimateMany: jest.fn().mockResolvedValue(new Map()) },
+    // Most fixtures below have no stop carrying resolvable coordinates, so
+    // `attachRouteGeometry` short-circuits before ever calling this — see
+    // the dedicated `routeGeometry` describe block for the cases that do.
+    routing: { routeGeometry: jest.fn().mockResolvedValue(null) },
     ...overrides,
   };
 }
@@ -135,6 +139,7 @@ function makeService(prisma: ReturnType<typeof buildPrismaStub>, deps: ReturnTyp
     deps.transportRequestLegs as never,
     deps.patients as never,
     deps.legTravel as never,
+    deps.routing as never,
   );
 }
 
@@ -506,6 +511,61 @@ describe('TripsService', () => {
       expect(deps.transportRequestLegs.findByIds).toHaveBeenCalledWith(['leg-1']);
     });
 
+    it('draws this journey’s route through its stops’ resolved door coordinates (#247 stage 4)', async () => {
+      const stops = [
+        stop({ id: 's1', sequence: 1, kind: TripStopKind.PICKUP, transportLegId: 'leg-1' }),
+        stop({ id: 's2', sequence: 2, kind: TripStopKind.DROPOFF, transportLegId: 'leg-1' }),
+      ];
+      const ORIGIN = { latitude: 41.53, longitude: -8.62 };
+      const DESTINATION = { latitude: 41.18, longitude: -8.6 };
+      const prisma = buildPrismaStub({
+        trip: { findUnique: jest.fn().mockResolvedValue(buildTripRow({ stops })) },
+        transportRequest: { findMany: jest.fn().mockResolvedValue([{ id: 'req-1', patientId: 'pat-1' }]) },
+      });
+      const deps = buildDeps({
+        transportRequestLegs: {
+          findByIds: jest.fn().mockResolvedValue([{ id: 'leg-1', transportRequestId: 'req-1', direction: LegDirection.OUTBOUND }]),
+          findUnassignedForDate: jest.fn().mockResolvedValue([]),
+        },
+        legTravel: {
+          estimateMany: jest.fn().mockResolvedValue(
+            new Map([
+              [
+                'leg-1',
+                {
+                  travelMinutes: 45,
+                  travelEstimated: false,
+                  travelDistanceMeters: 30_000,
+                  suggested: { pickupAt: null, dropoffAt: null },
+                  door: { origin: ORIGIN, destination: DESTINATION },
+                },
+              ],
+            ]),
+          ),
+        },
+        routing: { routeGeometry: jest.fn().mockResolvedValue('encoded-polyline') },
+      });
+      const service = makeService(prisma, deps);
+
+      const result = await service.getDetail('trip-1', USER);
+
+      expect(result.routeGeometry).toBe('encoded-polyline');
+      expect(deps.routing.routeGeometry).toHaveBeenCalledWith([ORIGIN, DESTINATION]);
+    });
+
+    it('leaves routeGeometry null, without calling the routing engine, when fewer than two stop points resolve', async () => {
+      const prisma = buildPrismaStub({
+        trip: { findUnique: jest.fn().mockResolvedValue(buildTripRow({ stops: [] })) },
+      });
+      const deps = buildDeps();
+      const service = makeService(prisma, deps);
+
+      const result = await service.getDetail('trip-1', USER);
+
+      expect(result.routeGeometry).toBeNull();
+      expect(deps.routing.routeGeometry).not.toHaveBeenCalled();
+    });
+
     it('numbers this journey the same way the board would, off its siblings on the same vehicle and date', async () => {
       const prisma = buildPrismaStub({
         trip: {
@@ -577,6 +637,48 @@ describe('TripsService', () => {
       expect(board.unassignedLegIds).toEqual(['leg-2']);
       // The assigned leg is only ever looked up by id, never re-derived from the date.
       expect(deps.transportRequestLegs.findByIds).toHaveBeenCalledWith(['leg-1']);
+    });
+
+    it('draws each lane’s own route and carries a leg’s door coordinates through to legsById (#247 stage 4)', async () => {
+      const laneStops = [
+        stop({ id: 'pickup-1', sequence: 1, kind: TripStopKind.PICKUP, transportLegId: 'leg-1' }),
+        stop({ id: 'dropoff-1', sequence: 2, kind: TripStopKind.DROPOFF, transportLegId: 'leg-1' }),
+      ];
+      const ORIGIN = { latitude: 41.53, longitude: -8.62 };
+      const DESTINATION = { latitude: 41.18, longitude: -8.6 };
+      const prisma = buildPrismaStub({
+        trip: { findMany: jest.fn().mockResolvedValue([buildTripRow({ stops: laneStops })]) },
+        transportRequest: { findMany: jest.fn().mockResolvedValue([{ id: 'req-1', patientId: 'pat-1' }]) },
+      });
+      const deps = buildDeps({
+        transportRequestLegs: {
+          findByIds: jest.fn().mockResolvedValue([{ id: 'leg-1', transportRequestId: 'req-1', direction: LegDirection.OUTBOUND }]),
+          findUnassignedForDate: jest.fn().mockResolvedValue([]),
+        },
+        legTravel: {
+          estimateMany: jest.fn().mockResolvedValue(
+            new Map([
+              [
+                'leg-1',
+                {
+                  travelMinutes: 45,
+                  travelEstimated: false,
+                  travelDistanceMeters: 30_000,
+                  suggested: { pickupAt: null, dropoffAt: null },
+                  door: { origin: ORIGIN, destination: DESTINATION },
+                },
+              ],
+            ]),
+          ),
+        },
+        routing: { routeGeometry: jest.fn().mockResolvedValue('encoded-polyline') },
+      });
+      const service = makeService(prisma, deps);
+
+      const board = await service.getBoard('2026-09-15', USER);
+
+      expect(board.lanes[0].routeGeometry).toBe('encoded-polyline');
+      expect(board.legsById['leg-1'].door).toEqual({ origin: ORIGIN, destination: DESTINATION });
     });
 
     it('numbers each vehicle’s own journeys from 1, independently of the other vehicles on the board', async () => {

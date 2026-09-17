@@ -6,7 +6,7 @@ describe('LiveTrafficRoutingService', () => {
   const origin = { latitude: 41.1, longitude: -8.6 };
   const destination = { latitude: 41.2, longitude: -8.5 };
 
-  let osrm: jest.Mocked<Pick<OsrmRoutingService, 'geocode' | 'distanceMatrix'>>;
+  let osrm: jest.Mocked<Pick<OsrmRoutingService, 'geocode' | 'distanceMatrix' | 'routeGeometry'>>;
   let samplingClient: jest.Mocked<TrafficSamplingClient>;
   let service: LiveTrafficRoutingService;
 
@@ -16,6 +16,7 @@ describe('LiveTrafficRoutingService', () => {
       distanceMatrix: jest
         .fn()
         .mockResolvedValue([[{ durationSeconds: 900, distanceMeters: 15000, estimated: false }]]),
+      routeGeometry: jest.fn().mockResolvedValue('abc123'),
     };
     samplingClient = { sampleTravelTime: jest.fn() };
     service = new LiveTrafficRoutingService(osrm as unknown as OsrmRoutingService, samplingClient);
@@ -53,5 +54,12 @@ describe('LiveTrafficRoutingService', () => {
 
     expect(matrix).toHaveLength(2);
     expect(samplingClient.sampleTravelTime).toHaveBeenCalledTimes(2);
+  });
+
+  it('delegates route geometry to OsrmRoutingService — a drawn route is a planning-time concern, never a live one', async () => {
+    const result = await service.routeGeometry([origin, destination]);
+
+    expect(osrm.routeGeometry).toHaveBeenCalledWith([origin, destination]);
+    expect(result).toBe('abc123');
   });
 });
