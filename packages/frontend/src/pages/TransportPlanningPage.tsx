@@ -520,6 +520,7 @@ export const TransportPlanningPage = () => {
                     <VehicleGroup
                       key={group.vehicle.id}
                       vehicle={group.vehicle}
+                      date={date}
                       lanes={group.lanes}
                       legsById={board.legsById}
                       timelineWindow={timelineWindow}

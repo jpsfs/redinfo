@@ -67,6 +67,17 @@ export class TripsController {
     return this.crew.listCandidates(date);
   }
 
+  /** One vehicle's whole day (#247 stage 5) — the vehicle-day page, reached
+   * from the board by clicking a vehicle's own icon. Declared before `:id`
+   * for readability alongside `board`/`crew-candidates`, though it can't
+   * actually collide: `:id` matches exactly one path segment. */
+  @Get('vehicle/:vehicleId')
+  @Actions(Action.PLAN_TRANSPORT_TRIPS)
+  @ApiQuery({ name: 'date', required: true, description: 'ISO date' })
+  getVehicleDay(@Param('vehicleId') vehicleId: string, @Query('date') date: string, @CurrentUser() user: RequestUser) {
+    return this.trips.getVehicleDay(vehicleId, date, user);
+  }
+
   /**
    * A crew member's own manifest for `date` (#236) — `MyTransportTripsPage`'s
    * one call. Ungated on purpose, same reasoning as `SchedulesController

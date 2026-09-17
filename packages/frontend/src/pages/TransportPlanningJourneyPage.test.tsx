@@ -172,8 +172,8 @@ describe('TransportPlanningJourneyPage', () => {
     mockApiFetch.mockImplementation((path: string) => (path === '/trips/trip-1' ? Promise.resolve(journey()) : Promise.resolve([])));
     renderPage();
 
-    expect(await screen.findByText('Journey 2')).toBeInTheDocument();
-    expect(screen.getByText('101 · AA-11-BB')).toBeInTheDocument();
+    expect(await screen.findByText('101 · Journey 2 — Hospital de São João')).toBeInTheDocument();
+    expect(screen.getByText('AA-11-BB')).toBeInTheDocument();
     // Once per stop row — the pickup and the dropoff both name the leg's patient.
     expect(screen.getAllByText('Maria Costa')).toHaveLength(2);
     expect(screen.getAllByText('30.0 km')).toHaveLength(2);
@@ -228,5 +228,34 @@ describe('TransportPlanningJourneyPage', () => {
     // MapLibre's own rendering, which `MapPanel.test.tsx` already covers.
     expect(await screen.findByText('Route')).toBeInTheDocument();
     expect(await screen.findByText('The basemap is not available on this install.')).toBeInTheDocument();
+  });
+
+  it('shows the aggregated summary blocks and a crew-complete badge for a one-journey day', async () => {
+    mockApiFetch.mockImplementation((path: string) => (path === '/trips/trip-1' ? Promise.resolve(journey()) : Promise.resolve([])));
+    renderPage();
+
+    await screen.findByText('101 · Journey 2 — Hospital de São João');
+    expect(screen.getByText('30 km')).toBeInTheDocument();
+    expect(screen.getByText('45 min')).toBeInTheDocument();
+    // "Distance" is also the stop table's own column header — the summary
+    // block reuses the same word, so this only asserts it appears at all.
+    expect(screen.getAllByText('Distance').length).toBeGreaterThan(0);
+    expect(screen.getByText('Vehicle occupied')).toBeInTheDocument();
+    expect(screen.getByText('Patient')).toBeInTheDocument();
+    expect(screen.getByText('Crew complete')).toBeInTheDocument();
+    expect(screen.queryByText('Round trip')).not.toBeInTheDocument();
+  });
+
+  it('collapses and expands the map column', async () => {
+    const user = userEvent.setup();
+    mockApiFetch.mockImplementation((path: string) => (path === '/trips/trip-1' ? Promise.resolve(journey()) : Promise.resolve([])));
+    renderPage();
+
+    await screen.findByText('Route');
+    await user.click(screen.getByRole('button', { name: 'Collapse the map' }));
+    expect(screen.queryByText('Route')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Expand the map' }));
+    expect(await screen.findByText('Route')).toBeInTheDocument();
   });
 });

@@ -2984,6 +2984,7 @@ const MESSAGES = {
   'transportPlanning.vehicleType.EMERGENCY': { pt: 'Ambulância de socorro', en: 'Emergency ambulance' },
   'transportPlanning.vehicleType.TRANSPORT': { pt: 'Viatura de transporte', en: 'Transport vehicle' },
   'transportPlanning.addJourneyButton': { pt: 'Nova jornada', en: 'New journey' },
+  'transportPlanning.openVehicleDay': { pt: 'Abrir dia da viatura', en: 'Open vehicle day' },
   'transportPlanning.journeyEmpty': { pt: 'Jornada vazia — arraste uma viagem para aqui.', en: 'Empty journey — drag a leg here.' },
   'transportPlanning.noCrew': { pt: 'Sem tripulação', en: 'No crew' },
   'transportPlanning.dropHere': { pt: 'Largar às %{time}', en: 'Drop at %{time}' },
@@ -3196,6 +3197,14 @@ const MESSAGES = {
   'transportJourney.loadFailed': { pt: 'Não foi possível carregar a viagem.', en: 'Could not load the journey.' },
   'transportJourney.dateLabel': { pt: 'Data:', en: 'Date:' },
   'transportJourney.mapTitle': { pt: 'Percurso', en: 'Route' },
+  'transportJourney.mapCollapse': { pt: 'Fechar o mapa', en: 'Collapse the map' },
+  'transportJourney.mapExpand': { pt: 'Mostrar o mapa', en: 'Expand the map' },
+  'transportJourney.blockDistance': { pt: 'Distância', en: 'Distance' },
+  'transportJourney.blockOccupied': { pt: 'Viatura ocupada', en: 'Vehicle occupied' },
+  'transportJourney.blockPatients': { pt: 'Doente', en: 'Patient' },
+  'transportJourney.roundTripBadge': { pt: 'Ida e volta', en: 'Round trip' },
+  'transportJourney.crewCompleteBadge': { pt: 'Tripulação completa', en: 'Crew complete' },
+  'transportJourney.crewIncompleteBadge': { pt: 'Tripulação incompleta', en: 'Crew incomplete' },
   'transportJourney.stopsTitle': { pt: 'Paragens', en: 'Stops' },
   'transportJourney.stopColumnTime': { pt: 'Hora', en: 'Time' },
   'transportJourney.stopColumnKind': { pt: 'Paragem', en: 'Stop' },
@@ -3211,6 +3220,15 @@ const MESSAGES = {
   'transportJourney.dwellDecision.RELEASE': { pt: 'Viatura libertada', en: 'Vehicle released' },
   'transportJourney.dwellDecision.PENDING': { pt: 'Decisão por tomar', en: 'Decision pending' },
   'transportJourney.decideWaitRelease': { pt: 'Esperar ou libertar', en: 'Decide wait/release' },
+
+  // ── Vehicle day page (#247 stage 5) ──
+  'transportVehicleDay.pageTitle': { pt: 'Dia da viatura', en: 'Vehicle day' },
+  'transportVehicleDay.pageTitleLoading': { pt: 'Dia da viatura', en: 'Vehicle day' },
+  'transportVehicleDay.loadFailed': { pt: 'Não foi possível carregar o dia da viatura.', en: 'Could not load the vehicle day.' },
+  'transportVehicleDay.journeysCount': { pt: '%{count} jornadas', en: '%{count} journeys' },
+  'transportVehicleDay.journeysTitle': { pt: 'Jornadas', en: 'Journeys' },
+  'transportVehicleDay.noJourneys': { pt: 'Sem jornadas nesta data.', en: 'No journeys on this date.' },
+  'transportVehicleDay.openJourney': { pt: 'Abrir jornada', en: 'Open journey' },
 
   // ── Trip status (#234) ──
   'tripStatus.PLANNED': { pt: 'Planeada', en: 'Planned' },

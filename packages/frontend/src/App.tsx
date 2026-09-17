@@ -74,6 +74,7 @@ import { TransportReferralsPage } from './pages/TransportReferralsPage';
 import { TransportConfigPage } from './pages/TransportConfigPage';
 import { TransportPlanningPage } from './pages/TransportPlanningPage';
 import { TransportPlanningJourneyPage } from './pages/TransportPlanningJourneyPage';
+import { TransportPlanningVehiclePage } from './pages/TransportPlanningVehiclePage';
 import PeopleIcon from '@mui/icons-material/People';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import BuildIcon from '@mui/icons-material/Build';
@@ -219,6 +220,11 @@ export default function App() {
             detail page; `GET /trips/:id` still gates on
             PLAN_TRANSPORT_TRIPS. */}
         <Route path="/transport-planning/journeys/:tripId" element={<TransportPlanningJourneyPage />} />
+        {/* One vehicle's whole day (#247 stage 5), reached from the board by
+            clicking a vehicle's own icon — same no-drawer-entry precedent as
+            the journey page above; `GET /trips/vehicle/:vehicleId` also
+            gates on PLAN_TRANSPORT_TRIPS. */}
+        <Route path="/transport-planning/vehicle/:vehicleId" element={<TransportPlanningVehiclePage />} />
         {/* The delegation's INEM units — availability toggle, INOP reason,
             syncing badge and degraded-session banner (#216), gated by
             MANAGE_INEM_STATUS in the drawer manifest. Not react-admin CRUD:

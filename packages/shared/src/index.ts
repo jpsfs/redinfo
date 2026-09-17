@@ -8837,6 +8837,24 @@ export interface TripJourneyDetail extends TransportPlanningLane {
   legsById: Record<string, TransportPlanningLeg>;
 }
 
+/**
+ * One vehicle's whole day (#247 stage 5) — every journey it runs on `date`,
+ * the vehicle-day page's one call (`GET /trips/vehicle/:vehicleId?date=`).
+ * `lanes` is empty for a vehicle with nothing planned that date rather than
+ * 404ing, so the page can still say "no journeys" for a known vehicle; an
+ * unknown `vehicleId` is the only 404. Shaped like `TripJourneyDetail` — one
+ * shared `legsById` rather than one per lane — since a vehicle-day page has
+ * no board-wide map to look legs up in either.
+ */
+export interface VehicleDayJourneys {
+  /** ISO date. */
+  date: string;
+  vehicle: TransportPlanningLane['vehicle'];
+  /** This vehicle's journeys for the date, in `journeyNumber` order. */
+  lanes: TransportPlanningLane[];
+  legsById: Record<string, TransportPlanningLeg>;
+}
+
 // ─── Crew manifest (#236) ───────────────────────────────────────────────────
 //
 // `GET /trips/me?date=` — a crew member's own trips for a date, the artefact

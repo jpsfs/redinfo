@@ -13,7 +13,11 @@ import { apiErrorLabel } from '../i18n/labels';
 import { useT } from '../i18n/useT';
 import { CrewDialog, CrewDialogTarget } from './transportPlanning/CrewDialog';
 import { journeyColorForOrdinal } from './transportPlanning/journeyColor';
+import { journeyDestinations } from './transportPlanning/legFacts';
+import { CollapsibleMapColumn } from './transportPlanning/journey/CollapsibleMapColumn';
 import { JourneyStopTable } from './transportPlanning/journey/JourneyStopTable';
+import { JourneySummaryBadge, JourneySummaryHeader } from './transportPlanning/journey/JourneySummaryHeader';
+import { summarizeJourneys } from './transportPlanning/journey/journeySummary';
 import { MapPanel } from './transportPlanning/map/MapPanel';
 import { WaitReleaseDialog, WaitReleaseTarget } from './transportPlanning/WaitReleaseDialog';
 import './transportPlanning/journey/journeyPage.css';
@@ -40,6 +44,10 @@ export const TransportPlanningJourneyPage = () => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [crewTarget, setCrewTarget] = useState<CrewDialogTarget | null>(null);
   const [waitReleaseTarget, setWaitReleaseTarget] = useState<WaitReleaseTarget | null>(null);
+  // The map column's own collapse (#247 stage 5) — same reasoning as the
+  // board's `railCollapsed`: a planner reading the stop table wants it
+  // wider more often than they want the map open.
+  const [mapCollapsed, setMapCollapsed] = useState(false);
 
   const load = useCallback(async () => {
     if (!tripId) return;
@@ -72,6 +80,31 @@ export const TransportPlanningJourneyPage = () => {
     () => (journey ? { lanes: [journey], legsById: journey.legsById, unassignedLegIds: [] } : null),
     [journey],
   );
+
+  // The same aggregated summary the vehicle-day page shows, computed over
+  // this one journey (#247 stage 5) — see `summarizeJourneys`'s own doc
+  // comment for why this is the same function rather than a bespoke
+  // single-journey calculation that could drift from the aggregate one.
+  const summary = useMemo(() => (journey ? summarizeJourneys([journey], journey.legsById) : null), [journey]);
+
+  const destinations = useMemo(
+    () => (journey ? journeyDestinations(Object.values(journey.legsById)) : []),
+    [journey],
+  );
+
+  const summaryBadges: JourneySummaryBadge[] = useMemo(() => {
+    if (!journey || !summary) return [];
+    const badges: JourneySummaryBadge[] = [
+      { key: 'status', label: t(`tripStatus.${journey.trip.status}`), variant: 'outlined' },
+    ];
+    if (summary.roundTrip) badges.push({ key: 'roundTrip', label: t('transportJourney.roundTripBadge') });
+    badges.push(
+      summary.crewComplete
+        ? { key: 'crew', label: t('transportJourney.crewCompleteBadge'), color: 'success' }
+        : { key: 'crew', label: t('transportJourney.crewIncompleteBadge'), color: 'error' },
+    );
+    return badges;
+  }, [journey, summary, t]);
 
   return (
     <Box sx={{ minWidth: 0 }}>
@@ -107,22 +140,19 @@ export const TransportPlanningJourneyPage = () => {
 
       {!loading && journey && (
         <Paper variant="outlined" className="journey-page-sheet" sx={{ p: 2 }}>
-          <Stack direction="row" alignItems="center" spacing={1} flexWrap="wrap" useFlexGap sx={{ mb: 1 }}>
-            <Box
-              sx={{
-                width: 14,
-                height: 14,
-                borderRadius: '50%',
-                flexShrink: 0,
-                bgcolor: journeyColorForOrdinal(journey.journeyNumber),
-              }}
+          {summary && (
+            <JourneySummaryHeader
+              colorDot={journeyColorForOrdinal(journey.journeyNumber)}
+              title={
+                destinations.length
+                  ? `${journey.vehicle.numeroCauda} · ${t('transportJourney.pageTitle', { number: journey.journeyNumber })} — ${destinations.join(' / ')}`
+                  : `${journey.vehicle.numeroCauda} · ${t('transportJourney.pageTitle', { number: journey.journeyNumber })}`
+              }
+              vehicleLabel={journey.vehicle.licensePlate}
+              badges={summaryBadges}
+              summary={summary}
             />
-            <Typography variant="h5">
-              {t('transportJourney.pageTitle', { number: journey.journeyNumber })}
-            </Typography>
-            <Chip label={`${journey.vehicle.numeroCauda} · ${journey.vehicle.licensePlate}`} />
-            <Chip label={t(`tripStatus.${journey.trip.status}`)} variant="outlined" />
-          </Stack>
+          )}
 
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
             {t('transportJourney.dateLabel')} {journey.trip.date}
@@ -191,14 +221,11 @@ export const TransportPlanningJourneyPage = () => {
             {/* Never printed — the crew sheet's own precedent
                 (`journeyPage.css`) is a paper artefact, and a WebGL canvas
                 has nothing to hand it. */}
-            <Box className="journey-page-map" sx={{ width: { xs: '100%', lg: 340 }, flexShrink: 0, minWidth: 0 }}>
-              <Typography variant="subtitle1" sx={{ mb: 1 }}>
-                {t('transportJourney.mapTitle')}
-              </Typography>
+            <CollapsibleMapColumn collapsed={mapCollapsed} onToggle={() => setMapCollapsed((collapsed) => !collapsed)}>
               {journeyBoard && (
                 <MapPanel board={journeyBoard} selectedTripId={journey.trip.id} onSelectTrip={() => {}} />
               )}
-            </Box>
+            </CollapsibleMapColumn>
           </Stack>
         </Paper>
       )}
