@@ -199,24 +199,28 @@ stages:
 
   # ── Deploy the application onto the host Terraform just provisioned ────────
   #
-  # Separate from .ado/deployment.yml's DeployProduction on purpose. That one
-  # runs ON vm-redcross as a self-hosted agent, so it has local cluster access
-  # and no network hop. This host has no ADO agent and its Kubernetes API is
-  # deliberately closed to the internet (var.kube_api_allowed_cidrs is empty —
-  # see infra/README.md), so the only way in is SSH on 22. Hence: a hosted
-  # agent that copies the chart over and drives `microk8s.helm3` on the far
-  # side.
+  # Runs on the `contabo-production` agent pool — an ADO agent installed on
+  # the Contabo host itself, exactly like `vm-redcross` today. That is what
+  # lets this stage reuse templates/deploy-env.yml *unchanged*: the agent is
+  # on the same machine as the cluster, so there is no SSH hop, no chart
+  # copy, and no Kubernetes API exposed to the internet
+  # (var.kube_api_allowed_cidrs stays empty).
   #
-  # Once this host really is production, the better end state is to install an
-  # ADO agent on it and let .ado/deployment.yml target it directly, exactly as
-  # vm-redcross does today — at which point this stage becomes the bootstrap
-  # step it was meant to be, not the permanent deploy path.
+  # A pool of its own rather than a second agent in the `vm-redcross` pool:
+  # a pool is the unit a stage targets, so separate pools are what let the old
+  # and the new production host be deployed to independently during the
+  # migration — and what stops a job meant for one landing on the other.
+  #
+  # The agent is staged by cloud-init but registered by hand, once:
+  #   sudo /opt/redinfo/register-ado-agent.sh <PAT>
+  # (a PAT in user_data would sit in Terraform state, and rotating it would
+  # mean reinstalling the server — see infra/README.md).
   - stage: DeployNewProduction
     displayName: "Deploy application to the Contabo host"
     dependsOn: Terraform
-    # Runs only when explicitly asked for, never after a destroy, and only if
-    # Terraform actually succeeded — a plan-only run leaves the host untouched
-    # but is still a perfectly valid thing to deploy after.
+    # Explicitly asked for, never after a destroy, and only if Terraform
+    # succeeded. A plan-only run leaves the host untouched but is still a
+    # perfectly valid thing to deploy after.
     condition: |
       and(
         succeeded(),
@@ -224,17 +228,51 @@ stages:
         ne('${{ parameters.action }}', 'destroy')
       )
     variables:
-      - group: redinfo-contabo
-      - group: redinfo-tfstate
-      # The real application secrets, same group .ado/deployment.yml uses for
-      # production. This is what makes the deployed stack a genuine production
-      # environment rather than a lookalike.
+      # The same group .ado/deployment.yml uses for production — this deploys
+      # the real environment, not a lookalike.
       - group: redinfo-production
     jobs:
-      - job: Deploy
+      - deployment: DeployToContaboProduction
+        displayName: Deploy Helm chart to the Contabo production host
+        pool:
+          name: contabo-production
+        environment: redinfo-production
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - template: templates/deploy-env.yml
+                  parameters:
+                    envName: production
+                    imageTag: ${{ parameters.imageTag }}
+                    # Background jobs are OFF unless explicitly asked for, and
+                    # that default is the important part of this stage. While
+                    # vm-redcross is still live, this host is a SECOND instance
+                    # holding the same production credentials: the
+                    # legacy-migration cron would have two machines pulling
+                    # from the same legacy MySQL hourly, and the INEM worker
+                    # would have two headless browsers logging into the one
+                    # shared INEM account and fighting over its session (see
+                    # packages/inem-worker/README.md). Neither is a deploy-time
+                    # error; both are noticed days later. Turn them on at
+                    # cutover, once vm-redcross is off.
+                    ${{ if eq(parameters.enableBackgroundJobs, true) }}:
+                      extraSetFlags: "--set legacyMigration.enabled=true --set legacyMigration.cron.enabled=true --set inemWorker.enabled=true"
+                    ${{ else }}:
+                      extraSetFlags: "--set legacyMigration.enabled=false --set legacyMigration.cron.enabled=false --set inemWorker.enabled=false"
+
+      - job: PublicCheck
+        displayName: "Check port 443 from outside the host"
+        dependsOn: DeployToContaboProduction
+        # Hosted agent on purpose: the deploy job above already proved the app
+        # answers *on* the box. The open question for this machine is whether
+        # 443 is reachable from the internet, and only an agent that is not on
+        # that host can answer it.
         pool:
           vmImage: "ubuntu-latest"
-        timeoutInMinutes: 60
+        variables:
+          - group: redinfo-contabo
+          - group: redinfo-tfstate
         steps:
           - checkout: self
             fetchDepth: 1
@@ -257,8 +295,8 @@ stages:
               targetType: "inline"
               script: |
                 set -euo pipefail
-                # Read-only: init + output, never a plan or an apply. The IP
-                # comes from state rather than a pipeline parameter so it
+                # Read-only: init + output, never a plan or an apply. The
+                # address comes from state rather than a typed parameter so it
                 # cannot drift from what actually exists.
                 terraform -chdir="$(TF_DIR)" init \
                   -backend-config="bucket=${TFSTATE_BUCKET}" \
@@ -269,10 +307,9 @@ stages:
 
                 HOST_IP="$(terraform -chdir="$(TF_DIR)" output -raw ipv4)"
                 if [ -z "${HOST_IP}" ] || [ "${HOST_IP}" = "null" ]; then
-                  echo "##vso[task.logissue type=error]Terraform state has no ipv4 output — has the instance been applied yet?" >&2
+                  echo "##vso[task.logissue type=error]Terraform state has no ipv4 output." >&2
                   exit 1
                 fi
-                echo "Target host: ${HOST_IP}"
                 echo "##vso[task.setvariable variable=HOST_IP]${HOST_IP}"
             env:
               AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
@@ -282,248 +319,17 @@ stages:
               TFSTATE_REGION: $(TFSTATE_REGION)
 
           - task: Bash@3
-            displayName: "Set up SSH"
-            inputs:
-              targetType: "inline"
-              script: |
-                set -euo pipefail
-                install -d -m 0700 ~/.ssh
-                # Written from a secret variable rather than checked in; the
-                # matching public key is what Terraform installs on the host
-                # (TF_VAR_ssh_public_key in the same variable group).
-                printf '%s\n' "${PROD_SSH_PRIVATE_KEY}" > ~/.ssh/id_ed25519
-                chmod 600 ~/.ssh/id_ed25519
-
-                # Trust-on-first-use. A freshly provisioned machine has a host
-                # key nobody has seen before, so there is nothing to pin
-                # against; `accept-new` still refuses a key that CHANGES later,
-                # which is the attack that matters once the host is known.
-                cat > ~/.ssh/config <<CONF
-                Host target
-                  HostName $(HOST_IP)
-                  User ${SSH_USER}
-                  IdentityFile ~/.ssh/id_ed25519
-                  StrictHostKeyChecking accept-new
-                  ConnectTimeout 15
-                CONF
-                chmod 600 ~/.ssh/config
-
-                # `id -un`/`uname -n` rather than $(whoami)/$(hostname):
-                # Azure Pipelines rewrites $(word) macros in this script before
-                # bash ever sees it, and a macro it does not recognise is left
-                # as literal text — the same trap .ado/templates/deploy-env.yml
-                # documents as `unmacro`. Backtick-free, macro-free commands
-                # sidestep it entirely.
-                ssh target 'echo "connected as $(id -un) to $(uname -n)"'
-            env:
-              PROD_SSH_PRIVATE_KEY: $(PROD_SSH_PRIVATE_KEY)
-              SSH_USER: $(PROD_SSH_USER)
-
-          - task: Bash@3
-            displayName: "Preflight: cluster is up and bootstrap finished"
-            inputs:
-              targetType: "inline"
-              script: |
-                set -euo pipefail
-                ssh target 'bash -seuo pipefail' <<'REMOTE'
-                # cloud-init reporting "done" is a weaker claim than our own
-                # bootstrap script having finished — check for its marker.
-                if [ ! -f /var/lib/redinfo-bootstrap.done ]; then
-                  echo "ERROR: /var/lib/redinfo-bootstrap.done missing; see /var/log/redinfo-bootstrap.log" >&2
-                  exit 1
-                fi
-                microk8s status --wait-ready --timeout 300 >/dev/null
-                microk8s kubectl get nodes
-                # values.production.yaml pins ingress.className: public; if the
-                # addon did not register that class the deploy goes green and
-                # nothing is reachable.
-                microk8s kubectl get ingressclass public >/dev/null
-                echo "cluster ready, IngressClass 'public' present"
-                REMOTE
-
-          - task: Bash@3
-            displayName: "Copy chart and render secrets on the host"
-            inputs:
-              targetType: "inline"
-              script: |
-                set -euo pipefail
-
-                # Chart over the wire as a tarball — no rsync dependency on
-                # either side, and it replaces the remote copy wholesale so a
-                # stale file from a previous run cannot survive.
-                ssh target 'rm -rf ~/redinfo-deploy && mkdir -p ~/redinfo-deploy'
-                tar czf - -C "$(Build.SourcesDirectory)" deploy/redinfo \
-                  | ssh target 'tar xzf - -C ~/redinfo-deploy'
-
-                # Same rendering rules as .ado/templates/deploy-env.yml: values
-                # written to a file with 0600 rather than passed as --set on
-                # the command line, so they never appear in `ps aux` or shell
-                # history on the deploy host. See that template's own comment
-                # on `unmacro` for why unresolved $(VAR) macros are blanked.
-                unmacro() {
-                  local val="$1"
-                  if [[ "${val}" =~ ^\$\([A-Za-z0-9_.]+\)$ ]]; then echo ""; else echo "${val}"; fi
-                }
-                RESEND_API_KEY="$(unmacro "${RESEND_API_KEY:-}")"
-                NOTIFICATION_EMAIL_FROM="$(unmacro "${NOTIFICATION_EMAIL_FROM:-}")"
-                VAPID_PUBLIC_KEY="$(unmacro "${VAPID_PUBLIC_KEY:-}")"
-                VAPID_PRIVATE_KEY="$(unmacro "${VAPID_PRIVATE_KEY:-}")"
-                VAPID_SUBJECT="$(unmacro "${VAPID_SUBJECT:-}")"
-                INEM_USERNAME="$(unmacro "${INEM_USERNAME:-}")"
-                INEM_PASSWORD="$(unmacro "${INEM_PASSWORD:-}")"
-                INEM_WORKER_TOKEN="$(unmacro "${INEM_WORKER_TOKEN:-}")"
-
-                ssh target 'umask 077 && cat > ~/redinfo-deploy/secrets.yaml' <<EOS
-                secrets:
-                  JWT_SECRET: "${JWT_SECRET}"
-                  IDENTITY_ENCRYPTION_KEYS: "${IDENTITY_ENCRYPTION_KEYS}"
-                  GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID:-}"
-                  GOOGLE_CLIENT_SECRET: "${GOOGLE_CLIENT_SECRET:-}"
-                  GOOGLE_CALLBACK_URL: "${GOOGLE_CALLBACK_URL:-}"
-                  MICROSOFT_CLIENT_ID: "${MICROSOFT_CLIENT_ID:-}"
-                  MICROSOFT_CLIENT_SECRET: "${MICROSOFT_CLIENT_SECRET:-}"
-                  MICROSOFT_TENANT_ID: "${MICROSOFT_TENANT_ID:-}"
-                  MICROSOFT_CALLBACK_URL: "${MICROSOFT_CALLBACK_URL:-}"
-                  GOOGLE_MAPS_API_KEY: "${GOOGLE_MAPS_API_KEY:-}"
-                  LEGACY_PROD_MYSQL_HOST: "${LEGACY_PROD_MYSQL_HOST:-}"
-                  LEGACY_PROD_MYSQL_PORT: "${LEGACY_PROD_MYSQL_PORT:-}"
-                  LEGACY_PROD_MYSQL_USER: "${LEGACY_PROD_MYSQL_USER:-}"
-                  LEGACY_PROD_MYSQL_PASSWORD: "${LEGACY_PROD_MYSQL_PASSWORD:-}"
-                  LEGACY_PROD_MYSQL_DATABASE: "${LEGACY_PROD_MYSQL_DATABASE:-}"
-                  RESEND_API_KEY: "${RESEND_API_KEY}"
-                  NOTIFICATION_EMAIL_FROM: "${NOTIFICATION_EMAIL_FROM}"
-                  VAPID_PUBLIC_KEY: "${VAPID_PUBLIC_KEY}"
-                  VAPID_PRIVATE_KEY: "${VAPID_PRIVATE_KEY}"
-                  VAPID_SUBJECT: "${VAPID_SUBJECT}"
-                  INEM_USERNAME: "${INEM_USERNAME}"
-                  INEM_PASSWORD: "${INEM_PASSWORD}"
-                  INEM_WORKER_TOKEN: "${INEM_WORKER_TOKEN}"
-                postgresql:
-                  auth:
-                    password: "${POSTGRES_PASSWORD}"
-                    postgresPassword: "${POSTGRES_PASSWORD}"
-                EOS
-            env:
-              JWT_SECRET: $(JWT_SECRET)
-              IDENTITY_ENCRYPTION_KEYS: $(IDENTITY_ENCRYPTION_KEYS)
-              GOOGLE_CLIENT_ID: $(GOOGLE_CLIENT_ID)
-              GOOGLE_CLIENT_SECRET: $(GOOGLE_CLIENT_SECRET)
-              GOOGLE_CALLBACK_URL: $(GOOGLE_CALLBACK_URL)
-              MICROSOFT_CLIENT_ID: $(MICROSOFT_CLIENT_ID)
-              MICROSOFT_CLIENT_SECRET: $(MICROSOFT_CLIENT_SECRET)
-              MICROSOFT_TENANT_ID: $(MICROSOFT_TENANT_ID)
-              MICROSOFT_CALLBACK_URL: $(MICROSOFT_CALLBACK_URL)
-              GOOGLE_MAPS_API_KEY: $(GOOGLE_MAPS_API_KEY)
-              RESEND_API_KEY: $(RESEND_API_KEY)
-              NOTIFICATION_EMAIL_FROM: $(NOTIFICATION_EMAIL_FROM)
-              VAPID_PUBLIC_KEY: $(VAPID_PUBLIC_KEY)
-              VAPID_PRIVATE_KEY: $(VAPID_PRIVATE_KEY)
-              VAPID_SUBJECT: $(VAPID_SUBJECT)
-              INEM_USERNAME: $(INEM_USERNAME)
-              INEM_PASSWORD: $(INEM_PASSWORD)
-              INEM_WORKER_TOKEN: $(INEM_WORKER_TOKEN)
-              POSTGRES_PASSWORD: $(POSTGRES_PASSWORD)
-              LEGACY_PROD_MYSQL_HOST: $(LEGACY_PROD_MYSQL_HOST)
-              LEGACY_PROD_MYSQL_PORT: $(LEGACY_PROD_MYSQL_PORT)
-              LEGACY_PROD_MYSQL_USER: $(LEGACY_PROD_MYSQL_USER)
-              LEGACY_PROD_MYSQL_PASSWORD: $(LEGACY_PROD_MYSQL_PASSWORD)
-              LEGACY_PROD_MYSQL_DATABASE: $(LEGACY_PROD_MYSQL_DATABASE)
-
-          - task: Bash@3
-            displayName: "helm upgrade --install (production)"
-            inputs:
-              targetType: "inline"
-              script: |
-                set -euo pipefail
-
-                # Background jobs are OFF unless explicitly asked for, and that
-                # default is the important part of this stage.
-                #
-                # While vm-redcross is still the live production, this host is a
-                # SECOND instance holding the same production credentials. With
-                # the legacy-migration cron on, two machines would pull from the
-                # same legacy MySQL every hour; with the INEM worker on, two
-                # browsers would log into the shared INEM account and fight over
-                # the same session (see packages/inem-worker/README.md and the
-                # OTP flow it depends on). Neither is a deploy-time error — both
-                # are the kind of thing noticed days later.
-                #
-                # Turn them on with the enableBackgroundJobs parameter at
-                # cutover, once vm-redcross has been turned off.
-                BACKGROUND_JOBS="${{ parameters.enableBackgroundJobs }}"
-                if [ "${BACKGROUND_JOBS}" = "True" ] || [ "${BACKGROUND_JOBS}" = "true" ]; then
-                  JOB_FLAGS="--set legacyMigration.enabled=true --set legacyMigration.cron.enabled=true --set inemWorker.enabled=true"
-                  echo "Background jobs ENABLED — this must be the only running instance of production."
-                else
-                  JOB_FLAGS="--set legacyMigration.enabled=false --set legacyMigration.cron.enabled=false --set inemWorker.enabled=false"
-                  echo "Background jobs disabled (default) — safe to run alongside vm-redcross."
-                fi
-
-                ssh target "bash -seuo pipefail" <<REMOTE
-                cd ~/redinfo-deploy
-
-                # Same stale-lock clearance as .ado/templates/deploy-env.yml: a
-                # run killed mid-operation leaves the release stuck in
-                # pending-*, and Helm 3 never self-heals from it.
-                STUCK=\$(microk8s kubectl get secrets -n production \
-                  -l "owner=helm,name=redinfo,status in (pending-install,pending-upgrade,pending-rollback)" \
-                  -o name 2>/dev/null || true)
-                if [ -n "\${STUCK}" ]; then
-                  echo "Clearing stale Helm release lock(s):"; echo "\${STUCK}"
-                  echo "\${STUCK}" | xargs -r microk8s kubectl delete -n production
-                fi
-
-                microk8s helm3 upgrade --install redinfo ./deploy/redinfo \
-                  -n production --create-namespace \
-                  -f ./deploy/redinfo/values.production.yaml \
-                  -f ./secrets.yaml \
-                  --set-string image.backend.repository=jpsfs/redinfo-backend \
-                  --set-string image.backend.tag=${{ parameters.imageTag }} \
-                  --set-string image.frontend.repository=jpsfs/redinfo-frontend \
-                  --set-string image.frontend.tag=${{ parameters.imageTag }} \
-                  --set-string image.legacyMigration.repository=jpsfs/redinfo-legacy-migration \
-                  --set-string image.legacyMigration.tag=${{ parameters.imageTag }} \
-                  --set-string image.inemWorker.repository=jpsfs/redinfo-inem-worker \
-                  --set-string image.inemWorker.tag=${{ parameters.imageTag }} \
-                  ${JOB_FLAGS} \
-                  --history-max 5 --atomic --timeout 20m --wait
-                REMOTE
-
-          - task: Bash@3
-            displayName: "Smoke check"
+            displayName: "HTTPS on 443 from the public internet"
             inputs:
               targetType: "inline"
               script: |
                 set -euo pipefail
                 INGRESS_HOST="$(PROD_INGRESS_HOST)"
 
-                # (a) On the host, through the frontend Service — the same
-                # probe .ado/templates/deploy-env.yml runs, which exercises the
-                # nginx → backend proxy rather than just pod readiness.
-                ssh target "bash -seuo pipefail" <<'REMOTE'
-                SVC=$(microk8s kubectl -n production get svc -l app.kubernetes.io/component=frontend -o name | head -1)
-                [ -n "${SVC}" ] || { echo "no frontend Service found" >&2; exit 1; }
-                microk8s kubectl -n production port-forward "${SVC}" 18080:80 >/tmp/pf.log 2>&1 &
-                PF=$!
-                trap 'kill ${PF} 2>/dev/null || true' EXIT
-                sleep 3
-                for path in / /api/health; do
-                  deadline=$((SECONDS + 60)); ok=0
-                  while [ ${SECONDS} -lt ${deadline} ]; do
-                    if curl -fsS -o /dev/null "http://127.0.0.1:18080${path}"; then
-                      echo "OK (service): ${path}"; ok=1; break
-                    fi
-                    sleep 3
-                  done
-                  [ ${ok} -eq 1 ] || { echo "FAILED (service): ${path}" >&2; cat /tmp/pf.log >&2; exit 1; }
-                done
-                REMOTE
-
-                # (b) From the agent, over the public internet, on 443 — the
-                # part that is genuinely new about this host. -k because TLS is
-                # still the ingress controller's self-signed certificate (see
-                # infra/README.md); --resolve so the Host header matches the
-                # Ingress rule without depending on DNS having been moved yet.
+                # -k because TLS is still the ingress controller's built-in
+                # self-signed certificate (see infra/README.md); --resolve so
+                # the Host header matches the Ingress rule without depending on
+                # DNS having been moved to this machine yet.
                 for path in / /api/health; do
                   code="$(curl -sk -o /dev/null -w '%{http_code}' --max-time 20 \
                     --resolve "${INGRESS_HOST}:443:$(HOST_IP)" \
@@ -531,16 +337,7 @@ stages:
                   if [ "${code}" = "200" ]; then
                     echo "OK (public https): ${path}"
                   else
-                    echo "##vso[task.logissue type=error]Public HTTPS check failed for ${path} (HTTP ${code:-none})" >&2
+                    echo "##vso[task.logissue type=error]Public HTTPS check failed for ${path} (HTTP ${code:-none}). Check the Contabo firewall and ufw on the host." >&2
                     exit 1
                   fi
                 done
-
-          - task: Bash@3
-            displayName: "Clean up rendered secrets"
-            condition: always()
-            inputs:
-              targetType: "inline"
-              script: |
-                ssh target 'rm -f ~/redinfo-deploy/secrets.yaml' || true
-                rm -f ~/.ssh/id_ed25519 || true

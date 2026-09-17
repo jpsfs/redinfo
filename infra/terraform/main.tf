@@ -41,6 +41,9 @@ resource "contabo_instance" "this" {
     ssh_allowed_cidrs         = join(" ", var.ssh_allowed_cidrs)
     kube_api_allowed_cidrs    = join(" ", var.kube_api_allowed_cidrs)
     disable_ssh_password_auth = var.disable_ssh_password_auth
+    ado_organization_url      = var.ado_organization_url
+    ado_agent_pool            = var.ado_agent_pool
+    ado_agent_version         = var.ado_agent_version
   })
 }
 

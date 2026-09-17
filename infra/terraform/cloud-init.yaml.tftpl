@@ -51,6 +51,8 @@ write_files:
       ADDONS="${microk8s_addons}"
       SSH_CIDRS="${ssh_allowed_cidrs}"
       KUBE_API_CIDRS="${kube_api_allowed_cidrs}"
+      AGENT_DIR="/opt/ado-agent"
+      ADO_AGENT_VERSION="${ado_agent_version}"
 
       log() { echo "[redinfo-bootstrap] $(date -Is) $*"; }
 
@@ -145,6 +147,33 @@ write_files:
       ufw --force enable
       ufw status verbose
 
+      # ── Azure DevOps self-hosted agent ───────────────────────────────────
+      # Staged, not registered. Registration needs a PAT, and a PAT has no
+      # business in user_data: this file is one attribute of
+      # contabo_instance, so it is stored in Terraform state and visible in
+      # the Contabo panel, and changing it REINSTALLS the machine — which
+      # would make "rotate the PAT" mean "rebuild production". So cloud-init
+      # does the slow, credential-free part (download, unpack, dependencies)
+      # and leaves a one-command script for the rest.
+      #
+      # This is what lets .ado/infrastructure.yml's deploy stage run *on* this
+      # box and reuse .ado/templates/deploy-env.yml unchanged, exactly as
+      # vm-redcross does today — no SSH hop, no exposed Kubernetes API.
+      if [ ! -x "$${AGENT_DIR}/config.sh" ]; then
+        log "staging the Azure DevOps agent ($${ADO_AGENT_VERSION})"
+        install -d -o "$${ADMIN_USER}" -g "$${ADMIN_USER}" -m 0755 "$${AGENT_DIR}"
+        curl -fsSL -o /tmp/ado-agent.tar.gz \
+          "https://download.agent.dev.azure.com/agent/$${ADO_AGENT_VERSION}/vsts-agent-linux-x64-$${ADO_AGENT_VERSION}.tar.gz"
+        tar xzf /tmp/ado-agent.tar.gz -C "$${AGENT_DIR}"
+        rm -f /tmp/ado-agent.tar.gz
+        chown -R "$${ADMIN_USER}:$${ADMIN_USER}" "$${AGENT_DIR}"
+        # Pulls in libicu and friends; the agent will not start without them
+        # and the failure message is unhelpful if it is missing.
+        "$${AGENT_DIR}/bin/installdependencies.sh"
+      else
+        log "Azure DevOps agent already staged"
+      fi
+
       # ── the rest ─────────────────────────────────────────────────────────
       systemctl enable --now fail2ban || true
       systemctl enable --now unattended-upgrades || true
@@ -153,6 +182,72 @@ write_files:
       # script finished" are not the same claim.
       date -Is > /var/lib/redinfo-bootstrap.done
       log "bootstrap complete"
+
+  - path: /opt/redinfo/register-ado-agent.sh
+    owner: root:root
+    permissions: "0750"
+    content: |
+      #!/usr/bin/env bash
+      # Registers this host as an Azure DevOps self-hosted agent in the
+      # ${ado_agent_pool} pool. Run ONCE, as root, with a PAT scoped to
+      # "Agent Pools (read, manage)":
+      #
+      #   sudo /opt/redinfo/register-ado-agent.sh <PAT>
+      #
+      # The PAT is used only for this call and is never written anywhere: from
+      # here on the agent authenticates with its own credentials, stored in
+      # $${AGENT_DIR}/.credentials. That is the whole reason registration is
+      # not done from cloud-init — see the staging block in bootstrap.sh.
+      #
+      # Re-running is safe: --replace takes over the existing registration of
+      # the same agent name rather than creating a duplicate.
+      set -euo pipefail
+
+      PAT="$${1:-}"
+      if [ -z "$${PAT}" ]; then
+        echo "usage: $${0} <azure-devops-pat>" >&2
+        exit 2
+      fi
+
+      AGENT_DIR="/opt/ado-agent"
+      RUN_USER="${admin_user}"
+      ORG_URL="${ado_organization_url}"
+      POOL="${ado_agent_pool}"
+      AGENT_NAME="$(uname -n)"
+
+      if [ ! -x "$${AGENT_DIR}/config.sh" ]; then
+        echo "agent not staged at $${AGENT_DIR} — run /opt/redinfo/bootstrap.sh first" >&2
+        exit 1
+      fi
+
+      cd "$${AGENT_DIR}"
+
+      # config.sh refuses to run as root; svc.sh requires it. Hence the split.
+      sudo -u "$${RUN_USER}" ./config.sh \
+        --unattended \
+        --acceptTeeEula \
+        --url "$${ORG_URL}" \
+        --auth pat \
+        --token "$${PAT}" \
+        --pool "$${POOL}" \
+        --agent "$${AGENT_NAME}" \
+        --work "_work" \
+        --replace
+
+      ./svc.sh install "$${RUN_USER}"
+      ./svc.sh start
+      ./svc.sh status
+
+      # The agent must be able to reach the cluster, which means the microk8s
+      # group — the exact thing .ado/templates/deploy-env.yml's preflight step
+      # checks for and names in its error message. bootstrap.sh already added
+      # this user, but group membership only applies to new processes, and the
+      # service was just started, so this is the moment it actually takes.
+      if ! id -nG "$${RUN_USER}" | tr " " "\n" | grep -qx microk8s; then
+        echo "WARNING: $${RUN_USER} is not in the microk8s group; deploys will fail." >&2
+      fi
+
+      echo "Registered '$${AGENT_NAME}' into pool '$${POOL}'."
 
 runcmd:
   - [bash, -c, "/opt/redinfo/bootstrap.sh 2>&1 | tee -a /var/log/redinfo-bootstrap.log"]

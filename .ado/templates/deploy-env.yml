@@ -8,6 +8,16 @@ parameters:
     type: string
   - name: imageTag
     type: string
+  # Extra `--set` flags appended verbatim to the helm command below. Empty for
+  # every existing caller, so behaviour is unchanged. It exists for the
+  # Contabo host during the migration: while vm-redcross is still live, a
+  # second environment with the same credentials must NOT also run the
+  # legacy-migration cron (two machines pulling from one legacy MySQL) or the
+  # INEM worker (two browsers fighting over one shared INEM session). See
+  # .ado/infrastructure.yml.
+  - name: extraSetFlags
+    type: string
+    default: ""
 
 steps:
   # Deployment jobs do not check out source by default — this must be explicit,
@@ -235,7 +245,7 @@ steps:
         # bitnami chart repo.
         $(HELM_BIN) upgrade --install redinfo "$(Build.SourcesDirectory)/deploy/redinfo" -n "${ENV_NAME}" --create-namespace \
           -f "${VALUES_FILE}" -f "${SECRETS_FILE}" \
-          ${IMAGE_OVERRIDES} \
+          ${IMAGE_OVERRIDES} ${{ parameters.extraSetFlags }} \
           --history-max 5 --atomic --timeout 20m --wait
 
   - task: Bash@3

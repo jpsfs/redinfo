@@ -53,11 +53,13 @@ existing chart with no changes.
 2. **The state bucket.** Terraform state lives in S3. Create the bucket once:
 
    ```bash
-   infra/scripts/bootstrap-state-bucket.sh --bucket redinfo-terraform-state --region eu-west-1
+   infra/scripts/bootstrap-state-bucket.sh --bucket redinfo-terraform-state --region eu-central-1
    ```
 
-   It comes out versioned, encrypted, private and TLS-only, with a 90-day
-   expiry on superseded versions. There is no DynamoDB lock table — the
+   Already done: `s3://redinfo-terraform-state` in **eu-central-1** —
+   Frankfurt, the AWS region closest to Contabo's EU location (Nuremberg).
+   It is versioned, encrypted, private and TLS-only, with a 90-day expiry on
+   superseded versions. There is no DynamoDB lock table — the
    backend uses S3-native locking (`use_lockfile`), which is why
    `versions.tf` requires Terraform 1.10+.
 
@@ -174,16 +176,42 @@ parameters are:
 | `imageTag` | `sha-<shortSha>`, or the moving `production` tag (default) |
 | `enableBackgroundJobs` | legacy-migration cron + INEM worker — **off by default** |
 
-The deploy stage runs on a *hosted* agent and reaches the host over SSH: this
-machine has no ADO agent, and its Kubernetes API is closed to the internet by
-design. It resolves the host's IP from Terraform state (never a hand-typed
-parameter), copies the chart over as a tarball, renders the
-`redinfo-production` secrets into a `0600` file on the far side — never onto a
-command line — and runs `microk8s helm3 upgrade --install` into the
-`production` namespace, with the same stale-lock clearance and `--atomic
---wait` as the existing deploy path. It then smoke-checks twice: through the
-frontend Service on the host (the probe `.ado/templates/deploy-env.yml` uses)
-and over the public internet on **443**, which is the part that is new here.
+The deploy stage runs on the **`contabo-production` agent pool** — an Azure
+DevOps agent installed on the Contabo host itself, exactly as `vm-redcross`
+works today. That is what lets the stage reuse `.ado/templates/deploy-env.yml`
+unchanged: the agent is on the same machine as the cluster, so there is no SSH
+hop, no chart copy, and no Kubernetes API exposed to the internet.
+
+A pool of its own, rather than a second agent in the `vm-redcross` pool: a pool
+is the unit a pipeline stage targets, so separate pools are what let the old and
+new production hosts be deployed to independently during the migration — and
+what stops a job meant for one landing on the other.
+
+A second job then checks HTTPS on 443 **from a hosted agent**, i.e. from
+outside the machine. The deploy job already proved the app answers on the box;
+whether the world can reach port 443 is a different question, and only an agent
+that is not on that host can answer it.
+
+### Registering the agent
+
+cloud-init *stages* the agent (downloads, unpacks, installs its dependencies)
+but does not register it. Registration needs a PAT, and a PAT has no business
+in `user_data`: that is one attribute of `contabo_instance`, so it would live
+in Terraform state and be visible in the Contabo panel — and because changing
+`user_data` reinstalls the machine, rotating the PAT would mean rebuilding
+production.
+
+So, once, over SSH, with a PAT scoped to **Agent Pools (read, manage)**:
+
+```bash
+sudo /opt/redinfo/register-ado-agent.sh <PAT>
+```
+
+The PAT is used for that one call and stored nowhere; from then on the agent
+authenticates with its own credentials. Re-running is safe (`--replace` takes
+over the same agent name rather than creating a duplicate). The script also
+warns if the agent's user is not in the `microk8s` group — the exact condition
+`deploy-env.yml`'s preflight step fails on.
 
 ### `enableBackgroundJobs` is off for a reason
 
@@ -198,8 +226,8 @@ days later. Turn the flag on at cutover, once the old host is off.
 
 | Group | Contains |
 |---|---|
-| `redinfo-contabo` | `CNTB_OAUTH2_*` (secret), `TF_VAR_image_id`, `TF_VAR_ssh_public_key`, `PROD_SSH_PRIVATE_KEY` (secret), `PROD_SSH_USER`, `PROD_INGRESS_HOST` |
-| `redinfo-tfstate` | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (secret), `TFSTATE_BUCKET`, `TFSTATE_KEY`, `TFSTATE_REGION` |
+| `redinfo-contabo` | `CNTB_OAUTH2_*` (secret), `TF_VAR_image_id`, `TF_VAR_ssh_public_key`, `PROD_INGRESS_HOST` |
+| `redinfo-tfstate` | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (secret), `TFSTATE_BUCKET`, `TFSTATE_KEY`, `TFSTATE_REGION` (`redinfo-terraform-state` / `eu-central-1`) |
 | `redinfo-production` | the existing application secrets, reused as-is |
 
 Anything still reading `REPLACE_ME` has to be filled in before a run.
@@ -209,10 +237,9 @@ Anything still reading `REPLACE_ME` has to be filled in before a run.
 `kube_api_allowed_cidrs` is empty by default, so the Kubernetes API is not
 reachable from the internet. That mirrors how deploys work today: the Azure
 DevOps self-hosted agent runs *on* the cluster machine, so there is no SSH hop
-and no exposed API (`.ado/templates/deploy-env.yml`). To deploy to this host
-the same way, install an ADO agent on it and add its service account to the
-`microk8s` group — the pipeline's preflight step checks exactly that and says
-so if it is missing.
+and no exposed API (`.ado/templates/deploy-env.yml`). This host does the same —
+the `contabo-production` pool, registered as described above. Port 22 is open
+for humans; nothing in the deploy path uses it.
 
 The alternative — opening 16443 to fixed addresses and deploying remotely — is
 one variable away, but it is a real change in exposure, not a convenience
