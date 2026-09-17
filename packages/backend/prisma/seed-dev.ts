@@ -34,7 +34,7 @@ import {
   toMinuteOfDay,
 } from '@redinfo/shared';
 import { PrismaService } from '../src/prisma/prisma.service';
-import { addDays, isoDateRange, parseIsoDate, toIsoDate } from '../src/utils/date.util';
+import { addDays, isoDateRange, isoDayOfWeek, parseIsoDate, toIsoDate } from '../src/utils/date.util';
 import { HolidaysService } from '../src/availability/holidays.service';
 import { ShiftScheduleService } from '../src/availability/shift-schedule.service';
 import { AvailabilityWindowsService } from '../src/availability/availability-windows.service';
@@ -616,6 +616,48 @@ async function main() {
       // The long-haul vehicle: all seats, no wheelchair position, so the
       // Porto runs land here and the wheelchair rounds cannot.
       seatedCapacity: 8,
+      wheelchairPositions: 0,
+      stretcherPositions: 0,
+      hasRampOrLift: false,
+    },
+    {
+      key: 'transport4',
+      licensePlate: 'AA-66-GG',
+      numeroCauda: '06',
+      vehicleType: VehicleType.TRANSPORT,
+      manufacturer: 'Mercedes-Benz',
+      model: 'Vito',
+      notes: 'Ambulância de Transporte.',
+      insuranceRenewalDate: isoAhead(170),
+      nextImtInspectionDate: isoAhead(140),
+      template: transportTemplate,
+      shortfallItem: null as string | null,
+      unchecked: null as string | null,
+      // A second everyday transport van, on the road most of the week
+      // alongside transport1/transport2 — this is the delegation growing its
+      // fleet, not a special-purpose unit.
+      seatedCapacity: 5,
+      wheelchairPositions: 1,
+      stretcherPositions: 0,
+      hasRampOrLift: true,
+    },
+    {
+      key: 'transport5',
+      licensePlate: 'AA-77-HH',
+      numeroCauda: '07',
+      vehicleType: VehicleType.TRANSPORT,
+      manufacturer: 'Citroën',
+      model: 'Jumper',
+      notes: 'Carrinha de transporte de doentes — deslocações longas.',
+      insuranceRenewalDate: isoAhead(230),
+      nextImtInspectionDate: isoAhead(110),
+      template: transportTemplate,
+      shortfallItem: null as string | null,
+      unchecked: null as string | null,
+      // A second long-haul van, alongside transport3 — the busiest days send
+      // more than one vehicle up to Porto and still need capacity left over
+      // for the local rounds.
+      seatedCapacity: 7,
       wheelchairPositions: 0,
       stretcherPositions: 0,
       hasRampOrLift: false,
@@ -1607,8 +1649,9 @@ async function main() {
   // series that fill a normal week, and then a per-date top-up of one-off
   // referrals that brings every date in the horizon up to a target between
   // five and fifteen people — at least one of whom travels to Porto.
-  const horizonFrom = isoAgo(14);
-  const horizonTo = isoAhead(30);
+  // 15 days back, 15 days ahead — a month either side of today, always.
+  const horizonFrom = isoAgo(15);
+  const horizonTo = isoAhead(15);
   const horizonDates = isoDateRange(horizonFrom, horizonTo);
 
   /** A wall-clock time-of-day on `date`, resolved to a real instant the same
@@ -1920,9 +1963,12 @@ async function main() {
       const occurrenceType = needsPorto
         ? TransportRequestOccurrenceType.CONSULTA
         : topUpOccurrences[attempt % topUpOccurrences.length];
-      // 08:30 through 16:30, half-hour apart — a spread of arrival times is
-      // what makes two journeys shareable or not.
-      const minutes = 8 * 60 + 30 + ((hashOf(`${date}:${patient.id}`) % 17) * 30);
+      // Shared per destination, not per patient: 08:30 through 16:30,
+      // half-hour apart, but everyone topped up onto the same facility on
+      // the same date leaves at the same time — so the planning board gets
+      // journeys of several people through several localities, rather than
+      // one patient alone in every timeslot.
+      const minutes = 8 * 60 + 30 + ((hashOf(`${date}:${destinationFacilityId}`) % 17) * 30);
       const appointmentAt =
         `${date}T${pad2(Math.floor(minutes / 60))}:${pad2(minutes % 60)}:00.000Z`;
 
@@ -2154,24 +2200,31 @@ async function main() {
 
   // Only these vehicles are offered to the planner below, each with the crew
   // that works it: a vehicle with nobody to crew it is not a lane, and
-  // `ambulance1` is deliberately held back as the emergency reserve.
+  // `ambulance1` is deliberately held back as the emergency reserve. Most of
+  // these journeys are a single driver — non-urgent transport, unlike an
+  // emergency crew, routinely rolls with just the one person — so only the
+  // stretcher vehicle keeps a second crew member, for the medical escort a
+  // bedridden patient actually needs.
   const crewByVehicleId: Record<string, { userId: string; role: CertificationType }[]> = {
-    [vehicles.transport1.id]: [
-      { userId: ines.id, role: CertificationType.DRIVER },
-      { userId: beatriz.id, role: CertificationType.SBV },
-    ],
-    [vehicles.transport2.id]: [
-      { userId: diogo.id, role: CertificationType.DRIVER },
-      { userId: sara.id, role: CertificationType.SBV },
-    ],
-    [vehicles.transport3.id]: [
-      { userId: transportsCoordinator.id, role: CertificationType.DRIVER },
-      { userId: mariana.id, role: CertificationType.TAS },
-    ],
+    [vehicles.transport1.id]: [{ userId: ines.id, role: CertificationType.DRIVER }],
+    [vehicles.transport2.id]: [{ userId: diogo.id, role: CertificationType.DRIVER }],
+    [vehicles.transport3.id]: [{ userId: transportsCoordinator.id, role: CertificationType.DRIVER }],
+    [vehicles.transport4.id]: [{ userId: hugo.id, role: CertificationType.DRIVER }],
+    [vehicles.transport5.id]: [{ userId: tiago.id, role: CertificationType.DRIVER }],
     [vehicles.ambulance2.id]: [
       { userId: joaoP.id, role: CertificationType.TAT },
-      { userId: tiago.id, role: CertificationType.TAT },
+      { userId: mariana.id, role: CertificationType.TAS },
     ],
+  };
+
+  /** `order`, rotated by a stable amount derived from `seed` — so which
+   * vehicle a group prefers first varies by date/facility/direction instead
+   * of every non-overlapping journey of the day piling onto the same first
+   * pick. That's what puts several vehicles on the road on a single busy
+   * day rather than one vehicle working the whole day's local rounds. */
+  const rotate = (order: string[], seed: string): string[] => {
+    const offset = hashOf(seed) % order.length;
+    return [...order.slice(offset), ...order.slice(0, offset)];
   };
 
   const destinations = new Map(
@@ -2196,9 +2249,9 @@ async function main() {
     door: { latitude: number | null; longitude: number | null };
   }
 
-  async function planDay(date: string, status: TripStatus): Promise<number> {
+  async function planDay(date: string, status: TripStatus): Promise<{ journeys: number; vehicleIds: Set<string> }> {
     const unassigned = await transportLegs.findUnassignedForDate(date);
-    if (!unassigned.length) return 0;
+    if (!unassigned.length) return { journeys: 0, vehicleIds: new Set() };
 
     const requests = await prisma.transportRequest.findMany({
       where: { id: { in: [...new Set(unassigned.map((leg) => leg.transportRequestId))] } },
@@ -2244,6 +2297,7 @@ async function main() {
     }
 
     let journeys = 0;
+    const vehicleIds = new Set<string>();
     const ordered = [...groups.values()].sort((a, b) => a.anchorAt.getTime() - b.anchorAt.getTime());
     for (const group of ordered) {
       // Porto is an hour each way: that patient travels alone, because
@@ -2254,10 +2308,13 @@ async function main() {
       for (const leg of group.legs) {
         const solo = soloRun || leg.mobility === PatientMobility.STRETCHER;
         const last = chunks[chunks.length - 1];
+        // Up to five to a chunk — a normal transport round picking up
+        // several people bound for the same place through several
+        // localities on the way, not a one-patient-per-vehicle taxi service.
         const canShare =
           !solo &&
           last &&
-          last.length < 3 &&
+          last.length < 5 &&
           !last.some((member) => member.mobility === PatientMobility.STRETCHER);
         if (canShare) last.push(leg);
         else chunks.push([leg]);
@@ -2299,15 +2356,18 @@ async function main() {
         // physically seat an ambulatory patient, but sending one on a
         // dialysis round is how a delegation ends up with no ambulance when
         // it is called for. Stretcher work is the only thing that claims one;
-        // the long-haul van takes the out-of-district runs; everything else
-        // goes to the transport pair.
+        // the long-haul vans take the out-of-district runs; everything else
+        // rotates through the rest of the transport fleet, which is what
+        // spreads a busy day across several vehicles instead of stacking
+        // them all onto the first one that fits.
+        const groupSeed = `${date}|${group.facilityId}|${group.direction}`;
         const preferredOrder = stretchers
           ? [vehicles.ambulance2.id]
           : soloRun
-            ? [vehicles.transport3.id, vehicles.transport1.id, vehicles.transport2.id]
+            ? rotate([vehicles.transport3.id, vehicles.transport5.id, vehicles.transport1.id, vehicles.transport4.id, vehicles.transport2.id], groupSeed)
             : wheelchairs > 1
-              ? [vehicles.transport2.id, vehicles.transport1.id, vehicles.transport3.id]
-              : [vehicles.transport1.id, vehicles.transport2.id, vehicles.transport3.id];
+              ? rotate([vehicles.transport2.id, vehicles.transport1.id, vehicles.transport4.id, vehicles.transport3.id, vehicles.transport5.id], groupSeed)
+              : rotate([vehicles.transport1.id, vehicles.transport4.id, vehicles.transport2.id, vehicles.transport5.id, vehicles.transport3.id], groupSeed);
         const vehicle = preferredOrder
           .map((id) => fleet.find((candidate) => candidate.id === id))
           .find(
@@ -2333,16 +2393,27 @@ async function main() {
           legs: legTimes,
         });
         busy.set(vehicle.id, [...(busy.get(vehicle.id) ?? []), { from, to }]);
+        vehicleIds.add(vehicle.id);
         journeys += 1;
       }
     }
-    return journeys;
+    return { journeys, vehicleIds };
   }
 
+  // Every work day in the horizon gets a real plan, not just a handful of
+  // days near today — Sunday is the delegation's one day off, so it is the
+  // only date left entirely to the rail.
   let plannedJourneys = 0;
-  const plannedDates = [isoAgo(1), today, isoAhead(1), isoAhead(2)];
+  let plannedDayCount = 0;
+  const vehicleCountsByDate: number[] = [];
+  const plannedDates = horizonDates.filter((date) => isoDayOfWeek(date) !== 0);
   for (const date of plannedDates) {
-    plannedJourneys += await planDay(date, date < today ? TripStatus.COMPLETED : TripStatus.PLANNED);
+    const { journeys, vehicleIds } = await planDay(date, date < today ? TripStatus.COMPLETED : TripStatus.PLANNED);
+    plannedJourneys += journeys;
+    if (journeys > 0) {
+      plannedDayCount += 1;
+      vehicleCountsByDate.push(vehicleIds.size);
+    }
   }
   const stillUnassigned = await prisma.transportLeg.count({
     where: {
@@ -2352,7 +2423,8 @@ async function main() {
     },
   });
   console.log(
-    `✅ ${plannedJourneys} journeys planned across ${plannedDates.join(', ')}; ` +
+    `✅ ${plannedJourneys} journeys planned across ${plannedDayCount} work days ` +
+      `(${Math.min(...vehicleCountsByDate)}–${Math.max(...vehicleCountsByDate)} vehicles a day); ` +
       `${stillUnassigned} legs from today onwards left unassigned for the board's rail.`,
   );
 
