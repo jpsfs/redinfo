@@ -38,6 +38,20 @@
  * edited the row here since". The hash still decides the *reported* outcome
  * (`unchanged` vs. `updated`) for `report.md`'s overwrite count, which is a
  * labelling question, not a write-skipping one.
+ *
+ * **A mapped target can itself be gone** — a coordinator deleting the row
+ * outright in the app (not just editing it), rather than the loader's own
+ * `update()` failing to find anything to change. Confirmed live: a deleted
+ * `ScheduleAssignment` left its `LegacyIdMap` row pointing at nothing, and
+ * every hourly run crashed re-trying the same `update()` forever (`P2025`,
+ * "Record to update not found") — one Postgres `UPDATE` matching zero rows
+ * is a client-side check, not a constraint violation, so it does **not**
+ * abort the surrounding transaction the way `create()`'s `P2002` does; it's
+ * safe to catch and keep going in the same transaction. Treated as if this
+ * `legacyId` had never been mapped at all: the stale row is dropped and
+ * resolution falls through to the adopt/create path below, so legacy simply
+ * re-creates the row it still says should exist rather than failing the
+ * loader — and, transitively, every loader after it — on every future run.
  */
 import { createHash } from 'crypto';
 import { Prisma, PrismaClient } from '@prisma/client';
@@ -118,6 +132,11 @@ export interface AdoptOrCreateParams {
   update: (existingId: string) => Promise<void>;
 }
 
+/** `P2025` ("Record to update/delete not found") — see the module doc on why this one is safe to catch mid-transaction. */
+function isRecordNotFoundError(err: unknown): boolean {
+  return err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025';
+}
+
 export async function adoptOrCreate(params: AdoptOrCreateParams): Promise<UpsertResult> {
   const { tx, entity, legacyId, sourceHash: hash, runId } = params;
   const legacyIdMap = (tx as LegacyIdMapClient).legacyIdMap;
@@ -127,11 +146,28 @@ export async function adoptOrCreate(params: AdoptOrCreateParams): Promise<Upsert
   if (existing) {
     // Always re-applied — see the module doc on why this is not skipped when
     // the hash matches. The hash only decides which label the counters get.
-    await params.update(existing.newId);
+    try {
+      await params.update(existing.newId);
+    } catch (err) {
+      if (!isRecordNotFoundError(err)) throw err;
+      // The mapped target is gone — see the module doc. Drop the stale
+      // mapping and fall through to the adopt/create path below exactly as
+      // if `legacyId` had never been seen.
+      await legacyIdMap.delete({ where: { id: existing.id } });
+      return adoptOrCreateFresh(params);
+    }
     const outcome: UpsertOutcome = existing.sourceHash === hash ? 'unchanged' : 'updated';
     await legacyIdMap.update({ where: { id: existing.id }, data: { sourceHash: hash, lastRunId: runId } });
     return { newId: existing.newId, outcome };
   }
+
+  return adoptOrCreateFresh(params);
+}
+
+/** The adopt/create half of `adoptOrCreate` — factored out so the stale-mapping recovery path above can re-enter it. */
+async function adoptOrCreateFresh(params: AdoptOrCreateParams): Promise<UpsertResult> {
+  const { tx, entity, legacyId, sourceHash: hash, runId } = params;
+  const legacyIdMap = (tx as LegacyIdMapClient).legacyIdMap;
 
   const adoptedId = await params.naturalKeyLookup();
   if (adoptedId) {
