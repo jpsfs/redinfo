@@ -1,6 +1,7 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import { NestExpressApplication } from '@nestjs/platform-express';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
@@ -12,7 +13,16 @@ import { MCP_SCOPES } from './oauth/oauth-scopes';
 import { mountMcpServer } from './mcp/mcp.mount';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+
+  // Express's own default JSON body limit is 100kb — well under a Playwright
+  // `storageState` blob (POST /internal/inem/login-jobs/:id/result carries
+  // one on every cold login), which was silently 413ing in production and
+  // made a *successful* INEM login look like a failure to the worker, which
+  // then retried against an already-spent OTP. Raised for every route since
+  // nothing else in the app sends a JSON body anywhere near 100kb either.
+  app.useBodyParser('json', { limit: '10mb' });
+  app.useBodyParser('urlencoded', { extended: true, limit: '10mb' });
 
   // Security
   app.use(helmet());
