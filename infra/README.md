@@ -161,6 +161,49 @@ Either way `env.backend.FRONTEND_URL` must stay `https://...`: it is used
 verbatim to build the post-OAuth redirect, so an `http` value there breaks
 Google/Microsoft login even when the origin itself never speaks TLS.
 
+## Deploying the application to it
+
+`.ado/infrastructure.yml` does both halves. It is manual-run only, and its
+parameters are:
+
+| Parameter | Meaning |
+|---|---|
+| `action` | `plan` / `apply` / `destroy` — the Terraform half |
+| `confirm` | required checkbox for `apply` and `destroy` |
+| `deployApp` | also deploy the application to the provisioned host |
+| `imageTag` | `sha-<shortSha>`, or the moving `production` tag (default) |
+| `enableBackgroundJobs` | legacy-migration cron + INEM worker — **off by default** |
+
+The deploy stage runs on a *hosted* agent and reaches the host over SSH: this
+machine has no ADO agent, and its Kubernetes API is closed to the internet by
+design. It resolves the host's IP from Terraform state (never a hand-typed
+parameter), copies the chart over as a tarball, renders the
+`redinfo-production` secrets into a `0600` file on the far side — never onto a
+command line — and runs `microk8s helm3 upgrade --install` into the
+`production` namespace, with the same stale-lock clearance and `--atomic
+--wait` as the existing deploy path. It then smoke-checks twice: through the
+frontend Service on the host (the probe `.ado/templates/deploy-env.yml` uses)
+and over the public internet on **443**, which is the part that is new here.
+
+### `enableBackgroundJobs` is off for a reason
+
+While `vm-redcross` is still live, a deploy here creates a *second* instance
+holding the same production credentials. With the legacy-migration cron on,
+two machines pull from the same legacy MySQL every hour. With the INEM worker
+on, two headless browsers log into the same shared INEM account and fight over
+one session. Neither fails at deploy time; both are the sort of thing noticed
+days later. Turn the flag on at cutover, once the old host is off.
+
+## Variable groups
+
+| Group | Contains |
+|---|---|
+| `redinfo-contabo` | `CNTB_OAUTH2_*` (secret), `TF_VAR_image_id`, `TF_VAR_ssh_public_key`, `PROD_SSH_PRIVATE_KEY` (secret), `PROD_SSH_USER`, `PROD_INGRESS_HOST` |
+| `redinfo-tfstate` | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (secret), `TFSTATE_BUCKET`, `TFSTATE_KEY`, `TFSTATE_REGION` |
+| `redinfo-production` | the existing application secrets, reused as-is |
+
+Anything still reading `REPLACE_ME` has to be filled in before a run.
+
 ## Deploys, and why 16443 is closed
 
 `kube_api_allowed_cidrs` is empty by default, so the Kubernetes API is not
