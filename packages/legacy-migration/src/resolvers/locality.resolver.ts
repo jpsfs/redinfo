@@ -116,17 +116,34 @@ export class LocalityResolver {
 
     const candidates = await this.loadCandidates();
     const resolution = resolveLocalityCandidates(freguesia, candidates);
-    if (resolution.kind === 'EXACT' || resolution.kind === 'UNIQUE_PREFIX') {
+
+    // A tier-1 exact/prefix hit is only safe to trust outright when no
+    // *other* municipality's merged freguesia was also folded from this same
+    // name pre-2013. "Aguiar" is the case that broke this: it is its own
+    // standalone freguesia in Viana do Alentejo — an outright, undisputed
+    // tier-1 EXACT match — *and* the pre-reform name folded into Barcelos's
+    // "União das Freguesias de Quintiães e Aguiar" — a fact tier 1
+    // can never see, because that union's searchName is the whole union
+    // name, not "aguiar". Short-circuiting on tier 1 alone let a Viana do
+    // Alentejo freguesia silently win over the Barcelos delegation's own
+    // area, without tier 2.5's home-municipality tiebreak ever getting a say.
+    const mergedMembers = this.mergedIndex!.byMember.get(folded) ?? [];
+    if ((resolution.kind === 'EXACT' || resolution.kind === 'UNIQUE_PREFIX') && mergedMembers.length === 0) {
       this.resultCache.set(folded, resolution.candidate.id);
       return resolution.candidate.id;
     }
 
     // Tier 2.5 — a pre-2013 freguesia name merged into a "União das
-    // Freguesias de ..." locality (see transform/locality.ts). Only reached
-    // once tiers 1-2 have already failed, so it never overrides an outright
-    // match, and it is always logged (never silent) so a coordinator can spot
-    // a wrong guess in `report.md` and fix it via the override CSV.
-    const known = resolution.kind === 'AMBIGUOUS' ? resolution.candidates : [];
+    // Freguesias de ..." locality (see transform/locality.ts). Reached once
+    // tiers 1-2 have either failed outright or (per the guard above) turned
+    // up a same-named merged member elsewhere, so it never overrides an
+    // unambiguous match, and it is always logged (never silent) so a
+    // coordinator can spot a wrong guess in `report.md` and fix it via the
+    // override CSV.
+    const known =
+      resolution.kind === 'AMBIGUOUS' ? resolution.candidates
+      : resolution.kind === 'NONE' ? []
+      : [resolution.candidate]; // EXACT/UNIQUE_PREFIX joined by a same-named merged member.
     const merged = resolveMergedFreguesia(
       freguesia,
       known,
