@@ -576,6 +576,86 @@ describe('TransportPlanningPage', () => {
       await user.click(selectButton);
       expect(screen.queryByText('Journey 1 · 101')).not.toBeInTheDocument();
     });
+
+    it('groups the inspector’s stops into pickups and deliveries, so a patient’s name has room', async () => {
+      const user = userEvent.setup();
+      const MORNING = { pickup: '2026-09-15T08:00:00.000Z', dropoff: '2026-09-15T09:00:00.000Z' };
+      const LATER = { pickup: '2026-09-15T08:30:00.000Z', dropoff: '2026-09-15T09:00:00.000Z' };
+      const first = assignedLeg('leg-a', 'Maria Costa', MORNING);
+      const second = assignedLeg('leg-b', 'João Silva', LATER);
+      mockApiFetch.mockImplementation((path: string) =>
+        Promise.resolve(
+          path.startsWith('/trips/board')
+            ? board({
+                lanes: [
+                  { ...lane('trip-1', VEHICLE_101), stops: [...stopPair('leg-a', MORNING, 1), ...stopPair('leg-b', LATER, 3)] },
+                ] as never,
+                legsById: { 'leg-a': first, 'leg-b': second } as never,
+                unassignedLegIds: [],
+              })
+            : [],
+        ),
+      );
+      renderPage();
+
+      await user.click(await screen.findByRole('button', { name: 'Select journey 1' }));
+
+      expect(await screen.findByText('Pickups')).toBeInTheDocument();
+      expect(screen.getByText('Deliveries')).toBeInTheDocument();
+    });
+  });
+
+  // ── Avisos (#new) — a counter beside the zoom controls, not a permanent
+  // pane at the bottom of the page ──────────────────────────────────────────
+
+  describe('avisos', () => {
+    it('shows a warning count beside the zoom controls and opens the issues in a dialog', async () => {
+      const user = userEvent.setup();
+      mockApiFetch.mockImplementation((path: string) =>
+        Promise.resolve(
+          path.startsWith('/trips/board')
+            ? board({
+                lanes: [
+                  {
+                    ...lane('trip-1', VEHICLE_101),
+                    issues: [{ level: 'WARNING', code: 'ARRIVAL_WINDOW', message: 'Atraso previsto' }],
+                  },
+                ] as never,
+              })
+            : [],
+        ),
+      );
+      renderPage();
+
+      const warningsButton = await screen.findByRole('button', { name: '1 warnings' });
+      expect(screen.queryByText('Atraso previsto')).not.toBeInTheDocument();
+
+      await user.click(warningsButton);
+      const dialog = await screen.findByRole('dialog');
+      expect(within(dialog).getByText(/Atraso previsto/)).toBeInTheDocument();
+
+      await user.click(within(dialog).getByRole('button', { name: 'Close' }));
+      await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument());
+    });
+  });
+
+  // ── Collapsible unassigned rail (#new) ────────────────────────────────────
+
+  describe('rail collapse', () => {
+    it('collapses the unassigned rail out of the way and back again', async () => {
+      const user = userEvent.setup();
+      mockApiFetch.mockImplementation((path: string) =>
+        Promise.resolve(path.startsWith('/trips/board') ? board() : []),
+      );
+      renderPage();
+
+      await screen.findByText('Maria Costa');
+      await user.click(screen.getByRole('button', { name: 'Collapse the panel' }));
+      expect(screen.queryByText('Maria Costa')).not.toBeInTheDocument();
+
+      await user.click(screen.getByRole('button', { name: 'Expand the panel' }));
+      expect(await screen.findByText('Maria Costa')).toBeInTheDocument();
+    });
   });
 
   // ── Grouped unplanned rail (#247 stage 2) ────────────────────────────────

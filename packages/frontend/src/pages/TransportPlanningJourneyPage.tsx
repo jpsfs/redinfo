@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Title, useNotify } from 'react-admin';
 import { Alert, Box, Button, Chip, CircularProgress, Paper, Stack, Typography } from '@mui/material';
@@ -14,6 +14,7 @@ import { useT } from '../i18n/useT';
 import { CrewDialog, CrewDialogTarget } from './transportPlanning/CrewDialog';
 import { journeyColorForOrdinal } from './transportPlanning/journeyColor';
 import { JourneyStopTable } from './transportPlanning/journey/JourneyStopTable';
+import { MapPanel } from './transportPlanning/map/MapPanel';
 import { WaitReleaseDialog, WaitReleaseTarget } from './transportPlanning/WaitReleaseDialog';
 import './transportPlanning/journey/journeyPage.css';
 
@@ -60,6 +61,17 @@ export const TransportPlanningJourneyPage = () => {
   const errorCount = journey?.issues.filter((issue) => issue.level === 'ERROR').length ?? 0;
   const warningCount = journey?.issues.filter((issue) => issue.level === 'WARNING').length ?? 0;
   const crewNames = journey?.crewMembers.map((member) => `${member.firstName} ${member.lastName}`.trim()).filter(Boolean) ?? [];
+
+  // A single-lane `board` — `MapPanel` already expects exactly this shape
+  // for the multi-journey planning board, and a `TripJourneyDetail` extends
+  // `TransportPlanningLane`, so no adapter is needed beyond wrapping it in a
+  // one-element array. `selectedTripId` is this journey's own id from the
+  // start: there is nothing else on this map to focus away from, so the
+  // only effect is the one this page actually wants — fit the view to it.
+  const journeyBoard = useMemo(
+    () => (journey ? { lanes: [journey], legsById: journey.legsById, unassignedLegIds: [] } : null),
+    [journey],
+  );
 
   return (
     <Box sx={{ minWidth: 0 }}>
@@ -137,41 +149,57 @@ export const TransportPlanningJourneyPage = () => {
             </Button>
           </Stack>
 
-          <Typography variant="subtitle1" sx={{ mb: 1 }}>
-            {t('transportJourney.stopsTitle')}
-          </Typography>
-          <JourneyStopTable
-            stops={journey.stops}
-            legsById={journey.legsById}
-            onDecideWaitRelease={(dropoffStop) =>
-              setWaitReleaseTarget({
-                tripId: journey.trip.id,
-                dropoffStopId: dropoffStop.id,
-                facilityId: dropoffStop.facilityId,
-                plannedAt: dropoffStop.plannedAt,
-              })
-            }
-          />
-
-          {journey.issues.length > 0 && (
-            <>
-              <Typography variant="subtitle1" sx={{ mt: 2, mb: 1 }}>
-                {t('transportPlanning.issuesTitle')}
+          <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} sx={{ alignItems: 'flex-start' }}>
+            <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+              <Typography variant="subtitle1" sx={{ mb: 1 }}>
+                {t('transportJourney.stopsTitle')}
               </Typography>
-              <Stack spacing={0.5}>
-                {journey.issues.map((issue, index) => (
-                  <Stack key={index} direction="row" spacing={1} alignItems="center">
-                    {issue.level === 'ERROR' ? (
-                      <ErrorOutlineIcon fontSize="small" color="error" />
-                    ) : (
-                      <WarningAmberIcon fontSize="small" color="warning" />
-                    )}
-                    <Typography variant="body2">{issue.message}</Typography>
+              <JourneyStopTable
+                stops={journey.stops}
+                legsById={journey.legsById}
+                onDecideWaitRelease={(dropoffStop) =>
+                  setWaitReleaseTarget({
+                    tripId: journey.trip.id,
+                    dropoffStopId: dropoffStop.id,
+                    facilityId: dropoffStop.facilityId,
+                    plannedAt: dropoffStop.plannedAt,
+                  })
+                }
+              />
+
+              {journey.issues.length > 0 && (
+                <>
+                  <Typography variant="subtitle1" sx={{ mt: 2, mb: 1 }}>
+                    {t('transportPlanning.issuesTitle')}
+                  </Typography>
+                  <Stack spacing={0.5}>
+                    {journey.issues.map((issue, index) => (
+                      <Stack key={index} direction="row" spacing={1} alignItems="center">
+                        {issue.level === 'ERROR' ? (
+                          <ErrorOutlineIcon fontSize="small" color="error" />
+                        ) : (
+                          <WarningAmberIcon fontSize="small" color="warning" />
+                        )}
+                        <Typography variant="body2">{issue.message}</Typography>
+                      </Stack>
+                    ))}
                   </Stack>
-                ))}
-              </Stack>
-            </>
-          )}
+                </>
+              )}
+            </Box>
+
+            {/* Never printed — the crew sheet's own precedent
+                (`journeyPage.css`) is a paper artefact, and a WebGL canvas
+                has nothing to hand it. */}
+            <Box className="journey-page-map" sx={{ width: { xs: '100%', lg: 340 }, flexShrink: 0, minWidth: 0 }}>
+              <Typography variant="subtitle1" sx={{ mb: 1 }}>
+                {t('transportJourney.mapTitle')}
+              </Typography>
+              {journeyBoard && (
+                <MapPanel board={journeyBoard} selectedTripId={journey.trip.id} onSelectTrip={() => {}} />
+              )}
+            </Box>
+          </Stack>
         </Paper>
       )}
 

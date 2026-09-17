@@ -2,9 +2,14 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import { Title, useNotify } from 'react-admin';
 import {
   Alert,
+  Badge,
   Box,
   Button,
   CircularProgress,
+  Dialog,
+  DialogActions,
+  DialogContent,
+  DialogTitle,
   IconButton,
   Paper,
   Stack,
@@ -15,6 +20,8 @@ import {
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
+import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
@@ -141,6 +148,11 @@ export const TransportPlanningPage = () => {
   // reverts to the flat, one-card-per-leg list #235 shipped.
   const [perPersonView, setPerPersonView] = useState(false);
   const [assignGroupTarget, setAssignGroupTarget] = useState<UnplannedGroup | null>(null);
+  // The unassigned rail's own collapse (distinct from react-admin's nav
+  // drawer) — a planner with every lane already assigned wants the map and
+  // timeline wider more often than they want this list open.
+  const [railCollapsed, setRailCollapsed] = useState(false);
+  const [issuesOpen, setIssuesOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const loadBoard = useCallback(async () => {
@@ -292,6 +304,20 @@ export const TransportPlanningPage = () => {
       <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1} sx={{ mb: 2 }}>
         <Typography variant="h5">{t('transportPlanning.pageTitle')}</Typography>
         <Stack direction="row" alignItems="center" gap={1}>
+          <Tooltip title={t('transportPlanning.issuesTitle')}>
+            <IconButton
+              size="small"
+              aria-label={t('transportPlanning.issuesButtonAria', { count: issues.length })}
+              onClick={() => setIssuesOpen(true)}
+            >
+              <Badge
+                badgeContent={issues.length}
+                color={issues.some((issue) => issue.level === 'ERROR') ? 'error' : 'warning'}
+              >
+                <WarningAmberIcon />
+              </Badge>
+            </IconButton>
+          </Tooltip>
           <Tooltip title={t('transportPlanning.zoomOut')}>
             <span>
               <IconButton size="small" disabled={zoomIndex === 0} onClick={() => setZoomIndex((i) => i - 1)}>
@@ -331,59 +357,82 @@ export const TransportPlanningPage = () => {
 
       {!loading && board && (
         <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} sx={{ minWidth: 0, alignItems: 'flex-start' }}>
-          <Box sx={{ width: { xs: '100%', lg: 280 }, flexShrink: 0, minWidth: 0 }}>
-            <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }}>
-              <Typography variant="subtitle1">{t('transportPlanning.railTitle')}</Typography>
-              {board.unassignedLegIds.length > 0 && (
-                <ToggleButtonGroup
-                  size="small"
-                  exclusive
-                  value={perPersonView ? 'person' : 'group'}
-                  onChange={(_e, value) => value && setPerPersonView(value === 'person')}
-                >
-                  <ToggleButton value="group" aria-label={t('transportPlanning.railViewGrouped')}>
-                    {t('transportPlanning.railViewGrouped')}
-                  </ToggleButton>
-                  <ToggleButton value="person" aria-label={t('transportPlanning.railViewPerPerson')}>
-                    {t('transportPlanning.railViewPerPerson')}
-                  </ToggleButton>
-                </ToggleButtonGroup>
-              )}
-            </Stack>
-            {board.unassignedLegIds.length === 0 && (
-              <Typography variant="body2" color="text.secondary">
-                {t('transportPlanning.railEmpty')}
-              </Typography>
-            )}
-            <Stack spacing={1}>
-              {perPersonView
-                ? board.unassignedLegIds.map((legId) => {
-                    const leg = board.legsById[legId];
-                    if (!leg) return null;
-                    return (
-                      <UnassignedLegCard
-                        key={legId}
-                        leg={leg}
-                        onDragStart={() => setDragActive(true)}
-                        onDragEnd={() => setDragActive(false)}
-                        onAssign={() => setAssignTarget(assignTargetForLeg(legId, leg))}
-                      />
-                    );
-                  })
-                : unplannedGroups.map((group) => (
-                    <UnplannedGroupCard
-                      key={group.key}
-                      group={group}
-                      legsById={board.legsById}
-                      vehicles={board.lanes.map((lane) => lane.vehicle)}
-                      onAssignGroup={() => setAssignGroupTarget(group)}
-                      onAssignPerson={(legId) => {
+          <Box sx={{ width: { xs: '100%', lg: railCollapsed ? 40 : 280 }, flexShrink: 0, minWidth: 0 }}>
+            {railCollapsed ? (
+              <Stack alignItems="center" spacing={1}>
+                <Tooltip title={t('transportPlanning.railExpand')}>
+                  <IconButton size="small" onClick={() => setRailCollapsed(false)}>
+                    <Badge badgeContent={board.unassignedLegIds.length} color="primary">
+                      <ChevronRightIcon fontSize="small" />
+                    </Badge>
+                  </IconButton>
+                </Tooltip>
+              </Stack>
+            ) : (
+              <>
+                <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }} gap={1}>
+                  <Stack direction="row" alignItems="center" spacing={0.5} sx={{ minWidth: 0 }}>
+                    <Tooltip title={t('transportPlanning.railCollapse')}>
+                      <IconButton size="small" onClick={() => setRailCollapsed(true)}>
+                        <ChevronLeftIcon fontSize="small" />
+                      </IconButton>
+                    </Tooltip>
+                    <Typography variant="subtitle1" noWrap>
+                      {t('transportPlanning.railTitle')}
+                    </Typography>
+                  </Stack>
+                  {board.unassignedLegIds.length > 0 && (
+                    <ToggleButtonGroup
+                      size="small"
+                      exclusive
+                      value={perPersonView ? 'person' : 'group'}
+                      onChange={(_e, value) => value && setPerPersonView(value === 'person')}
+                    >
+                      <ToggleButton value="group" aria-label={t('transportPlanning.railViewGrouped')}>
+                        {t('transportPlanning.railViewGrouped')}
+                      </ToggleButton>
+                      <ToggleButton value="person" aria-label={t('transportPlanning.railViewPerPerson')}>
+                        {t('transportPlanning.railViewPerPerson')}
+                      </ToggleButton>
+                    </ToggleButtonGroup>
+                  )}
+                </Stack>
+                {board.unassignedLegIds.length === 0 && (
+                  <Typography variant="body2" color="text.secondary">
+                    {t('transportPlanning.railEmpty')}
+                  </Typography>
+                )}
+                <Stack spacing={1}>
+                  {perPersonView
+                    ? board.unassignedLegIds.map((legId) => {
                         const leg = board.legsById[legId];
-                        if (leg) setAssignTarget(assignTargetForLeg(legId, leg));
-                      }}
-                    />
-                  ))}
-            </Stack>
+                        if (!leg) return null;
+                        return (
+                          <UnassignedLegCard
+                            key={legId}
+                            leg={leg}
+                            onDragStart={() => setDragActive(true)}
+                            onDragEnd={() => setDragActive(false)}
+                            onAssign={() => setAssignTarget(assignTargetForLeg(legId, leg))}
+                          />
+                        );
+                      })
+                    : unplannedGroups.map((group) => (
+                        <UnplannedGroupCard
+                          key={group.key}
+                          group={group}
+                          legsById={board.legsById}
+                          vehicles={board.lanes.map((lane) => lane.vehicle)}
+                          onAssignGroup={() => setAssignGroupTarget(group)}
+                          onAssignPerson={(legId) => {
+                            const leg = board.legsById[legId];
+                            if (leg) setAssignTarget(assignTargetForLeg(legId, leg));
+                          }}
+                        />
+                      ))}
+                </Stack>
+              </>
+            )}
           </Box>
 
           {/*
@@ -503,32 +552,6 @@ export const TransportPlanningPage = () => {
               </Box>
             </Paper>
 
-            <Paper variant="outlined" sx={{ p: 2, mt: 2, minWidth: 0 }}>
-              <Typography variant="subtitle1" sx={{ mb: 1 }}>
-                {t('transportPlanning.issuesTitle')}
-              </Typography>
-              {issues.length === 0 && (
-                <Typography variant="body2" color="text.secondary">
-                  {t('transportPlanning.issuesEmpty')}
-                </Typography>
-              )}
-              <Stack spacing={0.5}>
-                {issues.map((issue, index) => (
-                  <Stack key={index} direction="row" spacing={1} alignItems="center">
-                    {issue.level === 'ERROR' ? (
-                      <ErrorOutlineIcon fontSize="small" color="error" />
-                    ) : issue.level === 'WARNING' ? (
-                      <WarningAmberIcon fontSize="small" color="warning" />
-                    ) : (
-                      <InfoOutlinedIcon fontSize="small" color="disabled" />
-                    )}
-                    <Typography variant="body2">
-                      {issue.vehicleLabel}: {issue.message}
-                    </Typography>
-                  </Stack>
-                ))}
-              </Stack>
-            </Paper>
           </Box>
 
           {selectedLane && (
@@ -543,6 +566,36 @@ export const TransportPlanningPage = () => {
           )}
         </Stack>
       )}
+
+      <Dialog open={issuesOpen} onClose={() => setIssuesOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>{t('transportPlanning.issuesTitle')}</DialogTitle>
+        <DialogContent>
+          {issues.length === 0 && (
+            <Typography variant="body2" color="text.secondary">
+              {t('transportPlanning.issuesEmpty')}
+            </Typography>
+          )}
+          <Stack spacing={1} sx={{ pt: 1 }}>
+            {issues.map((issue, index) => (
+              <Stack key={index} direction="row" spacing={1} alignItems="center">
+                {issue.level === 'ERROR' ? (
+                  <ErrorOutlineIcon fontSize="small" color="error" />
+                ) : issue.level === 'WARNING' ? (
+                  <WarningAmberIcon fontSize="small" color="warning" />
+                ) : (
+                  <InfoOutlinedIcon fontSize="small" color="disabled" />
+                )}
+                <Typography variant="body2">
+                  {issue.vehicleLabel}: {issue.message}
+                </Typography>
+              </Stack>
+            ))}
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setIssuesOpen(false)}>{t('transportPlanning.issuesClose')}</Button>
+        </DialogActions>
+      </Dialog>
 
       <AssignLegDialog
         target={assignTarget}

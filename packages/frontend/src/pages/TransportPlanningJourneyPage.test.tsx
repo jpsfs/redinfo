@@ -218,4 +218,15 @@ describe('TransportPlanningJourneyPage', () => {
 
     expect(await screen.findByRole('button', { name: 'Print' })).toBeInTheDocument();
   });
+
+  it('shows this journey’s own map, with no other journeys, beside the stops', async () => {
+    mockApiFetch.mockImplementation((path: string) => (path === '/trips/trip-1' ? Promise.resolve(journey()) : Promise.resolve([])));
+    renderPage();
+
+    // The map degrades to a plain notice in jsdom (no real basemap probe
+    // succeeds here) — this asserts the section is wired in at all, not
+    // MapLibre's own rendering, which `MapPanel.test.tsx` already covers.
+    expect(await screen.findByText('Route')).toBeInTheDocument();
+    expect(await screen.findByText('The basemap is not available on this install.')).toBeInTheDocument();
+  });
 });
