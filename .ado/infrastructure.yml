@@ -1,0 +1,182 @@
+# Terraform for the Contabo host that will run production (infra/terraform).
+#
+# Deliberately a SEPARATE pipeline from .ado/deployment.yml, and deliberately
+# NOT triggered by pushes. Application deploys happen many times a day and are
+# safe to automate; this one buys, rebuilds or destroys a server. It runs only
+# when a human starts it and says which action they mean.
+#
+# Why a pipeline at all, rather than someone's laptop: the Contabo API
+# credentials live in the `redinfo-contabo` variable group and nowhere else —
+# no developer needs a copy, and every apply leaves a log with a name attached
+# to it.
+#
+# Variable groups this needs:
+#   redinfo-contabo   CNTB_OAUTH2_CLIENT_ID, CNTB_OAUTH2_CLIENT_SECRET,
+#                     CNTB_OAUTH2_USER, CNTB_OAUTH2_PASS  (all secret)
+#                     TF_VAR_image_id, TF_VAR_ssh_public_key  (not secret)
+#   redinfo-tfstate   AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY (secret),
+#                     TFSTATE_BUCKET, TFSTATE_KEY, TFSTATE_REGION
+#
+# The state bucket itself is created once, out of band, by
+# infra/scripts/bootstrap-state-bucket.sh — it cannot be managed by the state
+# it stores.
+trigger: none
+pr: none
+
+parameters:
+  - name: action
+    displayName: "What to do"
+    type: string
+    default: plan
+    values:
+      - plan
+      - apply
+      - destroy
+
+  - name: confirm
+    displayName: "I understand apply/destroy changes real, billed infrastructure"
+    type: boolean
+    default: false
+
+variables:
+  - group: redinfo-contabo
+  - group: redinfo-tfstate
+  - name: TF_VERSION
+    value: "1.16.3"
+  - name: TF_DIR
+    value: "$(Build.SourcesDirectory)/infra/terraform"
+  # Terraform is not a TTY here; without this every plan is full of control
+  # characters in the log.
+  - name: TF_IN_AUTOMATION
+    value: "true"
+  - name: TF_INPUT
+    value: "false"
+
+stages:
+  - stage: Terraform
+    displayName: "Terraform ${{ parameters.action }}"
+    jobs:
+      - job: Run
+        displayName: "terraform ${{ parameters.action }}"
+        # Hosted agent, unlike the deploy stages in .ado/deployment.yml: this
+        # job talks to the Contabo and AWS APIs over the internet and has no
+        # reason to touch any cluster, so it must NOT run on a self-hosted
+        # agent that happens to be a production machine.
+        pool:
+          vmImage: "ubuntu-latest"
+        timeoutInMinutes: 60
+        steps:
+          - checkout: self
+            fetchDepth: 1
+
+          - task: Bash@3
+            displayName: "Guard: apply/destroy require the confirm checkbox"
+            inputs:
+              targetType: "inline"
+              script: |
+                set -euo pipefail
+                ACTION="${{ parameters.action }}"
+                CONFIRM="${{ parameters.confirm }}"
+
+                if [ "${ACTION}" = "plan" ]; then
+                  echo "plan is read-only; no confirmation needed."
+                  exit 0
+                fi
+
+                # The checkbox is the whole point: a mis-click on the action
+                # dropdown alone cannot buy or destroy a server.
+                if [ "${CONFIRM}" != "True" ] && [ "${CONFIRM}" != "true" ]; then
+                  echo "##vso[task.logissue type=error]'${ACTION}' requires the confirmation checkbox. Re-run the pipeline and tick it." >&2
+                  exit 1
+                fi
+                echo "${ACTION} confirmed."
+
+          - task: Bash@3
+            displayName: "Install Terraform $(TF_VERSION)"
+            inputs:
+              targetType: "inline"
+              script: |
+                set -euo pipefail
+                cd "$(Agent.TempDirectory)"
+                curl -fsSLo terraform.zip \
+                  "https://releases.hashicorp.com/terraform/$(TF_VERSION)/terraform_$(TF_VERSION)_linux_amd64.zip"
+                unzip -oq terraform.zip
+                sudo install -m 0755 terraform /usr/local/bin/terraform
+                terraform version
+
+          - task: Bash@3
+            displayName: "terraform init"
+            inputs:
+              targetType: "inline"
+              script: |
+                set -euo pipefail
+                # Backend settings come in as -backend-config flags rather than
+                # a committed file, so the bucket name is configuration, not
+                # something published in the repo.
+                terraform -chdir="$(TF_DIR)" init \
+                  -backend-config="bucket=${TFSTATE_BUCKET}" \
+                  -backend-config="key=${TFSTATE_KEY}" \
+                  -backend-config="region=${TFSTATE_REGION}" \
+                  -backend-config="encrypt=true" \
+                  -backend-config="use_lockfile=true"
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              TFSTATE_BUCKET: $(TFSTATE_BUCKET)
+              TFSTATE_KEY: $(TFSTATE_KEY)
+              TFSTATE_REGION: $(TFSTATE_REGION)
+
+          - task: Bash@3
+            displayName: "terraform fmt -check && validate"
+            inputs:
+              targetType: "inline"
+              script: |
+                set -euo pipefail
+                terraform -chdir="$(TF_DIR)" fmt -check -recursive
+                terraform -chdir="$(TF_DIR)" validate
+
+          - task: Bash@3
+            displayName: "terraform ${{ parameters.action }}"
+            inputs:
+              targetType: "inline"
+              script: |
+                set -euo pipefail
+                ACTION="${{ parameters.action }}"
+
+                case "${ACTION}" in
+                  plan)
+                    # -detailed-exitcode would make "there are changes" a
+                    # pipeline failure, which is wrong for a plan whose whole
+                    # job is to show them. Read the log instead.
+                    terraform -chdir="$(TF_DIR)" plan -out=tfplan
+                    terraform -chdir="$(TF_DIR)" show -no-color tfplan > "$(Build.ArtifactStagingDirectory)/plan.txt"
+                    ;;
+                  apply)
+                    # Plan and apply in one step, on purpose: an apply of a
+                    # plan file saved by an earlier *run* can be stale, and a
+                    # stale plan against infrastructure this small is more
+                    # dangerous than re-planning.
+                    terraform -chdir="$(TF_DIR)" apply -auto-approve
+                    terraform -chdir="$(TF_DIR)" output -json > "$(Build.ArtifactStagingDirectory)/outputs.json"
+                    ;;
+                  destroy)
+                    terraform -chdir="$(TF_DIR)" destroy -auto-approve
+                    ;;
+                esac
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              # The provider reads these four itself — see infra/terraform/providers.tf.
+              CNTB_OAUTH2_CLIENT_ID: $(CNTB_OAUTH2_CLIENT_ID)
+              CNTB_OAUTH2_CLIENT_SECRET: $(CNTB_OAUTH2_CLIENT_SECRET)
+              CNTB_OAUTH2_USER: $(CNTB_OAUTH2_USER)
+              CNTB_OAUTH2_PASS: $(CNTB_OAUTH2_PASS)
+              TF_VAR_image_id: $(TF_VAR_image_id)
+              TF_VAR_ssh_public_key: $(TF_VAR_ssh_public_key)
+
+          - task: PublishBuildArtifacts@1
+            displayName: "Publish plan/outputs"
+            condition: succeededOrFailed()
+            inputs:
+              PathtoPublish: "$(Build.ArtifactStagingDirectory)"
+              ArtifactName: terraform
