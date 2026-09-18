@@ -2080,34 +2080,72 @@ async function main() {
   const pastDialysis = dialysisRoundTrips.filter((rt) => rt.date < today);
   const futureDialysis = dialysisRoundTrips.filter((rt) => rt.date >= today);
 
-  if (pastDialysis[0]) {
-    const { date, outbound, return: ret } = pastDialysis[0];
-    const arrival = instantAt(date, '08:30');
-    const departure = instantAt(date, '12:30');
+  /**
+   * A round trip's outbound and return legs, as two separate journeys on
+   * the same vehicle — never one trip carrying both. The two are routinely
+   * hours apart (the patient's own appointment in between), and a single
+   * trip spanning that gap would read as pickup, dropoff, pickup, dropoff:
+   * two journeys wearing one trip id, exactly the shape a crew's own
+   * "journey" never takes (see `mergeChainedTrips`'s own doc comment for
+   * the same rule applied to `planDay`'s bulk-generated trips).
+   */
+  async function buildRoundTripJourneys(input: {
+    vehicleId: string;
+    date: string;
+    status?: TripStatus;
+    notesPrefix: string;
+    crew: { userId: string; role: CertificationType }[];
+    outboundLegId: string;
+    returnLegId: string;
+    arrival: Date;
+    departure: Date;
+  }): Promise<void> {
     await buildTrip({
-      vehicleId: vehicles.transport1.id,
-      date,
-      status: TripStatus.COMPLETED,
-      notes: 'Hemodiálise — HD Barcelos.',
-      crew: dialysisCrew,
+      vehicleId: input.vehicleId,
+      date: input.date,
+      status: input.status,
+      notes: `${input.notesPrefix} — ida.`,
+      crew: input.crew,
       legs: [
-        { legId: outbound.id, pickupPlannedAt: plusMinutes(arrival, -45), dropoffPlannedAt: plusMinutes(arrival, -15) },
-        { legId: ret.id, pickupPlannedAt: plusMinutes(departure, 0), dropoffPlannedAt: plusMinutes(departure, 30) },
+        { legId: input.outboundLegId, pickupPlannedAt: plusMinutes(input.arrival, -45), dropoffPlannedAt: plusMinutes(input.arrival, -15) },
+      ],
+    });
+    await buildTrip({
+      vehicleId: input.vehicleId,
+      date: input.date,
+      status: input.status,
+      notes: `${input.notesPrefix} — volta.`,
+      crew: input.crew,
+      legs: [
+        { legId: input.returnLegId, pickupPlannedAt: plusMinutes(input.departure, 0), dropoffPlannedAt: plusMinutes(input.departure, 30) },
       ],
     });
   }
-  for (const { date, outbound, return: ret } of futureDialysis.slice(0, 2)) {
-    const arrival = instantAt(date, '08:30');
-    const departure = instantAt(date, '12:30');
-    await buildTrip({
+
+  if (pastDialysis[0]) {
+    const { date, outbound, return: ret } = pastDialysis[0];
+    await buildRoundTripJourneys({
       vehicleId: vehicles.transport1.id,
       date,
-      notes: 'Hemodiálise — HD Barcelos.',
+      status: TripStatus.COMPLETED,
+      notesPrefix: 'Hemodiálise — HD Barcelos.',
       crew: dialysisCrew,
-      legs: [
-        { legId: outbound.id, pickupPlannedAt: plusMinutes(arrival, -45), dropoffPlannedAt: plusMinutes(arrival, -15) },
-        { legId: ret.id, pickupPlannedAt: plusMinutes(departure, 0), dropoffPlannedAt: plusMinutes(departure, 30) },
-      ],
+      outboundLegId: outbound.id,
+      returnLegId: ret.id,
+      arrival: instantAt(date, '08:30'),
+      departure: instantAt(date, '12:30'),
+    });
+  }
+  for (const { date, outbound, return: ret } of futureDialysis.slice(0, 2)) {
+    await buildRoundTripJourneys({
+      vehicleId: vehicles.transport1.id,
+      date,
+      notesPrefix: 'Hemodiálise — HD Barcelos.',
+      crew: dialysisCrew,
+      outboundLegId: outbound.id,
+      returnLegId: ret.id,
+      arrival: instantAt(date, '08:30'),
+      departure: instantAt(date, '12:30'),
     });
   }
 
@@ -2115,17 +2153,15 @@ async function main() {
   const nextWoundCare = woundCareRoundTrips.find((rt) => rt.date >= today);
   if (nextWoundCare) {
     const { date, outbound, return: ret } = nextWoundCare;
-    const arrival = instantAt(date, '09:00');
-    const departure = instantAt(date, '09:30');
-    await buildTrip({
+    await buildRoundTripJourneys({
       vehicleId: vehicles.transport1.id,
       date,
-      notes: 'Penso semanal — Hospital de Braga.',
+      notesPrefix: 'Penso semanal — Hospital de Braga.',
       crew: dialysisCrew,
-      legs: [
-        { legId: outbound.id, pickupPlannedAt: plusMinutes(arrival, -45), dropoffPlannedAt: plusMinutes(arrival, -15) },
-        { legId: ret.id, pickupPlannedAt: plusMinutes(departure, 0), dropoffPlannedAt: plusMinutes(departure, 30) },
-      ],
+      outboundLegId: outbound.id,
+      returnLegId: ret.id,
+      arrival: instantAt(date, '09:00'),
+      departure: instantAt(date, '09:30'),
     });
   }
 
@@ -2490,11 +2526,38 @@ async function main() {
    * "picked up a few more people along the way to a second destination"
    * rather than two unrelated rounds — see #219's own worked example (a run
    * that starts in one locality, collects several people, and drops some at
-   * one facility and the rest at another). Reuses `assignLegToTrip`'s own
-   * move semantics rather than a bespoke SQL move: the absorbed trip ends up
-   * with no stops left, which is exactly the condition `syncOccupancy`
-   * already tears its `VehicleOccupancy` interval down for, and it is then
-   * deleted outright.
+   * one facility and the rest at another).
+   *
+   * A journey the crew recognises never puts a dropoff before a later
+   * pickup — it starts at base or a facility, moves through patient
+   * pickups, and only then ends at one or more destination facilities.
+   * Simply appending `next`'s own already-built pickup→dropoff pair after
+   * `current`'s own would produce exactly that wrong shape (pickup,
+   * dropoff, pickup, dropoff), reading as two journeys sharing a trip id
+   * rather than one journey serving two destinations. So `next`'s pickups
+   * are rescheduled to slot in *before* `current`'s dropoff instead — its
+   * passengers are collected a little early, on the way, and ride along
+   * until their own facility, same as anyone genuinely picked up along a
+   * milk run's route; `next`'s own dropoffs are untouched, since they're
+   * still anchored to that facility's real appointment times.
+   *
+   * OUTBOUND only: `current.lastStopAt` (the point pickups must land
+   * before) is a single shared instant every leg in that chunk already
+   * arrives at together, which is exactly the room this needs. A RETURN
+   * chunk has no equivalent slack — its shared pickup instant is anchored
+   * to when its own facility actually releases its patients, which
+   * routinely isn't reachable before an earlier chunk's own house-by-house
+   * drops have even started, so it is never a merge candidate here.
+   *
+   * A raw multi-row move, not `assignLegToTrip`-per-leg: moving one leg at
+   * a time would widen `current`'s occupancy window before `next`'s own
+   * shrinks back down, and since every dropoff in an outbound chunk shares
+   * one identical instant, that transient state reliably self-conflicts
+   * with the vehicle's own still-there `next` booking — a false "double
+   * booking" `assignLegToTrip`'s public per-leg contract has no way to see
+   * past. Moving every stop in one transaction and recomputing `current`'s
+   * occupancy once, only after `next`'s own booking is gone, never passes
+   * through that state.
    *
    * Deliberately only chains *adjacent* pairs, never re-scans further ahead
    * — a modest three-journey vehicle-day is exactly the target, not an
@@ -2513,18 +2576,30 @@ async function main() {
       let current = trips[0];
       for (let index = 1; index < trips.length; index++) {
         const next = trips[index];
-        const gapMinutes = (next.firstPickupAt - current.lastStopAt) / 60_000;
+        // Gated on the two *dropoffs*, not the old pickup-to-dropoff gap:
+        // `next`'s own pickup time is about to be discarded and rebuilt
+        // below, so it says nothing about how much of a detour this second
+        // destination actually is. That's the gap between when each
+        // destination's own appointment is due — a big one means asking
+        // `next`'s passengers to ride along for a long time before their
+        // own stop, which stops reading as "along the way".
+        const gapMinutes = (next.lastStopAt - current.lastStopAt) / 60_000;
         const distanceKm = beelineKm(current.lastAnchor, next.firstDoor);
         const combinedDemand = {
           seated: current.demand.seated + next.demand.seated,
           wheelchairs: current.demand.wheelchairs + next.demand.wheelchairs,
           stretchers: current.demand.stretchers + next.demand.stretchers,
         };
+        // The combined demand has to fit the vehicle for real here, not
+        // just as a conservative over-count: once `next`'s pickups move
+        // before `current`'s dropoff (below), both chunks' passengers are
+        // genuinely onboard at once for that stretch.
         const canChain =
           !current.solo &&
           !next.solo &&
-          current.direction === next.direction &&
-          gapMinutes >= 0 &&
+          current.direction === LegDirection.OUTBOUND &&
+          next.direction === LegDirection.OUTBOUND &&
+          gapMinutes > 0 &&
           gapMinutes <= MERGE_MAX_GAP_MINUTES &&
           distanceKm != null &&
           distanceKm <= MERGE_MAX_DISTANCE_KM &&
@@ -2537,22 +2612,39 @@ async function main() {
           continue;
         }
 
-        // A raw stop move, not `assignLegToTrip`-per-leg: moving one leg at
-        // a time would widen `current`'s occupancy window before `next`'s
-        // own shrinks back down, and since every dropoff in an outbound
-        // chunk shares one identical instant (the whole group's shared
-        // appointment time, minus ten minutes), that transient state
-        // reliably self-conflicts with the vehicle's own still-there `next`
-        // booking — a false "double booking" `assignLegToTrip`'s public
-        // per-leg contract has no way to see past. Moving every stop in one
-        // transaction and recomputing `current`'s occupancy once, only after
-        // `next`'s own booking is gone, never passes through that state.
+        // `next`'s pickups, moved to land before `current`'s dropoff —
+        // spread ten minutes apart, the last one a ten-minute buffer ahead
+        // of that dropoff, the same cadence `planDay` already spaces a
+        // single chunk's own pickups by.
+        const PICKUP_BUFFER_MINUTES = 10;
+        const PICKUP_SPACING_MINUTES = 10;
+        const rescheduledLegTimes = next.legTimes.map((legTime, legIndex) => ({
+          ...legTime,
+          pickupPlannedAt: new Date(
+            current.lastStopAt -
+              (PICKUP_BUFFER_MINUTES + (next.legTimes.length - 1 - legIndex) * PICKUP_SPACING_MINUTES) * 60_000,
+          ).toISOString(),
+        }));
+        const rescheduledPickupByLegId = new Map(
+          rescheduledLegTimes.map((legTime) => [legTime.legId, legTime.pickupPlannedAt]),
+        );
+
         const nextStops = await prisma.tripStop.findMany({ where: { tripId: next.tripId }, orderBy: { sequence: 'asc' } });
         const currentMaxSequence = (await prisma.tripStop.aggregate({ where: { tripId: current.tripId }, _max: { sequence: true } }))._max.sequence ?? 0;
         await prisma.$transaction(
-          nextStops.map((stop, index) =>
-            prisma.tripStop.update({ where: { id: stop.id }, data: { tripId: current.tripId, sequence: currentMaxSequence + index + 1 } }),
-          ),
+          nextStops.map((stop, stopIndex) => {
+            const reschedule = stop.kind === TripStopKind.PICKUP && stop.transportLegId
+              ? rescheduledPickupByLegId.get(stop.transportLegId)
+              : undefined;
+            return prisma.tripStop.update({
+              where: { id: stop.id },
+              data: {
+                tripId: current.tripId,
+                sequence: currentMaxSequence + stopIndex + 1,
+                ...(reschedule ? { plannedAt: new Date(reschedule) } : {}),
+              },
+            });
+          }),
         );
         await vehicleOccupancy.removeForSource(VehicleOccupancySource.TRANSPORT_TRIP, next.tripId);
         const currentStops = await prisma.tripStop.findMany({ where: { tripId: current.tripId } });
@@ -2567,7 +2659,11 @@ async function main() {
         await prisma.trip.delete({ where: { id: next.tripId } });
         mergedCount += 1;
 
-        current.legTimes = [...current.legTimes, ...next.legTimes];
+        current.legTimes = [...current.legTimes, ...rescheduledLegTimes];
+        current.firstPickupAt = Math.min(
+          current.firstPickupAt,
+          ...rescheduledLegTimes.map((legTime) => new Date(legTime.pickupPlannedAt).getTime()),
+        );
         current.lastStopAt = next.lastStopAt;
         current.lastAnchor = next.lastAnchor;
         current.demand = combinedDemand;
