@@ -55,6 +55,10 @@ parameters:
     displayName: "Only report Contabo image UUIDs (to pin TF_VAR_image_id) — deploys nothing"
     type: boolean
     default: false
+  - name: infrastructureOnly
+    displayName: "Only run Terraform (plan → approve → apply) — builds nothing, deploys nothing"
+    type: boolean
+    default: false
 
 variables:
   # Docker Hub service connection ID or name
@@ -124,10 +128,15 @@ stages:
   # ── Prepare — decide routing once, let every other stage read it ────────────
   - stage: Prepare
     displayName: Resolve build routing
-    # The one thing that stops the whole pipeline. `reportContaboImages` promises
-    # to deploy nothing, and every other stage gates on Prepare's result, so
-    # skipping here skips all of them — no build, no deploy, just the lookup above.
-    condition: eq(${{ parameters.reportContaboImages }}, false)
+    # The two parameters that stop the pipeline rather than steering it. Both
+    # promise to deploy nothing, and every other stage gates on Prepare's
+    # result, so skipping here skips all of them — leaving only the one stage
+    # each parameter asked for.
+    condition: |
+      and(
+        eq(${{ parameters.reportContaboImages }}, false),
+        eq(${{ parameters.infrastructureOnly }}, false)
+      )
     jobs:
       - job: Resolve
         pool:
@@ -487,13 +496,24 @@ stages:
   - stage: Infrastructure
     displayName: Infrastructure (plan → approve → apply)
     dependsOn: [Prepare, Build, PromotionGate]
+    # Two ways in. Normally: a production release, after the promotion gate, so
+    # that every release confirms the host still matches the repo. Or on its
+    # own, on any branch, via `infrastructureOnly` — the mirror of
+    # `skipInfrastructure`. One ships code without touching infrastructure; the
+    # other changes infrastructure without shipping code. Provisioning the host
+    # for the first time is the second kind: there is no release to make, and
+    # tying it to one would mean deploying an application to a machine that
+    # does not exist yet.
     condition: |
-      and(
-        eq(variables['Build.SourceBranch'], 'refs/heads/env/production'),
-        in(dependencies.Prepare.result, 'Succeeded', 'SucceededWithIssues'),
-        not(in(dependencies.Build.result, 'Failed', 'Canceled')),
-        succeeded('PromotionGate'),
-        eq(${{ parameters.skipInfrastructure }}, false)
+      or(
+        eq(${{ parameters.infrastructureOnly }}, true),
+        and(
+          eq(variables['Build.SourceBranch'], 'refs/heads/env/production'),
+          in(dependencies.Prepare.result, 'Succeeded', 'SucceededWithIssues'),
+          not(in(dependencies.Build.result, 'Failed', 'Canceled')),
+          succeeded('PromotionGate'),
+          eq(${{ parameters.skipInfrastructure }}, false)
+        )
       )
     variables:
       - group: redinfo-contabo

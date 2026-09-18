@@ -137,6 +137,12 @@ pipeline parameters.
   It exists because `TF_VAR_image_id` has to be pinned by hand and the Contabo API credentials
   that resolve it are write-only secrets in `redinfo-contabo` — this pipeline is the only place
   that can read them. Runs on any branch. See `infra/README.md`.
+- **`infrastructureOnly`** — the mirror of `skipInfrastructure`: run the `Infrastructure` stage
+  and nothing else. It skips `Prepare`, so no images are built and nothing is deployed, and it
+  works on any branch rather than only on `env/production`. Use it to provision or repair the
+  host outside a release — most importantly the very first time, when there is no release to
+  attach the work to and no host to deploy to yet. Where the two flags disagree,
+  `infrastructureOnly` wins.
 - **`contaboBackgroundJobs`** — on the Contabo host only, enable the legacy-migration cron and
   the INEM worker. **Off by default, deliberately**: while vm-redcross is live, a second
   instance with the same credentials means two machines pulling from one legacy MySQL and two
