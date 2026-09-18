@@ -47,6 +47,10 @@ parameters:
     displayName: "On the Contabo host, also run the legacy-migration cron and the INEM worker (read DeployProductionContabo first)"
     type: boolean
     default: false
+  - name: skipInfrastructure
+    displayName: "Skip the Terraform plan/approve/apply entirely and go straight to deploying (hotfix escape hatch)"
+    type: boolean
+    default: false
 
 variables:
   # Docker Hub service connection ID or name
@@ -379,16 +383,386 @@ stages:
 
                 echo "staging-ok-${SHA} marker found — commit verified on staging. Proceeding to production."
 
-  # ── DeployProduction ─────────────────────────────────────────────────────
-  - stage: DeployProduction
-    displayName: Deploy to production (vm-redcross)
+  # ── Infrastructure — plan, and if anything would change, ask a human ──────
+  #
+  # Sits between the promotion gate and both production deploys, so the host
+  # is what infra/terraform says it is *before* a release lands on it.
+  #
+  # Three jobs:
+  #   Plan     always runs. `terraform plan -detailed-exitcode` decides
+  #            everything downstream: exit 0 (no changes) ends the stage right
+  #            there, and the production deploys carry on as if this stage
+  #            were not here. Exit 2 means the host and the repo disagree.
+  #   Approve  only when the plan found changes. An agentless ManualValidation
+  #            job — the run parks in the Azure DevOps UI until someone
+  #            approves or rejects. Rejecting fails this stage, which blocks
+  #            both production deploys.
+  #   Apply    only after that approval, and it applies THE SAVED PLAN FILE
+  #            from the Plan job — not a fresh one. That is the whole point of
+  #            approving: what gets applied is exactly what was reviewed.
+  #            (The earlier standalone pipeline deliberately re-planned on
+  #            apply, because there a plan could be hours stale. Here the two
+  #            are minutes apart inside one run, so the saved plan is both
+  #            safe and the only thing that makes the approval meaningful.)
+  #
+  # Read the plan before approving. Four attributes of contabo_instance
+  # reinstall the machine when they change — image_id, ssh_keys, user_data,
+  # root_password — and `user_data` means an edit to cloud-init.yaml.tftpl is,
+  # to Terraform, a change to the machine. The Plan job names any of them it
+  # finds, because Terraform renders that reinstall as a bland
+  # `~ update in-place` that is easy to skim past.
+  #
+  # `skipInfrastructure` bypasses the whole stage — the hotfix hatch, the same
+  # shape as `forceProduction` bypassing the staging gate. Use it when code has
+  # to ship and unrelated infrastructure drift is in the way; the drift does
+  # not go away, it just stops holding the release hostage.
+  - stage: Infrastructure
+    displayName: Infrastructure (plan → approve → apply)
     dependsOn: [Prepare, Build, PromotionGate]
     condition: |
       and(
         eq(variables['Build.SourceBranch'], 'refs/heads/env/production'),
         in(dependencies.Prepare.result, 'Succeeded', 'SucceededWithIssues'),
         not(in(dependencies.Build.result, 'Failed', 'Canceled')),
-        succeeded('PromotionGate')
+        succeeded('PromotionGate'),
+        eq(${{ parameters.skipInfrastructure }}, false)
+      )
+    variables:
+      - group: redinfo-contabo
+      - group: redinfo-tfstate
+      - name: TF_VERSION
+        value: "1.16.3"
+      - name: TF_DIR
+        value: "$(Build.SourcesDirectory)/infra/terraform"
+      - name: TF_IN_AUTOMATION
+        value: "true"
+      - name: TF_INPUT
+        value: "false"
+    jobs:
+      # ── Plan ──────────────────────────────────────────────────────────────
+      - job: Plan
+        displayName: "terraform plan"
+        # Hosted agent: this talks to the Contabo and AWS APIs and has no
+        # business running on a machine that is itself production.
+        pool:
+          vmImage: "ubuntu-latest"
+        timeoutInMinutes: 30
+        steps:
+          - checkout: self
+            fetchDepth: 1
+
+          - task: Bash@3
+            name: guard
+            displayName: "Stand down if the host has not been provisioned yet"
+            inputs:
+              targetType: "inline"
+              script: |
+                set -euo pipefail
+                # Before the first apply there is nothing to compare against,
+                # and an unconfigured variable group must not be able to block
+                # production deploys. Warn, and let the rest of the run through.
+                if [ -z "${TF_VAR_image_id:-}" ] || [ "${TF_VAR_image_id}" = "REPLACE_ME" ]; then
+                  echo "##vso[task.logissue type=warning]TF_VAR_image_id is not set in the 'redinfo-contabo' variable group, so Terraform cannot plan. Deploys continue; the Contabo host is not being checked."
+                  echo "##vso[task.setvariable variable=SKIP_TF]true"
+                fi
+            env:
+              TF_VAR_image_id: $(TF_VAR_image_id)
+
+          - task: Bash@3
+            displayName: "Install Terraform $(TF_VERSION)"
+            condition: and(succeeded(), ne(variables['SKIP_TF'], 'true'))
+            inputs:
+              targetType: "inline"
+              script: |
+                set -euo pipefail
+                cd "$(Agent.TempDirectory)"
+                curl -fsSLo terraform.zip \
+                  "https://releases.hashicorp.com/terraform/$(TF_VERSION)/terraform_$(TF_VERSION)_linux_amd64.zip"
+                unzip -oq terraform.zip
+                sudo install -m 0755 terraform /usr/local/bin/terraform
+
+          - task: Bash@3
+            displayName: "terraform init, fmt -check, validate"
+            condition: and(succeeded(), ne(variables['SKIP_TF'], 'true'))
+            inputs:
+              targetType: "inline"
+              script: |
+                set -euo pipefail
+                terraform -chdir="$(TF_DIR)" init \
+                  -backend-config="bucket=${TFSTATE_BUCKET}" \
+                  -backend-config="key=${TFSTATE_KEY}" \
+                  -backend-config="region=${TFSTATE_REGION}" \
+                  -backend-config="encrypt=true" \
+                  -backend-config="use_lockfile=true"
+                terraform -chdir="$(TF_DIR)" fmt -check -recursive
+                terraform -chdir="$(TF_DIR)" validate
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              TFSTATE_BUCKET: $(TFSTATE_BUCKET)
+              TFSTATE_KEY: $(TFSTATE_KEY)
+              TFSTATE_REGION: $(TFSTATE_REGION)
+
+          - task: Bash@3
+            displayName: "Report whether a newer Ubuntu image exists"
+            condition: and(succeeded(), ne(variables['SKIP_TF'], 'true'))
+            inputs:
+              targetType: "inline"
+              script: |
+                set -euo pipefail
+                # Informational only. var.image_id is pinned rather than looked
+                # up, precisely so that Contabo publishing a new Ubuntu does
+                # not turn into a plan that proposes reinstalling production.
+                LATEST="$(infra/scripts/contabo-images.sh --latest || true)"
+                echo "pinned image_id:  ${TF_VAR_image_id}"
+                echo "newest Ubuntu LTS: ${LATEST:-lookup failed}"
+                if [ -n "${LATEST}" ] && [ "${LATEST}" != "${TF_VAR_image_id}" ]; then
+                  echo "##vso[task.logissue type=warning]A newer Ubuntu LTS image exists (${LATEST}). Changing TF_VAR_image_id REINSTALLS the host, so only do it deliberately."
+                fi
+            env:
+              CNTB_OAUTH2_CLIENT_ID: $(CNTB_OAUTH2_CLIENT_ID)
+              CNTB_OAUTH2_CLIENT_SECRET: $(CNTB_OAUTH2_CLIENT_SECRET)
+              CNTB_OAUTH2_USER: $(CNTB_OAUTH2_USER)
+              CNTB_OAUTH2_PASS: $(CNTB_OAUTH2_PASS)
+              TF_VAR_image_id: $(TF_VAR_image_id)
+
+          - task: Bash@3
+            name: plan
+            displayName: "terraform plan, and classify what it would do"
+            condition: and(succeeded(), ne(variables['SKIP_TF'], 'true'))
+            inputs:
+              targetType: "inline"
+              script: |
+                set -euo pipefail
+
+                # -detailed-exitcode is the gate for the whole stage:
+                #   0 = host matches the repo, nothing to approve
+                #   2 = changes, a human has to look
+                #   1 = the plan itself failed
+                set +e
+                terraform -chdir="$(TF_DIR)" plan -detailed-exitcode -out=tfplan
+                rc=$?
+                set -e
+
+                if [ "${rc}" = "0" ]; then
+                  echo "No infrastructure changes — the Contabo host matches infra/terraform."
+                  echo "##vso[task.setvariable variable=driftDetected;isOutput=true]false"
+                  exit 0
+                fi
+                if [ "${rc}" != "2" ]; then
+                  echo "##vso[task.logissue type=error]terraform plan failed (exit ${rc})." >&2
+                  exit 1
+                fi
+
+                terraform -chdir="$(TF_DIR)" show -json    tfplan > plan.json
+                terraform -chdir="$(TF_DIR)" show -no-color tfplan > "$(Build.ArtifactStagingDirectory)/plan.txt"
+                cp "$(TF_DIR)/tfplan" "$(Build.ArtifactStagingDirectory)/tfplan"
+
+                echo "##vso[task.setvariable variable=driftDetected;isOutput=true]true"
+
+                python3 - plan.json <<'PY'
+                import json, sys
+
+                # The attributes Contabo cannot change in place. A plan touching
+                # any of them on the instance means applying it wipes and
+                # reprovisions the production host — see infra/README.md.
+                REINSTALL = ("image_id", "ssh_keys", "user_data", "root_password", "default_user")
+
+                plan = json.load(open(sys.argv[1]))
+                changes = [c for c in plan.get("resource_changes", [])
+                           if "no-op" not in c["change"]["actions"]]
+
+                print("Terraform would change the following. Nothing has been applied.\n")
+                for c in changes:
+                    print(f"  {'/'.join(c['change']['actions']):16} {c['address']}")
+                print()
+
+                hits = []
+                for c in changes:
+                    if c["type"] != "contabo_instance":
+                        continue
+                    before = c["change"].get("before") or {}
+                    after  = c["change"].get("after") or {}
+                    hits += [(c["address"], a) for a in REINSTALL if before.get(a) != after.get(a)]
+
+                for address, attr in hits:
+                    print(f"##vso[task.logissue type=warning]REINSTALL: approving this plan wipes and reprovisions {address} — '{attr}' cannot be changed in place.")
+                if hits:
+                    print("##vso[task.logissue type=warning]Read plan.txt in the 'terraform-plan' artifact before approving.")
+                PY
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              TFSTATE_BUCKET: $(TFSTATE_BUCKET)
+              TFSTATE_KEY: $(TFSTATE_KEY)
+              TFSTATE_REGION: $(TFSTATE_REGION)
+              CNTB_OAUTH2_CLIENT_ID: $(CNTB_OAUTH2_CLIENT_ID)
+              CNTB_OAUTH2_CLIENT_SECRET: $(CNTB_OAUTH2_CLIENT_SECRET)
+              CNTB_OAUTH2_USER: $(CNTB_OAUTH2_USER)
+              CNTB_OAUTH2_PASS: $(CNTB_OAUTH2_PASS)
+              TF_VAR_image_id: $(TF_VAR_image_id)
+              TF_VAR_ssh_public_key: $(TF_VAR_ssh_public_key)
+              TF_VAR_existing_instance_id: $(TF_VAR_existing_instance_id)
+
+          # The plan FILE, not just its text: the Apply job below applies this
+          # exact artifact, so that what is approved is what happens.
+          - publish: "$(Build.ArtifactStagingDirectory)"
+            artifact: terraform-plan
+            displayName: "Publish the plan for review and for Apply"
+            condition: and(succeeded(), eq(variables['plan.driftDetected'], 'true'))
+
+      # ── Approve ───────────────────────────────────────────────────────────
+      - job: Approve
+        displayName: "Wait for a human to approve the plan"
+        dependsOn: Plan
+        condition: and(succeeded(), eq(dependencies.Plan.outputs['plan.driftDetected'], 'true'))
+        # Agentless: this consumes no agent while it waits, so a run parked
+        # here overnight is not holding a build machine.
+        pool: server
+        timeoutInMinutes: 1440
+        steps:
+          - task: ManualValidation@0
+            displayName: "Approve the Terraform plan"
+            timeoutInMinutes: 1440
+            inputs:
+              instructions: |
+                Terraform wants to change the Contabo production host.
+
+                Read plan.txt in this run's 'terraform-plan' artifact before deciding,
+                and check the Plan job's log for a REINSTALL warning — that means
+                approving will wipe and reprovision the machine.
+
+                Approve  -> the reviewed plan is applied, then production deploys.
+                Reject   -> nothing is applied and BOTH production deploys are blocked.
+                            To ship code anyway, re-run with skipInfrastructure = true.
+              onTimeout: "reject"
+
+      # ── Apply ─────────────────────────────────────────────────────────────
+      - job: Apply
+        displayName: "terraform apply (the approved plan)"
+        dependsOn: [Plan, Approve]
+        condition: and(succeeded(), eq(dependencies.Plan.outputs['plan.driftDetected'], 'true'))
+        pool:
+          vmImage: "ubuntu-latest"
+        timeoutInMinutes: 60
+        steps:
+          - checkout: self
+            fetchDepth: 1
+
+          - download: current
+            artifact: terraform-plan
+            displayName: "Fetch the approved plan"
+
+          - task: Bash@3
+            displayName: "Install Terraform $(TF_VERSION)"
+            inputs:
+              targetType: "inline"
+              script: |
+                set -euo pipefail
+                cd "$(Agent.TempDirectory)"
+                curl -fsSLo terraform.zip \
+                  "https://releases.hashicorp.com/terraform/$(TF_VERSION)/terraform_$(TF_VERSION)_linux_amd64.zip"
+                unzip -oq terraform.zip
+                sudo install -m 0755 terraform /usr/local/bin/terraform
+
+          - task: Bash@3
+            displayName: "terraform apply"
+            inputs:
+              targetType: "inline"
+              script: |
+                set -euo pipefail
+
+                terraform -chdir="$(TF_DIR)" init \
+                  -backend-config="bucket=${TFSTATE_BUCKET}" \
+                  -backend-config="key=${TFSTATE_KEY}" \
+                  -backend-config="region=${TFSTATE_REGION}" \
+                  -backend-config="encrypt=true" \
+                  -backend-config="use_lockfile=true"
+
+                # The saved plan from the Plan job, byte for byte. Terraform
+                # refuses it if state has moved since — which is the correct
+                # behaviour: re-run, re-read, re-approve.
+                cp "$(Pipeline.Workspace)/terraform-plan/tfplan" "$(TF_DIR)/tfplan"
+                terraform -chdir="$(TF_DIR)" apply tfplan
+                terraform -chdir="$(TF_DIR)" output -json > "$(Build.ArtifactStagingDirectory)/outputs.json"
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              TFSTATE_BUCKET: $(TFSTATE_BUCKET)
+              TFSTATE_KEY: $(TFSTATE_KEY)
+              TFSTATE_REGION: $(TFSTATE_REGION)
+              CNTB_OAUTH2_CLIENT_ID: $(CNTB_OAUTH2_CLIENT_ID)
+              CNTB_OAUTH2_CLIENT_SECRET: $(CNTB_OAUTH2_CLIENT_SECRET)
+              CNTB_OAUTH2_USER: $(CNTB_OAUTH2_USER)
+              CNTB_OAUTH2_PASS: $(CNTB_OAUTH2_PASS)
+              TF_VAR_image_id: $(TF_VAR_image_id)
+              TF_VAR_ssh_public_key: $(TF_VAR_ssh_public_key)
+              TF_VAR_existing_instance_id: $(TF_VAR_existing_instance_id)
+
+          - task: Bash@3
+            displayName: "Host facts, and what still has to be done by hand"
+            condition: succeededOrFailed()
+            inputs:
+              targetType: "inline"
+              script: |
+                set -euo pipefail
+                HOST_IP="$(terraform -chdir="$(TF_DIR)" output -raw ipv4 2>/dev/null || true)"
+                if [ -z "${HOST_IP}" ]; then
+                  echo "No ipv4 in state."
+                  exit 0
+                fi
+
+                echo "=================================================================="
+                echo " Contabo production host: ${HOST_IP}"
+                echo "=================================================================="
+                echo
+                echo " ssh -i <the key from 1Password> admin@${HOST_IP}"
+                echo
+                echo " Things Terraform cannot do, and nothing will flag as missing:"
+                echo
+                echo " 1. Order the Auto Backup add-on in the Contabo panel."
+                echo "    The provider's add_ons block is read-only - it is never"
+                echo "    sent in the create/patch request."
+                echo " 2. Check the invoice. The API has no price field, so a green"
+                echo "    apply says nothing about what was charged or on what term."
+                echo " 3. Whitelist ${HOST_IP} on the Hostinger legacy MySQL. The"
+                echo "    legacy-migration job connects out from this address and"
+                echo "    Hostinger filters by source IP - do this before turning"
+                echo "    background jobs on at cutover."
+                echo " 4. Register the ADO agent, once:"
+                echo "      sudo /opt/redinfo/register-ado-agent.sh <PAT>"
+                echo "    until it is online in the 'contabo-production' pool, the"
+                echo "    Contabo deploy stage has nowhere to run."
+                echo " 5. Set CONTABO_DEPLOY_ENABLED to 'true' in 'redinfo-contabo'"
+                echo "    to bring this host into the production deploy rotation."
+                echo " 6. Set Cloudflare's SSL mode for app.cvpcampo.org to Full."
+                echo "    The firewall opens 443 only, so a Flexible (plain-HTTP to"
+                echo "    the origin on port 80) setup cannot reach this host."
+                echo
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+
+          - publish: "$(Build.ArtifactStagingDirectory)"
+            artifact: terraform-outputs
+            displayName: "Publish the Terraform outputs"
+            condition: succeededOrFailed()
+
+  # ── DeployProduction ─────────────────────────────────────────────────────
+  - stage: DeployProduction
+    displayName: Deploy to production (vm-redcross)
+    dependsOn: [Prepare, Build, PromotionGate, Infrastructure]
+    # Infrastructure is treated like Build: "Failed or Canceled" blocks, and
+    # anything else — succeeded, or skipped because skipInfrastructure was set —
+    # lets the deploy through. A rejected Terraform approval cancels that stage,
+    # so a rejection blocks here.
+    condition: |
+      and(
+        eq(variables['Build.SourceBranch'], 'refs/heads/env/production'),
+        in(dependencies.Prepare.result, 'Succeeded', 'SucceededWithIssues'),
+        not(in(dependencies.Build.result, 'Failed', 'Canceled')),
+        succeeded('PromotionGate'),
+        not(in(dependencies.Infrastructure.result, 'Failed', 'Canceled'))
       )
     variables:
       - group: redinfo-production
@@ -430,11 +804,11 @@ stages:
   #     vm-redcross, so the provider redirects back there. That is expected;
   #     it fixes itself when DNS moves, and nothing here should paper over it.
   #
-  # The host is provisioned separately by .ado/infrastructure.yml — this
-  # pipeline only ever deploys onto it.
+  # The host itself is provisioned by the Infrastructure stage above, in this
+  # same pipeline and this same run.
   - stage: DeployProductionContabo
     displayName: Deploy to production (Contabo host)
-    dependsOn: [Prepare, Build, PromotionGate]
+    dependsOn: [Prepare, Build, PromotionGate, Infrastructure]
     # Same gate as DeployProduction, plus a switch. CONTABO_DEPLOY_ENABLED
     # lives in the `redinfo-contabo` variable group so the host can be brought
     # into (or dropped out of) the production rotation by editing one variable,
@@ -444,12 +818,17 @@ stages:
     # online in the `contabo-production` pool — a stage queued against an empty
     # pool sits there until it times out. It cannot affect the vm-redcross
     # deploy either way: that is a separate stage with no dependency on this.
+    # Infrastructure is treated like Build: "Failed or Canceled" blocks, and
+    # anything else — succeeded, or skipped because skipInfrastructure was set —
+    # lets the deploy through. A rejected Terraform approval cancels that stage,
+    # so a rejection blocks here.
     condition: |
       and(
         eq(variables['Build.SourceBranch'], 'refs/heads/env/production'),
         in(dependencies.Prepare.result, 'Succeeded', 'SucceededWithIssues'),
         not(in(dependencies.Build.result, 'Failed', 'Canceled')),
         succeeded('PromotionGate'),
+        not(in(dependencies.Infrastructure.result, 'Failed', 'Canceled')),
         or(
           eq(variables['CONTABO_DEPLOY_ENABLED'], 'true'),
           eq('${{ parameters.deployToContabo }}', true)
@@ -550,7 +929,7 @@ stages:
 
                 HOST_IP="$(terraform -chdir="$(TF_DIR)" output -raw ipv4)"
                 if [ -z "${HOST_IP}" ] || [ "${HOST_IP}" = "null" ]; then
-                  echo "##vso[task.logissue type=error]Terraform state has no ipv4 output — has infrastructure.yml ever been applied?" >&2
+                  echo "##vso[task.logissue type=error]Terraform state has no ipv4 output — has the Infrastructure stage ever applied?" >&2
                   exit 1
                 fi
                 echo "##vso[task.setvariable variable=HOST_IP]${HOST_IP}"
@@ -584,187 +963,6 @@ stages:
                     exit 1
                   fi
                 done
-
-  # ── TerraformDrift — read-only warning, never an action, never a gate ──────
-  #
-  # Closes one specific gap: nothing else tells you that a merged change to
-  # infra/terraform has left production one `apply` away from being rebuilt.
-  # Four attributes of contabo_instance REINSTALL the host when they change,
-  # and `user_data` is one of them — so editing cloud-init.yaml.tftpl is, to
-  # Terraform, a change to the machine itself. This stage says so, out loud,
-  # at the moment the change reaches production.
-  #
-  # It only ever runs `terraform plan`. Apply and destroy live in
-  # .ado/infrastructure.yml, behind a human picking the verb and ticking a
-  # confirmation box, and that separation is the point: a push must never be
-  # able to rebuild the production host as a side effect of shipping code.
-  #
-  # Nothing depends on this stage, exactly like GenerateManuals. It runs in
-  # parallel with the deploy stages and cannot delay or block them; a failure
-  # here is visible in the run and affects nothing else.
-  #
-  # NOT gated on "did infra/terraform/** change in this commit", which is the
-  # obvious design and is worse here for two reasons: `Prepare` checks out
-  # with fetchDepth 1, so there is no reliable parent to diff against when a
-  # push contains several commits; and a file-diff gate is blind to drift that
-  # did not come from this repo at all — someone editing the firewall or the
-  # instance in the Contabo panel. The plan's own exit code is both the more
-  # accurate gate and the cheaper one: no changes, one line of output, done.
-  - stage: TerraformDrift
-    displayName: Infrastructure drift check (plan only)
-    dependsOn: Prepare
-    condition: |
-      and(
-        eq(variables['Build.SourceBranch'], 'refs/heads/env/production'),
-        in(dependencies.Prepare.result, 'Succeeded', 'SucceededWithIssues')
-      )
-    variables:
-      - group: redinfo-contabo
-      - group: redinfo-tfstate
-      - name: TF_VERSION
-        value: "1.16.3"
-      - name: TF_DIR
-        value: "$(Build.SourcesDirectory)/infra/terraform"
-      - name: TF_IN_AUTOMATION
-        value: "true"
-      - name: TF_INPUT
-        value: "false"
-    jobs:
-      - job: Plan
-        displayName: "terraform plan (read-only)"
-        # Hosted agent: this talks to the Contabo and AWS APIs and must not run
-        # on a machine that is itself production.
-        pool:
-          vmImage: "ubuntu-latest"
-        timeoutInMinutes: 20
-        steps:
-          - checkout: self
-            fetchDepth: 1
-
-          - task: Bash@3
-            displayName: "Skip if the host has not been provisioned yet"
-            inputs:
-              targetType: "inline"
-              script: |
-                set -euo pipefail
-                if [ -z "${TF_VAR_image_id:-}" ] || [ "${TF_VAR_image_id}" = "REPLACE_ME" ]; then
-                  echo "##vso[task.logissue type=warning]TF_VAR_image_id is unset - the Contabo host has not been provisioned yet, so there is no drift to check. Run .ado/infrastructure.yml first."
-                  echo "##vso[task.setvariable variable=SKIP_DRIFT]true"
-                fi
-            env:
-              TF_VAR_image_id: $(TF_VAR_image_id)
-
-          - task: Bash@3
-            displayName: "Install Terraform $(TF_VERSION)"
-            condition: and(succeeded(), ne(variables['SKIP_DRIFT'], 'true'))
-            inputs:
-              targetType: "inline"
-              script: |
-                set -euo pipefail
-                cd "$(Agent.TempDirectory)"
-                curl -fsSLo terraform.zip \
-                  "https://releases.hashicorp.com/terraform/$(TF_VERSION)/terraform_$(TF_VERSION)_linux_amd64.zip"
-                unzip -oq terraform.zip
-                sudo install -m 0755 terraform /usr/local/bin/terraform
-
-          - task: Bash@3
-            displayName: "terraform plan, and say what it would do"
-            condition: and(succeeded(), ne(variables['SKIP_DRIFT'], 'true'))
-            inputs:
-              targetType: "inline"
-              script: |
-                set -euo pipefail
-
-                terraform -chdir="$(TF_DIR)" init \
-                  -backend-config="bucket=${TFSTATE_BUCKET}" \
-                  -backend-config="key=${TFSTATE_KEY}" \
-                  -backend-config="region=${TFSTATE_REGION}" \
-                  -backend-config="encrypt=true" \
-                  -backend-config="use_lockfile=true"
-
-                # -lock=false because this is read-only and runs on every
-                # production deploy: it must never sit waiting on, or block, a
-                # real apply someone is running from the infrastructure
-                # pipeline. -detailed-exitcode is the gate: 0 = no changes,
-                # 2 = changes, 1 = genuine error.
-                set +e
-                terraform -chdir="$(TF_DIR)" plan -lock=false -detailed-exitcode -out=tfplan
-                rc=$?
-                set -e
-
-                if [ "${rc}" = "0" ]; then
-                  echo "No infrastructure drift: the Contabo host matches infra/terraform."
-                  exit 0
-                fi
-                if [ "${rc}" != "2" ]; then
-                  echo "##vso[task.logissue type=error]terraform plan failed (exit ${rc}). This did not affect the deploy."
-                  exit 1
-                fi
-
-                terraform -chdir="$(TF_DIR)" show -json tfplan > plan.json
-                terraform -chdir="$(TF_DIR)" show -no-color tfplan > "$(Build.ArtifactStagingDirectory)/drift-plan.txt"
-
-                python3 - plan.json <<'PY'
-                import json, sys
-
-                # The four attributes Contabo cannot change in place. A plan
-                # touching any of them on the instance means the next apply
-                # wipes and reprovisions the production host - see
-                # infra/README.md. default_user is included because the
-                # provider treats it the same way.
-                REINSTALL = ("image_id", "ssh_keys", "user_data", "root_password", "default_user")
-
-                plan = json.load(open(sys.argv[1]))
-                changes = [c for c in plan.get("resource_changes", [])
-                           if "no-op" not in c["change"]["actions"]]
-
-                if not changes:
-                    print("Plan reports changes but no resource actions - nothing to report.")
-                    sys.exit(0)
-
-                print("The current infra/terraform does NOT match the running host.")
-                print("Nothing has been applied; this is a warning only.\n")
-
-                reinstall_hit = []
-                for c in changes:
-                    actions = "/".join(c["change"]["actions"])
-                    print(f"  {actions:16} {c['address']}")
-                    if c["type"] != "contabo_instance":
-                        continue
-                    before = c["change"].get("before") or {}
-                    after = c["change"].get("after") or {}
-                    for attr in REINSTALL:
-                        if before.get(attr) != after.get(attr):
-                            reinstall_hit.append((c["address"], attr))
-
-                print()
-                if reinstall_hit:
-                    for address, attr in reinstall_hit:
-                        print(f"##vso[task.logissue type=warning]REINSTALL: applying this plan would wipe and reprovision {address} - '{attr}' cannot be changed in place.")
-                    print("##vso[task.logissue type=warning]Do not run infrastructure.yml apply against a host that is serving production until this is understood. The full plan is in the 'terraform-drift' artifact.")
-                else:
-                    print("##vso[task.logissue type=warning]Infrastructure drift detected. No reinstall-triggering attribute is affected. Full plan in the 'terraform-drift' artifact.")
-                PY
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              TFSTATE_BUCKET: $(TFSTATE_BUCKET)
-              TFSTATE_KEY: $(TFSTATE_KEY)
-              TFSTATE_REGION: $(TFSTATE_REGION)
-              CNTB_OAUTH2_CLIENT_ID: $(CNTB_OAUTH2_CLIENT_ID)
-              CNTB_OAUTH2_CLIENT_SECRET: $(CNTB_OAUTH2_CLIENT_SECRET)
-              CNTB_OAUTH2_USER: $(CNTB_OAUTH2_USER)
-              CNTB_OAUTH2_PASS: $(CNTB_OAUTH2_PASS)
-              TF_VAR_image_id: $(TF_VAR_image_id)
-              TF_VAR_ssh_public_key: $(TF_VAR_ssh_public_key)
-              TF_VAR_existing_instance_id: $(TF_VAR_existing_instance_id)
-
-          - task: PublishBuildArtifacts@1
-            displayName: "Publish the drift plan"
-            condition: and(succeededOrFailed(), ne(variables['SKIP_DRIFT'], 'true'))
-            inputs:
-              PathtoPublish: "$(Build.ArtifactStagingDirectory)"
-              ArtifactName: terraform-drift
 
   # ── GenerateManuals — routed by commit message, never gates a deploy ───────
   - stage: GenerateManuals
