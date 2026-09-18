@@ -296,6 +296,23 @@ variable "firewall_name" {
   default     = "CVP Portal - Production"
 }
 
+variable "firewall_import_id" {
+  description = <<-EOT
+    Id of an existing Contabo firewall to adopt instead of creating a new one.
+
+    The firewall for this host was built by hand in the panel before Terraform
+    existed for it, so without this the first apply would create a *second*
+    firewall under the same name and leave the hand-made one with no instances
+    assigned. The import block in main.tf brings it under management instead;
+    it shows up in the plan as an import, and is a no-op on every apply after
+    the first.
+
+    Set to "" to create a fresh firewall rather than adopt one.
+  EOT
+  type        = string
+  default     = "fd47c9cc-db47-4647-bac8-24ff599478ab"
+}
+
 variable "public_tcp_ports" {
   description = <<-EOT
     TCP ports the cloud firewall accepts from anywhere. 443 only, matching the
