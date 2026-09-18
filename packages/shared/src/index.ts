@@ -8180,8 +8180,8 @@ export function validateCancelTransportLeg(input: CancelTransportLegInput): stri
 // a patient's round journey: a leg's `PICKUP`/`DROPOFF` pair moves between
 // trips in one call (`AssignTransportLegInput`), so the outbound and return
 // legs of the same patient on the same day may sit on different trips, with
-// different vehicles and different crews. `WAIT`/`RETURN_TO_BASE` stops
-// carry no leg at all.
+// different vehicles and different crews. `WAIT`/`RETURN_TO_BASE`/
+// `DEPART_FROM_BASE` stops carry no leg at all.
 //
 // Validation follows the override precedent used everywhere else in this
 // schema (`ScheduleAssignment.isOverride`/`certificationOverrideReason`,
@@ -8202,6 +8202,10 @@ export enum TripStopKind {
   DROPOFF = 'DROPOFF',
   WAIT = 'WAIT',
   RETURN_TO_BASE = 'RETURN_TO_BASE',
+  /** The vehicle leaving the delegation's own base to start the day's first
+   * journey — `RETURN_TO_BASE`'s counterpart at the other end of the day.
+   * Carries no leg, same as `RETURN_TO_BASE`/`WAIT`. */
+  DEPART_FROM_BASE = 'DEPART_FROM_BASE',
 }
 
 /**
@@ -8317,22 +8321,27 @@ export function validateAssignTransportLeg(input: AssignTransportLegInput): stri
   return null;
 }
 
-/** `POST /trips/:id/stops` — a `WAIT` or `RETURN_TO_BASE` stop, the only two
- * kinds ever added directly; `PICKUP`/`DROPOFF` only ever arrive as a pair,
- * via `AssignTransportLegInput`. */
+/** `POST /trips/:id/stops` — a `WAIT`, `RETURN_TO_BASE` or `DEPART_FROM_BASE`
+ * stop, the only three kinds ever added directly; `PICKUP`/`DROPOFF` only
+ * ever arrive as a pair, via `AssignTransportLegInput`. */
 export interface CreateTripStopInput {
-  kind: TripStopKind.WAIT | TripStopKind.RETURN_TO_BASE;
+  kind: TripStopKind.WAIT | TripStopKind.RETURN_TO_BASE | TripStopKind.DEPART_FROM_BASE;
   plannedAt: string;
   /** Required for `WAIT` — the facility being waited at. Ignored for
-   * `RETURN_TO_BASE`, which always targets the delegation's own base. */
+   * `RETURN_TO_BASE`/`DEPART_FROM_BASE`, which always target the
+   * delegation's own base. */
   facilityId?: string | null;
   dwellDecision?: TripStopDwell | null;
   dwellMinutes?: number | null;
 }
 
 export function validateCreateTripStop(input: CreateTripStopInput): string | null {
-  if (input.kind !== TripStopKind.WAIT && input.kind !== TripStopKind.RETURN_TO_BASE) {
-    return 'Only a WAIT or RETURN_TO_BASE stop may be added directly.';
+  if (
+    input.kind !== TripStopKind.WAIT &&
+    input.kind !== TripStopKind.RETURN_TO_BASE &&
+    input.kind !== TripStopKind.DEPART_FROM_BASE
+  ) {
+    return 'Only a WAIT, RETURN_TO_BASE or DEPART_FROM_BASE stop may be added directly.';
   }
   if (!input.plannedAt) return 'Give the planned time.';
   if (input.kind === TripStopKind.WAIT && !input.facilityId) {

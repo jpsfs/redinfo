@@ -28,6 +28,7 @@ const STOP_ICON: Record<TripStopKind, typeof PersonPinCircleIcon> = {
   [TripStopKind.DROPOFF]: LocalHospitalIcon,
   [TripStopKind.WAIT]: HourglassEmptyIcon,
   [TripStopKind.RETURN_TO_BASE]: HomeIcon,
+  [TripStopKind.DEPART_FROM_BASE]: HomeIcon,
 };
 
 const StopRow = ({ stop }: { stop: CrewManifestStop }) => {

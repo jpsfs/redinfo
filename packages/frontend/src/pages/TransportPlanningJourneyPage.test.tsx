@@ -183,7 +183,10 @@ describe('TransportPlanningJourneyPage', () => {
     expect(screen.getByText('AA-11-BB')).toBeInTheDocument();
     // Once per stop row — the pickup and the dropoff both name the leg's patient.
     expect(screen.getAllByText('Maria Costa')).toHaveLength(2);
-    expect(screen.getAllByText('30.0 km')).toHaveLength(2);
+    // The leg's own routed distance is shown once, on the dropoff row — not
+    // repeated on the pickup row too (that read as two different figures
+    // that happened to agree, when it was ever one number for the leg).
+    expect(screen.getAllByText('30.0 km')).toHaveLength(1);
   });
 
   it('degrades the patient name the same way the board does, without hiding the stop', async () => {

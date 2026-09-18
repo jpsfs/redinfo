@@ -143,7 +143,7 @@ export class TripsController {
     return this.stops.unassignLeg(tripId, legId);
   }
 
-  /** A `WAIT`/`RETURN_TO_BASE` stop — see `TripStopsService.addStop`. */
+  /** A `WAIT`/`RETURN_TO_BASE`/`DEPART_FROM_BASE` stop — see `TripStopsService.addStop`. */
   @Post(':id/stops')
   @Actions(Action.PLAN_TRANSPORT_TRIPS)
   addStop(@Param('id') tripId: string, @Body() dto: CreateTripStopDto) {

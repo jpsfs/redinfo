@@ -25,10 +25,13 @@ import {
   TransportRequestOccurrenceType,
   TransportRequestVehicleType,
   TripStatus,
+  TripStopKind,
   UserRole,
+  VehicleOccupancySource,
   VehicleType,
   VictimDestinationKind,
   VolunteerActivityType,
+  computeTripOccupancyWindow,
   emergencyWindowName,
   foldForSearch,
   toMinuteOfDay,
@@ -2019,7 +2022,7 @@ async function main() {
     notes?: string;
     crew: { userId: string; role: CertificationType }[];
     legs: { legId: string; pickupPlannedAt: string; dropoffPlannedAt: string }[];
-  }): Promise<void> {
+  }): Promise<string> {
     const trip = await prisma.trip.create({
       data: {
         date: parseIsoDate(input.date),
@@ -2050,6 +2053,7 @@ async function main() {
         dropoffPlannedAt: leg.dropoffPlannedAt,
       });
     }
+    return trip.id;
   }
 
   /** A request's `OUTBOUND`+`RETURN` legs, grouped by date, keeping only
@@ -2175,8 +2179,27 @@ async function main() {
   });
 
   /**
-   * Minutes on the road between two points, straight-line at 55 km/h with a
-   * 1.3 detour factor.
+   * Straight-line kilometres between two points, with a 1.3 detour factor —
+   * the same crude-on-purpose approximation `travelMinutesBetween` turns
+   * into a duration; also used on its own to decide whether two groups'
+   * destinations are close enough to chain onto one journey (below). Null
+   * when either point isn't geocoded, since "close enough" can't be judged
+   * without both doors.
+   */
+  const beelineKm = (
+    from: { latitude: number | null; longitude: number | null },
+    to: { latitude: number | null; longitude: number | null },
+  ): number | null => {
+    if (from.latitude == null || from.longitude == null || to.latitude == null || to.longitude == null) return null;
+    const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
+    const meanLatitude = toRadians((from.latitude + to.latitude) / 2);
+    const dx = toRadians(to.longitude - from.longitude) * Math.cos(meanLatitude) * 6371;
+    const dy = toRadians(to.latitude - from.latitude) * 6371;
+    return Math.hypot(dx, dy) * 1.3;
+  };
+
+  /**
+   * Minutes on the road between two points, straight-line at 55 km/h.
    *
    * Crude on purpose: the real number comes from OSRM at read time
    * (`TripLegTravelService`), and a seed that called it would need the
@@ -2189,12 +2212,8 @@ async function main() {
     from: { latitude: number | null; longitude: number | null },
     to: { latitude: number | null; longitude: number | null },
   ): number => {
-    if (from.latitude == null || from.longitude == null || to.latitude == null || to.longitude == null) return 20;
-    const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
-    const meanLatitude = toRadians((from.latitude + to.latitude) / 2);
-    const dx = toRadians(to.longitude - from.longitude) * Math.cos(meanLatitude) * 6371;
-    const dy = toRadians(to.latitude - from.latitude) * 6371;
-    const kilometres = Math.hypot(dx, dy) * 1.3;
+    const kilometres = beelineKm(from, to);
+    if (kilometres == null) return 20;
     return Math.max(10, Math.round((kilometres / 55) * 60));
   };
 
@@ -2236,6 +2255,12 @@ async function main() {
     ).map((facility) => [facility.id, facility]),
   );
 
+  // Fetched once and reused across every date below — the same base
+  // `DEPART_FROM_BASE`/`RETURN_TO_BASE` target every day's first and last
+  // journey, so there is no reason to re-read `DelegationSettings` per date.
+  const base = await delegationSettingsForFacilities.get();
+  const basePoint = { latitude: base.baseLatitude, longitude: base.baseLongitude };
+
   /** Everything a chunk needs to know about one leg, resolved once. */
   interface PlannableLeg {
     id: string;
@@ -2248,6 +2273,37 @@ async function main() {
      * direction the leg runs in. */
     door: { latitude: number | null; longitude: number | null };
   }
+
+  /** One already-built chunk trip, kept around after `buildTrip` so the
+   * merge pass below can chain a same-vehicle, same-direction, nearby-in-
+   * time-and-space trip onto it instead of leaving the vehicle's day as a
+   * pile of separate single-destination journeys — see the "Whole days
+   * planned onto the board" banner comment for why that matters. */
+  interface BuiltTripMeta {
+    tripId: string;
+    vehicleId: string;
+    direction: LegDirection;
+    /** A stretcher or a Porto-bound run — never a merge candidate, on either
+     * side of the pair, for the same reason it was built solo to begin with. */
+    solo: boolean;
+    legTimes: { legId: string; pickupPlannedAt: string; dropoffPlannedAt: string }[];
+    firstPickupAt: number;
+    lastStopAt: number;
+    /** Where the vehicle actually is right after its first pickup / right
+     * before its last stop — the two ends a `DEPART_FROM_BASE`/
+     * `RETURN_TO_BASE` stop or a merge candidate's distance is judged
+     * against. */
+    firstDoor: { latitude: number | null; longitude: number | null };
+    lastAnchor: { latitude: number | null; longitude: number | null };
+    demand: { seated: number; wheelchairs: number; stretchers: number };
+  }
+
+  // Two groups chain onto one journey only when the gap between them is a
+  // plausible in-between drive, not a lunch break or a different round
+  // entirely, and their destinations are close enough that the detour reads
+  // as "on the way" rather than a cross-district special trip.
+  const MERGE_MAX_GAP_MINUTES = 45;
+  const MERGE_MAX_DISTANCE_KM = 20;
 
   async function planDay(date: string, status: TripStatus): Promise<{ journeys: number; vehicleIds: Set<string> }> {
     const unassigned = await transportLegs.findUnassignedForDate(date);
@@ -2298,6 +2354,9 @@ async function main() {
 
     let journeys = 0;
     const vehicleIds = new Set<string>();
+    // One entry per trip actually built below — fed to the merge pass and
+    // the base depart/return pass once every group's chunks are placed.
+    const builtTrips: BuiltTripMeta[] = [];
     const ordered = [...groups.values()].sort((a, b) => a.anchorAt.getTime() - b.anchorAt.getTime());
     for (const group of ordered) {
       // Porto is an hour each way: that patient travels alone, because
@@ -2384,7 +2443,7 @@ async function main() {
         // that was never free.
         if (!vehicle) continue;
 
-        await buildTrip({
+        const tripId = await buildTrip({
           vehicleId: vehicle.id,
           date,
           status,
@@ -2395,9 +2454,181 @@ async function main() {
         busy.set(vehicle.id, [...(busy.get(vehicle.id) ?? []), { from, to }]);
         vehicleIds.add(vehicle.id);
         journeys += 1;
+
+        // Where the vehicle actually is right after its first stop and right
+        // before its last: an outbound chunk's first stop is the earliest
+        // patient's own door and its last is the shared destination facility
+        // (every leg in the group drops off there); a return chunk runs the
+        // other way — first stop is that same shared facility, and the last
+        // is whichever patient's own door the latest dropoff belongs to.
+        const facilityPoint = facility ? { latitude: facility.latitude, longitude: facility.longitude } : { latitude: null, longitude: null };
+        const dropoffTimes = legTimes.map((legTime) => new Date(legTime.dropoffPlannedAt).getTime());
+        const lastDropoffIndex = dropoffTimes.indexOf(Math.max(...dropoffTimes));
+        builtTrips.push({
+          tripId,
+          vehicleId: vehicle.id,
+          direction: group.direction,
+          solo: soloRun || stretchers > 0,
+          legTimes,
+          firstPickupAt: Math.min(...legTimes.map((legTime) => new Date(legTime.pickupPlannedAt).getTime())),
+          lastStopAt: dropoffTimes[lastDropoffIndex],
+          firstDoor: outbound ? chunk[0].door : facilityPoint,
+          lastAnchor: outbound ? facilityPoint : chunk[lastDropoffIndex].door,
+          demand: { seated, wheelchairs, stretchers },
+        });
       }
     }
-    return { journeys, vehicleIds };
+
+    const mergedCount = await mergeChainedTrips(builtTrips);
+    await addBaseStops(builtTrips);
+    return { journeys: journeys - mergedCount, vehicleIds };
+  }
+
+  /**
+   * Chains a vehicle's next single-destination journey directly onto its
+   * previous one when the two are close enough in time and space to read as
+   * "picked up a few more people along the way to a second destination"
+   * rather than two unrelated rounds — see #219's own worked example (a run
+   * that starts in one locality, collects several people, and drops some at
+   * one facility and the rest at another). Reuses `assignLegToTrip`'s own
+   * move semantics rather than a bespoke SQL move: the absorbed trip ends up
+   * with no stops left, which is exactly the condition `syncOccupancy`
+   * already tears its `VehicleOccupancy` interval down for, and it is then
+   * deleted outright.
+   *
+   * Deliberately only chains *adjacent* pairs, never re-scans further ahead
+   * — a modest three-journey vehicle-day is exactly the target, not an
+   * aggressive route optimiser trying every combination.
+   */
+  async function mergeChainedTrips(builtTrips: BuiltTripMeta[]): Promise<number> {
+    const byVehicle = new Map<string, BuiltTripMeta[]>();
+    for (const trip of builtTrips) byVehicle.set(trip.vehicleId, [...(byVehicle.get(trip.vehicleId) ?? []), trip]);
+
+    let mergedCount = 0;
+    for (const [vehicleId, trips] of byVehicle) {
+      trips.sort((a, b) => a.firstPickupAt - b.firstPickupAt);
+      const vehicle = fleet.find((candidate) => candidate.id === vehicleId);
+      if (!vehicle) continue;
+
+      let current = trips[0];
+      for (let index = 1; index < trips.length; index++) {
+        const next = trips[index];
+        const gapMinutes = (next.firstPickupAt - current.lastStopAt) / 60_000;
+        const distanceKm = beelineKm(current.lastAnchor, next.firstDoor);
+        const combinedDemand = {
+          seated: current.demand.seated + next.demand.seated,
+          wheelchairs: current.demand.wheelchairs + next.demand.wheelchairs,
+          stretchers: current.demand.stretchers + next.demand.stretchers,
+        };
+        const canChain =
+          !current.solo &&
+          !next.solo &&
+          current.direction === next.direction &&
+          gapMinutes >= 0 &&
+          gapMinutes <= MERGE_MAX_GAP_MINUTES &&
+          distanceKm != null &&
+          distanceKm <= MERGE_MAX_DISTANCE_KM &&
+          combinedDemand.seated <= vehicle.seatedCapacity &&
+          combinedDemand.wheelchairs <= vehicle.wheelchairPositions &&
+          combinedDemand.stretchers <= vehicle.stretcherPositions;
+
+        if (!canChain) {
+          current = next;
+          continue;
+        }
+
+        // A raw stop move, not `assignLegToTrip`-per-leg: moving one leg at
+        // a time would widen `current`'s occupancy window before `next`'s
+        // own shrinks back down, and since every dropoff in an outbound
+        // chunk shares one identical instant (the whole group's shared
+        // appointment time, minus ten minutes), that transient state
+        // reliably self-conflicts with the vehicle's own still-there `next`
+        // booking — a false "double booking" `assignLegToTrip`'s public
+        // per-leg contract has no way to see past. Moving every stop in one
+        // transaction and recomputing `current`'s occupancy once, only after
+        // `next`'s own booking is gone, never passes through that state.
+        const nextStops = await prisma.tripStop.findMany({ where: { tripId: next.tripId }, orderBy: { sequence: 'asc' } });
+        const currentMaxSequence = (await prisma.tripStop.aggregate({ where: { tripId: current.tripId }, _max: { sequence: true } }))._max.sequence ?? 0;
+        await prisma.$transaction(
+          nextStops.map((stop, index) =>
+            prisma.tripStop.update({ where: { id: stop.id }, data: { tripId: current.tripId, sequence: currentMaxSequence + index + 1 } }),
+          ),
+        );
+        await vehicleOccupancy.removeForSource(VehicleOccupancySource.TRANSPORT_TRIP, next.tripId);
+        const currentStops = await prisma.tripStop.findMany({ where: { tripId: current.tripId } });
+        const window = computeTripOccupancyWindow(
+          currentStops.map((stop) => ({ plannedAt: stop.plannedAt.toISOString(), dwellMinutes: stop.dwellMinutes })),
+        );
+        await vehicleOccupancy.rebookForSource(VehicleOccupancySource.TRANSPORT_TRIP, current.tripId, {
+          vehicleId: current.vehicleId,
+          startsAt: new Date(window.startsAt),
+          endsAt: new Date(window.endsAt),
+        });
+        await prisma.trip.delete({ where: { id: next.tripId } });
+        mergedCount += 1;
+
+        current.legTimes = [...current.legTimes, ...next.legTimes];
+        current.lastStopAt = next.lastStopAt;
+        current.lastAnchor = next.lastAnchor;
+        current.demand = combinedDemand;
+        // `next`'s trip row is gone — empty its own record so `addBaseStops`
+        // (which shares this same `builtTrips` array) skips it rather than
+        // adding a base stop to a deleted trip.
+        next.legTimes = [];
+        // `current` absorbed `next` and keeps scanning for a third journey
+        // to chain on — `current` itself doesn't advance.
+      }
+    }
+    return mergedCount;
+  }
+
+  /**
+   * The day's first journey leaves base to reach its first stop, and the
+   * last one returns to it afterwards (#247's own seed-realism ask) — never
+   * every journey in between, since a vehicle routinely goes straight from
+   * dropping people off at one facility to the next journey's first pickup
+   * without swinging back to Campo in the middle of the day. Scoped to each
+   * vehicle's own **surviving** trips, so a trip `mergeChainedTrips` deleted
+   * is never targeted.
+   */
+  async function addBaseStops(builtTrips: BuiltTripMeta[]): Promise<void> {
+    const byVehicle = new Map<string, BuiltTripMeta[]>();
+    for (const trip of builtTrips) byVehicle.set(trip.vehicleId, [...(byVehicle.get(trip.vehicleId) ?? []), trip]);
+
+    for (const trips of byVehicle.values()) {
+      // A trip `mergeChainedTrips` absorbed into another has its own
+      // `legTimes` emptied out — see that function's own comment — which is
+      // what excludes it here without needing a second, parallel "was this
+      // one deleted" flag.
+      const surviving = trips.filter((trip) => trip.legTimes.length > 0);
+      if (surviving.length === 0) continue;
+      surviving.sort((a, b) => a.firstPickupAt - b.firstPickupAt);
+      const first = surviving[0];
+      const last = surviving[surviving.length - 1];
+
+      // `addStop` has no override-reason parameter to fall back on (unlike
+      // `buildTrip`'s crew add above) — widening a boundary trip's own
+      // occupancy window by a plausible base-to-door travel time almost
+      // never collides with anything else on a fixture vehicle's day, but a
+      // conflict here is a missing base stop, not a reason to abort the
+      // whole date's plan.
+      try {
+        await tripStopsService.addStop(first.tripId, {
+          kind: TripStopKind.DEPART_FROM_BASE,
+          plannedAt: new Date(first.firstPickupAt - travelMinutesBetween(basePoint, first.firstDoor) * 60_000).toISOString(),
+        });
+      } catch (cause) {
+        console.warn(`  (skipped DEPART_FROM_BASE for trip ${first.tripId}: ${String(cause)})`);
+      }
+      try {
+        await tripStopsService.addStop(last.tripId, {
+          kind: TripStopKind.RETURN_TO_BASE,
+          plannedAt: new Date(last.lastStopAt + travelMinutesBetween(last.lastAnchor, basePoint) * 60_000).toISOString(),
+        });
+      } catch (cause) {
+        console.warn(`  (skipped RETURN_TO_BASE for trip ${last.tripId}: ${String(cause)})`);
+      }
+    }
   }
 
   // Every work day in the horizon gets a real plan, not just a handful of

@@ -1732,6 +1732,7 @@ const MESSAGES = {
   'myTransportTrips.stopKind.DROPOFF': { pt: 'Entrega', en: 'Drop-off' },
   'myTransportTrips.stopKind.WAIT': { pt: 'Espera', en: 'Wait' },
   'myTransportTrips.stopKind.RETURN_TO_BASE': { pt: 'Regresso à base', en: 'Return to base' },
+  'myTransportTrips.stopKind.DEPART_FROM_BASE': { pt: 'Partida da base', en: 'Depart from base' },
   'myTransportTrips.waitsHere': { pt: 'A equipa espera aqui', en: 'Crew waits here' },
   'myTransportTrips.treatmentWindow': {
     pt: 'Tratamento: %{start} – %{end}',
@@ -3019,6 +3020,7 @@ const MESSAGES = {
   'transportPlanning.destinationUnknown': { pt: 'Sem destino', en: 'No destination' },
   'transportPlanning.destinationPlusMore': { pt: '%{name} +%{count}', en: '%{name} +%{count}' },
   'transportPlanning.returnToBaseLabel': { pt: 'Regresso à base', en: 'Return to base' },
+  'transportPlanning.departFromBaseLabel': { pt: 'Partida da base', en: 'Depart from base' },
   'transportPlanning.onboardLabel': { pt: 'Na viatura', en: 'In the vehicle' },
 
   // Assign/reassign dialog — also the keyboard equivalent to dragging (#235's
@@ -3169,6 +3171,7 @@ const MESSAGES = {
   'transportPlanning.inspectorStopDropoff': { pt: 'Entrega', en: 'Drop-off' },
   'transportPlanning.inspectorStopWait': { pt: 'Espera', en: 'Wait' },
   'transportPlanning.inspectorStopReturnToBase': { pt: 'Regresso à base', en: 'Return to base' },
+  'transportPlanning.inspectorStopDepartFromBase': { pt: 'Partida da base', en: 'Depart from base' },
   'transportPlanning.inspectorEditCrew': { pt: 'Editar equipa', en: 'Edit crew' },
   'transportPlanning.inspectorOpenJourney': { pt: 'Abrir a viagem', en: 'Open journey' },
 
@@ -3213,6 +3216,9 @@ const MESSAGES = {
   'transportJourney.crewCompleteBadge': { pt: 'Tripulação completa', en: 'Crew complete' },
   'transportJourney.crewIncompleteBadge': { pt: 'Tripulação incompleta', en: 'Crew incomplete' },
   'transportJourney.stopsTitle': { pt: 'Paragens', en: 'Stops' },
+  'transportJourney.stopsPickupTitle': { pt: 'Recolhas', en: 'Pickups' },
+  'transportJourney.stopsDropoffTitle': { pt: 'Entregas', en: 'Deliveries' },
+  'transportJourney.stopsOtherTitle': { pt: 'Outras paragens', en: 'Other stops' },
   'transportJourney.stopColumnTime': { pt: 'Hora', en: 'Time' },
   'transportJourney.stopColumnKind': { pt: 'Paragem', en: 'Stop' },
   'transportJourney.stopColumnPatient': { pt: 'Pessoa', en: 'Person' },
@@ -3222,6 +3228,7 @@ const MESSAGES = {
   'transportJourney.stopDropoff': { pt: 'Entrega', en: 'Drop-off' },
   'transportJourney.stopWait': { pt: 'Espera', en: 'Wait' },
   'transportJourney.stopReturnToBase': { pt: 'Regresso à base', en: 'Return to base' },
+  'transportJourney.stopDepartFromBase': { pt: 'Partida da base', en: 'Depart from base' },
   'transportJourney.patientNameHidden': { pt: '(identidade não visível)', en: '(identity hidden)' },
   'transportJourney.dwellDecision.WAIT': { pt: 'A equipa espera no local', en: 'Crew waits on site' },
   'transportJourney.dwellDecision.RELEASE': { pt: 'Viatura libertada', en: 'Vehicle released' },

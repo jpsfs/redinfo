@@ -16,6 +16,7 @@ const STOP_LABEL_KEY: Record<TripStopKind, string> = {
   [TripStopKind.DROPOFF]: 'transportPlanning.inspectorStopDropoff',
   [TripStopKind.WAIT]: 'transportPlanning.inspectorStopWait',
   [TripStopKind.RETURN_TO_BASE]: 'transportPlanning.inspectorStopReturnToBase',
+  [TripStopKind.DEPART_FROM_BASE]: 'transportPlanning.inspectorStopDepartFromBase',
 };
 
 /**

@@ -335,7 +335,7 @@ export class TripsService {
    * reads off the numbered stop markers and the timeline/inspector next to
    * it. A `PICKUP`/`DROPOFF` stop takes its point from the leg's own
    * resolved `door` (its own coordinates rarely carry one, see
-   * `TripLegTravelService`'s doc comment); `WAIT`/`RETURN_TO_BASE` already
+   * `TripLegTravelService`'s doc comment); `WAIT`/`RETURN_TO_BASE`/`DEPART_FROM_BASE` already
    * carry their own resolved point (`TripStopsService` copies it from the
    * facility or the base at creation).
    */
@@ -464,7 +464,7 @@ export class TripsService {
         vehicleType: row.vehicle.vehicleType as VehicleType,
         date,
         // A lane with nothing aboard yet has no crew to fall short of — see
-        // `checkTripCrew`. `WAIT`/`RETURN_TO_BASE`-only trips count as empty.
+        // `checkTripCrew`. `WAIT`/`RETURN_TO_BASE`/`DEPART_FROM_BASE`-only trips count as empty.
         hasPassengers: segments.some((segment) => segment.onboardLegIds.length > 0),
       }),
       ...(await this.checkArrivalTiming(stops)),

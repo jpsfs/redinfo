@@ -29,7 +29,7 @@ type TripForStops = {
 
 /**
  * Everything that changes a trip's stop sequence (#234): assigning/
- * unassigning a leg, adding a `WAIT`/`RETURN_TO_BASE` stop, editing a stop,
+ * unassigning a leg, adding a `WAIT`/`RETURN_TO_BASE`/`DEPART_FROM_BASE` stop, editing a stop,
  * and reordering. Capacity is checked against the *candidate* stop set
  * before anything is committed — a hard, unoverridable constraint, unlike
  * the vehicle-availability check `syncOccupancy` delegates to
@@ -163,8 +163,11 @@ export class TripStopsService {
     await this.syncOccupancy(tripId);
   }
 
-  /** A `WAIT` or `RETURN_TO_BASE` stop, appended at the end of the current
-   * sequence. `PICKUP`/`DROPOFF` are refused here — see `assignLegToTrip`. */
+  /** A `WAIT`/`RETURN_TO_BASE` stop, appended at the end of the current
+   * sequence, or a `DEPART_FROM_BASE` stop, prepended before the first —
+   * the vehicle leaves base before its first stop, whatever order the
+   * planner happens to add it in. `PICKUP`/`DROPOFF` are refused here — see
+   * `assignLegToTrip`. */
   async addStop(tripId: string, dto: CreateTripStopDto) {
     const error = validateCreateTripStop({
       kind: dto.kind,
@@ -176,7 +179,12 @@ export class TripStopsService {
 
     await this.findTripForStops(tripId);
     const existing = await this.prisma.tripStop.findMany({ where: { tripId }, select: { sequence: true } });
-    const nextSequence = existing.length ? Math.max(...existing.map((s) => s.sequence)) + 1 : 1;
+    const nextSequence =
+      dto.kind === TripStopKind.DEPART_FROM_BASE
+        ? existing.length
+          ? Math.min(...existing.map((s) => s.sequence)) - 1
+          : 1
+        : (existing.length ? Math.max(...existing.map((s) => s.sequence)) : 0) + 1;
 
     let facilityId: string | null = null;
     let address: string | null = null;
@@ -191,6 +199,8 @@ export class TripStopsService {
       latitude = facility.latitude;
       longitude = facility.longitude;
     } else {
+      // RETURN_TO_BASE and DEPART_FROM_BASE both always target the
+      // delegation's own base.
       const base = await this.delegationSettings.get();
       address = base.baseName;
       latitude = base.baseLatitude;
@@ -233,7 +243,7 @@ export class TripStopsService {
     return serializeTripStop(row as TripStopRow);
   }
 
-  /** Only a `WAIT`/`RETURN_TO_BASE` stop may be deleted directly — a
+  /** Only a `WAIT`/`RETURN_TO_BASE`/`DEPART_FROM_BASE` stop may be deleted directly — a
    * `PICKUP`/`DROPOFF` stop always has a sibling for the same leg, and the
    * two must go together (`unassignLeg`). */
   async deleteStop(tripId: string, stopId: string): Promise<void> {

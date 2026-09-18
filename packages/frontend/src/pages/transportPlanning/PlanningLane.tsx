@@ -694,9 +694,12 @@ export const PlanningLane = ({
         })}
 
         {lane.stops
-          .filter((s) => s.kind === TripStopKind.RETURN_TO_BASE)
+          .filter((s) => s.kind === TripStopKind.RETURN_TO_BASE || s.kind === TripStopKind.DEPART_FROM_BASE)
           .map((stop) => (
-            <Tooltip key={stop.id} title={`${t('transportPlanning.returnToBaseLabel')} — ${timeLabel(stop.plannedAt)}`}>
+            <Tooltip
+              key={stop.id}
+              title={`${t(stop.kind === TripStopKind.RETURN_TO_BASE ? 'transportPlanning.returnToBaseLabel' : 'transportPlanning.departFromBaseLabel')} — ${timeLabel(stop.plannedAt)}`}
+            >
               <HomeIcon
                 fontSize="small"
                 sx={{
