@@ -225,6 +225,11 @@ stages:
               CNTB_OAUTH2_PASS: $(CNTB_OAUTH2_PASS)
               TF_VAR_image_id: $(TF_VAR_image_id)
               TF_VAR_ssh_public_key: $(TF_VAR_ssh_public_key)
+              # Empty in the variable group unless the VPS was bought through
+              # the Contabo web order form, in which case it holds that
+              # instance's id and Terraform adopts the machine rather than
+              # ordering a second one. See var.existing_instance_id.
+              TF_VAR_existing_instance_id: $(TF_VAR_existing_instance_id)
 
           - task: Bash@3
             displayName: "Host facts (address, SSH, what to do next)"
@@ -249,18 +254,28 @@ stages:
                 echo " Before this host can serve production, three things need doing"
                 echo " by hand - none of them belong in Terraform:"
                 echo
-                echo " 1. Whitelist ${HOST_IP} on the Hostinger legacy MySQL."
+                echo " 1. Order the Auto Backup add-on in the Contabo panel."
+                echo "    Terraform cannot: the provider's add_ons block is read-only"
+                echo "    (it is never sent in the create/patch request), so this is"
+                echo "    a panel action and nothing here will ever flag it missing."
+                echo " 2. Check the invoice/contract for this instance."
+                echo "    The API has no price field, so a green apply says nothing"
+                echo "    about what was charged or on what term."
+                echo " 3. Whitelist ${HOST_IP} on the Hostinger legacy MySQL."
                 echo "    The legacy-migration job connects out from this address, and"
                 echo "    Hostinger filters by source IP. Until it is whitelisted the"
                 echo "    job fails on connect, so do this before turning background"
                 echo "    jobs on at cutover."
-                echo " 2. Register the ADO agent (once):"
+                echo " 4. Register the ADO agent (once):"
                 echo "      sudo /opt/redinfo/register-ado-agent.sh <PAT>"
                 echo "    until it is online in the 'contabo-production' pool, the"
                 echo "    deploy stage has nowhere to run."
-                echo " 3. Flip CONTABO_DEPLOY_ENABLED to 'true' in the"
+                echo " 5. Flip CONTABO_DEPLOY_ENABLED to 'true' in the"
                 echo "    'redinfo-contabo' variable group to bring this host into"
                 echo "    the production deploy rotation (.ado/deployment.yml)."
+                echo " 6. Set Cloudflare's SSL mode for app.cvpcampo.org to Full."
+                echo "    The firewall opens 443 only, so a Flexible (plain-HTTP to"
+                echo "    the origin on port 80) setup cannot reach this host."
                 echo
             env:
               AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)

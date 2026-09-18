@@ -52,19 +52,52 @@ variable "region" {
 
 variable "period" {
   description = <<-EOT
-    Initial contract period in months (1, 3, 6 or 12). This is a real
-    purchase: `terraform apply` orders the machine and the first period is
-    billed immediately. 1 keeps the commitment minimal while the migration is
-    still being proven out; raise it once this machine is the real production
-    host.
+    Initial contract period in months. 12 for the discounted annual term.
+
+    Two things Terraform genuinely cannot do here, so do not read a successful
+    apply as confirmation of either:
+
+      * There is no price in the Contabo API — not in the create request, not
+        in the response. `period = 12` selects the annual term; what that term
+        *costs* is whatever Contabo's price list says at the moment of the
+        call. Terraform cannot assert 7.84 EUR/month, and cannot fail if the
+        charge is different. If the exact promotional price matters, order
+        through the web order form (which shows the price before you confirm)
+        and adopt the machine with var.existing_instance_id instead.
+      * It is a 12-month commitment, billed immediately and not cancellable
+        mid-term.
+
+    The API accepts 1, 12 and 24; the provider's own validation is stricter
+    and rejects 24, so that is not offered here.
   EOT
   type        = number
-  default     = 1
+  default     = 12
 
   validation {
     condition     = contains([1, 3, 6, 12], var.period)
     error_message = "period must be 1, 3, 6 or 12."
   }
+}
+
+variable "existing_instance_id" {
+  description = <<-EOT
+    Adopt an instance that was bought outside Terraform instead of ordering a
+    new one. Empty (the default) means Terraform orders the machine itself.
+
+    This is the path to use when the order has to be placed through the
+    Contabo web order form — because the promotional price needs to be visible
+    before paying, or because of an add-on Terraform cannot order (Auto Backup
+    is one; see the note in infra/README.md). Buy the VPS there, put its
+    instance id here, and `apply`: the provider skips creation and goes
+    straight to update, which reinstalls the machine with the image, SSH key
+    and cloud-init below. Everything downstream is unchanged.
+
+    Note what that means: adopting an instance REINSTALLS it. That is the
+    intent right after purchase; it would be destructive on a machine that is
+    already serving.
+  EOT
+  type        = string
+  default     = ""
 }
 
 variable "image_id" {
@@ -222,18 +255,56 @@ variable "timezone" {
 
 variable "cloud_firewall_enabled" {
   description = <<-EOT
-    Also create a Contabo *cloud* firewall in front of the instance, on top of
-    the host's own ufw rules. Off by default: ufw is unconditional, free and
-    self-contained, while the cloud firewall is a separate Contabo product
-    whose availability varies by account — turning it on when the account
-    cannot use it fails the apply *after* the machine has been bought.
+    Create/manage a Contabo *cloud* firewall in front of the instance, on top
+    of the host's own ufw rules, and assign the instance to it.
 
-    Turn it on for belt-and-braces once the account is known to support it;
-    the rules mirror the ufw ones (22 from ssh_allowed_cidrs, 80 and 443 from
-    anywhere).
+    On by default. Note that the cloud firewall is a separate Contabo product
+    whose availability varies by account — if the account cannot use it, the
+    apply fails *after* the machine has been bought. Set this to false and
+    attach the firewall by hand in the panel if that happens.
   EOT
   type        = bool
-  default     = false
+  default     = true
+}
+
+variable "firewall_name" {
+  description = <<-EOT
+    Name of the cloud firewall. Defaults to the name of the firewall already
+    created by hand in the Contabo panel, so that adopting it is an import
+    rather than a second, near-identical firewall:
+
+      terraform import 'contabo_firewall.this[0]' <firewall id from the panel>
+
+    Without that import, an apply creates a new firewall under the same name
+    and the hand-made one stays behind with no instances assigned.
+  EOT
+  type        = string
+  default     = "CVP Portal - Production"
+}
+
+variable "public_tcp_ports" {
+  description = <<-EOT
+    TCP ports the cloud firewall accepts from anywhere. 443 only, matching the
+    firewall as configured in the panel.
+
+    Port 80 is deliberately NOT here, and that has consequences worth knowing
+    before cutover:
+
+      * Cloudflare must reach this origin over 443, i.e. SSL mode Full (or
+        Full (strict) once a real certificate is installed). Flexible — which
+        talks plain HTTP to the origin on port 80 — cannot work through this
+        firewall. deploy/redinfo/values.production.yaml still sets `tls: []`,
+        so what answers on 443 is ingress-nginx's own self-signed certificate;
+        Full accepts that, Full (strict) does not.
+      * An ACME HTTP-01 challenge cannot reach this host. A real certificate
+        here means DNS-01, or a Cloudflare origin certificate.
+
+    The host's ufw is left allowing 80 as well, so that opening it is a
+    firewall change alone and not a reinstall of the machine (ufw rules live
+    in cloud-init, and user_data changes reinstall).
+  EOT
+  type        = list(string)
+  default     = ["443"]
 }
 
 # ───────────────────────── azure devops agent ────────────────────────────
