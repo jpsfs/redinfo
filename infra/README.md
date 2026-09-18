@@ -165,22 +165,50 @@ Google/Microsoft login even when the origin itself never speaks TLS.
 
 ## Deploying the application to it
 
-`.ado/infrastructure.yml` does both halves. It is manual-run only, and its
-parameters are:
+Two pipelines, on purpose:
+
+| Pipeline | Job | Runs when |
+|---|---|---|
+| `.ado/infrastructure.yml` | buys / rebuilds / destroys the machine | a human starts it and picks an action |
+| `.ado/deployment.yml` → `DeployProductionContabo` | deploys the app onto it | every push to `env/production`, past the promotion gate |
+
+Provisioning runs a handful of times a year; deploys run daily. Folding the
+Terraform into the deploy pipeline would put a plan nobody reads in front of
+every release, hand every push to `env/production` credentials that can destroy
+the server, and let a Contabo API outage block a code deploy to a machine that
+already exists. So they stay apart.
+
+`.ado/infrastructure.yml` takes two parameters only:
 
 | Parameter | Meaning |
 |---|---|
-| `action` | `plan` / `apply` / `destroy` — the Terraform half |
+| `action` | `plan` / `apply` / `destroy` |
 | `confirm` | required checkbox for `apply` and `destroy` |
-| `deployApp` | also deploy the application to the provisioned host |
-| `imageTag` | `sha-<shortSha>`, or the moving `production` tag (default) |
-| `enableBackgroundJobs` | legacy-migration cron + INEM worker — **off by default** |
 
-The deploy stage runs on the **`contabo-production` agent pool** — an Azure
-DevOps agent installed on the Contabo host itself, exactly as `vm-redcross`
-works today. That is what lets the stage reuse `.ado/templates/deploy-env.yml`
-unchanged: the agent is on the same machine as the cluster, so there is no SSH
-hop, no chart copy, and no Kubernetes API exposed to the internet.
+### The production deploy stage
+
+`DeployProductionContabo` sits beside `DeployProduction` (vm-redcross) in the
+same pipeline: same commit, same images, same `redinfo-production` secrets,
+same `PromotionGate` — a different machine. At cutover, `app.cvpcampo.org` is
+repointed here and the vm-redcross stage is deleted.
+
+It is switched on by **`CONTABO_DEPLOY_ENABLED`** in the `redinfo-contabo`
+group (the string `'true'`), so a host joins or leaves the production rotation
+by editing one variable rather than by a commit. Keep it `false` until the VM
+exists *and* its agent is online — a stage queued against an empty pool sits
+there until it times out. The `deployToContabo` parameter forces it on for a
+single manual run.
+
+Until DNS moves, **OAuth sign-in will not complete on this host**:
+`GOOGLE_CALLBACK_URL` and `FRONTEND_URL` both name `app.cvpcampo.org`, which
+still resolves to vm-redcross, so the provider redirects back there. Expected,
+and it fixes itself at cutover.
+
+The stage runs on the **`contabo-production` agent pool** — an Azure DevOps
+agent installed on the Contabo host itself, exactly as `vm-redcross` works
+today. That is what lets it reuse `.ado/templates/deploy-env.yml` unchanged:
+the agent is on the same machine as the cluster, so there is no SSH hop, no
+chart copy, and no Kubernetes API exposed to the internet.
 
 A pool of its own, rather than a second agent in the `vm-redcross` pool: a pool
 is the unit a pipeline stage targets, so separate pools are what let the old and
@@ -213,20 +241,21 @@ over the same agent name rather than creating a duplicate). The script also
 warns if the agent's user is not in the `microk8s` group — the exact condition
 `deploy-env.yml`'s preflight step fails on.
 
-### `enableBackgroundJobs` is off for a reason
+### `contaboBackgroundJobs` is off for a reason
 
 While `vm-redcross` is still live, a deploy here creates a *second* instance
 holding the same production credentials. With the legacy-migration cron on,
 two machines pull from the same legacy MySQL every hour. With the INEM worker
 on, two headless browsers log into the same shared INEM account and fight over
 one session. Neither fails at deploy time; both are the sort of thing noticed
-days later. Turn the flag on at cutover, once the old host is off.
+days later. Turn the flag on at cutover, once the old host is off — and whitelist
+this host's address on the Hostinger legacy MySQL first (see below).
 
 ## Variable groups
 
 | Group | Contains |
 |---|---|
-| `redinfo-contabo` | `CNTB_OAUTH2_*` (secret), `TF_VAR_image_id`, `TF_VAR_ssh_public_key`, `PROD_INGRESS_HOST` |
+| `redinfo-contabo` | `CNTB_OAUTH2_*` (secret), `TF_VAR_image_id`, `TF_VAR_ssh_public_key`, `PROD_INGRESS_HOST`, `CONTABO_DEPLOY_ENABLED`, `PROD_SSH_USER`, `PROD_SSH_PRIVATE_KEY` (secret) |
 | `redinfo-tfstate` | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (secret), `TFSTATE_BUCKET`, `TFSTATE_KEY`, `TFSTATE_REGION` (`redinfo-terraform-state` / `eu-central-1`) |
 | `redinfo-production` | the existing application secrets, reused as-is |
 
@@ -244,3 +273,46 @@ for humans; nothing in the deploy path uses it.
 The alternative — opening 16443 to fixed addresses and deploying remotely — is
 one variable away, but it is a real change in exposure, not a convenience
 setting.
+
+## SSH access
+
+The host has one key: an ed25519 pair generated for this machine alone, never
+reused from anywhere else. The public half is `TF_VAR_ssh_public_key` in
+`redinfo-contabo`; Terraform registers it as a `contabo_secret` and cloud-init
+installs it for `admin`. Password authentication is off
+(`disable_ssh_password_auth`), so the key and the Contabo panel's VNC console
+are the only ways in.
+
+```bash
+ssh -i <private key> admin@<ipv4 from the terraform outputs>
+```
+
+`admin` is in the `microk8s` group, so `kubectl` and `helm` work over that
+session — which is the point: installing things, reading logs, and debugging a
+cluster all need a shell, and the deploy agent is not a substitute for one.
+
+**Where the private key lives.** The copy of record is 1Password. There is also
+a copy in `redinfo-contabo` as the secret `PROD_SSH_PRIVATE_KEY`, for pipelines
+that need it.
+
+That second copy is **write-only**: Azure DevOps never returns a secret
+variable's value through the API or the UI — a pipeline can map it into an env
+var, but no person or script can read it back. So it is a way to *give the key
+to a job*, not a way to retrieve it later. If the 1Password copy is lost, the
+key is lost, and the recovery path is the VNC console (or a rebuild).
+
+`ssh_allowed_cidrs` defaults to vm-redcross' egress address only, since that is
+the machine this repo's operator tooling runs on. Widen it deliberately, and
+remember that if vm-redcross is decommissioned at cutover, that list has to be
+updated in the same breath or SSH goes dark.
+
+## Hostinger: whitelist this host before the legacy migration runs
+
+The legacy-migration job connects *out* to the legacy MySQL at Hostinger, which
+filters by source IP — today's allowance is vm-redcross'. A deploy onto the
+Contabo host does not change that, so the job will fail on connect until the
+new address is whitelisted too.
+
+The address is `terraform output -raw ipv4`, and the infrastructure pipeline
+prints it, along with the rest of the by-hand checklist, at the end of every
+non-destroy run. Do this *before* turning `contaboBackgroundJobs` on.

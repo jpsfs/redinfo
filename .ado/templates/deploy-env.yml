@@ -1,7 +1,9 @@
-# Shared deploy steps for one environment, run on the self-hosted `vm-redcross`
-# agent (same machine as the k8s cluster) — no SSH hop any more. The calling
-# stage is responsible for pulling in that environment's `redinfo-<envName>`
-# variable group (secrets referenced below come from there) and for the branch
+# Shared deploy steps for one environment, run on a self-hosted agent that
+# lives on the same machine as the k8s cluster it deploys to — `vm-redcross`
+# for staging and production today, `contabo-production` for the new
+# production host. No SSH hop either way. The calling stage is responsible for
+# choosing the pool, for pulling in that environment's `redinfo-<envName>`
+# variable group (secrets referenced below come from there), and for the
 # condition that gates the stage.
 parameters:
   - name: envName # "staging" | "production" — must match values.<envName>.yaml
@@ -14,7 +16,7 @@ parameters:
   # second environment with the same credentials must NOT also run the
   # legacy-migration cron (two machines pulling from one legacy MySQL) or the
   # INEM worker (two browsers fighting over one shared INEM session). See
-  # .ado/infrastructure.yml.
+  # the DeployProductionContabo stage in .ado/deployment.yml.
   - name: extraSetFlags
     type: string
     default: ""

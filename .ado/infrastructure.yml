@@ -1,9 +1,23 @@
 # Terraform for the Contabo host that will run production (infra/terraform).
 #
-# Deliberately a SEPARATE pipeline from .ado/deployment.yml, and deliberately
-# NOT triggered by pushes. Application deploys happen many times a day and are
-# safe to automate; this one buys, rebuilds or destroys a server. It runs only
-# when a human starts it and says which action they mean.
+# This pipeline PROVISIONS the machine. It does not deploy the application —
+# that is .ado/deployment.yml's DeployProductionContabo stage, which runs on
+# an ADO agent on the host and is gated by the same promotion gate as every
+# other production deploy.
+#
+# Why the two are separate pipelines rather than one stage in front of the
+# other:
+#   * Lifecycle. This runs a handful of times a year; deploys run daily. A
+#     terraform plan in front of every deploy is noise that people learn to
+#     scroll past, which is the opposite of what a plan is for.
+#   * Blast radius. Folding it in would give every push to env/production a
+#     job holding credentials that can destroy the server. Here, apply and
+#     destroy need a human to pick the action AND tick a checkbox.
+#   * Failure isolation. Contabo's API being down should not be able to stop
+#     a code deploy to a machine that already exists.
+#
+# So: NOT triggered by pushes — it runs only when a human starts it and says
+# which action they mean.
 #
 # Why a pipeline at all, rather than someone's laptop: the Contabo API
 # credentials live in the `redinfo-contabo` variable group and nowhere else —
@@ -35,21 +49,6 @@ parameters:
 
   - name: confirm
     displayName: "I understand apply/destroy changes real, billed infrastructure"
-    type: boolean
-    default: false
-
-  - name: deployApp
-    displayName: "Also deploy the application to the provisioned host"
-    type: boolean
-    default: false
-
-  - name: imageTag
-    displayName: "Image tag to deploy (sha-<shortSha>, or the moving 'production' tag)"
-    type: string
-    default: "production"
-
-  - name: enableBackgroundJobs
-    displayName: "Enable the legacy-migration cron and the INEM worker on the new host (see the stage's comment first)"
     type: boolean
     default: false
 
@@ -152,6 +151,43 @@ stages:
                 terraform -chdir="$(TF_DIR)" validate
 
           - task: Bash@3
+            displayName: "Resolve the Ubuntu image, and flag it if it has moved on"
+            inputs:
+              targetType: "inline"
+              script: |
+                set -euo pipefail
+
+                # var.image_id is pinned rather than looked up at plan time on
+                # purpose: a dynamic lookup would turn "Contabo published a new
+                # Ubuntu" into a plan that proposes REINSTALLING production
+                # (image_id is one of the four attributes that rebuild the
+                # machine — see infra/README.md). So the lookup lives here, as
+                # information, and the pin stays a deliberate edit.
+                LATEST="$(infra/scripts/contabo-images.sh --latest || true)"
+                PINNED="${TF_VAR_image_id:-}"
+
+                if [ -z "${PINNED}" ] || [ "${PINNED}" = "REPLACE_ME" ]; then
+                  echo "##vso[task.logissue type=error]TF_VAR_image_id is not set in the 'redinfo-contabo' variable group." >&2
+                  if [ -n "${LATEST}" ]; then
+                    echo "##vso[task.logissue type=error]Set it to the newest Ubuntu LTS image, which is: ${LATEST}" >&2
+                  else
+                    echo "##vso[task.logissue type=error]The image lookup also failed - check the CNTB_OAUTH2_* values in that group." >&2
+                  fi
+                  exit 1
+                fi
+
+                echo "pinned image_id: ${PINNED}"
+                if [ -n "${LATEST}" ] && [ "${LATEST}" != "${PINNED}" ]; then
+                  echo "##vso[task.logissue type=warning]A newer Ubuntu LTS image exists (${LATEST}). This is informational - changing TF_VAR_image_id REINSTALLS the host, so only do it deliberately, on a machine you are willing to rebuild."
+                fi
+            env:
+              CNTB_OAUTH2_CLIENT_ID: $(CNTB_OAUTH2_CLIENT_ID)
+              CNTB_OAUTH2_CLIENT_SECRET: $(CNTB_OAUTH2_CLIENT_SECRET)
+              CNTB_OAUTH2_USER: $(CNTB_OAUTH2_USER)
+              CNTB_OAUTH2_PASS: $(CNTB_OAUTH2_PASS)
+              TF_VAR_image_id: $(TF_VAR_image_id)
+
+          - task: Bash@3
             displayName: "terraform ${{ parameters.action }}"
             inputs:
               targetType: "inline"
@@ -190,154 +226,49 @@ stages:
               TF_VAR_image_id: $(TF_VAR_image_id)
               TF_VAR_ssh_public_key: $(TF_VAR_ssh_public_key)
 
+          - task: Bash@3
+            displayName: "Host facts (address, SSH, what to do next)"
+            # succeededOrFailed so a partial apply still tells you what exists.
+            condition: and(succeededOrFailed(), ne('${{ parameters.action }}', 'destroy'))
+            inputs:
+              targetType: "inline"
+              script: |
+                set -euo pipefail
+                HOST_IP="$(terraform -chdir="$(TF_DIR)" output -raw ipv4 2>/dev/null || true)"
+                if [ -z "${HOST_IP}" ]; then
+                  echo "No ipv4 in state yet (a plan-only run, or nothing applied)."
+                  exit 0
+                fi
+
+                echo "=================================================================="
+                echo " Contabo production host: ${HOST_IP}"
+                echo "=================================================================="
+                echo
+                echo " ssh -i <the key from 1Password> admin@${HOST_IP}"
+                echo
+                echo " Before this host can serve production, three things need doing"
+                echo " by hand - none of them belong in Terraform:"
+                echo
+                echo " 1. Whitelist ${HOST_IP} on the Hostinger legacy MySQL."
+                echo "    The legacy-migration job connects out from this address, and"
+                echo "    Hostinger filters by source IP. Until it is whitelisted the"
+                echo "    job fails on connect, so do this before turning background"
+                echo "    jobs on at cutover."
+                echo " 2. Register the ADO agent (once):"
+                echo "      sudo /opt/redinfo/register-ado-agent.sh <PAT>"
+                echo "    until it is online in the 'contabo-production' pool, the"
+                echo "    deploy stage has nowhere to run."
+                echo " 3. Flip CONTABO_DEPLOY_ENABLED to 'true' in the"
+                echo "    'redinfo-contabo' variable group to bring this host into"
+                echo "    the production deploy rotation (.ado/deployment.yml)."
+                echo
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+
           - task: PublishBuildArtifacts@1
             displayName: "Publish plan/outputs"
             condition: succeededOrFailed()
             inputs:
               PathtoPublish: "$(Build.ArtifactStagingDirectory)"
               ArtifactName: terraform
-
-  # ── Deploy the application onto the host Terraform just provisioned ────────
-  #
-  # Runs on the `contabo-production` agent pool — an ADO agent installed on
-  # the Contabo host itself, exactly like `vm-redcross` today. That is what
-  # lets this stage reuse templates/deploy-env.yml *unchanged*: the agent is
-  # on the same machine as the cluster, so there is no SSH hop, no chart
-  # copy, and no Kubernetes API exposed to the internet
-  # (var.kube_api_allowed_cidrs stays empty).
-  #
-  # A pool of its own rather than a second agent in the `vm-redcross` pool:
-  # a pool is the unit a stage targets, so separate pools are what let the old
-  # and the new production host be deployed to independently during the
-  # migration — and what stops a job meant for one landing on the other.
-  #
-  # The agent is staged by cloud-init but registered by hand, once:
-  #   sudo /opt/redinfo/register-ado-agent.sh <PAT>
-  # (a PAT in user_data would sit in Terraform state, and rotating it would
-  # mean reinstalling the server — see infra/README.md).
-  - stage: DeployNewProduction
-    displayName: "Deploy application to the Contabo host"
-    dependsOn: Terraform
-    # Explicitly asked for, never after a destroy, and only if Terraform
-    # succeeded. A plan-only run leaves the host untouched but is still a
-    # perfectly valid thing to deploy after.
-    condition: |
-      and(
-        succeeded(),
-        eq('${{ parameters.deployApp }}', true),
-        ne('${{ parameters.action }}', 'destroy')
-      )
-    variables:
-      # The same group .ado/deployment.yml uses for production — this deploys
-      # the real environment, not a lookalike.
-      - group: redinfo-production
-    jobs:
-      - deployment: DeployToContaboProduction
-        displayName: Deploy Helm chart to the Contabo production host
-        pool:
-          name: contabo-production
-        environment: redinfo-production
-        strategy:
-          runOnce:
-            deploy:
-              steps:
-                - template: templates/deploy-env.yml
-                  parameters:
-                    envName: production
-                    imageTag: ${{ parameters.imageTag }}
-                    # Background jobs are OFF unless explicitly asked for, and
-                    # that default is the important part of this stage. While
-                    # vm-redcross is still live, this host is a SECOND instance
-                    # holding the same production credentials: the
-                    # legacy-migration cron would have two machines pulling
-                    # from the same legacy MySQL hourly, and the INEM worker
-                    # would have two headless browsers logging into the one
-                    # shared INEM account and fighting over its session (see
-                    # packages/inem-worker/README.md). Neither is a deploy-time
-                    # error; both are noticed days later. Turn them on at
-                    # cutover, once vm-redcross is off.
-                    ${{ if eq(parameters.enableBackgroundJobs, true) }}:
-                      extraSetFlags: "--set legacyMigration.enabled=true --set legacyMigration.cron.enabled=true --set inemWorker.enabled=true"
-                    ${{ else }}:
-                      extraSetFlags: "--set legacyMigration.enabled=false --set legacyMigration.cron.enabled=false --set inemWorker.enabled=false"
-
-      - job: PublicCheck
-        displayName: "Check port 443 from outside the host"
-        dependsOn: DeployToContaboProduction
-        # Hosted agent on purpose: the deploy job above already proved the app
-        # answers *on* the box. The open question for this machine is whether
-        # 443 is reachable from the internet, and only an agent that is not on
-        # that host can answer it.
-        pool:
-          vmImage: "ubuntu-latest"
-        variables:
-          - group: redinfo-contabo
-          - group: redinfo-tfstate
-        steps:
-          - checkout: self
-            fetchDepth: 1
-
-          - task: Bash@3
-            displayName: "Install Terraform $(TF_VERSION)"
-            inputs:
-              targetType: "inline"
-              script: |
-                set -euo pipefail
-                cd "$(Agent.TempDirectory)"
-                curl -fsSLo terraform.zip \
-                  "https://releases.hashicorp.com/terraform/$(TF_VERSION)/terraform_$(TF_VERSION)_linux_amd64.zip"
-                unzip -oq terraform.zip
-                sudo install -m 0755 terraform /usr/local/bin/terraform
-
-          - task: Bash@3
-            displayName: "Resolve the host address from Terraform state"
-            inputs:
-              targetType: "inline"
-              script: |
-                set -euo pipefail
-                # Read-only: init + output, never a plan or an apply. The
-                # address comes from state rather than a typed parameter so it
-                # cannot drift from what actually exists.
-                terraform -chdir="$(TF_DIR)" init \
-                  -backend-config="bucket=${TFSTATE_BUCKET}" \
-                  -backend-config="key=${TFSTATE_KEY}" \
-                  -backend-config="region=${TFSTATE_REGION}" \
-                  -backend-config="encrypt=true" \
-                  -backend-config="use_lockfile=true"
-
-                HOST_IP="$(terraform -chdir="$(TF_DIR)" output -raw ipv4)"
-                if [ -z "${HOST_IP}" ] || [ "${HOST_IP}" = "null" ]; then
-                  echo "##vso[task.logissue type=error]Terraform state has no ipv4 output." >&2
-                  exit 1
-                fi
-                echo "##vso[task.setvariable variable=HOST_IP]${HOST_IP}"
-            env:
-              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
-              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
-              TFSTATE_BUCKET: $(TFSTATE_BUCKET)
-              TFSTATE_KEY: $(TFSTATE_KEY)
-              TFSTATE_REGION: $(TFSTATE_REGION)
-
-          - task: Bash@3
-            displayName: "HTTPS on 443 from the public internet"
-            inputs:
-              targetType: "inline"
-              script: |
-                set -euo pipefail
-                INGRESS_HOST="$(PROD_INGRESS_HOST)"
-
-                # -k because TLS is still the ingress controller's built-in
-                # self-signed certificate (see infra/README.md); --resolve so
-                # the Host header matches the Ingress rule without depending on
-                # DNS having been moved to this machine yet.
-                for path in / /api/health; do
-                  code="$(curl -sk -o /dev/null -w '%{http_code}' --max-time 20 \
-                    --resolve "${INGRESS_HOST}:443:$(HOST_IP)" \
-                    "https://${INGRESS_HOST}${path}" || true)"
-                  if [ "${code}" = "200" ]; then
-                    echo "OK (public https): ${path}"
-                  else
-                    echo "##vso[task.logissue type=error]Public HTTPS check failed for ${path} (HTTP ${code:-none}). Check the Contabo firewall and ufw on the host." >&2
-                    exit 1
-                  fi
-                done

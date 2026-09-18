@@ -131,14 +131,24 @@ variable "admin_user" {
 
 variable "ssh_allowed_cidrs" {
   description = <<-EOT
-    Sources allowed to reach port 22 in the host firewall (ufw). Defaults to
-    the whole internet, matching how vm-redcross is reachable today — key-only
-    auth plus fail2ban is what protects it. Narrow this to the office/VPN
-    ranges if they are static; be aware that getting it wrong costs a trip to
-    the Contabo VNC console.
+    Sources allowed to reach port 22 in the host firewall (ufw), and in the
+    Contabo cloud firewall when cloud_firewall_enabled is on.
+
+    Defaults to vm-redcross' own egress address only. That machine is where
+    this repo's operator tooling runs and where the deploy agent lives today,
+    so it is the one place that genuinely needs shell access to the new host;
+    everything else (deploys, helm, kubectl) happens on the box itself via the
+    ADO agent, not over SSH.
+
+    Two things to know before changing it:
+      * Getting this wrong locks you out. The Contabo panel's VNC console is
+        the break-glass path — it does not go through ufw.
+      * The address below is vm-redcross' *current* public IP. If that
+        machine's address changes, or it is decommissioned at cutover, this
+        list has to be updated in the same breath or SSH goes dark.
   EOT
   type        = list(string)
-  default     = ["0.0.0.0/0"]
+  default     = ["188.83.117.135/32"]
 }
 
 variable "kube_api_allowed_cidrs" {
