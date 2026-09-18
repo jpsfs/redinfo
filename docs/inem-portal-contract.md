@@ -171,6 +171,11 @@ alphanumerics) on both sides, never on the raw strings (#218). `Active` is a rea
 Portuguese label derived by INEM; it is **not** writable and must not be modelled as desired
 state.
 
+**Confirmed live 2026-09-18:** a unit actually dispatched on a call reports `Active: "Acionada"`
+(feminine, agreeing with "viatura") — not the masculine "Acionado" the frontend's
+`DISPATCHED_ACTIVE_LABELS` originally guessed. `INEMStatusPage.tsx` now matches both genders,
+singular and plural.
+
 ### `GET /api/Statistics?entity=CVCAMPO`
 
 ```json
