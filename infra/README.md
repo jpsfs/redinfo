@@ -33,7 +33,8 @@ infra/
 | OS | newest Ubuntu LTS standard image, pinned by UUID in `image_id` |
 | Kubernetes | microk8s, snap channel `1.35/stable` |
 | Addons | `dns`, `hostpath-storage`, `ingress`, `helm3`, `rbac`, `metrics-server` |
-| Exposed | 80 and 443 to the world, 22 to `ssh_allowed_cidrs` |
+| Term | 12 months (`period = 12`), billed on creation |
+| Exposed | 443 to the world, 22 to `ssh_allowed_cidrs` |
 | Not exposed | the Kubernetes API on 16443 (see below) |
 
 The addon list is not arbitrary — it is exactly what `deploy/redinfo` needs.
@@ -91,8 +92,84 @@ terraform -chdir=infra/terraform init -backend-config=backend.hcl
 terraform -chdir=infra/terraform plan
 ```
 
-`apply` **buys a server.** The minimum contract period is one month
-(`var.period`), billed on creation.
+`apply` **buys a server**, on a 12-month term (`var.period`), billed on
+creation and not cancellable mid-term. Read the section below before running
+it the first time.
+
+## Ordering: term, price and Auto Backup
+
+Three things about the purchase that Terraform cannot do for you, each
+verified against the provider source and the Contabo API spec rather than
+assumed:
+
+**1. Terraform cannot see or assert the price.** There is no price field in
+`createInstance` — not in the request, not in the response. `period = 12`
+selects the annual term and nothing more; what that term costs is whatever
+Contabo's price list says at the moment of the call. A green `apply` is not
+evidence that a particular promotional rate (7.84 EUR/month) was applied, and
+nothing here can fail if it was not. Check the invoice.
+
+**2. Terraform cannot order Auto Backup.** The provider exposes an `add_ons`
+block, and it looks like it should work, but it is read-only in practice:
+`resource_instance.go` fills it in from the API *response* and never adds it to
+the create or patch request. Writing one has no effect and produces no error —
+the worst kind of silent no-op. (The underlying API does support it, as
+`addOns.backup`; the provider simply does not send it.) So Auto Backup is a
+panel action, either as a checkbox in the web order form or as an upgrade on
+the running instance afterwards.
+
+**Where that leaves the order.** Two workable routes:
+
+| | Buy with `terraform apply` | Buy in the web order form |
+|---|---|---|
+| Price | not visible until the invoice | shown before you confirm |
+| Auto Backup | panel, afterwards | checkbox, in the same order |
+| Then | nothing more | set `TF_VAR_existing_instance_id` and `apply` |
+
+The second route is the better fit when the exact promotional price matters,
+which is why `var.existing_instance_id` exists: with it set, the provider skips
+creation and goes straight to update, reinstalling that machine with the image,
+SSH key and cloud-init from this repo. Everything downstream — microk8s, the
+agent, the deploy stage — is identical either way. Note that adopting an
+instance *does* reinstall it; that is what you want immediately after purchase
+and is destructive at any other time.
+
+## The cloud firewall, and what 443-only implies
+
+`cloud_firewall_enabled` is on by default. The rules mirror the firewall built
+by hand in the panel: **443 from anywhere, 22 from `ssh_allowed_cidrs`**,
+everything else dropped.
+
+The panel shows a third rule — "Block all traffic / DROP / Any" — that has no
+equivalent in the Terraform config, and should not have one. Contabo's model is
+a list of accept rules with an implicit default-deny behind it (the provider's
+`action` accepts only `accept`); the panel just renders that default as a row.
+Outbound traffic is unrestricted, in the panel and here.
+
+To keep the hand-made firewall rather than create a second one beside it,
+import it before the first apply:
+
+```bash
+terraform import 'contabo_firewall.this[0]' <firewall id from the panel URL>
+```
+
+Terraform manages the firewall mainly so that the instance is *assigned* to it.
+A firewall with "Assigned VPS/VDS: 0" protects nothing, and that is an easy
+state to leave it in.
+
+**Port 80 is not open, and that constrains two things:**
+
+- **Cloudflare must use SSL mode Full** (or Full (strict) once a real
+  certificate is installed). Flexible talks plain HTTP to the origin on port
+  80, which this firewall drops. Today `values.production.yaml` sets
+  `tls: []`, so what answers on 443 is ingress-nginx's own self-signed
+  certificate — Full accepts that, Full (strict) does not.
+- **ACME HTTP-01 cannot work here.** A real certificate on this host means
+  DNS-01, or a Cloudflare origin certificate.
+
+The host's own ufw still allows 80. That is deliberate: ufw rules live in
+cloud-init, and `user_data` changes reinstall the machine, so keeping 80 open
+there makes opening it later a firewall edit rather than a reprovision.
 
 ## The four attributes that reinstall the machine
 
@@ -255,7 +332,7 @@ this host's address on the Hostinger legacy MySQL first (see below).
 
 | Group | Contains |
 |---|---|
-| `redinfo-contabo` | `CNTB_OAUTH2_*` (secret), `TF_VAR_image_id`, `TF_VAR_ssh_public_key`, `PROD_INGRESS_HOST`, `CONTABO_DEPLOY_ENABLED`, `PROD_SSH_USER`, `PROD_SSH_PRIVATE_KEY` (secret) |
+| `redinfo-contabo` | `CNTB_OAUTH2_*` (secret), `TF_VAR_image_id`, `TF_VAR_ssh_public_key`, `TF_VAR_existing_instance_id` (empty unless the VPS was bought in the panel), `PROD_INGRESS_HOST`, `CONTABO_DEPLOY_ENABLED`, `PROD_SSH_USER`, `PROD_SSH_PRIVATE_KEY` (secret) |
 | `redinfo-tfstate` | `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` (secret), `TFSTATE_BUCKET`, `TFSTATE_KEY`, `TFSTATE_REGION` (`redinfo-terraform-state` / `eu-central-1`) |
 | `redinfo-production` | the existing application secrets, reused as-is |
 
