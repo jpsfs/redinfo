@@ -19,7 +19,8 @@ infra/
     cloud-init.yaml.tftpl    first-boot: microk8s, addons, ufw, fail2ban
     outputs.tf               ip, id, ssh command, what was actually provisioned
   scripts/
-    contabo-images.sh        find the image_id for the newest Ubuntu LTS
+    contabo-images.sh        find the image_id for the newest Ubuntu LTS,
+                             or for the image a given instance already runs
     bootstrap-state-bucket.sh  create the S3 bucket that holds the state
     verify-host.sh           run ON the new host: prove it can run production
 ```
@@ -68,7 +69,21 @@ existing chart with no changes.
 
    ```bash
    infra/scripts/contabo-images.sh --latest    # newest Ubuntu LTS, as a UUID
+   infra/scripts/contabo-images.sh --instance 203588098   # what it runs today
    ```
+
+   Pin it to what the machine *is already running*, not merely to the newest
+   image on offer — a VPS bought in the panel arrives with an OS already on it,
+   and pinning anything else makes the first apply reinstall a host that was
+   fine.
+
+   Both commands need the Contabo API credentials, which live only in the
+   `redinfo-contabo` variable group as write-only secrets — nobody can read
+   them back out to run this on a laptop. So run it where they already are:
+   **Run pipeline → Report Contabo image UUIDs → Run**, on any branch. It
+   prints the table, the newest LTS and the installed image, and deploys
+   nothing (it skips `Prepare`, and every other stage gates on `Prepare`).
+   Then set `TF_VAR_image_id` in the variable group.
 
 4. **An SSH public key** for `ssh_public_key`. Required: cloud-init disables
    SSH password authentication, so this key is the way in. If it is wrong, the

@@ -14,6 +14,12 @@
 #   infra/scripts/contabo-images.sh --latest   # just the newest LTS image's UUID
 #   infra/scripts/contabo-images.sh --latest --include-interim
 #   infra/scripts/contabo-images.sh --all      # every standard image, not just Ubuntu
+#   infra/scripts/contabo-images.sh --instance 203588098   # what that VPS runs today
+#
+# `--instance` answers the question the other modes cannot: when a machine was
+# bought in the panel rather than created here, `image_id` has to be pinned to
+# whatever it was installed with, or the first apply reinstalls it out from
+# under you.
 #
 # Credentials come from the same four environment variables the Terraform
 # provider reads (see infra/terraform/providers.tf):
@@ -26,14 +32,21 @@ TOKEN_URL="${CNTB_OAUTH2_TOKEN_URL:-https://auth.contabo.com/auth/realms/contabo
 LATEST_ONLY=false
 INCLUDE_INTERIM=false
 ALL_OS=false
-for arg in "$@"; do
-  case "$arg" in
+INSTANCE_ID=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
     --latest) LATEST_ONLY=true ;;
     --include-interim) INCLUDE_INTERIM=true ;;
     --all) ALL_OS=true ;;
-    -h|--help) sed -n '2,20p' "$0"; exit 0 ;;
-    *) echo "unknown argument: $arg" >&2; exit 2 ;;
+    --instance)
+      shift
+      [ "$#" -gt 0 ] || { echo "--instance needs an instance id" >&2; exit 2; }
+      INSTANCE_ID="$1"
+      ;;
+    -h|--help) sed -n '2,26p' "$0"; exit 0 ;;
+    *) echo "unknown argument: $1" >&2; exit 2 ;;
   esac
+  shift
 done
 
 for var in CNTB_OAUTH2_CLIENT_ID CNTB_OAUTH2_CLIENT_SECRET CNTB_OAUTH2_USER CNTB_OAUTH2_PASS; do
@@ -55,6 +68,15 @@ token="$(curl -fsS -X POST "$TOKEN_URL" \
 
 # x-request-id is mandatory on every Contabo API call, not optional.
 request_id="$(python3 -c 'import uuid; print(uuid.uuid4())')"
+
+if [ -n "$INSTANCE_ID" ]; then
+  curl -fsS "${API}/v1/compute/instances/${INSTANCE_ID}" \
+    -H "Authorization: Bearer ${token}" \
+    -H "x-request-id: ${request_id}" \
+    | python3 -c 'import json,sys; d=json.load(sys.stdin)["data"][0]; print(d.get("imageId") or "(none - instance has no image installed)")'
+  exit 0
+fi
+
 images="$(curl -fsS "${API}/v1/compute/images?standardImage=true&size=100&page=1" \
   -H "Authorization: Bearer ${token}" \
   -H "x-request-id: ${request_id}")"

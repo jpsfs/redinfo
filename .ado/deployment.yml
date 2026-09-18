@@ -51,15 +51,83 @@ parameters:
     displayName: "Skip the Terraform plan/approve/apply entirely and go straight to deploying (hotfix escape hatch)"
     type: boolean
     default: false
+  - name: reportContaboImages
+    displayName: "Only report Contabo image UUIDs (to pin TF_VAR_image_id) — deploys nothing"
+    type: boolean
+    default: false
 
 variables:
   # Docker Hub service connection ID or name
   DOCKER_SERVICE_CONNECTION: "74055803-059c-40b0-bb65-0318f1294758" # Docker Hub Registry
 
 stages:
+  # ── ContaboImages — a lookup, not a deploy ──────────────────────────────────
+  # `image_id` is pinned by hand in the `redinfo-contabo` variable group rather
+  # than resolved at plan time, because Contabo reinstalls the machine when it
+  # changes (infra/scripts/contabo-images.sh explains why at length). That pin
+  # has to come from somewhere, and the API credentials live only in this
+  # variable group — they are write-only secrets, so nobody can read them back
+  # out to run the lookup on a laptop. Hence this stage: opt-in, runs on any
+  # branch, prints the UUIDs, touches nothing.
+  #
+  # `dependsOn: []` is load-bearing. A stage that omits it implicitly depends on
+  # the stage above it, which here would mean waiting for a full build.
+  - stage: ContaboImages
+    displayName: Report Contabo image UUIDs
+    dependsOn: []
+    condition: eq(${{ parameters.reportContaboImages }}, true)
+    variables:
+      - group: redinfo-contabo
+    jobs:
+      - job: Report
+        pool:
+          vmImage: "ubuntu-latest"
+        timeoutInMinutes: 10
+        steps:
+          - checkout: self
+            fetchDepth: 1
+
+          - task: Bash@3
+            displayName: "Standard Ubuntu images, and what the host runs today"
+            inputs:
+              targetType: "inline"
+              script: |
+                set -euo pipefail
+
+                echo "── Standard Ubuntu images ──────────────────────────────"
+                infra/scripts/contabo-images.sh
+
+                echo
+                echo "── Newest LTS ──────────────────────────────────────────"
+                infra/scripts/contabo-images.sh --latest
+
+                # The pin must match what the machine was actually installed
+                # with, not merely the newest image on offer — otherwise the
+                # first apply reinstalls a host that was fine.
+                if [ -n "${TF_VAR_existing_instance_id:-}" ]; then
+                  echo
+                  echo "── Installed on instance ${TF_VAR_existing_instance_id} ──"
+                  infra/scripts/contabo-images.sh --instance "${TF_VAR_existing_instance_id}"
+                fi
+
+                echo
+                echo "Currently pinned TF_VAR_image_id: ${TF_VAR_image_id:-(unset)}"
+                echo "Set it in the 'redinfo-contabo' variable group, then re-run without this option."
+            env:
+              CNTB_OAUTH2_CLIENT_ID: $(CNTB_OAUTH2_CLIENT_ID)
+              CNTB_OAUTH2_CLIENT_SECRET: $(CNTB_OAUTH2_CLIENT_SECRET)
+              CNTB_OAUTH2_USER: $(CNTB_OAUTH2_USER)
+              CNTB_OAUTH2_PASS: $(CNTB_OAUTH2_PASS)
+              TF_VAR_image_id: $(TF_VAR_image_id)
+              TF_VAR_existing_instance_id: $(TF_VAR_existing_instance_id)
+
   # ── Prepare — decide routing once, let every other stage read it ────────────
   - stage: Prepare
     displayName: Resolve build routing
+    # The one thing that stops the whole pipeline. `reportContaboImages` promises
+    # to deploy nothing, and every other stage gates on Prepare's result, so
+    # skipping here skips all of them — no build, no deploy, just the lookup above.
+    condition: eq(${{ parameters.reportContaboImages }}, false)
     jobs:
       - job: Resolve
         pool:
