@@ -93,7 +93,9 @@ existing chart with no changes.
 
 Through the `Infrastructure` stage of `.ado/deployment.yml` — it plans on every
 production release, and asks a human to approve before it applies anything (see
-below) — or locally:
+below). To run it *without* a release — which is the only option the first time,
+since there is no host to deploy to yet — use **Run pipeline → Only run
+Terraform → Run**, on any branch. Or locally:
 
 ```bash
 export CNTB_OAUTH2_CLIENT_ID=... CNTB_OAUTH2_CLIENT_SECRET=...
