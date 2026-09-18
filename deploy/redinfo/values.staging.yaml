@@ -29,6 +29,13 @@ service:
 ingress:
   enabled: true
   className: public
+  # Every path here is "/" → frontend (see below), so ingress-nginx's own body
+  # cap sits in front of the frontend container's nginx too. Its default is a
+  # bare 1m, well under a phone camera photo — matches MAX_ATTACHMENT_BYTES
+  # (packages/shared/src/index.ts), with headroom for multipart overhead, the
+  # same reasoning as nginx/nginx.conf's client_max_body_size.
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "21m"
   hosts:
     - host: staging-redcross.jpsfs.com
       paths:

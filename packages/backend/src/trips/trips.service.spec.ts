@@ -89,7 +89,13 @@ function buildPrismaStub(overrides: Record<string, unknown> = {}) {
     delete: jest.fn().mockResolvedValue(undefined),
   };
   return {
-    vehicle: { count: jest.fn().mockResolvedValue(1) },
+    vehicle: {
+      count: jest.fn().mockResolvedValue(1),
+      // Only reached by `getVehicleDay` for a vehicle with no trips that
+      // date — every other test's fixtures always have at least one row, so
+      // this default is otherwise never hit.
+      findUnique: jest.fn().mockResolvedValue({ id: 'v1', licensePlate: 'AA-11-BB', numeroCauda: '101', ...VEHICLE }),
+    },
     transportLeg: { findMany: jest.fn().mockResolvedValue([]) },
     // Only reached once a stop actually carries a `transportLegId` — most
     // `getDetail` fixtures below have none, so this default is never hit;
@@ -701,6 +707,63 @@ describe('TripsService', () => {
       // A different vehicle's first journey is also 1 — the colour ramp
       // deliberately repeats across vehicles (#247 stage 1's decision table).
       expect(numberById.get('v2-only')).toBe(1);
+    });
+  });
+
+  describe('getVehicleDay', () => {
+    it('filters trips to the given vehicle and date, same shape as a board lane', async () => {
+      const laneStops = [stop({ id: 'pickup-1', kind: TripStopKind.PICKUP, transportLegId: 'leg-1' })];
+      const prisma = buildPrismaStub({
+        trip: {
+          findMany: jest.fn().mockResolvedValue([
+            buildTripRow({ vehicle: { ...VEHICLE, licensePlate: 'AA-11-BB', numeroCauda: '101' }, stops: laneStops }),
+          ]),
+        },
+        transportRequest: { findMany: jest.fn().mockResolvedValue([{ id: 'req-1', patientId: 'pat-1' }]) },
+      });
+      const deps = buildDeps({
+        transportRequestLegs: {
+          findByIds: jest.fn().mockResolvedValue([{ id: 'leg-1', transportRequestId: 'req-1', direction: LegDirection.OUTBOUND }]),
+          findUnassignedForDate: jest.fn().mockResolvedValue([]),
+        },
+        patients: {
+          findManyForDisplay: jest.fn().mockResolvedValue(new Map([['pat-1', { mobility: PatientMobility.WHEELCHAIR, fullName: 'Ana Reis' }]])),
+        },
+      });
+      const service = makeService(prisma, deps);
+
+      const result = await service.getVehicleDay('v1', '2026-09-15', USER);
+
+      expect(prisma.trip.findMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { vehicleId: 'v1', date: new Date('2026-09-15T00:00:00.000Z') } }),
+      );
+      expect(result.vehicle.licensePlate).toBe('AA-11-BB');
+      expect(result.lanes).toHaveLength(1);
+      expect(result.legsById['leg-1']).toMatchObject({ patientId: 'pat-1', patientName: 'Ana Reis' });
+    });
+
+    it('returns an empty day for a known vehicle with nothing planned, rather than 404ing', async () => {
+      const prisma = buildPrismaStub({ trip: { findMany: jest.fn().mockResolvedValue([]) } });
+      const service = makeService(prisma);
+
+      const result = await service.getVehicleDay('v1', '2026-09-15', USER);
+
+      expect(result).toEqual({
+        date: '2026-09-15',
+        vehicle: { id: 'v1', licensePlate: 'AA-11-BB', numeroCauda: '101', ...VEHICLE },
+        lanes: [],
+        legsById: {},
+      });
+    });
+
+    it('404s for a vehicle that does not exist at all', async () => {
+      const prisma = buildPrismaStub({
+        trip: { findMany: jest.fn().mockResolvedValue([]) },
+        vehicle: { findUnique: jest.fn().mockResolvedValue(null) },
+      });
+      const service = makeService(prisma);
+
+      await expect(service.getVehicleDay('nope', '2026-09-15', USER)).rejects.toThrow(NotFoundException);
     });
   });
 });

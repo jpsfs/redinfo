@@ -99,7 +99,7 @@ function lane(overrides: Partial<TransportPlanningLane> = {}): TransportPlanning
   return {
     trip: { id: 'trip-1', date: '2026-09-16', vehicleId: 'v1', status: 'PLANNED', notes: null, createdAt: '', updatedAt: '' } as never,
     journeyNumber: 1,
-    vehicle: {} as never,
+    vehicle: { numeroCauda: '101' } as never,
     crewMembers: [],
     crewRequirement: {} as never,
     stops: [],
@@ -107,6 +107,27 @@ function lane(overrides: Partial<TransportPlanningLane> = {}): TransportPlanning
     emptyLegs: [],
     issues: [],
     routeGeometry: null,
+    ...overrides,
+  };
+}
+
+function stop(overrides: Record<string, unknown> = {}) {
+  return {
+    id: 's1',
+    tripId: 'trip-1',
+    sequence: 1,
+    kind: TripStopKind.PICKUP,
+    transportLegId: 'leg-1',
+    facilityId: null,
+    address: null,
+    latitude: null,
+    longitude: null,
+    plannedAt: '2026-09-16T08:00:00.000Z',
+    actualAt: null,
+    dwellDecision: null,
+    dwellMinutes: null,
+    createdAt: '',
+    updatedAt: '',
     ...overrides,
   };
 }
@@ -247,5 +268,119 @@ describe('MapPanel', () => {
       screen.getByLabelText('Fit the whole day').click();
     });
     expect(state.lastMap!.fitBounds).toHaveBeenCalled();
+  });
+
+  it('labels a stop marker by vehicle and journey number when every journey is visible', async () => {
+    mockProbe.mockResolvedValue(true);
+    const legsById = { 'leg-1': leg({ door: { origin: { latitude: 41.53, longitude: -8.62 }, destination: null } }) };
+    renderPanel({
+      board: {
+        lanes: [lane({ vehicle: { numeroCauda: '205' } as never, journeyNumber: 3, stops: [stop({ sequence: 1 })] })],
+        legsById,
+        unassignedLegIds: [],
+      },
+    });
+
+    await waitFor(() => expect(state.lastMap).not.toBeNull());
+    act(() => state.lastMap!.fire('load'));
+
+    expect(await screen.findByText('205-3')).toBeInTheDocument();
+  });
+
+  it('switches a focused journey to hide the others (not merely dim them) and label by stop order', async () => {
+    mockProbe.mockResolvedValue(true);
+    const legsById = {
+      'leg-1': leg({ door: { origin: { latitude: 41.53, longitude: -8.62 }, destination: null } }),
+      'leg-2': leg({ door: { origin: { latitude: 41.6, longitude: -8.5 }, destination: null } }),
+    };
+    const { rerender } = renderPanel({
+      board: {
+        lanes: [
+          lane({ trip: { id: 'trip-1' } as never, journeyNumber: 1, stops: [stop({ tripId: 'trip-1' })] }),
+          lane({
+            trip: { id: 'trip-2' } as never,
+            journeyNumber: 2,
+            stops: [stop({ id: 's2', tripId: 'trip-2', transportLegId: 'leg-2' })],
+          }),
+        ],
+        legsById,
+        unassignedLegIds: [],
+      },
+    });
+
+    await waitFor(() => expect(state.lastMap).not.toBeNull());
+    act(() => state.lastMap!.fire('load'));
+    await screen.findByText('101-1');
+
+    rerender(
+      <AdminContext dataProvider={testDataProvider()} i18nProvider={polyglotI18nProvider(messages, 'en')}>
+        <MapPanel
+          board={{
+            lanes: [
+              lane({ trip: { id: 'trip-1' } as never, journeyNumber: 1, stops: [stop({ tripId: 'trip-1' })] }),
+              lane({
+                trip: { id: 'trip-2' } as never,
+                journeyNumber: 2,
+                stops: [stop({ id: 's2', tripId: 'trip-2', transportLegId: 'leg-2' })],
+              }),
+            ],
+            legsById,
+            unassignedLegIds: [],
+          }}
+          selectedTripId="trip-1"
+          onSelectTrip={vi.fn()}
+        />
+      </AdminContext>,
+    );
+
+    // The selected journey's marker now reads its own stop order...
+    expect(await screen.findByText('1')).toBeInTheDocument();
+    // ...and the other journey's marker is hidden outright, not dimmed.
+    expect(screen.getByText('101-2').style.opacity).toBe('0');
+    expect(state.lastMap!.setPaintProperty).toHaveBeenCalledWith('routes-line', 'line-opacity', [
+      'case',
+      ['==', ['get', 'tripId'], 'trip-1'],
+      1,
+      0,
+    ]);
+    expect(state.lastMap!.fitBounds).toHaveBeenCalled();
+  });
+
+  it('shows the corridor overlap hint and can be dismissed', async () => {
+    mockProbe.mockResolvedValue(true);
+    const geometry = '_p~iF~ps|U_ulLnnqC_mqNvxq`@';
+    const window_ = { startsAt: '2026-09-16T08:00:00.000Z', endsAt: '2026-09-16T09:00:00.000Z' };
+    renderPanel({
+      board: {
+        lanes: [
+          lane({ trip: { id: 'trip-1' } as never, journeyNumber: 1, routeGeometry: geometry, occupancyWindow: window_ }),
+          lane({ trip: { id: 'trip-2' } as never, journeyNumber: 2, routeGeometry: geometry, occupancyWindow: window_ }),
+        ],
+        legsById: {},
+        unassignedLegIds: [],
+      },
+    });
+
+    await waitFor(() => expect(state.lastMap).not.toBeNull());
+    act(() => state.lastMap!.fire('load'));
+
+    expect(await screen.findByText('Possible corridor overlaps')).toBeInTheDocument();
+    act(() => screen.getByLabelText('Dismiss').click());
+    expect(screen.queryByText('Possible corridor overlaps')).not.toBeInTheDocument();
+  });
+
+  it('opens the map in fullscreen from a button beside the fit-to-day control', async () => {
+    const requestFullscreen = vi.fn();
+    Element.prototype.requestFullscreen = requestFullscreen;
+    mockProbe.mockResolvedValue(true);
+    renderPanel({
+      board: { lanes: [lane({ routeGeometry: '_p~iF~ps|U_ulLnnqC_mqNvxq`@' })], legsById: {}, unassignedLegIds: [] },
+    });
+
+    await waitFor(() => expect(state.lastMap).not.toBeNull());
+    act(() => state.lastMap!.fire('load'));
+
+    act(() => screen.getByLabelText('Fullscreen').click());
+    expect(requestFullscreen).toHaveBeenCalled();
   });
 });

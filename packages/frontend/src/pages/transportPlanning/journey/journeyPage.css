@@ -10,6 +10,12 @@
     display: none !important;
   }
 
+  /* A WebGL canvas has nothing to hand a printer — the crew sheet stays the
+     text-only artefact it always was. */
+  .journey-page-map {
+    display: none !important;
+  }
+
   .journey-page-sheet {
     box-shadow: none !important;
     border: none !important;

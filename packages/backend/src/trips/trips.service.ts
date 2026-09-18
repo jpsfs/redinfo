@@ -15,6 +15,7 @@ import {
   TripStopKind,
   TripStopSegment,
   TripStopWalkInput,
+  VehicleDayJourneys,
   VehicleOccupancySource,
   VehicleType,
   arrivalWindowWarning,
@@ -110,7 +111,7 @@ function vehicleSummary(row: TripDetailRow): TransportPlanningLane['vehicle'] {
  * number as the board does for the same trip, rather than a second,
  * independent implementation of this sort drifting from this one.
  */
-function journeyNumbersByTripId(rows: { id: string; stops: { plannedAt: Date }[] }[]): Map<string, number> {
+export function journeyNumbersByTripId(rows: { id: string; stops: { plannedAt: Date }[] }[]): Map<string, number> {
   const firstStopAt = (row: { stops: { plannedAt: Date }[] }) =>
     row.stops.length ? Math.min(...row.stops.map((s) => s.plannedAt.getTime())) : Number.MAX_SAFE_INTEGER;
   const ordered = [...rows].sort((a, b) => firstStopAt(a) - firstStopAt(b));
@@ -271,6 +272,59 @@ export class TripsService {
   }
 
   /**
+   * One vehicle's whole day (#247 stage 5) — the vehicle-day page's one
+   * call, reached from the board by clicking a vehicle's own icon. Same
+   * per-lane computation `getBoard` does, scoped to a single vehicle via the
+   * `vehicleId` filter `list` already supports, rather than the whole
+   * fleet. A vehicle with nothing planned that date returns empty `lanes`
+   * rather than 404ing — only an unknown `vehicleId` is a 404, resolved via
+   * a `Vehicle` lookup since there is no trip row to read it off in that
+   * case.
+   */
+  async getVehicleDay(vehicleId: string, date: string, user: RequestUser): Promise<VehicleDayJourneys> {
+    const rows = await this.prisma.trip.findMany({
+      where: { vehicleId, date: parseIsoDate(date) },
+      include: TRIP_INCLUDE,
+      orderBy: [{ createdAt: 'asc' }],
+    });
+
+    if (rows.length === 0) {
+      const vehicle = await this.prisma.vehicle.findUnique({
+        where: { id: vehicleId },
+        select: {
+          id: true,
+          licensePlate: true,
+          numeroCauda: true,
+          vehicleType: true,
+          seatedCapacity: true,
+          wheelchairPositions: true,
+          stretcherPositions: true,
+        },
+      });
+      if (!vehicle) throw new NotFoundException(`Vehicle ${vehicleId} not found`);
+      return { date, vehicle: { ...vehicle, vehicleType: vehicle.vehicleType as never }, lanes: [], legsById: {} };
+    }
+
+    const journeyNumberByTripId = journeyNumbersByTripId(rows);
+    const lanes: Array<Omit<TransportPlanningLane, 'routeGeometry'>> = await Promise.all(
+      rows.map(async (row) => ({
+        ...(await this.buildDetail(row)),
+        journeyNumber: journeyNumberByTripId.get(row.id) ?? 1,
+        vehicle: vehicleSummary(row),
+      })),
+    );
+
+    const legIds = [
+      ...new Set(rows.flatMap((row) => (row.stops as TripStopRow[]).map((stop) => stop.transportLegId).filter((id): id is string => !!id))),
+    ];
+    const legs = await this.transportRequestLegs.findByIds(legIds);
+    const legsById = await this.loadLegsById(legs, user);
+    const lanesWithGeometry = await Promise.all(lanes.map((lane) => this.attachRouteGeometry(lane, legsById)));
+
+    return { date, vehicle: vehicleSummary(rows[0]), lanes: lanesWithGeometry, legsById };
+  }
+
+  /**
    * This journey's road path, one continuous line through every stop in
    * plan order (#247 stage 4's map panel). Deliberately one line for the
    * whole trip rather than one dashed segment per leg direction: OSRM's
@@ -281,7 +335,7 @@ export class TripsService {
    * reads off the numbered stop markers and the timeline/inspector next to
    * it. A `PICKUP`/`DROPOFF` stop takes its point from the leg's own
    * resolved `door` (its own coordinates rarely carry one, see
-   * `TripLegTravelService`'s doc comment); `WAIT`/`RETURN_TO_BASE` already
+   * `TripLegTravelService`'s doc comment); `WAIT`/`RETURN_TO_BASE`/`DEPART_FROM_BASE` already
    * carry their own resolved point (`TripStopsService` copies it from the
    * facility or the base at creation).
    */
@@ -410,7 +464,7 @@ export class TripsService {
         vehicleType: row.vehicle.vehicleType as VehicleType,
         date,
         // A lane with nothing aboard yet has no crew to fall short of — see
-        // `checkTripCrew`. `WAIT`/`RETURN_TO_BASE`-only trips count as empty.
+        // `checkTripCrew`. `WAIT`/`RETURN_TO_BASE`/`DEPART_FROM_BASE`-only trips count as empty.
         hasPassengers: segments.some((segment) => segment.onboardLegIds.length > 0),
       }),
       ...(await this.checkArrivalTiming(stops)),

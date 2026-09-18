@@ -18,6 +18,7 @@ vi.mock('react-admin', async (importOriginal) => ({
 const mockApiFetch = apiFetch as unknown as Mock;
 
 const thresholds = { arrivalWindowEarliestMinutes: 30, arrivalWindowLatestMinutes: 5, arrivalToleranceMinutes: 10 };
+const handling = { pickupHandlingMinutes: 3, dropoffHandlingMinutes: 1 };
 const policies = [
   {
     occurrenceType: TransportRequestOccurrenceType.CONSULTA,
@@ -41,27 +42,37 @@ const renderPage = () =>
     </AdminContext>,
   );
 
+/** The three GETs every test needs answered before it can touch the form
+ * beneath any of them — `patch` is the one-off response a PATCH/PUT call
+ * itself resolves to, distinct from the GETs' own fixtures. */
+function mockConfigEndpoints(patch?: unknown) {
+  mockApiFetch.mockImplementation((path: string, options?: { method?: string }) => {
+    if (options?.method && patch !== undefined) return Promise.resolve(patch);
+    if (path.endsWith('arrival-window-thresholds')) return Promise.resolve(thresholds);
+    if (path.endsWith('patient-handling-thresholds')) return Promise.resolve(handling);
+    return Promise.resolve(policies);
+  });
+}
+
 describe('TransportConfigPage', () => {
   beforeEach(() => {
     mockApiFetch.mockReset();
   });
 
-  it('loads and displays both the thresholds and the occurrence-type table', async () => {
-    mockApiFetch.mockImplementation((path: string) =>
-      Promise.resolve(path.endsWith('arrival-window-thresholds') ? thresholds : policies),
-    );
+  it('loads and displays the thresholds, handling minutes and the occurrence-type table', async () => {
+    mockConfigEndpoints();
     renderPage();
 
     expect(await screen.findByLabelText('Do not arrive more than X minutes early')).toHaveValue(30);
+    expect(await screen.findByLabelText('Pickup (min)')).toHaveValue(3);
+    expect(screen.getByLabelText('Drop-off (min)')).toHaveValue(1);
     expect(screen.getByText('Consultation')).toBeInTheDocument();
     expect(screen.getByText('Treatment')).toBeInTheDocument();
   });
 
   it('saves the thresholds as a full replace on Save', async () => {
     const user = userEvent.setup();
-    mockApiFetch.mockImplementation((path: string) =>
-      Promise.resolve(path.endsWith('arrival-window-thresholds') ? thresholds : policies),
-    );
+    mockConfigEndpoints();
     renderPage();
 
     const earliest = await screen.findByLabelText('Do not arrive more than X minutes early');
@@ -81,9 +92,7 @@ describe('TransportConfigPage', () => {
 
   it('rejects an earliest threshold lower than the latest one before saving', async () => {
     const user = userEvent.setup();
-    mockApiFetch.mockImplementation((path: string) =>
-      Promise.resolve(path.endsWith('arrival-window-thresholds') ? thresholds : policies),
-    );
+    mockConfigEndpoints();
     renderPage();
 
     const earliest = await screen.findByLabelText('Do not arrive more than X minutes early');
@@ -99,13 +108,30 @@ describe('TransportConfigPage', () => {
     );
   });
 
+  it('saves the patient handling minutes as a full replace on Save', async () => {
+    const user = userEvent.setup();
+    mockConfigEndpoints();
+    renderPage();
+
+    const pickup = await screen.findByLabelText('Pickup (min)');
+    await user.clear(pickup);
+    await user.type(pickup, '5');
+
+    const saveButtons = await screen.findAllByRole('button', { name: 'Save' });
+    // Thresholds' own save button is first; handling's is the second card.
+    await user.click(saveButtons[1]);
+
+    await waitFor(() =>
+      expect(mockApiFetch).toHaveBeenCalledWith('/transport-config/patient-handling-thresholds', {
+        method: 'PUT',
+        body: { ...handling, pickupHandlingMinutes: 5 },
+      }),
+    );
+  });
+
   it('patches a single occurrence type without touching the others', async () => {
     const user = userEvent.setup();
-    mockApiFetch.mockImplementation((path: string) => {
-      if (path.endsWith('arrival-window-thresholds')) return Promise.resolve(thresholds);
-      if (path.endsWith('occurrence-type-policies')) return Promise.resolve(policies);
-      return Promise.resolve({ ...policies[0], defaultDurationMinutes: 40 });
-    });
+    mockConfigEndpoints({ ...policies[0], defaultDurationMinutes: 40 });
     renderPage();
 
     const defaultInputs = await screen.findAllByDisplayValue('30');

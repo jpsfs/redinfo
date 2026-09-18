@@ -1,4 +1,4 @@
-import { Trip, TripCrewMember, TripStatus, TripStop, TripStopDwell, TripStopKind } from '@redinfo/shared';
+import { Trip, TripCrewMember, TripStatus, TripStop, TripStopDwell, TripStopKind, TripStopWalkInput } from '@redinfo/shared';
 import { CertificationType } from '@prisma/client';
 import { toIsoDate } from '../utils/date.util';
 
@@ -79,5 +79,20 @@ export function serializeTripStop(row: TripStopRow): TripStop {
     dwellMinutes: row.dwellMinutes,
     createdAt: row.createdAt.toISOString(),
     updatedAt: row.updatedAt.toISOString(),
+  };
+}
+
+/** A stop row reduced to what `walkTripStops`/`checkTripCapacity` need —
+ * shared by `TripStopsService` (checking a candidate stop set before
+ * committing it) and `TripPlacementSuggestionsService` (checking one it will
+ * never commit at all). */
+export function toWalkInput(stop: TripStopRow): TripStopWalkInput {
+  return {
+    id: stop.id,
+    sequence: stop.sequence,
+    kind: stop.kind as TripStopKind,
+    transportLegId: stop.transportLegId,
+    plannedAt: stop.plannedAt.toISOString(),
+    dwellMinutes: stop.dwellMinutes,
   };
 }

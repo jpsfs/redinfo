@@ -156,8 +156,22 @@ polyline6 call per lane, through the ordered stop sequence's resolved points —
 than two resolvable points or a routing outage, the board stays usable either way). The tile
 infrastructure itself (self-hosted PMTiles behind the `tiles` compose service, proxied at
 `/tiles/` exactly like `/api/`) is frontend/ops, not this module — see
-`scripts/prepare-basemap.sh` and `nginx/nginx.conf`. Stages 5-6 (placement suggestions, week
-strip) are not built — see `docs/plans/planeamento-transportes-redesign.md`.
+`scripts/prepare-basemap.sh` and `nginx/nginx.conf`. Stage 5 (vehicle-day page, collapsible map
+pane) adds the one genuinely new route in this story: `GET /trips/vehicle/:vehicleId?date=`
+(`TripsService.getVehicleDay`, `VehicleDayJourneys` in shared) — the board icon's own drill-down,
+same per-lane computation as `getBoard` scoped to one vehicle via the `vehicleId` filter `list`
+already supported. Empty `lanes` for a vehicle with nothing planned that date, never a 404 — only
+an unknown `vehicleId` is, resolved via a plain `Vehicle` lookup since there's no trip row to read
+it off in that case. The design doc's own Suggestions stage adds the other genuinely new route:
+`POST /trips/suggest-placements` (`TripPlacementSuggestionsService`, `RankedPlacement` in shared)
+ranks every vehicle/journey a group of unplanned legs could go onto — existing journeys (prepend
+before the first stop or append after the last, whichever routes cheaper) plus a fresh journey per
+idle vehicle, one batched `RoutingService.distanceMatrix` call for the whole request rather than
+one per candidate. Ranking only, nothing is written; a candidate that fails capacity (hard,
+unoverridable) or collides with another `VehicleOccupancy` booking (hard but overridable) is still
+returned with its `blockedBy` filled in, never dropped. The week strip
+(`GET /trips/week`, `GET /trips/crew/:userId`) is not built — see
+`docs/plans/planeamento-transportes-redesign.md`.
 
 ## Controller pattern
 

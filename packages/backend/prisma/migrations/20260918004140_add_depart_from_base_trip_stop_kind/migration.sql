@@ -1,0 +1,2 @@
+-- AlterEnum
+ALTER TYPE "TripStopKind" ADD VALUE 'DEPART_FROM_BASE';

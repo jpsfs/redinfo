@@ -1,8 +1,9 @@
-import { Alert, Box, Button, Chip, Paper, Stack, Typography } from '@mui/material';
+import { Alert, Button, Chip, Paper, Stack, Typography } from '@mui/material';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import GroupsIcon from '@mui/icons-material/Groups';
 import PlaceIcon from '@mui/icons-material/Place';
+import TipsAndUpdatesIcon from '@mui/icons-material/TipsAndUpdates';
 import { LegDirection, TransportPlanningLane, TransportPlanningLeg } from '@redinfo/shared';
 import { useT } from '../../i18n/useT';
 import { MobilityChip } from '../../resources/patients/patientChips';
@@ -25,12 +26,14 @@ export const UnplannedGroupCard = ({
   vehicles,
   onAssignGroup,
   onAssignPerson,
+  onSuggestPlacements,
 }: {
   group: UnplannedGroup;
   legsById: Record<string, TransportPlanningLeg>;
   vehicles: TransportPlanningLane['vehicle'][];
   onAssignGroup: () => void;
   onAssignPerson: (legId: string) => void;
+  onSuggestPlacements: () => void;
 }) => {
   const t = useT();
   const isOutbound = group.direction === LegDirection.OUTBOUND;
@@ -90,11 +93,14 @@ export const UnplannedGroupCard = ({
           </Alert>
         )}
 
-        <Box>
+        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
           <Button size="small" variant="outlined" startIcon={<GroupsIcon />} onClick={onAssignGroup}>
             {t('transportPlanning.assignGroupButton')}
           </Button>
-        </Box>
+          <Button size="small" variant="outlined" startIcon={<TipsAndUpdatesIcon />} onClick={onSuggestPlacements}>
+            {t('transportPlanning.suggestPlacementsButton')}
+          </Button>
+        </Stack>
       </Stack>
     </Paper>
   );

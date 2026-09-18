@@ -1,4 +1,5 @@
-import { Box, Button, Tooltip, Typography, alpha } from '@mui/material';
+import { Box, Button, IconButton, Tooltip, Typography, alpha } from '@mui/material';
+import { useNavigate } from 'react-router-dom';
 import AddIcon from '@mui/icons-material/Add';
 import AirportShuttleOutlinedIcon from '@mui/icons-material/AirportShuttleOutlined';
 import LocalHospitalOutlinedIcon from '@mui/icons-material/LocalHospitalOutlined';
@@ -30,6 +31,7 @@ import { TimelineWindow } from './planningTime';
  */
 export const VehicleGroup = ({
   vehicle,
+  date,
   lanes,
   legsById,
   timelineWindow,
@@ -44,6 +46,10 @@ export const VehicleGroup = ({
   onWaitRelease,
 }: {
   vehicle: TransportPlanningLane['vehicle'];
+  /** The board's own date — carried only so the vehicle icon can link to
+   * this vehicle's day (`/transport-planning/vehicle/:id?date=`, #247 stage
+   * 5); nothing else in this component depends on it. */
+  date: string;
   /** This vehicle's journeys, already in the order they run. */
   lanes: TransportPlanningLane[];
   legsById: Record<string, TransportPlanningLeg>;
@@ -61,6 +67,7 @@ export const VehicleGroup = ({
   onWaitRelease: (tripId: string, dropoffStop: TripStop) => void;
 }) => {
   const t = useT();
+  const navigate = useNavigate();
   const isEmergency = vehicle.vehicleType === VehicleType.EMERGENCY;
   const VehicleIcon = isEmergency ? LocalHospitalOutlinedIcon : AirportShuttleOutlinedIcon;
 
@@ -94,8 +101,15 @@ export const VehicleGroup = ({
             minWidth: LANE_LABEL_WIDTH,
           }}
         >
-          <Tooltip title={t(`transportPlanning.vehicleType.${vehicle.vehicleType}`)}>
-            <VehicleIcon fontSize="small" sx={{ color: isEmergency ? 'error.main' : 'text.secondary' }} />
+          <Tooltip title={t('transportPlanning.openVehicleDay')}>
+            <IconButton
+              size="small"
+              aria-label={t('transportPlanning.openVehicleDay')}
+              onClick={() => navigate(`/transport-planning/vehicle/${vehicle.id}?date=${date}`)}
+              sx={{ p: 0.25 }}
+            >
+              <VehicleIcon fontSize="small" sx={{ color: isEmergency ? 'error.main' : 'text.secondary' }} />
+            </IconButton>
           </Tooltip>
           <Typography variant="subtitle2" fontWeight={800} noWrap sx={{ letterSpacing: 0.2 }}>
             {vehicle.numeroCauda}

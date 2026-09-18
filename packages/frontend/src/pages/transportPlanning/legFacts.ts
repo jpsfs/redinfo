@@ -24,6 +24,23 @@ export function legFacilityId(leg: TransportPlanningLeg): string | null {
 }
 
 /**
+ * Where *this particular stop* actually is — the patient's own home/care
+ * address for a `PICKUP` on an outbound leg or a `DROPOFF` on a return one,
+ * the facility for the other end. Deliberately keyed by the stop's own
+ * `kind` rather than `leg.direction` the way `legFacilityName` is: that
+ * function answers "which facility is this leg about" (right for grouping
+ * legs sharing a destination), but a stop table showing every stop of a
+ * mixed-direction journey needs each row's own end, not the leg's single
+ * "about" facility repeated on both its pickup and its dropoff row.
+ */
+export function stopLocationLabel(stop: TripStop, leg: TransportPlanningLeg | undefined): string | null {
+  if (!leg) return null;
+  if (stop.kind === TripStopKind.PICKUP) return leg.originFacility?.name ?? leg.originAddress ?? null;
+  if (stop.kind === TripStopKind.DROPOFF) return leg.destinationFacility?.name ?? leg.destinationAddress ?? null;
+  return null;
+}
+
+/**
  * When the vehicle needs to be *at the facility* for this leg — the instant
  * the unplanned rail groups around (#247 stage 2, ±15 minutes). An outbound
  * leg is anchored on arrival, H.I.; a return leg is anchored on when the

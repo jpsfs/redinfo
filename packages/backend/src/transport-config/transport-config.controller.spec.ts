@@ -49,6 +49,25 @@ describe('TransportConfigController', () => {
     });
   });
 
+  describe('updatePatientHandlingThresholds', () => {
+    it('rejects a negative handling time', async () => {
+      const { controller } = makeController();
+      await expect(
+        controller.updatePatientHandlingThresholds({ pickupHandlingMinutes: -1, dropoffHandlingMinutes: 1 }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('persists a valid patch, without touching the arrival window fields', async () => {
+      const { controller, settings } = makeController();
+      const result = await controller.updatePatientHandlingThresholds({
+        pickupHandlingMinutes: 5,
+        dropoffHandlingMinutes: 2,
+      });
+      expect(settings.update).toHaveBeenCalledWith({ pickupHandlingMinutes: 5, dropoffHandlingMinutes: 2 });
+      expect(result).toEqual({ pickupHandlingMinutes: 5, dropoffHandlingMinutes: 2 });
+    });
+  });
+
   describe('updateOccurrenceTypePolicy', () => {
     it('rejects an unknown occurrence type', async () => {
       const { controller } = makeController();

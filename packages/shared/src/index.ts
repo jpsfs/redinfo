@@ -5892,6 +5892,41 @@ export function targetArrivalAt(appointmentAt: string, thresholds: ArrivalWindow
 }
 
 /**
+ * How long it actually takes to get a patient into or out of the vehicle —
+ * distinct from `TripStopDwell`'s WAIT-at-facility decision, which is about
+ * whether the crew stays with the vehicle while the patient is *inside* the
+ * facility, not the seconds-to-minutes of loading/unloading them at the
+ * vehicle's door. Policy, not physics, hence adjustable the same way
+ * `ArrivalWindowThresholds` is (#233's precedent): a coordinator can widen
+ * or narrow it without a deploy as the fleet's own wheelchair/stretcher mix
+ * changes.
+ */
+export interface PatientHandlingThresholds {
+  /** Minutes to get the patient aboard at a `PICKUP` stop. */
+  pickupHandlingMinutes: number;
+  /** Minutes to get the patient off at a `DROPOFF` stop. */
+  dropoffHandlingMinutes: number;
+}
+
+export const DEFAULT_PATIENT_HANDLING_THRESHOLDS: PatientHandlingThresholds = {
+  pickupHandlingMinutes: 3,
+  dropoffHandlingMinutes: 1,
+};
+
+/** Same "message or null" shape as `validateArrivalWindowThresholds`. */
+export function validatePatientHandlingThresholds(
+  input: Partial<Record<keyof PatientHandlingThresholds, number | null | undefined>>,
+): string | null {
+  for (const value of Object.values(input)) {
+    if (value === null || value === undefined) continue;
+    if (!Number.isInteger(value) || value < 0) {
+      return 'Patient handling times must be whole numbers of minutes, zero or more.';
+    }
+  }
+  return null;
+}
+
+/**
  * The two times the crew currently works out from experience, and the reason
  * the planning board exists: when to collect the patient, and when they get
  * home again. Neither is on the delegation's printed daily sheet today — it
@@ -5913,6 +5948,13 @@ export function targetArrivalAt(appointmentAt: string, thresholds: ArrivalWindow
  * `null` travel time (no route, no coordinates) yields `null` times rather
  * than a fabricated guess: a blank the planner fills in is honest, a made-up
  * time is not.
+ *
+ * The anchored end (arrival for `OUTBOUND`, departure for `RETURN`) is a
+ * fact the plan is built around and stays exactly where the raw travel time
+ * puts it; `handling` only widens the *other* end, so the suggested span
+ * between `pickupAt` and `dropoffAt` reflects the whole time the leg
+ * realistically consumes — travel plus actually getting the patient aboard
+ * and off again — rather than pretending loading is instantaneous.
  */
 export interface SuggestedLegTimes {
   /** ISO datetime — leaving the origin. Home for `OUTBOUND`, the facility for `RETURN`. */
@@ -5930,22 +5972,25 @@ export function suggestLegTimes(input: {
   /** Planned travel time for this leg, traffic-corrected. Null when unroutable. */
   travelMinutes: number | null;
   thresholds: ArrivalWindowThresholds;
+  /** Per-patient loading/unloading time — adjustable, see `DEFAULT_PATIENT_HANDLING_THRESHOLDS`. */
+  handling: PatientHandlingThresholds;
 }): SuggestedLegTimes {
-  const { direction, appointmentAt, effectiveEstimatedEndAt, travelMinutes, thresholds } = input;
+  const { direction, appointmentAt, effectiveEstimatedEndAt, travelMinutes, thresholds, handling } = input;
   if (travelMinutes == null) return { pickupAt: null, dropoffAt: null };
   const travelMs = travelMinutes * 60_000;
+  const handlingMs = (handling.pickupHandlingMinutes + handling.dropoffHandlingMinutes) * 60_000;
 
   if (direction === LegDirection.RETURN) {
     const pickup = new Date(effectiveEstimatedEndAt);
     return {
       pickupAt: pickup.toISOString(),
-      dropoffAt: new Date(pickup.getTime() + travelMs).toISOString(),
+      dropoffAt: new Date(pickup.getTime() + travelMs + handlingMs).toISOString(),
     };
   }
 
   const dropoff = new Date(targetArrivalAt(appointmentAt, thresholds));
   return {
-    pickupAt: new Date(dropoff.getTime() - travelMs).toISOString(),
+    pickupAt: new Date(dropoff.getTime() - travelMs - handlingMs).toISOString(),
     dropoffAt: dropoff.toISOString(),
   };
 }
@@ -5957,7 +6002,7 @@ export function suggestLegTimes(input: {
  * run, and changeable without a deploy when the delegation moves or the
  * freephone number changes.
  */
-export interface DelegationSettings extends ArrivalWindowThresholds {
+export interface DelegationSettings extends ArrivalWindowThresholds, PatientHandlingThresholds {
   baseName: string;
   baseLatitude: number;
   baseLongitude: number;
@@ -5977,6 +6022,7 @@ export const DEFAULT_DELEGATION_SETTINGS: DelegationSettings = {
   baseLongitude: -8.6117829,
   coduDadosPhone: '+351800203264',
   ...DEFAULT_ARRIVAL_WINDOW_THRESHOLDS,
+  ...DEFAULT_PATIENT_HANDLING_THRESHOLDS,
 };
 
 // ─── Live emergency runs ──────────────────────────────────────────────────────
@@ -8134,8 +8180,8 @@ export function validateCancelTransportLeg(input: CancelTransportLegInput): stri
 // a patient's round journey: a leg's `PICKUP`/`DROPOFF` pair moves between
 // trips in one call (`AssignTransportLegInput`), so the outbound and return
 // legs of the same patient on the same day may sit on different trips, with
-// different vehicles and different crews. `WAIT`/`RETURN_TO_BASE` stops
-// carry no leg at all.
+// different vehicles and different crews. `WAIT`/`RETURN_TO_BASE`/
+// `DEPART_FROM_BASE` stops carry no leg at all.
 //
 // Validation follows the override precedent used everywhere else in this
 // schema (`ScheduleAssignment.isOverride`/`certificationOverrideReason`,
@@ -8156,6 +8202,10 @@ export enum TripStopKind {
   DROPOFF = 'DROPOFF',
   WAIT = 'WAIT',
   RETURN_TO_BASE = 'RETURN_TO_BASE',
+  /** The vehicle leaving the delegation's own base to start the day's first
+   * journey — `RETURN_TO_BASE`'s counterpart at the other end of the day.
+   * Carries no leg, same as `RETURN_TO_BASE`/`WAIT`. */
+  DEPART_FROM_BASE = 'DEPART_FROM_BASE',
 }
 
 /**
@@ -8271,22 +8321,27 @@ export function validateAssignTransportLeg(input: AssignTransportLegInput): stri
   return null;
 }
 
-/** `POST /trips/:id/stops` — a `WAIT` or `RETURN_TO_BASE` stop, the only two
- * kinds ever added directly; `PICKUP`/`DROPOFF` only ever arrive as a pair,
- * via `AssignTransportLegInput`. */
+/** `POST /trips/:id/stops` — a `WAIT`, `RETURN_TO_BASE` or `DEPART_FROM_BASE`
+ * stop, the only three kinds ever added directly; `PICKUP`/`DROPOFF` only
+ * ever arrive as a pair, via `AssignTransportLegInput`. */
 export interface CreateTripStopInput {
-  kind: TripStopKind.WAIT | TripStopKind.RETURN_TO_BASE;
+  kind: TripStopKind.WAIT | TripStopKind.RETURN_TO_BASE | TripStopKind.DEPART_FROM_BASE;
   plannedAt: string;
   /** Required for `WAIT` — the facility being waited at. Ignored for
-   * `RETURN_TO_BASE`, which always targets the delegation's own base. */
+   * `RETURN_TO_BASE`/`DEPART_FROM_BASE`, which always target the
+   * delegation's own base. */
   facilityId?: string | null;
   dwellDecision?: TripStopDwell | null;
   dwellMinutes?: number | null;
 }
 
 export function validateCreateTripStop(input: CreateTripStopInput): string | null {
-  if (input.kind !== TripStopKind.WAIT && input.kind !== TripStopKind.RETURN_TO_BASE) {
-    return 'Only a WAIT or RETURN_TO_BASE stop may be added directly.';
+  if (
+    input.kind !== TripStopKind.WAIT &&
+    input.kind !== TripStopKind.RETURN_TO_BASE &&
+    input.kind !== TripStopKind.DEPART_FROM_BASE
+  ) {
+    return 'Only a WAIT, RETURN_TO_BASE or DEPART_FROM_BASE stop may be added directly.';
   }
   if (!input.plannedAt) return 'Give the planned time.';
   if (input.kind === TripStopKind.WAIT && !input.facilityId) {
@@ -8691,6 +8746,30 @@ export function decodePolyline(encoded: string, precision = 6): Array<{ latitude
 
   return coordinates;
 }
+
+/**
+ * A lane's own driven distance, in kilometres — the sum of consecutive
+ * decoded-polyline vertices' great-circle distances, not a per-leg sum.
+ *
+ * `journeySummary`'s total distance used to add up each carried leg's own
+ * `travelDistanceMeters` — the distance *that patient's* pickup→dropoff would
+ * cover driven alone — which double-counts every road segment two
+ * co-routed patients happen to share and, just as often, undercounts the
+ * empty runs between stops the plan never routes stand-alone. `routeGeometry`
+ * is already the vehicle's one real path through every stop in sequence
+ * (`TripsService.attachRouteGeometry`), so walking its own vertices is the
+ * only distance that actually matches what the crew drives. A dense
+ * polyline's vertex-to-vertex chord length converges on the road distance
+ * closely enough that this needs no OSRM round trip of its own.
+ */
+export function polylineDistanceKm(encoded: string, precision = 6): number {
+  const points = decodePolyline(encoded, precision);
+  let total = 0;
+  for (let i = 1; i < points.length; i++) {
+    total += distanceInKm(points[i - 1], points[i]);
+  }
+  return total;
+}
 //
 // `GET /trips/board?date=` — everything `TransportPlanningPage` needs for one
 // date in a single call. The board never re-derives `TripsService.getDetail`'s
@@ -8835,6 +8914,79 @@ export interface TransportPlanningBoard {
  */
 export interface TripJourneyDetail extends TransportPlanningLane {
   legsById: Record<string, TransportPlanningLeg>;
+}
+
+/**
+ * One vehicle's whole day (#247 stage 5) — every journey it runs on `date`,
+ * the vehicle-day page's one call (`GET /trips/vehicle/:vehicleId?date=`).
+ * `lanes` is empty for a vehicle with nothing planned that date rather than
+ * 404ing, so the page can still say "no journeys" for a known vehicle; an
+ * unknown `vehicleId` is the only 404. Shaped like `TripJourneyDetail` — one
+ * shared `legsById` rather than one per lane — since a vehicle-day page has
+ * no board-wide map to look legs up in either.
+ */
+export interface VehicleDayJourneys {
+  /** ISO date. */
+  date: string;
+  vehicle: TransportPlanningLane['vehicle'];
+  /** This vehicle's journeys for the date, in `journeyNumber` order. */
+  lanes: TransportPlanningLane[];
+  legsById: Record<string, TransportPlanningLeg>;
+}
+
+/**
+ * `POST /trips/suggest-placements` (the redesign's "Suggestions" stage,
+ * `docs/plans/planeamento-transportes-redesign.md` §6/§8) — everywhere a
+ * group of unplanned legs could go, ranked by how much it costs the fleet.
+ * Ranking only: #219's deferral of automatic optimisation stands, so nothing
+ * here ever applies itself, and a blocked candidate is still returned rather
+ * than filtered out — the planner needs to know it was considered.
+ */
+export interface SuggestPlacementsRequest {
+  /** The unplanned rail's own group — every person boards together, so
+   * they're placed together (mirrors `AssignGroupDialog`'s one dialog, one
+   * pickup/dropoff pair per leg, same instant). */
+  legIds: string[];
+}
+
+/** Why a candidate can't be applied as computed. Never blocks the candidate
+ * from being returned — see `RankedPlacement`'s own doc comment. */
+export type PlacementBlockReason =
+  | 'CAPACITY_SEATS'
+  | 'CAPACITY_WHEELCHAIR'
+  | 'CAPACITY_STRETCHER'
+  | 'VEHICLE_UNAVAILABLE'
+  | 'ROUTE_UNKNOWN';
+
+/**
+ * One place the group could go: an existing journey to insert into, or a
+ * fresh one to start on a vehicle with nothing planned yet (`tripId: null`).
+ * `deltaKm`/`deltaMinutes` are the detour this insertion costs the vehicle's
+ * *existing* route — the straight cost of the new stretch for a fresh trip,
+ * since there is no route yet to detour from. `arrivalMarginMinutes` is the
+ * slack left before the group's own outbound appointment once that detour's
+ * travel time is added; negative means the candidate would arrive late.
+ * Both are `null` when a point on the route couldn't be resolved or routed —
+ * an honest blank, never a fabricated number, same posture as
+ * `TransportPlanningLeg.travelMinutes`. Never meaningful for a `RETURN`
+ * group, which has no appointment to be on time for.
+ */
+export interface RankedPlacement {
+  vehicle: { id: string; numeroCauda: string; licensePlate: string };
+  /** Null for a fresh journey on this vehicle rather than an existing one. */
+  tripId: string | null;
+  /** This existing journey's ordinal for the vehicle that date — the same
+   * numbering `TransportPlanningLane.journeyNumber` uses. Null alongside
+   * `tripId`. */
+  journeyNumber: number | null;
+  /** Where the group would land among the trip's stops in calendar-time
+   * order, 0-based, 0 meaning before every stop the trip already has.
+   * Always 0 for a fresh trip. */
+  insertPosition: number;
+  deltaKm: number | null;
+  deltaMinutes: number | null;
+  arrivalMarginMinutes: number | null;
+  blockedBy: PlacementBlockReason[];
 }
 
 // ─── Crew manifest (#236) ───────────────────────────────────────────────────

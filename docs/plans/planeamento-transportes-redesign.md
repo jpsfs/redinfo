@@ -187,6 +187,12 @@ application:
 5. **Suggestions** — `POST /trips/suggest-placements` and the dialog.
 6. **Week strip and crew day** — `GET /trips/week`, `GET /trips/crew/:userId`.
 
+Status: 1–4 landed as written. A vehicle-day drill-down (not in this list) landed alongside them
+and took the "stage 5" label in code comments before Suggestions did — so `#247 stage 5` in the
+backend means the vehicle-day page, not this section's Suggestions. Suggestions itself has since
+landed too (`TripPlacementSuggestionsService`, no stage number in its own comments, to avoid
+compounding that drift); only the week strip and crew day remain.
+
 Stages 1–3 are independently shippable and touch no infrastructure; 4 is the one that needs a
 data file on disk and two new frontend dependencies.
 

@@ -100,10 +100,10 @@ export interface GroupFeasibility {
 /**
  * A deliberately coarse check — "does any vehicle on today's board have
  * enough of each position type for this group, assuming it starts empty" —
- * not a real placement search (that's `POST /trips/suggest-placements`,
- * #247 stage 5, not built yet). Honest about the gap: it can say a group
- * fits no vehicle at all, never that a specific vehicle can take it right
- * now, since that also depends on what's already aboard.
+ * not a real placement search (that's `POST /trips/suggest-placements`, see
+ * `SuggestPlacementsDialog`). Honest about the gap: it can say a group fits
+ * no vehicle at all, never that a specific vehicle can take it right now,
+ * since that also depends on what's already aboard.
  */
 export function groupFeasibility(demand: PassengerDemand, vehicles: TransportPlanningLane['vehicle'][]): GroupFeasibility {
   if (vehicles.length === 0) return { fits: true };

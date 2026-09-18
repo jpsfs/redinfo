@@ -13,10 +13,17 @@ import {
   TripStatus,
   TripStopKind,
   VehicleType,
+  distanceInKm,
 } from '@redinfo/shared';
 import { messages } from '../i18n/i18nProvider';
+import { encodePolyline } from '../test/polyline';
 import { TransportPlanningJourneyPage } from './TransportPlanningJourneyPage';
 import { apiFetch, ApiError } from '../api';
+
+// Campo, Barcelos → Hospital de São João, Porto — real, well-separated
+// points so the aggregated-distance assertion below is meaningfully non-zero.
+const BARCELOS = { latitude: 41.5388, longitude: -8.6151 };
+const PORTO = { latitude: 41.1579, longitude: -8.6291 };
 
 vi.mock('../api', () => ({
   apiFetch: vi.fn(),
@@ -112,8 +119,8 @@ const journey = (overrides: Partial<TripJourneyDetail> = {}): TripJourneyDetail 
       transportLegId: 'leg-1',
       facilityId: null,
       address: null,
-      latitude: null,
-      longitude: null,
+      latitude: BARCELOS.latitude,
+      longitude: BARCELOS.longitude,
       plannedAt: '2026-09-15T08:00:00.000Z',
       actualAt: null,
       dwellDecision: null,
@@ -129,8 +136,8 @@ const journey = (overrides: Partial<TripJourneyDetail> = {}): TripJourneyDetail 
       transportLegId: 'leg-1',
       facilityId: FACILITY.id,
       address: null,
-      latitude: null,
-      longitude: null,
+      latitude: PORTO.latitude,
+      longitude: PORTO.longitude,
       plannedAt: '2026-09-15T08:45:00.000Z',
       actualAt: null,
       dwellDecision: null,
@@ -142,7 +149,7 @@ const journey = (overrides: Partial<TripJourneyDetail> = {}): TripJourneyDetail 
   occupancyWindow: { startsAt: '2026-09-15T08:00:00.000Z', endsAt: '2026-09-15T08:45:00.000Z' },
   emptyLegs: [],
   issues: [],
-  routeGeometry: null,
+  routeGeometry: encodePolyline([BARCELOS, PORTO]),
   legsById: { [LEG.id]: LEG } as never,
   ...overrides,
 });
@@ -172,11 +179,14 @@ describe('TransportPlanningJourneyPage', () => {
     mockApiFetch.mockImplementation((path: string) => (path === '/trips/trip-1' ? Promise.resolve(journey()) : Promise.resolve([])));
     renderPage();
 
-    expect(await screen.findByText('Journey 2')).toBeInTheDocument();
-    expect(screen.getByText('101 · AA-11-BB')).toBeInTheDocument();
+    expect(await screen.findByText('101 · Journey 2 — Hospital de São João')).toBeInTheDocument();
+    expect(screen.getByText('AA-11-BB')).toBeInTheDocument();
     // Once per stop row — the pickup and the dropoff both name the leg's patient.
     expect(screen.getAllByText('Maria Costa')).toHaveLength(2);
-    expect(screen.getAllByText('30.0 km')).toHaveLength(2);
+    // The pickup is the journey's first row, so it has no predecessor to
+    // measure a distance from; the dropoff shows the straight-line distance
+    // from the pickup that came right before it in the timeline.
+    expect(screen.getByText(`${distanceInKm(BARCELOS, PORTO).toFixed(1)} km`)).toBeInTheDocument();
   });
 
   it('degrades the patient name the same way the board does, without hiding the stop', async () => {
@@ -217,5 +227,48 @@ describe('TransportPlanningJourneyPage', () => {
     renderPage();
 
     expect(await screen.findByRole('button', { name: 'Print' })).toBeInTheDocument();
+  });
+
+  it('shows this journey’s own map, with no other journeys, beside the stops', async () => {
+    mockApiFetch.mockImplementation((path: string) => (path === '/trips/trip-1' ? Promise.resolve(journey()) : Promise.resolve([])));
+    renderPage();
+
+    // The map degrades to a plain notice in jsdom (no real basemap probe
+    // succeeds here) — this asserts the section is wired in at all, not
+    // MapLibre's own rendering, which `MapPanel.test.tsx` already covers.
+    expect(await screen.findByText('Route')).toBeInTheDocument();
+    expect(await screen.findByText('The basemap is not available on this install.')).toBeInTheDocument();
+  });
+
+  it('shows the aggregated summary blocks and a crew-complete badge for a one-journey day', async () => {
+    mockApiFetch.mockImplementation((path: string) => (path === '/trips/trip-1' ? Promise.resolve(journey()) : Promise.resolve([])));
+    renderPage();
+
+    await screen.findByText('101 · Journey 2 — Hospital de São João');
+    // The journey's own driven route (`routeGeometry`), not the leg's
+    // stand-alone pickup→dropoff distance — see `journeySummary`'s doc comment.
+    const expectedKm = Math.round(distanceInKm(BARCELOS, PORTO));
+    expect(screen.getByText(`${expectedKm} km`)).toBeInTheDocument();
+    expect(screen.getByText('45 min')).toBeInTheDocument();
+    // "Distance" is also the stop table's own column header — the summary
+    // block reuses the same word, so this only asserts it appears at all.
+    expect(screen.getAllByText('Distance').length).toBeGreaterThan(0);
+    expect(screen.getByText('Vehicle occupied')).toBeInTheDocument();
+    expect(screen.getByText('Patient')).toBeInTheDocument();
+    expect(screen.getByText('Crew complete')).toBeInTheDocument();
+    expect(screen.queryByText('Round trip')).not.toBeInTheDocument();
+  });
+
+  it('collapses and expands the map column', async () => {
+    const user = userEvent.setup();
+    mockApiFetch.mockImplementation((path: string) => (path === '/trips/trip-1' ? Promise.resolve(journey()) : Promise.resolve([])));
+    renderPage();
+
+    await screen.findByText('Route');
+    await user.click(screen.getByRole('button', { name: 'Collapse the map' }));
+    expect(screen.queryByText('Route')).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: 'Expand the map' }));
+    expect(await screen.findByText('Route')).toBeInTheDocument();
   });
 });

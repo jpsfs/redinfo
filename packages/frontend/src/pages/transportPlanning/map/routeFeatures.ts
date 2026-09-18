@@ -82,6 +82,11 @@ export interface StopMarker {
   stopId: string;
   tripId: string;
   journeyNumber: number;
+  /** The journey's own vehicle tail number — labels a marker with it
+   * (`vehicleLabel`-`journeyNumber`) when every journey is visible at once,
+   * since a bare stop sequence repeats across journeys and only colour
+   * would otherwise tell them apart. */
+  vehicleLabel: string;
   color: string;
   sequence: number;
   point: { latitude: number; longitude: number };
@@ -118,6 +123,7 @@ export function buildStopMarkers(
         stopId: stop.id,
         tripId: lane.trip.id,
         journeyNumber: lane.journeyNumber,
+        vehicleLabel: lane.vehicle.numeroCauda,
         color,
         sequence: stop.sequence,
         point,
