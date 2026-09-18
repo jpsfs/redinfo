@@ -95,9 +95,23 @@ variable "existing_instance_id" {
     Note what that means: adopting an instance REINSTALLS it. That is the
     intent right after purchase; it would be destructive on a machine that is
     already serving.
+
+    What Terraform does and does not touch on this path (from the provider's
+    update/reinstall code, not inference):
+
+      applied   image_id, ssh_keys, user_data, admin_user -> a reinstall
+      applied   name -> patched as the instance's display name in the panel
+      INERT     period, product_id, region - they exist only in the create
+                request, which this path skips. The term and the specs are
+                whatever was bought; nothing here can change or verify them.
   EOT
   type        = string
   default     = ""
+
+  validation {
+    condition     = var.existing_instance_id == "" || can(regex("^[0-9]+$", var.existing_instance_id))
+    error_message = "existing_instance_id must be the numeric instance id, or empty to order a new machine."
+  }
 }
 
 variable "image_id" {
