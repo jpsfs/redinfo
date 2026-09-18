@@ -105,3 +105,19 @@ resource "contabo_firewall" "this" {
     }
   }
 }
+
+# Adopt the firewall that already exists in the Contabo panel rather than
+# creating a second one beside it (see var.firewall_import_id). Declarative
+# import, not a one-off `terraform import` command, so that it is visible in
+# the plan, runs identically in the pipeline, and is a no-op once the firewall
+# is in state.
+#
+# for_each rather than count: when the firewall is disabled or no id is given
+# there is no contabo_firewall.this[0] for this block to point at, and an
+# import block targeting a resource that does not exist is an error.
+import {
+  for_each = var.cloud_firewall_enabled && var.firewall_import_id != "" ? toset([var.firewall_import_id]) : toset([])
+
+  to = contabo_firewall.this[0]
+  id = each.value
+}
