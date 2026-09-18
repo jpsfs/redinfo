@@ -13,6 +13,7 @@ import { TripStopsService } from './trip-stops.service';
 import { TripBreakEvenService } from './trip-break-even.service';
 import { TripCrewManifestService } from './trip-crew-manifest.service';
 import { TripLegTravelService } from './trip-leg-travel.service';
+import { TripPlacementSuggestionsService } from './trip-placement-suggestions.service';
 import { TripsController } from './trips.controller';
 
 /**
@@ -29,6 +30,9 @@ import { TripsController } from './trips.controller';
  * on that same path, for the pickup and home-arrival times the board suggests
  * — and, directly on `TripsService` itself (#247 stage 4), for each lane's
  * drawn route (`TripsService.attachRouteGeometry`, `ROUTING_SERVICE`).
+ * `TripPlacementSuggestionsService` (#247's Suggestions stage) reuses the
+ * same three modules again, batching one `distanceMatrix` call across every
+ * candidate rather than routing each one separately.
  */
 @Module({
   imports: [
@@ -47,6 +51,7 @@ import { TripsController } from './trips.controller';
     TripBreakEvenService,
     TripCrewManifestService,
     TripLegTravelService,
+    TripPlacementSuggestionsService,
     AuditInterceptor,
   ],
   controllers: [TripsController],

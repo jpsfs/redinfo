@@ -8934,6 +8934,61 @@ export interface VehicleDayJourneys {
   legsById: Record<string, TransportPlanningLeg>;
 }
 
+/**
+ * `POST /trips/suggest-placements` (the redesign's "Suggestions" stage,
+ * `docs/plans/planeamento-transportes-redesign.md` §6/§8) — everywhere a
+ * group of unplanned legs could go, ranked by how much it costs the fleet.
+ * Ranking only: #219's deferral of automatic optimisation stands, so nothing
+ * here ever applies itself, and a blocked candidate is still returned rather
+ * than filtered out — the planner needs to know it was considered.
+ */
+export interface SuggestPlacementsRequest {
+  /** The unplanned rail's own group — every person boards together, so
+   * they're placed together (mirrors `AssignGroupDialog`'s one dialog, one
+   * pickup/dropoff pair per leg, same instant). */
+  legIds: string[];
+}
+
+/** Why a candidate can't be applied as computed. Never blocks the candidate
+ * from being returned — see `RankedPlacement`'s own doc comment. */
+export type PlacementBlockReason =
+  | 'CAPACITY_SEATS'
+  | 'CAPACITY_WHEELCHAIR'
+  | 'CAPACITY_STRETCHER'
+  | 'VEHICLE_UNAVAILABLE'
+  | 'ROUTE_UNKNOWN';
+
+/**
+ * One place the group could go: an existing journey to insert into, or a
+ * fresh one to start on a vehicle with nothing planned yet (`tripId: null`).
+ * `deltaKm`/`deltaMinutes` are the detour this insertion costs the vehicle's
+ * *existing* route — the straight cost of the new stretch for a fresh trip,
+ * since there is no route yet to detour from. `arrivalMarginMinutes` is the
+ * slack left before the group's own outbound appointment once that detour's
+ * travel time is added; negative means the candidate would arrive late.
+ * Both are `null` when a point on the route couldn't be resolved or routed —
+ * an honest blank, never a fabricated number, same posture as
+ * `TransportPlanningLeg.travelMinutes`. Never meaningful for a `RETURN`
+ * group, which has no appointment to be on time for.
+ */
+export interface RankedPlacement {
+  vehicle: { id: string; numeroCauda: string; licensePlate: string };
+  /** Null for a fresh journey on this vehicle rather than an existing one. */
+  tripId: string | null;
+  /** This existing journey's ordinal for the vehicle that date — the same
+   * numbering `TransportPlanningLane.journeyNumber` uses. Null alongside
+   * `tripId`. */
+  journeyNumber: number | null;
+  /** Where the group would land among the trip's stops in calendar-time
+   * order, 0-based, 0 meaning before every stop the trip already has.
+   * Always 0 for a fresh trip. */
+  insertPosition: number;
+  deltaKm: number | null;
+  deltaMinutes: number | null;
+  arrivalMarginMinutes: number | null;
+  blockedBy: PlacementBlockReason[];
+}
+
 // ─── Crew manifest (#236) ───────────────────────────────────────────────────
 //
 // `GET /trips/me?date=` — a crew member's own trips for a date, the artefact

@@ -18,7 +18,7 @@ import { AssignTransportLegDto } from './dto/assign-transport-leg.dto';
 import { CreateTripStopDto } from './dto/create-trip-stop.dto';
 import { UpdateTripStopDto } from './dto/update-trip-stop.dto';
 import { ReorderTripStopsDto } from './dto/reorder-trip-stops.dto';
-import { TripStopRow, serializeTripStop } from './trip.serializer';
+import { TripStopRow, serializeTripStop, toWalkInput } from './trip.serializer';
 import { loadPassengerRequirements, pickupLegIds } from './trip-passenger-requirements.util';
 
 type TripForStops = {
@@ -340,15 +340,4 @@ export class TripStopsService {
     if (!stop || stop.tripId !== tripId) throw new NotFoundException(`Stop ${stopId} not found on trip ${tripId}`);
     return stop;
   }
-}
-
-function toWalkInput(stop: TripStopRow): TripStopWalkInput {
-  return {
-    id: stop.id,
-    sequence: stop.sequence,
-    kind: stop.kind as TripStopKind,
-    transportLegId: stop.transportLegId,
-    plannedAt: stop.plannedAt.toISOString(),
-    dwellMinutes: stop.dwellMinutes,
-  };
 }

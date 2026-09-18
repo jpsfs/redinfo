@@ -40,6 +40,7 @@ import { apiErrorLabel } from '../i18n/labels';
 import { useT } from '../i18n/useT';
 import { toIsoDate } from '../utils/dates';
 import { AssignGroupDialog } from './transportPlanning/AssignGroupDialog';
+import { SuggestPlacementsDialog } from './transportPlanning/SuggestPlacementsDialog';
 import { AssignLegDialog, AssignLegDialogTarget } from './transportPlanning/AssignLegDialog';
 import { AddVehicleLaneDialog } from './transportPlanning/AddVehicleLaneDialog';
 import { CrewDialog, CrewDialogTarget } from './transportPlanning/CrewDialog';
@@ -148,6 +149,7 @@ export const TransportPlanningPage = () => {
   // reverts to the flat, one-card-per-leg list #235 shipped.
   const [perPersonView, setPerPersonView] = useState(false);
   const [assignGroupTarget, setAssignGroupTarget] = useState<UnplannedGroup | null>(null);
+  const [suggestTarget, setSuggestTarget] = useState<UnplannedGroup | null>(null);
   // The unassigned rail's own collapse (distinct from react-admin's nav
   // drawer) — a planner with every lane already assigned wants the map and
   // timeline wider more often than they want this list open.
@@ -428,6 +430,7 @@ export const TransportPlanningPage = () => {
                             const leg = board.legsById[legId];
                             if (leg) setAssignTarget(assignTargetForLeg(legId, leg));
                           }}
+                          onSuggestPlacements={() => setSuggestTarget(group)}
                         />
                       ))}
                 </Stack>
@@ -634,6 +637,15 @@ export const TransportPlanningPage = () => {
         group={assignGroupTarget}
         lanes={board?.lanes ?? []}
         onClose={() => setAssignGroupTarget(null)}
+        onSaved={() => {
+          notify(t('transportPlanning.assigned'));
+          loadBoard();
+        }}
+      />
+      <SuggestPlacementsDialog
+        group={suggestTarget}
+        date={date}
+        onClose={() => setSuggestTarget(null)}
         onSaved={() => {
           notify(t('transportPlanning.assigned'));
           loadBoard();

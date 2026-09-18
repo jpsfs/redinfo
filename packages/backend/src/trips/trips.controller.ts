@@ -12,6 +12,7 @@ import { TripCrewService } from './trip-crew.service';
 import { TripStopsService } from './trip-stops.service';
 import { TripBreakEvenService } from './trip-break-even.service';
 import { TripCrewManifestService } from './trip-crew-manifest.service';
+import { TripPlacementSuggestionsService } from './trip-placement-suggestions.service';
 import { CreateTripDto } from './dto/create-trip.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
 import { AddTripCrewMemberDto } from './dto/add-trip-crew-member.dto';
@@ -19,6 +20,7 @@ import { AssignTransportLegDto } from './dto/assign-transport-leg.dto';
 import { CreateTripStopDto } from './dto/create-trip-stop.dto';
 import { UpdateTripStopDto } from './dto/update-trip-stop.dto';
 import { ReorderTripStopsDto } from './dto/reorder-trip-stops.dto';
+import { SuggestPlacementsDto } from './dto/suggest-placements.dto';
 
 /**
  * The model and API behind the planning board (#234) — the board itself is
@@ -37,6 +39,7 @@ export class TripsController {
     private readonly stops: TripStopsService,
     private readonly breakEven: TripBreakEvenService,
     private readonly crewManifest: TripCrewManifestService,
+    private readonly placementSuggestions: TripPlacementSuggestionsService,
   ) {}
 
   @Get()
@@ -103,6 +106,17 @@ export class TripsController {
   @Actions(Action.PLAN_TRANSPORT_TRIPS)
   create(@Body() dto: CreateTripDto) {
     return this.trips.create(dto);
+  }
+
+  /** Ranked candidate journeys for a group of unplanned legs (#247's
+   * Suggestions stage) — see `TripPlacementSuggestionsService`. Ranking
+   * only; applying a candidate is the same `POST /trips` +
+   * `POST /trips/:id/legs` calls the board's own drag/dialog paths already
+   * make. */
+  @Post('suggest-placements')
+  @Actions(Action.PLAN_TRANSPORT_TRIPS)
+  suggestPlacements(@Body() dto: SuggestPlacementsDto, @CurrentUser() user: RequestUser) {
+    return this.placementSuggestions.suggest(dto.legIds, user);
   }
 
   @Patch(':id')

@@ -26,6 +26,7 @@ import { TripCrewService } from './trip-crew.service';
 import { TripStopsService } from './trip-stops.service';
 import { TripCrewManifestService } from './trip-crew-manifest.service';
 import { TripLegTravelService } from './trip-leg-travel.service';
+import { TripPlacementSuggestionsService } from './trip-placement-suggestions.service';
 
 /**
  * Integration coverage for #234's model/API against a real Postgres — the
@@ -65,9 +66,16 @@ describeIntegration('TripsService/TripStopsService/TripCrewService (integration)
     }),
   } as never);
   // Same reasoning as `legTravel` above — a fixed stub rather than a real
-  // OSRM `/route` call, since this suite is about what the database does
-  // (#247 stage 4's routing itself is covered by `routing.integration.spec.ts`).
-  const routing = { routeGeometry: async () => null } as never;
+  // OSRM `/route`/`/table` call, since this suite is about what the database
+  // does (#247 stage 4's routing itself is covered by
+  // `routing.integration.spec.ts`). One flat duration/distance for every
+  // cell is enough for `suggest`'s own tests below, which assert on
+  // `blockedBy` and `tripId`, never on the exact routed cost.
+  const routing = {
+    routeGeometry: async () => null,
+    distanceMatrix: async (origins: unknown[], destinations: unknown[]) =>
+      origins.map(() => destinations.map(() => ({ durationSeconds: 600, distanceMeters: 5_000, estimated: false }))),
+  } as never;
   const trips = new TripsService(
     prisma,
     delegationSettings,
@@ -81,6 +89,15 @@ describeIntegration('TripsService/TripStopsService/TripCrewService (integration)
   const crew = new TripCrewService(prisma, staffAbsences);
   const stops = new TripStopsService(prisma, delegationSettings, vehicleOccupancy);
   const crewManifest = new TripCrewManifestService(prisma, transportRequestLegs, patients);
+  const placementSuggestions = new TripPlacementSuggestionsService(
+    prisma,
+    transportRequestLegs,
+    patients,
+    delegationSettings,
+    legTravel,
+    vehicleOccupancy,
+    routing,
+  );
 
   let coordinator: { id: string };
   /** `getDetail`'s caller (#247 stage 3) — a function, not a constant,
@@ -369,6 +386,71 @@ describeIntegration('TripsService/TripStopsService/TripCrewService (integration)
     });
 
     await prisma.vehicleOccupancy.delete({ where: { id: shift.id } });
+  });
+
+  it('integration: suggest-placements ranks an idle vehicle clean and flags one already booked over the group window', async () => {
+    // A date this suite touches nowhere else, so a leftover `VehicleOccupancy`
+    // from an earlier test in this file (vehicleA/B carry real trips on
+    // 09-16/09-21/09-22 above) can never leak a false conflict in here.
+    const date = '2026-09-30';
+    const request = await prisma.transportRequest.create({
+      data: {
+        batchReference: `Email ${RUN}`,
+        communicatedAt: new Date('2026-09-10T17:00:00.000Z'),
+        requesterAccountCode: `ACC-${RUN}`,
+        responseDueAt: new Date('2026-09-11T05:00:00.000Z'),
+        externalServiceNumber: `SVC-${RUN}-suggest-01`,
+        appointmentAt: new Date(`${date}T09:00:00.000Z`),
+        requestingOrganisationId: requester.id,
+        payingOrganisationId: payer.id,
+        patientId: patient.id,
+        occurrenceType: 'CONSULTA' as never,
+        requestedVehicleType: 'TRANSPORTE' as never,
+        originAddress: `Rua de Teste, suggest-01, ${RUN}`,
+        destinationFacilityId: facility.id,
+        createdById: coordinator.id,
+      },
+    });
+    requestIds.push(request.id);
+    const leg = await prisma.transportLeg.create({
+      data: {
+        transportRequestId: request.id,
+        date: new Date(`${date}T00:00:00.000Z`),
+        generatedForDate: new Date(`${date}T00:00:00.000Z`),
+        direction: LegDirection.OUTBOUND as never,
+        // The leg's own literal override, so this test resolves a door
+        // without needing the patient's own geocoded home too — see
+        // `endpointCoordinates` in shared for why the leg's own columns win
+        // when present.
+        originAddress: `Rua de Teste, suggest-01, ${RUN}`,
+        originLatitude: 41.55,
+        originLongitude: -8.62,
+        destinationFacilityId: facility.id,
+      },
+    });
+    legIds.push(leg.id);
+
+    const maintenance = await prisma.vehicleOccupancy.create({
+      data: {
+        vehicleId: vehicleB.id,
+        startsAt: new Date(`${date}T07:00:00.000Z`),
+        endsAt: new Date(`${date}T10:00:00.000Z`),
+        source: VehicleOccupancySource.MAINTENANCE,
+        sourceId: `maint-${RUN}`,
+      },
+    });
+
+    try {
+      const placements = await placementSuggestions.suggest([leg.id], callerUser());
+      const forA = placements.find((p) => p.vehicle.id === vehicleA.id && p.tripId === null);
+      const forB = placements.find((p) => p.vehicle.id === vehicleB.id && p.tripId === null);
+      expect(forA?.blockedBy).toEqual([]);
+      expect(forB?.blockedBy).toContain('VEHICLE_UNAVAILABLE');
+      // Feasible candidates rank ahead of blocked ones (`compareCandidates`).
+      expect(placements.indexOf(forA!)).toBeLessThan(placements.indexOf(forB!));
+    } finally {
+      await prisma.vehicleOccupancy.delete({ where: { id: maintenance.id } });
+    }
   });
 
   it('integration: crew manifest (#236) is scoped to the caller and reads the real facility/leg/treatment-window joins', async () => {

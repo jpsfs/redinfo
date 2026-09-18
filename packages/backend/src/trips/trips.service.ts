@@ -111,7 +111,7 @@ function vehicleSummary(row: TripDetailRow): TransportPlanningLane['vehicle'] {
  * number as the board does for the same trip, rather than a second,
  * independent implementation of this sort drifting from this one.
  */
-function journeyNumbersByTripId(rows: { id: string; stops: { plannedAt: Date }[] }[]): Map<string, number> {
+export function journeyNumbersByTripId(rows: { id: string; stops: { plannedAt: Date }[] }[]): Map<string, number> {
   const firstStopAt = (row: { stops: { plannedAt: Date }[] }) =>
     row.stops.length ? Math.min(...row.stops.map((s) => s.plannedAt.getTime())) : Number.MAX_SAFE_INTEGER;
   const ordered = [...rows].sort((a, b) => firstStopAt(a) - firstStopAt(b));

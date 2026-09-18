@@ -3241,6 +3241,47 @@ const MESSAGES = {
   'transportVehicleDay.noJourneys': { pt: 'Sem jornadas nesta data.', en: 'No journeys on this date.' },
   'transportVehicleDay.openJourney': { pt: 'Abrir jornada', en: 'Open journey' },
 
+  // ── Placement suggestions (#247 Suggestions stage) ──
+  'transportPlanning.suggestPlacementsButton': { pt: 'Sugerir colocação', en: 'Suggest placement' },
+  'transportPlanning.suggestPlacementsDialogTitle': {
+    pt: 'Onde colocar %{count} pessoas',
+    en: 'Where to place %{count} people',
+  },
+  'transportPlanning.suggestPlacementsHint': {
+    pt: 'Só classifica — nada é aplicado até escolheres uma opção. Uma opção bloqueada continua listada, para saberes que foi considerada.',
+    en: 'Ranking only — nothing is applied until you pick one. A blocked option still shows, so you know it was considered.',
+  },
+  'transportPlanning.suggestPlacementsEmpty': { pt: 'Não há viaturas para hoje.', en: 'No vehicles on today’s board.' },
+  'transportPlanning.suggestPlacementsFailed': {
+    pt: 'Não foi possível obter sugestões de colocação.',
+    en: 'Could not get placement suggestions.',
+  },
+  'transportPlanning.suggestPlacementsNewJourney': { pt: 'Nova viagem', en: 'New journey' },
+  'transportPlanning.suggestPlacementsExistingJourney': { pt: 'Viagem %{number}', en: 'Journey %{number}' },
+  'transportPlanning.suggestPlacementsDeltaKm': { pt: '%{km} km a mais', en: '%{km} km extra' },
+  'transportPlanning.suggestPlacementsDeltaMinutes': { pt: '%{minutes} min a mais', en: '%{minutes} min extra' },
+  'transportPlanning.suggestPlacementsUnrouted': { pt: 'sem percurso conhecido', en: 'no known route' },
+  'transportPlanning.suggestPlacementsMarginAhead': { pt: '%{minutes} min de folga', en: '%{minutes} min to spare' },
+  'transportPlanning.suggestPlacementsMarginLate': { pt: '%{minutes} min de atraso', en: '%{minutes} min late' },
+  'transportPlanning.suggestPlacementsApply': { pt: 'Aplicar', en: 'Apply' },
+  'transportPlanning.placementBlockReason.CAPACITY_SEATS': { pt: 'sem lugares sentados suficientes', en: 'not enough seats' },
+  'transportPlanning.placementBlockReason.CAPACITY_WHEELCHAIR': {
+    pt: 'sem lugares de cadeira de rodas suficientes',
+    en: 'not enough wheelchair positions',
+  },
+  'transportPlanning.placementBlockReason.CAPACITY_STRETCHER': {
+    pt: 'sem lugares de maca suficientes',
+    en: 'not enough stretcher positions',
+  },
+  'transportPlanning.placementBlockReason.VEHICLE_UNAVAILABLE': {
+    pt: 'viatura já comprometida nesta janela',
+    en: 'vehicle already committed over this window',
+  },
+  'transportPlanning.placementBlockReason.ROUTE_UNKNOWN': {
+    pt: 'percurso não pôde ser calculado',
+    en: 'route could not be calculated',
+  },
+
   // ── Trip status (#234) ──
   'tripStatus.PLANNED': { pt: 'Planeada', en: 'Planned' },
   'tripStatus.COMPLETED': { pt: 'Concluída', en: 'Completed' },

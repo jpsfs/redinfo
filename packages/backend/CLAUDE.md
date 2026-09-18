@@ -162,7 +162,15 @@ pane) adds the one genuinely new route in this story: `GET /trips/vehicle/:vehic
 same per-lane computation as `getBoard` scoped to one vehicle via the `vehicleId` filter `list`
 already supported. Empty `lanes` for a vehicle with nothing planned that date, never a 404 — only
 an unknown `vehicleId` is, resolved via a plain `Vehicle` lookup since there's no trip row to read
-it off in that case. Stage 6 (week strip) is not built — see
+it off in that case. The design doc's own Suggestions stage adds the other genuinely new route:
+`POST /trips/suggest-placements` (`TripPlacementSuggestionsService`, `RankedPlacement` in shared)
+ranks every vehicle/journey a group of unplanned legs could go onto — existing journeys (prepend
+before the first stop or append after the last, whichever routes cheaper) plus a fresh journey per
+idle vehicle, one batched `RoutingService.distanceMatrix` call for the whole request rather than
+one per candidate. Ranking only, nothing is written; a candidate that fails capacity (hard,
+unoverridable) or collides with another `VehicleOccupancy` booking (hard but overridable) is still
+returned with its `blockedBy` filled in, never dropped. The week strip
+(`GET /trips/week`, `GET /trips/crew/:userId`) is not built — see
 `docs/plans/planeamento-transportes-redesign.md`.
 
 ## Controller pattern
