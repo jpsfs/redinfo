@@ -119,8 +119,8 @@ const journey = (overrides: Partial<TripJourneyDetail> = {}): TripJourneyDetail 
       transportLegId: 'leg-1',
       facilityId: null,
       address: null,
-      latitude: null,
-      longitude: null,
+      latitude: BARCELOS.latitude,
+      longitude: BARCELOS.longitude,
       plannedAt: '2026-09-15T08:00:00.000Z',
       actualAt: null,
       dwellDecision: null,
@@ -136,8 +136,8 @@ const journey = (overrides: Partial<TripJourneyDetail> = {}): TripJourneyDetail 
       transportLegId: 'leg-1',
       facilityId: FACILITY.id,
       address: null,
-      latitude: null,
-      longitude: null,
+      latitude: PORTO.latitude,
+      longitude: PORTO.longitude,
       plannedAt: '2026-09-15T08:45:00.000Z',
       actualAt: null,
       dwellDecision: null,
@@ -183,10 +183,10 @@ describe('TransportPlanningJourneyPage', () => {
     expect(screen.getByText('AA-11-BB')).toBeInTheDocument();
     // Once per stop row — the pickup and the dropoff both name the leg's patient.
     expect(screen.getAllByText('Maria Costa')).toHaveLength(2);
-    // The leg's own routed distance is shown once, on the dropoff row — not
-    // repeated on the pickup row too (that read as two different figures
-    // that happened to agree, when it was ever one number for the leg).
-    expect(screen.getAllByText('30.0 km')).toHaveLength(1);
+    // The pickup is the journey's first row, so it has no predecessor to
+    // measure a distance from; the dropoff shows the straight-line distance
+    // from the pickup that came right before it in the timeline.
+    expect(screen.getByText(`${distanceInKm(BARCELOS, PORTO).toFixed(1)} km`)).toBeInTheDocument();
   });
 
   it('degrades the patient name the same way the board does, without hiding the stop', async () => {
