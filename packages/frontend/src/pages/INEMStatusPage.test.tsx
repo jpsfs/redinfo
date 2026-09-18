@@ -107,6 +107,17 @@ describe('INEMStatusPage', () => {
     expect(screen.queryByText('Available')).not.toBeInTheDocument();
   });
 
+  it('shows "Dispatched" for the feminine "Acionada" label INEM actually uses for a viatura', async () => {
+    mockApiFetch.mockResolvedValue(
+      overview([unit({ desiredInopCode: '00', reportedInopCode: '00', reportedActive: 'Acionada' })]),
+    );
+    renderPage();
+
+    await screen.findByText('12-AB-34 – CV1');
+    expect(screen.getByText('Dispatched')).toBeInTheDocument();
+    expect(screen.queryByText('Available')).not.toBeInTheDocument();
+  });
+
   it('shows a neutral "not set" chip when no one has ever chosen a status for the unit', async () => {
     mockApiFetch.mockResolvedValue(overview([unit({ desiredInopCode: null })]));
     renderPage();

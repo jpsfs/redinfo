@@ -272,13 +272,14 @@ const UnitCard = ({ unit, reasons, onChangeStatus }: UnitCardProps) => {
 
 /**
  * The Portuguese `Active` labels INEM's own portal uses for a unit currently
- * out on a call — observed on the portal as "Acionados" (see #post-#216
- * follow-up). Not confirmed against a live `GET /api/unit` capture of a unit
- * in this state (docs/inem-portal-contract.md's open questions) — matched
- * case-insensitively against both the singular and the portal's plural
- * heading so a near-miss doesn't silently fall through to "Available".
+ * out on a call. Confirmed live in production 2026-09-18: `GET /api/unit`
+ * reports `Active: "Acionada"` (feminine, agreeing with "viatura") for a
+ * dispatched unit — the masculine-only list below had silently missed this
+ * and shown "Disponível" for a unit the portal itself marked dispatched.
+ * Matched case-insensitively against masculine/feminine singular and plural
+ * so a near-miss doesn't silently fall through to "Available".
  */
-const DISPATCHED_ACTIVE_LABELS = ['acionado', 'acionados'];
+const DISPATCHED_ACTIVE_LABELS = ['acionado', 'acionados', 'acionada', 'acionadas'];
 
 function isDispatchedActiveLabel(reportedActive: string | null): boolean {
   return reportedActive !== null && DISPATCHED_ACTIVE_LABELS.includes(reportedActive.trim().toLowerCase());
