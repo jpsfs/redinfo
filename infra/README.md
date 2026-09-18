@@ -130,9 +130,21 @@ The second route is the better fit when the exact promotional price matters,
 which is why `var.existing_instance_id` exists: with it set, the provider skips
 creation and goes straight to update, reinstalling that machine with the image,
 SSH key and cloud-init from this repo. Everything downstream — microk8s, the
-agent, the deploy stage — is identical either way. Note that adopting an
-instance *does* reinstall it; that is what you want immediately after purchase
-and is destructive at any other time.
+agent, the deploy stage — is identical either way.
+
+**This is the route that was taken.** `TF_VAR_existing_instance_id` is set to
+`203588098` in the `redinfo-contabo` variable group; the VPS was bought in the
+panel. Two consequences to keep in mind:
+
+- **The first apply reinstalls that machine.** That is the point immediately
+  after purchase, and destructive at any other time. Once this host is serving
+  production, the same reinstall risk applies as to any change to `image_id`,
+  `ssh_keys` or `user_data` — read the plan.
+- **`period`, `product_id` and `region` are inert on this path.** They only
+  exist in the create request, which is skipped. The 12-month term and the
+  Cloud VPS 6 specs are whatever was bought in the panel; nothing in this repo
+  sets or verifies them. `name` *is* applied — it is patched as the instance's
+  display name, so the panel entry becomes `redinfo-prod`.
 
 ## The cloud firewall, and what 443-only implies
 
