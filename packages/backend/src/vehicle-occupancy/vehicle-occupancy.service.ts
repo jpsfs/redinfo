@@ -117,6 +117,14 @@ export class VehicleOccupancyService {
     return this.prisma.vehicleOccupancy.findFirst({ where: { source, sourceId } });
   }
 
+  /** Batched `findForSource` across many source rows of the same kind — the
+   * week strip's (#247 stage 6) committed-vehicle-hours count, one call for
+   * every trip on a date rather than one per trip. */
+  async findManyForSource(source: VehicleOccupancySource, sourceIds: string[]) {
+    if (sourceIds.length === 0) return [];
+    return this.prisma.vehicleOccupancy.findMany({ where: { source, sourceId: { in: sourceIds } } });
+  }
+
   /**
    * `book`'s conflict-check-unless-overridden logic, upserting by
    * `(source, sourceId)` like `syncForSource` — for a source row that owns

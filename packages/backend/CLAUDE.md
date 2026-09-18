@@ -169,9 +169,19 @@ before the first stop or append after the last, whichever routes cheaper) plus a
 idle vehicle, one batched `RoutingService.distanceMatrix` call for the whole request rather than
 one per candidate. Ranking only, nothing is written; a candidate that fails capacity (hard,
 unoverridable) or collides with another `VehicleOccupancy` booking (hard but overridable) is still
-returned with its `blockedBy` filled in, never dropped. The week strip
-(`GET /trips/week`, `GET /trips/crew/:userId`) is not built — see
-`docs/plans/planeamento-transportes-redesign.md`.
+returned with its `blockedBy` filled in, never dropped. The week strip (#247 stage 6) adds the
+story's last two routes: `GET /trips/week?from=` (`TripsService.getWeek`, `WeekDateSummary`/
+`TripsWeekOverview` in shared) returns seven per-date counts — people, journeys, unplanned legs,
+out-of-district journeys, committed vehicle hours — computed directly off Prisma (plus one
+batched `VehicleOccupancyService.findManyForSource` call for the hours) rather than through
+`buildDetail`'s per-trip ranked-validation machinery, since a strip needs counts, not a board;
+"out of district" compares a leg's origin/destination facility municipality against
+`GeographyService.homeDistrict()` (nearest municipality to the delegation's base point, there
+being no district column on `DelegationSettings` itself). `GET /trips/crew/:userId?date=`
+(`TripCrewManifestService.getForCrewMember`) is the planner-side counterpart to the self-scoped
+`GET /trips/me` — same stop assembly via a shared private `build`, but patient identity degrades
+per the *viewer's* `VIEW_PATIENT_IDENTITY` (`PatientsService.findManyForDisplay`) rather than
+`getMyTrips`' structural bypass, which only holds for a crew member reading their own day.
 
 ## Controller pattern
 

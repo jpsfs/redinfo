@@ -20,6 +20,7 @@ import { VehicleOccupancyService } from '../vehicle-occupancy/vehicle-occupancy.
 import { OccurrenceTypePoliciesService } from '../transport-config/occurrence-type-policies.service';
 import { TransportRequestLegsService } from '../transport-requests/transport-request-legs.service';
 import { PatientsService } from '../patients/patients.service';
+import { GeographyService } from '../geography/geography.service';
 import { IdentityCipher } from '../common/identity-cipher';
 import { TripsService } from './trips.service';
 import { TripCrewService } from './trip-crew.service';
@@ -76,6 +77,7 @@ describeIntegration('TripsService/TripStopsService/TripCrewService (integration)
     distanceMatrix: async (origins: unknown[], destinations: unknown[]) =>
       origins.map(() => destinations.map(() => ({ durationSeconds: 600, distanceMeters: 5_000, estimated: false }))),
   } as never;
+  const geography = new GeographyService(prisma, delegationSettings);
   const trips = new TripsService(
     prisma,
     delegationSettings,
@@ -84,6 +86,7 @@ describeIntegration('TripsService/TripStopsService/TripCrewService (integration)
     transportRequestLegs,
     patients,
     legTravel,
+    geography,
     routing,
   );
   const crew = new TripCrewService(prisma, staffAbsences);

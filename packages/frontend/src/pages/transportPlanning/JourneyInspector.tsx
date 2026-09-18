@@ -54,7 +54,6 @@ export const JourneyInspector = ({
   );
   const errorCount = lane.issues.filter((issue) => issue.level === 'ERROR').length;
   const warningCount = lane.issues.filter((issue) => issue.level === 'WARNING').length;
-  const crewNames = lane.crewMembers.map((member) => `${member.firstName} ${member.lastName}`.trim()).filter(Boolean);
 
   return (
     <Paper variant="outlined" sx={{ p: 2, minWidth: 0 }}>
@@ -77,7 +76,24 @@ export const JourneyInspector = ({
             label={`${timeLabel(lane.occupancyWindow.startsAt)} – ${timeLabel(lane.occupancyWindow.endsAt)}`}
           />
         )}
-        <Chip size="small" icon={<GroupIcon fontSize="small" />} label={crewNames.length || t('transportPlanning.noCrew')} />
+        {lane.crewMembers.length === 0 ? (
+          <Chip size="small" icon={<GroupIcon fontSize="small" />} label={t('transportPlanning.noCrew')} />
+        ) : (
+          lane.crewMembers.map((member) => (
+            <Chip
+              key={member.id}
+              size="small"
+              icon={<GroupIcon fontSize="small" />}
+              label={`${member.firstName} ${member.lastName}`.trim()}
+              onClick={() =>
+                navigate(
+                  `/transport-planning/crew/${member.userId}?date=${lane.trip.date}&name=${encodeURIComponent(`${member.firstName} ${member.lastName}`.trim())}`,
+                )
+              }
+              clickable
+            />
+          ))
+        )}
         {errorCount > 0 && (
           <Chip size="small" color="error" icon={<ErrorOutlineIcon fontSize="small" />} label={errorCount} />
         )}

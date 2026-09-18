@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import {
   ArrivalWindowWarning,
   LegDirection,
+  LegStatus,
   PatientMobility,
   TransportLeg,
   TransportPlanningBoard,
@@ -15,9 +16,11 @@ import {
   TripStopKind,
   TripStopSegment,
   TripStopWalkInput,
+  TripsWeekOverview,
   VehicleDayJourneys,
   VehicleOccupancySource,
   VehicleType,
+  WeekDateSummary,
   arrivalWindowWarning,
   carriesStretcherPassenger,
   checkTripCapacity,
@@ -32,13 +35,14 @@ import {
 import { PrismaService } from '../prisma/prisma.service';
 import { Coordinates, ROUTING_SERVICE, RoutingService } from '../routing/routing.interface';
 import { CERT_HELD_SELECT, toHeldCertifications } from '../users/certifications.util';
-import { parseIsoDate, toIsoDate } from '../utils/date.util';
+import { addIsoDays, isoDateRange, parseIsoDate, toIsoDate } from '../utils/date.util';
 import { shiftBoundaryToInstant } from '../utils/timezone.util';
 import { DelegationSettingsService } from '../live-runs/delegation-settings.service';
 import { StaffAbsencesService } from '../staff-absences/staff-absences.service';
 import { VehicleOccupancyService } from '../vehicle-occupancy/vehicle-occupancy.service';
 import { TransportRequestLegsService } from '../transport-requests/transport-request-legs.service';
 import { PatientsService, RequestUser } from '../patients/patients.service';
+import { GeographyService } from '../geography/geography.service';
 import { CreateTripDto } from './dto/create-trip.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
 import { TripRow, TripStopRow, serializeTrip, serializeTripCrewMember, serializeTripStop } from './trip.serializer';
@@ -145,6 +149,7 @@ export class TripsService {
     private readonly transportRequestLegs: TransportRequestLegsService,
     private readonly patients: PatientsService,
     private readonly legTravel: TripLegTravelService,
+    private readonly geography: GeographyService,
     @Inject(ROUTING_SERVICE) private readonly routing: RoutingService,
   ) {}
 
@@ -322,6 +327,75 @@ export class TripsService {
     const lanesWithGeometry = await Promise.all(lanes.map((lane) => this.attachRouteGeometry(lane, legsById)));
 
     return { date, vehicle: vehicleSummary(rows[0]), lanes: lanesWithGeometry, legsById };
+  }
+
+  /**
+   * The week strip's one call (#247 stage 6) — seven per-date summaries
+   * starting at `from`, so a heavy day is a Monday decision rather than a
+   * Thursday-morning one (`docs/plans/planeamento-transportes-redesign.md`
+   * §6/§8). Deliberately lighter than `getBoard`: no ranked validation, no
+   * route geometry, no per-leg travel estimate — just counts, computed
+   * straight off Prisma rather than through `buildDetail`'s per-trip
+   * machinery, seven times over.
+   */
+  async getWeek(from: string): Promise<TripsWeekOverview> {
+    const homeDistrict = await this.geography.homeDistrict();
+    const dates = isoDateRange(from, addIsoDays(from, 6));
+    const days = await Promise.all(dates.map((date) => this.getWeekDateSummary(date, homeDistrict)));
+    return { from, days };
+  }
+
+  private async getWeekDateSummary(date: string, homeDistrict: string): Promise<WeekDateSummary> {
+    const parsedDate = parseIsoDate(date);
+
+    const [trips, dueLegs] = await Promise.all([
+      this.prisma.trip.findMany({
+        where: { date: parsedDate },
+        select: {
+          id: true,
+          stops: {
+            select: {
+              transportLeg: {
+                select: {
+                  originFacility: { select: { municipality: { select: { district: true } } } },
+                  destinationFacility: { select: { municipality: { select: { district: true } } } },
+                },
+              },
+            },
+          },
+        },
+      }),
+      this.prisma.transportLeg.findMany({
+        where: { date: parsedDate, status: { notIn: [LegStatus.CANCELLED, LegStatus.NO_SHOW] } },
+        select: { tripStops: { select: { id: true } }, transportRequest: { select: { patientId: true } } },
+      }),
+    ]);
+
+    const tripIds = trips.map((trip) => trip.id);
+    const occupancy = await this.vehicleOccupancy.findManyForSource(VehicleOccupancySource.TRANSPORT_TRIP, tripIds);
+    const committedVehicleHours = occupancy.reduce(
+      (total, row) => total + (row.endsAt.getTime() - row.startsAt.getTime()) / 3_600_000,
+      0,
+    );
+
+    const outOfDistrictJourneyCount = trips.filter((trip) =>
+      trip.stops.some((stop) => {
+        const districts = [
+          stop.transportLeg?.originFacility?.municipality.district,
+          stop.transportLeg?.destinationFacility?.municipality.district,
+        ];
+        return districts.some((district) => district !== undefined && district !== null && district !== homeDistrict);
+      }),
+    ).length;
+
+    return {
+      date,
+      peopleCount: new Set(dueLegs.map((leg) => leg.transportRequest.patientId)).size,
+      journeyCount: trips.length,
+      unplannedLegCount: dueLegs.filter((leg) => leg.tripStops.length === 0).length,
+      outOfDistrictJourneyCount,
+      committedVehicleHours: Math.round(committedVehicleHours * 10) / 10,
+    };
   }
 
   /**

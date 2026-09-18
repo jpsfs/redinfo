@@ -191,7 +191,10 @@ Status: 1–4 landed as written. A vehicle-day drill-down (not in this list) lan
 and took the "stage 5" label in code comments before Suggestions did — so `#247 stage 5` in the
 backend means the vehicle-day page, not this section's Suggestions. Suggestions itself has since
 landed too (`TripPlacementSuggestionsService`, no stage number in its own comments, to avoid
-compounding that drift); only the week strip and crew day remain.
+compounding that drift). Stage 6 (week strip + crew day) has landed on the backend
+(`TripsService.getWeek`, `TripCrewManifestService.getForCrewMember`) and the frontend (the
+board's week strip, `/transport-planning/crew/:userId`) — see `packages/backend/CLAUDE.md`'s
+`trips` entry. Nothing from this phasing list remains.
 
 Stages 1–3 are independently shippable and touch no infrastructure; 4 is the one that needs a
 data file on disk and two new frontend dependencies.

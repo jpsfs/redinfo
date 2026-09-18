@@ -3000,6 +3000,14 @@ const MESSAGES = {
   'transportPlanning.zoomOut': { pt: 'Afastar', en: 'Zoom out' },
   'transportPlanning.zoomFit': { pt: 'Dia inteiro', en: 'Whole day' },
 
+  // The week strip (#247 stage 6) — per-date counts so a heavy day is a
+  // Monday decision, not a Thursday-morning one.
+  'transportPlanning.weekStripToggle': { pt: 'Tira da semana', en: 'Week strip' },
+  'transportPlanning.weekStripJourneys': { pt: 'viagens', en: 'journeys' },
+  'transportPlanning.weekStripUnplanned': { pt: 'por planear', en: 'unplanned' },
+  'transportPlanning.weekStripOutOfDistrict': { pt: '%{count} fora do distrito', en: '%{count} out of district' },
+  'transportPlanning.weekStripLoadFailed': { pt: 'Não foi possível carregar a tira da semana.', en: 'Could not load the week strip.' },
+
   // H.I. and H.F. as they are printed on the delegation's daily service sheet
   // — kept as the crews' own abbreviations rather than renamed, since the
   // board is read alongside the paper it replaces.
@@ -3240,6 +3248,13 @@ const MESSAGES = {
   'transportVehicleDay.journeysTitle': { pt: 'Jornadas', en: 'Journeys' },
   'transportVehicleDay.noJourneys': { pt: 'Sem jornadas nesta data.', en: 'No journeys on this date.' },
   'transportVehicleDay.openJourney': { pt: 'Abrir jornada', en: 'Open journey' },
+
+  // ── Crew day page (#247 stage 6) — planner-side counterpart to My
+  // Transport Trips, reached from the journey inspector's crew chips ──
+  'transportCrewDay.pageTitle': { pt: 'Dia da tripulação', en: 'Crew day' },
+  'transportCrewDay.dateLabel': { pt: 'Data:', en: 'Date:' },
+  'transportCrewDay.noTrips': { pt: 'Sem viagens nesta data.', en: 'No trips on this date.' },
+  'transportCrewDay.loadFailed': { pt: 'Não foi possível carregar o dia da tripulação.', en: 'Could not load the crew day.' },
 
   // ── Placement suggestions (#247 Suggestions stage) ──
   'transportPlanning.suggestPlacementsButton': { pt: 'Sugerir colocação', en: 'Suggest placement' },

@@ -118,6 +118,7 @@ function buildDeps(overrides: Record<string, unknown> = {}) {
     staffAbsences: { findOverlapping: jest.fn().mockResolvedValue([]) },
     vehicleOccupancy: {
       findForSource: jest.fn().mockResolvedValue(null),
+      findManyForSource: jest.fn().mockResolvedValue([]),
       findConflicts: jest.fn().mockResolvedValue([]),
       removeForSource: jest.fn().mockResolvedValue(undefined),
     },
@@ -131,6 +132,9 @@ function buildDeps(overrides: Record<string, unknown> = {}) {
     // `attachRouteGeometry` short-circuits before ever calling this — see
     // the dedicated `routeGeometry` describe block for the cases that do.
     routing: { routeGeometry: jest.fn().mockResolvedValue(null) },
+    // Only reached by `getWeek` (#247 stage 6) — every other test here never
+    // calls it.
+    geography: { homeDistrict: jest.fn().mockResolvedValue('Braga') },
     ...overrides,
   };
 }
@@ -145,6 +149,7 @@ function makeService(prisma: ReturnType<typeof buildPrismaStub>, deps: ReturnTyp
     deps.transportRequestLegs as never,
     deps.patients as never,
     deps.legTravel as never,
+    deps.geography as never,
     deps.routing as never,
   );
 }
@@ -764,6 +769,124 @@ describe('TripsService', () => {
       const service = makeService(prisma);
 
       await expect(service.getVehicleDay('nope', '2026-09-15', USER)).rejects.toThrow(NotFoundException);
+    });
+  });
+
+  describe('getWeek', () => {
+    it('returns one summary per day, the seven days starting at from', async () => {
+      const prisma = buildPrismaStub({
+        trip: { findMany: jest.fn().mockResolvedValue([]) },
+        transportLeg: { findMany: jest.fn().mockResolvedValue([]) },
+      });
+      const service = makeService(prisma);
+
+      const result = await service.getWeek('2026-09-14');
+
+      expect(result.from).toBe('2026-09-14');
+      expect(result.days.map((day) => day.date)).toEqual([
+        '2026-09-14',
+        '2026-09-15',
+        '2026-09-16',
+        '2026-09-17',
+        '2026-09-18',
+        '2026-09-19',
+        '2026-09-20',
+      ]);
+    });
+
+    it('counts journeys, distinct patients and unplanned legs for a date', async () => {
+      const prisma = buildPrismaStub({
+        trip: {
+          findMany: jest.fn().mockResolvedValue([
+            { id: 'trip-1', stops: [] },
+            { id: 'trip-2', stops: [] },
+          ]),
+        },
+        transportLeg: {
+          findMany: jest.fn().mockResolvedValue([
+            { tripStops: [{ id: 'stop-1' }], transportRequest: { patientId: 'pat-1' } },
+            { tripStops: [], transportRequest: { patientId: 'pat-2' } },
+            // Same patient as the first leg, and also unplanned — dedupes on
+            // people, counts separately on unplanned legs.
+            { tripStops: [], transportRequest: { patientId: 'pat-1' } },
+          ]),
+        },
+      });
+      const service = makeService(prisma);
+
+      const result = await service.getWeek('2026-09-14');
+
+      expect(result.days[0]).toMatchObject({ journeyCount: 2, peopleCount: 2, unplannedLegCount: 2 });
+    });
+
+    it("flags a journey out of district when a leg's facility sits outside the delegation's own", async () => {
+      const prisma = buildPrismaStub({
+        trip: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: 'trip-1',
+              stops: [
+                {
+                  transportLeg: {
+                    originFacility: null,
+                    destinationFacility: { municipality: { district: 'Porto' } },
+                  },
+                },
+              ],
+            },
+          ]),
+        },
+        transportLeg: { findMany: jest.fn().mockResolvedValue([]) },
+      });
+      const deps = buildDeps({ geography: { homeDistrict: jest.fn().mockResolvedValue('Braga') } });
+      const service = makeService(prisma, deps);
+
+      const result = await service.getWeek('2026-09-14');
+
+      expect(result.days[0].outOfDistrictJourneyCount).toBe(1);
+    });
+
+    it('never flags a journey whose facilities all match home district, or carry none', async () => {
+      const prisma = buildPrismaStub({
+        trip: {
+          findMany: jest.fn().mockResolvedValue([
+            {
+              id: 'trip-1',
+              stops: [
+                { transportLeg: { originFacility: { municipality: { district: 'Braga' } }, destinationFacility: null } },
+                { transportLeg: null },
+              ],
+            },
+          ]),
+        },
+        transportLeg: { findMany: jest.fn().mockResolvedValue([]) },
+      });
+      const deps = buildDeps({ geography: { homeDistrict: jest.fn().mockResolvedValue('Braga') } });
+      const service = makeService(prisma, deps);
+
+      const result = await service.getWeek('2026-09-14');
+
+      expect(result.days[0].outOfDistrictJourneyCount).toBe(0);
+    });
+
+    it("sums that date's trips' VehicleOccupancy intervals into committed vehicle hours", async () => {
+      const prisma = buildPrismaStub({
+        trip: { findMany: jest.fn().mockResolvedValue([{ id: 'trip-1', stops: [] }]) },
+        transportLeg: { findMany: jest.fn().mockResolvedValue([]) },
+      });
+      const deps = buildDeps({
+        vehicleOccupancy: {
+          findManyForSource: jest.fn().mockResolvedValue([
+            { startsAt: new Date('2026-09-14T08:00:00.000Z'), endsAt: new Date('2026-09-14T10:30:00.000Z') },
+          ]),
+        },
+      });
+      const service = makeService(prisma, deps);
+
+      const result = await service.getWeek('2026-09-14');
+
+      expect(result.days[0].committedVehicleHours).toBe(2.5);
+      expect(deps.vehicleOccupancy.findManyForSource).toHaveBeenCalledWith('TRANSPORT_TRIP', ['trip-1']);
     });
   });
 });

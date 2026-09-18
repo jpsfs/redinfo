@@ -94,6 +94,30 @@ export class TripsController {
     return this.crewManifest.getMyTrips(user.id, date);
   }
 
+  /** Seven per-date summaries starting at `from` (#247 stage 6) — the
+   * planning board's week strip, so a heavy day is a Monday decision rather
+   * than a Thursday-morning one. Declared before `:id` so `week` is never
+   * read as a trip id. */
+  @Get('week')
+  @Actions(Action.PLAN_TRANSPORT_TRIPS)
+  @ApiQuery({ name: 'from', required: true, description: 'ISO date — the first of the seven days returned' })
+  getWeek(@Query('from') from: string) {
+    return this.trips.getWeek(from);
+  }
+
+  /** Planner-side counterpart to `GET /trips/me` (#247 stage 6) — a named
+   * crew member's own manifest for `date`, for the week strip's crew-day
+   * drill-down. Unlike `/me`, gated: the caller is reading someone else's
+   * day, not their own, so identity degrades per the caller's own
+   * `VIEW_PATIENT_IDENTITY` (see `TripCrewManifestService.getForCrewMember`).
+   * Declared before `:id` so `crew` is never read as a trip id. */
+  @Get('crew/:userId')
+  @Actions(Action.PLAN_TRANSPORT_TRIPS)
+  @ApiQuery({ name: 'date', required: true, description: 'ISO date' })
+  getCrewDay(@Param('userId') userId: string, @Query('date') date: string, @CurrentUser() user: RequestUser) {
+    return this.crewManifest.getForCrewMember(userId, date, user);
+  }
+
   /** One journey's own page (#247 stage 3) — vehicle, crew, ordered stops
    * with the legs they carry, issues, and a printable crew sheet. */
   @Get(':id')

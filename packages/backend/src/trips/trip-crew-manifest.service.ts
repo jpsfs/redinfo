@@ -1,10 +1,15 @@
 import { Injectable } from '@nestjs/common';
-import { CrewManifestStop, CrewManifestTrip, MyTransportTripsResponse } from '@redinfo/shared';
+import { CrewManifestStop, CrewManifestTrip, MyTransportTripsResponse, PatientMobility } from '@redinfo/shared';
 import { PrismaService } from '../prisma/prisma.service';
 import { parseIsoDate } from '../utils/date.util';
 import { TransportRequestLegsService } from '../transport-requests/transport-request-legs.service';
-import { PatientsService } from '../patients/patients.service';
+import { PatientsService, RequestUser } from '../patients/patients.service';
 import { TripRow, TripStopRow, serializeTrip, serializeTripStop } from './trip.serializer';
+
+/** What `buildStop` needs off a patient, whichever lookup supplied it —
+ * `findManyForCrewManifest`'s narrower shape or `findManyForDisplay`'s
+ * richer one, both structurally satisfy this. */
+type PatientDisplayLookup = Map<string, { mobility: PatientMobility; fullName: string | null }>;
 
 /**
  * `GET /trips/me?date=` (#236) — a crew member's own trips for a date: the
@@ -19,6 +24,10 @@ import { TripRow, TripStopRow, serializeTrip, serializeTripStop } from './trip.s
  * availability, arrival timing) a crew member reading their own manifest has
  * no use for and no ability to act on — this only ever enriches stops for
  * display.
+ *
+ * `getForCrewMember` (#247 stage 6, `GET /trips/crew/:userId?date=`) is the
+ * planner-side counterpart — same assembly via the shared private `build`,
+ * gated by `PLAN_TRANSPORT_TRIPS` on the controller rather than left open.
  */
 @Injectable()
 export class TripCrewManifestService {
@@ -29,6 +38,28 @@ export class TripCrewManifestService {
   ) {}
 
   async getMyTrips(userId: string, date: string): Promise<MyTransportTripsResponse> {
+    return this.build(userId, date, (patientIds) => this.patients.findManyForCrewManifest(patientIds));
+  }
+
+  /**
+   * Planner-side counterpart to `getMyTrips` (#247 stage 6, `GET
+   * /trips/crew/:userId?date=`) — same assembly, but for a caller who is not
+   * the crew member themselves: identity degrades per the *viewer's*
+   * `VIEW_PATIENT_IDENTITY` via `PatientsService.findManyForDisplay`, rather
+   * than `getMyTrips`' structural bypass, which only holds because that
+   * method has exactly one caller reading their own day. This is a new
+   * surface for a coordinator reading someone else's, so it follows the
+   * board's own capability-gated rule instead.
+   */
+  async getForCrewMember(userId: string, date: string, viewer: RequestUser): Promise<MyTransportTripsResponse> {
+    return this.build(userId, date, (patientIds) => this.patients.findManyForDisplay(patientIds, viewer));
+  }
+
+  private async build(
+    userId: string,
+    date: string,
+    loadPatients: (ids: string[]) => Promise<PatientDisplayLookup>,
+  ): Promise<MyTransportTripsResponse> {
     const rows = await this.prisma.trip.findMany({
       where: { date: parseIsoDate(date), crewMembers: { some: { userId } } },
       include: {
@@ -57,7 +88,7 @@ export class TripCrewManifestService {
     });
     const requestById = new Map(requests.map((request) => [request.id, request]));
     const patientIds = [...new Set(requests.map((request) => request.patientId))];
-    const patientDisplay = await this.patients.findManyForCrewManifest(patientIds);
+    const patientDisplay = await loadPatients(patientIds);
 
     const trips: CrewManifestTrip[] = rows.map((row) => ({
       trip: serializeTrip(row as TripRow),
@@ -79,7 +110,7 @@ export class TripCrewManifestService {
     stop: TripStopRow & { facility: { name: string } | null },
     legById: Map<string, Awaited<ReturnType<TransportRequestLegsService['findByIds']>>[number]>,
     requestById: Map<string, { id: string; patientId: string; appointmentAt: Date }>,
-    patientDisplay: Awaited<ReturnType<PatientsService['findManyForCrewManifest']>>,
+    patientDisplay: PatientDisplayLookup,
   ): CrewManifestStop {
     const leg = stop.transportLegId ? legById.get(stop.transportLegId) : undefined;
     const request = leg ? requestById.get(leg.transportRequestId) : undefined;

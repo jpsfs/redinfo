@@ -9036,6 +9036,42 @@ export interface MyTransportTripsResponse {
   trips: CrewManifestTrip[];
 }
 
+// ─── Week strip (#247 stage 6) ────────────────────────────────────────────────
+//
+// `GET /trips/week?from=` — one row per date, the seven days starting at
+// `from`, feeding the planning board's week strip
+// (`docs/plans/planeamento-transportes-redesign.md` §6/§8): a heavy day is a
+// Monday decision, not a Thursday-morning one. `GET /trips/crew/:userId?date=`
+// is this stage's other endpoint but adds no new shape — it's the planner-side
+// counterpart to `GET /trips/me?date=` and returns the same
+// `MyTransportTripsResponse` above, just for someone else's day and with
+// patient identity gated by the *viewer's* `VIEW_PATIENT_IDENTITY` rather than
+// the structural bypass `/trips/me` uses for a crew member reading their own.
+
+export interface WeekDateSummary {
+  /** ISO date. */
+  date: string;
+  /** Distinct patients with a leg due this date, planned or not. */
+  peopleCount: number;
+  /** Trips (journeys) on this date. */
+  journeyCount: number;
+  /** Legs due this date with no `TripStop` yet — same criterion the board's
+   * unassigned rail (`GET /trips/board?date=`) uses. */
+  unplannedLegCount: number;
+  /** Journeys carrying at least one leg whose origin or destination facility
+   * sits outside the delegation's own district — the Porto-run case. */
+  outOfDistrictJourneyCount: number;
+  /** Hours of vehicle time already committed to a trip this date, summed
+   * across every `VehicleOccupancy` interval a `Trip` on this date owns. */
+  committedVehicleHours: number;
+}
+
+export interface TripsWeekOverview {
+  /** ISO date — the first of the seven days returned. */
+  from: string;
+  days: WeekDateSummary[];
+}
+
 // ─── API error codes (#180 phase 4) ───────────────────────────────────────────
 //
 // A machine code for the business-rule failures that are genuinely worth a

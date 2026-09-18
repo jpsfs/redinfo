@@ -20,6 +20,7 @@ import {
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
+import CalendarViewWeekIcon from '@mui/icons-material/CalendarViewWeek';
 import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
 import ChevronRightIcon from '@mui/icons-material/ChevronRight';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
@@ -52,6 +53,7 @@ import { UnassignedLegCard } from './transportPlanning/UnassignedLegCard';
 import { UnplannedGroup, groupUnplannedLegs } from './transportPlanning/unplannedGroups';
 import { UnplannedGroupCard } from './transportPlanning/UnplannedGroupCard';
 import { VehicleGroup } from './transportPlanning/VehicleGroup';
+import { WeekStrip } from './transportPlanning/WeekStrip';
 import { LANE_LABEL_WIDTH } from './transportPlanning/PlanningLane';
 import { TimelineRuler } from './transportPlanning/TimelineRuler';
 import {
@@ -155,6 +157,10 @@ export const TransportPlanningPage = () => {
   // timeline wider more often than they want this list open.
   const [railCollapsed, setRailCollapsed] = useState(false);
   const [issuesOpen, setIssuesOpen] = useState(false);
+  // The week strip (#247 stage 6) — closed by default, same reasoning as the
+  // rail's own collapse: most sessions are spent on one date's board, not
+  // surveying the week.
+  const [weekStripOpen, setWeekStripOpen] = useState(false);
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const loadBoard = useCallback(async () => {
@@ -338,6 +344,16 @@ export const TransportPlanningPage = () => {
               </IconButton>
             </span>
           </Tooltip>
+          <Tooltip title={t('transportPlanning.weekStripToggle')}>
+            <IconButton
+              size="small"
+              aria-label={t('transportPlanning.weekStripToggle')}
+              color={weekStripOpen ? 'primary' : 'default'}
+              onClick={() => setWeekStripOpen((open) => !open)}
+            >
+              <CalendarViewWeekIcon />
+            </IconButton>
+          </Tooltip>
           <TextField
             type="date"
             size="small"
@@ -349,6 +365,8 @@ export const TransportPlanningPage = () => {
           />
         </Stack>
       </Stack>
+
+      {weekStripOpen && <WeekStrip date={date} onSelectDate={setDate} />}
 
       {loadError && (
         <Alert severity="error" sx={{ mb: 2 }}>

@@ -169,4 +169,19 @@ describe('VehicleOccupancyService', () => {
       });
     });
   });
+
+  describe('findManyForSource', () => {
+    it('batches findForSource across many source rows of the same kind', async () => {
+      await service.findManyForSource(VehicleOccupancySource.TRANSPORT_TRIP, ['trip-1', 'trip-2']);
+      expect(prisma.vehicleOccupancy.findMany).toHaveBeenCalledWith({
+        where: { source: VehicleOccupancySource.TRANSPORT_TRIP, sourceId: { in: ['trip-1', 'trip-2'] } },
+      });
+    });
+
+    it('skips the query entirely for an empty id list', async () => {
+      const result = await service.findManyForSource(VehicleOccupancySource.TRANSPORT_TRIP, []);
+      expect(result).toEqual([]);
+      expect(prisma.vehicleOccupancy.findMany).not.toHaveBeenCalled();
+    });
+  });
 });

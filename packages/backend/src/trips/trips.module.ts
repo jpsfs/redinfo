@@ -7,6 +7,7 @@ import { TransportConfigModule } from '../transport-config/transport-config.modu
 import { RoutingModule } from '../routing/routing.module';
 import { TransportRequestsModule } from '../transport-requests/transport-requests.module';
 import { PatientsModule } from '../patients/patients.module';
+import { GeographyModule } from '../geography/geography.module';
 import { TripsService } from './trips.service';
 import { TripCrewService } from './trip-crew.service';
 import { TripStopsService } from './trip-stops.service';
@@ -32,7 +33,9 @@ import { TripsController } from './trips.controller';
  * drawn route (`TripsService.attachRouteGeometry`, `ROUTING_SERVICE`).
  * `TripPlacementSuggestionsService` (#247's Suggestions stage) reuses the
  * same three modules again, batching one `distanceMatrix` call across every
- * candidate rather than routing each one separately.
+ * candidate rather than routing each one separately. `GeographyModule`
+ * (#247 stage 6) serves `TripsService.getWeek`'s `homeDistrict` lookup for
+ * the week strip's out-of-district count.
  */
 @Module({
   imports: [
@@ -43,6 +46,7 @@ import { TripsController } from './trips.controller';
     RoutingModule,
     TransportRequestsModule,
     PatientsModule,
+    GeographyModule,
   ],
   providers: [
     TripsService,
