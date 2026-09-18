@@ -131,6 +131,12 @@ pipeline parameters.
   `forceProduction` bypassing the staging gate. Use it when code has to ship and unrelated
   infrastructure drift is standing in the way. The drift does not go away — it just stops
   holding the release hostage, and the next run without the flag will ask about it again.
+- **`reportContaboImages`** — not an escape hatch but a lookup, and the only parameter that
+  stops the pipeline rather than steering it: it runs the `ContaboImages` stage and skips
+  `Prepare`, which every other stage gates on, so nothing is built and nothing is deployed.
+  It exists because `TF_VAR_image_id` has to be pinned by hand and the Contabo API credentials
+  that resolve it are write-only secrets in `redinfo-contabo` — this pipeline is the only place
+  that can read them. Runs on any branch. See `infra/README.md`.
 - **`contaboBackgroundJobs`** — on the Contabo host only, enable the legacy-migration cron and
   the INEM worker. **Off by default, deliberately**: while vm-redcross is live, a second
   instance with the same credentials means two machines pulling from one legacy MySQL and two
