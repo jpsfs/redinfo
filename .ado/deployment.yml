@@ -39,6 +39,14 @@ parameters:
     displayName: "Regenerate manuals even without a docs commit"
     type: boolean
     default: false
+  - name: deployToContabo
+    displayName: "Also deploy production to the Contabo host on this run (normally driven by CONTABO_DEPLOY_ENABLED)"
+    type: boolean
+    default: false
+  - name: contaboBackgroundJobs
+    displayName: "On the Contabo host, also run the legacy-migration cron and the INEM worker (read DeployProductionContabo first)"
+    type: boolean
+    default: false
 
 variables:
   # Docker Hub service connection ID or name
@@ -373,7 +381,7 @@ stages:
 
   # ── DeployProduction ─────────────────────────────────────────────────────
   - stage: DeployProduction
-    displayName: Deploy to production
+    displayName: Deploy to production (vm-redcross)
     dependsOn: [Prepare, Build, PromotionGate]
     condition: |
       and(
@@ -406,6 +414,176 @@ stages:
                   parameters:
                     envName: production
                     imageTag: sha-$(shortSha)
+
+  # ── DeployProductionContabo ───────────────────────────────────────────────
+  #
+  # The second production host, running in parallel with DeployProduction
+  # above during the vm-redcross → Contabo migration. Same commit, same images,
+  # same `redinfo-production` secrets, same promotion gate — a different
+  # machine. At cutover, app.cvpcampo.org is repointed at this host and the
+  # vm-redcross stage is deleted.
+  #
+  # Two things are deliberately NOT true of this host until that cutover:
+  #   * Background jobs are off (see contaboBackgroundJobs below).
+  #   * OAuth sign-in will not complete on it. GOOGLE_CALLBACK_URL and
+  #     FRONTEND_URL both name app.cvpcampo.org, which still resolves to
+  #     vm-redcross, so the provider redirects back there. That is expected;
+  #     it fixes itself when DNS moves, and nothing here should paper over it.
+  #
+  # The host is provisioned separately by .ado/infrastructure.yml — this
+  # pipeline only ever deploys onto it.
+  - stage: DeployProductionContabo
+    displayName: Deploy to production (Contabo host)
+    dependsOn: [Prepare, Build, PromotionGate]
+    # Same gate as DeployProduction, plus a switch. CONTABO_DEPLOY_ENABLED
+    # lives in the `redinfo-contabo` variable group so the host can be brought
+    # into (or dropped out of) the production rotation by editing one variable,
+    # with no commit. It must be the string 'true' to count.
+    #
+    # Keep it 'false' until the VM exists AND its ADO agent is registered and
+    # online in the `contabo-production` pool — a stage queued against an empty
+    # pool sits there until it times out. It cannot affect the vm-redcross
+    # deploy either way: that is a separate stage with no dependency on this.
+    condition: |
+      and(
+        eq(variables['Build.SourceBranch'], 'refs/heads/env/production'),
+        in(dependencies.Prepare.result, 'Succeeded', 'SucceededWithIssues'),
+        not(in(dependencies.Build.result, 'Failed', 'Canceled')),
+        succeeded('PromotionGate'),
+        or(
+          eq(variables['CONTABO_DEPLOY_ENABLED'], 'true'),
+          eq('${{ parameters.deployToContabo }}', true)
+        )
+      )
+    variables:
+      - group: redinfo-production
+      - group: redinfo-contabo
+      - group: redinfo-tfstate
+      - name: shortSha
+        value: $[ stageDependencies.Prepare.Resolve.outputs['EmitVars.shortSha'] ]
+      - name: TF_VERSION
+        value: "1.16.3"
+      - name: TF_DIR
+        value: "$(Build.SourcesDirectory)/infra/terraform"
+      - name: TF_IN_AUTOMATION
+        value: "true"
+      - name: TF_INPUT
+        value: "false"
+    jobs:
+      - deployment: DeployToContaboProduction
+        displayName: Deploy Helm chart to the Contabo production host
+        # An ADO agent running on the Contabo box itself, exactly like
+        # vm-redcross — which is what lets this reuse templates/deploy-env.yml
+        # unchanged and keeps the Kubernetes API (16443) closed to the network.
+        # The pool is populated by /opt/redinfo/register-ado-agent.sh on the
+        # host; see infra/README.md.
+        pool:
+          name: contabo-production
+        # Its own Environment, not the one DeployProduction uses: the two
+        # stages deploy the same release to two different machines, and a
+        # single Environment's deployment history would blur them together.
+        environment: redinfo-production-contabo
+        strategy:
+          runOnce:
+            deploy:
+              steps:
+                - template: templates/deploy-env.yml
+                  parameters:
+                    envName: production
+                    imageTag: sha-$(shortSha)
+                    # Background jobs are OFF unless explicitly asked for, and
+                    # that default is the important part of this stage. While
+                    # vm-redcross is still live, this host is a SECOND instance
+                    # holding the same production credentials: the
+                    # legacy-migration cron would have two machines pulling
+                    # from the one legacy MySQL every hour, and the INEM worker
+                    # would have two headless browsers logging into the one
+                    # shared INEM account and fighting over its session (see
+                    # packages/inem-worker/README.md). Neither shows up as a
+                    # deploy failure; both are noticed days later. Turn them on
+                    # at cutover, once vm-redcross is off.
+                    ${{ if eq(parameters.contaboBackgroundJobs, true) }}:
+                      extraSetFlags: "--set legacyMigration.enabled=true --set legacyMigration.cron.enabled=true --set inemWorker.enabled=true"
+                    ${{ else }}:
+                      extraSetFlags: "--set legacyMigration.enabled=false --set legacyMigration.cron.enabled=false --set inemWorker.enabled=false"
+
+      - job: PublicCheck
+        displayName: "Check port 443 from outside the host"
+        dependsOn: DeployToContaboProduction
+        # Hosted agent on purpose: the deploy job above already proved the app
+        # answers *on* the box. The open question for a brand-new machine is
+        # whether 443 is reachable from the internet, and only an agent that is
+        # not on that host can answer it.
+        pool:
+          vmImage: "ubuntu-latest"
+        steps:
+          - checkout: self
+            fetchDepth: 1
+
+          - task: Bash@3
+            displayName: "Install Terraform $(TF_VERSION)"
+            inputs:
+              targetType: "inline"
+              script: |
+                set -euo pipefail
+                cd "$(Agent.TempDirectory)"
+                curl -fsSLo terraform.zip \
+                  "https://releases.hashicorp.com/terraform/$(TF_VERSION)/terraform_$(TF_VERSION)_linux_amd64.zip"
+                unzip -oq terraform.zip
+                sudo install -m 0755 terraform /usr/local/bin/terraform
+
+          - task: Bash@3
+            displayName: "Resolve the host address from Terraform state"
+            inputs:
+              targetType: "inline"
+              script: |
+                set -euo pipefail
+                # Read-only: init + output, never a plan or an apply. The
+                # address comes from state rather than a typed parameter so it
+                # cannot drift from what actually exists.
+                terraform -chdir="$(TF_DIR)" init \
+                  -backend-config="bucket=${TFSTATE_BUCKET}" \
+                  -backend-config="key=${TFSTATE_KEY}" \
+                  -backend-config="region=${TFSTATE_REGION}" \
+                  -backend-config="encrypt=true" \
+                  -backend-config="use_lockfile=true"
+
+                HOST_IP="$(terraform -chdir="$(TF_DIR)" output -raw ipv4)"
+                if [ -z "${HOST_IP}" ] || [ "${HOST_IP}" = "null" ]; then
+                  echo "##vso[task.logissue type=error]Terraform state has no ipv4 output — has infrastructure.yml ever been applied?" >&2
+                  exit 1
+                fi
+                echo "##vso[task.setvariable variable=HOST_IP]${HOST_IP}"
+            env:
+              AWS_ACCESS_KEY_ID: $(AWS_ACCESS_KEY_ID)
+              AWS_SECRET_ACCESS_KEY: $(AWS_SECRET_ACCESS_KEY)
+              TFSTATE_BUCKET: $(TFSTATE_BUCKET)
+              TFSTATE_KEY: $(TFSTATE_KEY)
+              TFSTATE_REGION: $(TFSTATE_REGION)
+
+          - task: Bash@3
+            displayName: "HTTPS on 443 from the public internet"
+            inputs:
+              targetType: "inline"
+              script: |
+                set -euo pipefail
+                INGRESS_HOST="$(PROD_INGRESS_HOST)"
+
+                # -k because TLS is still the ingress controller's built-in
+                # self-signed certificate (see infra/README.md); --resolve so
+                # the Host header matches the Ingress rule without depending on
+                # DNS having been moved to this machine yet.
+                for path in / /api/health; do
+                  code="$(curl -sk -o /dev/null -w '%{http_code}' --max-time 20 \
+                    --resolve "${INGRESS_HOST}:443:$(HOST_IP)" \
+                    "https://${INGRESS_HOST}${path}" || true)"
+                  if [ "${code}" = "200" ]; then
+                    echo "OK (public https): ${path}"
+                  else
+                    echo "##vso[task.logissue type=error]Public HTTPS check failed for ${path} (HTTP ${code:-none}). Check the Contabo firewall and ufw on the host." >&2
+                    exit 1
+                  fi
+                done
 
   # ── GenerateManuals — routed by commit message, never gates a deploy ───────
   - stage: GenerateManuals

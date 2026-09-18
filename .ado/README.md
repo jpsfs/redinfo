@@ -25,8 +25,8 @@ gap.
 ```
 Prepare ──┬─▶ Build ──┬─▶ DeployStaging ──▶ MarkStagingVerified
           │           │
-          │           ├─▶ PromotionGate ──▶ DeployProduction
-          │           │        ▲
+          │           ├─▶ PromotionGate ──┬─▶ DeployProduction        (vm-redcross)
+          │           │        ▲          └─▶ DeployProductionContabo (Contabo host)
           │           └────────┘ (both read Build's result)
           │
           └─▶ GenerateManuals
@@ -50,6 +50,14 @@ Prepare ──┬─▶ Build ──┬─▶ DeployStaging ──▶ MarkStagin
 - **MarkStagingVerified** stamps the `staging-ok-<shortSha>` marker described below — the only
   thing standing between "staging deploy succeeded" and "this commit is allowed to production".
 - **PromotionGate** enforces that marker on the way to production, `forceProduction` bypasses it.
+- **DeployProductionContabo** is the second production host, running in parallel with
+  `DeployProduction` during the vm-redcross → Contabo migration: same commit, same images, same
+  `redinfo-production` secrets, same gate — a different machine, on its own
+  `contabo-production` pool. It is off unless `CONTABO_DEPLOY_ENABLED` is `'true'` in the
+  `redinfo-contabo` variable group, so a host joins or leaves the production rotation by editing
+  one variable rather than by a commit. Neither production stage depends on the other; either can
+  fail alone. The host itself is provisioned by `.ado/infrastructure.yml`, a separate manual-run
+  pipeline — see `infra/README.md` for why provisioning is not a stage in front of this one.
 - **GenerateManuals** depends on `Prepare` alone and is routed by commit message or the manual
   `forceGenerateManuals` override — see below.
 
@@ -89,7 +97,7 @@ commit anywhere near `DeployProduction`.
 
 ## Force parameters
 
-All three are pipeline parameters (`type: boolean, default: false`) settable only from a
+All of them are pipeline parameters (`type: boolean, default: false`) settable only from a
 **manual** run ("Run pipeline" in the UI, `az pipelines run --parameters`, or the REST API's
 `templateParameters`) — a push can never set them, there is no `trigger:`-side mechanism for
 pipeline parameters.
@@ -105,6 +113,13 @@ pipeline parameters.
 - **`forceGenerateManuals`** — run `GenerateManuals` even though the tip commit isn't a `docs`
   commit. This is the intended way to regenerate the manuals on demand — it replaces triggering
   the stage with an empty `docs:` commit.
+- **`deployToContabo`** — run `DeployProductionContabo` on this one run regardless of
+  `CONTABO_DEPLOY_ENABLED`. For trying the new host out before committing it to the rotation.
+- **`contaboBackgroundJobs`** — on the Contabo host only, enable the legacy-migration cron and
+  the INEM worker. **Off by default, deliberately**: while vm-redcross is live, a second
+  instance with the same credentials means two machines pulling from one legacy MySQL and two
+  headless browsers fighting over one INEM session. Neither fails at deploy time. Turn it on at
+  cutover — see `infra/README.md`.
 
 ## Manuals
 
@@ -128,3 +143,8 @@ there), not a click in ADO. The only in-pipeline gate is `PromotionGate`: produc
 commit without a `staging-ok-<sha>` marker, short of `forceProduction`. Once a push to
 `env/production` lands, the pipeline runs straight through to a deploy with no pause for
 approval — that's the intended behavior, not a bug.
+
+`DeployProductionContabo` uses a *second* Environment, `redinfo-production-contabo`, and the
+same reasoning applies to it. Two Environments rather than one because the two stages deploy the
+same release to two different machines, and a single Environment's deployment history would blur
+them together — which is exactly the history you want to read during a migration.
