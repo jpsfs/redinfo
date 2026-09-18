@@ -76,9 +76,9 @@ existing chart with no changes.
 
 ## Running it
 
-Through the pipeline (`.ado/infrastructure.yml`, manual runs only —
-`plan` / `apply` / `destroy`, with `apply` and `destroy` gated behind a
-confirmation checkbox), or locally:
+Through the `Infrastructure` stage of `.ado/deployment.yml` — it plans on every
+production release, and asks a human to approve before it applies anything (see
+below) — or locally:
 
 ```bash
 export CNTB_OAUTH2_CLIENT_ID=... CNTB_OAUTH2_CLIENT_SECRET=...
@@ -254,25 +254,51 @@ Google/Microsoft login even when the origin itself never speaks TLS.
 
 ## Deploying the application to it
 
-Two pipelines, on purpose:
+One pipeline, `.ado/deployment.yml`. Terraform is a stage in it, not a pipeline
+of its own:
 
-| Pipeline | Job | Runs when |
-|---|---|---|
-| `.ado/infrastructure.yml` | buys / rebuilds / destroys the machine | a human starts it and picks an action |
-| `.ado/deployment.yml` → `DeployProductionContabo` | deploys the app onto it | every push to `env/production`, past the promotion gate |
+```
+PromotionGate ─▶ Infrastructure ─┬─▶ DeployProduction        (vm-redcross)
+                                 └─▶ DeployProductionContabo (Contabo host)
+```
 
-Provisioning runs a handful of times a year; deploys run daily. Folding the
-Terraform into the deploy pipeline would put a plan nobody reads in front of
-every release, hand every push to `env/production` credentials that can destroy
-the server, and let a Contabo API outage block a code deploy to a machine that
-already exists. So they stay apart.
+`Infrastructure` runs `terraform plan` on every production release. If the host
+already matches `infra/terraform` the stage ends there and the deploys carry on
+as though it were not present — which is the common case, since this config
+changes a handful of times a year.
 
-`.ado/infrastructure.yml` takes two parameters only:
+If the plan *does* find changes, the run parks in the Azure DevOps UI on an
+agentless `ManualValidation` job and waits. Approve and the **saved plan file**
+from the Plan job is applied — not a freshly generated one, so what runs is
+exactly what was reviewed — and then the deploys proceed. Reject and both
+production deploys are blocked.
 
-| Parameter | Meaning |
-|---|---|
-| `action` | `plan` / `apply` / `destroy` |
-| `confirm` | required checkbox for `apply` and `destroy` |
+**Read the plan before approving.** Four attributes reinstall the machine when
+they change, and `user_data` is one of them, so an edit to
+`cloud-init.yaml.tftpl` is a change to the machine itself. The Plan job calls
+that out explicitly, because Terraform renders it as an unremarkable
+`~ update in-place`.
+
+**`skipInfrastructure`** is the way past a rejection or a stuck plan: a
+manual-run parameter that skips the whole stage — no plan, no approval, no
+apply — and goes straight to deploying. Same shape as `forceProduction`
+bypassing the staging gate. The drift does not go away; it just stops holding a
+hotfix hostage.
+
+### Provisioning the first time, and destroying
+
+There is no separate manual pipeline any more, which has two consequences worth
+knowing:
+
+- **The first apply rides on the next production release.** Merge through the
+  normal `dev` → `env/staging` → `env/production` path; when the release
+  reaches production, `Infrastructure` plans (everything to create, plus the
+  firewall import), waits for approval, and applies. That is the intended flow,
+  not a workaround.
+- **`terraform destroy` is not automated at all.** Deliberate: cancelling a VPS
+  on a 12-month contract is a panel action, and the provider's delete path
+  against a contracted instance is unverified. Do it from a laptop with the
+  credentials exported, or in the Contabo panel.
 
 ### The production deploy stage
 

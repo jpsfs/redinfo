@@ -156,7 +156,7 @@ write_files:
       # does the slow, credential-free part (download, unpack, dependencies)
       # and leaves a one-command script for the rest.
       #
-      # This is what lets .ado/infrastructure.yml's deploy stage run *on* this
+      # This is what lets .ado/deployment.yml's Contabo deploy stage run *on* this
       # box and reuse .ado/templates/deploy-env.yml unchanged, exactly as
       # vm-redcross does today — no SSH hop, no exposed Kubernetes API.
       if [ ! -x "$${AGENT_DIR}/config.sh" ]; then

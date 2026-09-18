@@ -25,11 +25,10 @@ gap.
 ```
 Prepare ──┬─▶ Build ──┬─▶ DeployStaging ──▶ MarkStagingVerified
           │           │
-          │           ├─▶ PromotionGate ──┬─▶ DeployProduction        (vm-redcross)
-          │           │        ▲          └─▶ DeployProductionContabo (Contabo host)
+          │           ├─▶ PromotionGate ─▶ Infrastructure ─┬─▶ DeployProduction        (vm-redcross)
+          │           │        ▲                           └─▶ DeployProductionContabo (Contabo host)
           │           └────────┘ (both read Build's result)
           │
-          ├─▶ TerraformDrift      (env/production only; warns, never acts)
           └─▶ GenerateManuals
 ```
 
@@ -57,20 +56,19 @@ Prepare ──┬─▶ Build ──┬─▶ DeployStaging ──▶ MarkStagin
   `contabo-production` pool. It is off unless `CONTABO_DEPLOY_ENABLED` is `'true'` in the
   `redinfo-contabo` variable group, so a host joins or leaves the production rotation by editing
   one variable rather than by a commit. Neither production stage depends on the other; either can
-  fail alone. The host itself is provisioned by `.ado/infrastructure.yml`, a separate manual-run
-  pipeline — see `infra/README.md` for why provisioning is not a stage in front of this one.
-- **TerraformDrift** runs `terraform plan` against the Contabo host on every production
-  deploy and **never applies anything** — apply and destroy live in `.ado/infrastructure.yml`
-  behind a human picking the verb and ticking a confirmation box. It exists for one reason:
-  four attributes of `contabo_instance` reinstall the machine when they change, and one of them
-  is `user_data`, so a merged edit to `cloud-init.yaml.tftpl` silently leaves production one
-  apply away from being rebuilt. This stage says so at the moment that change reaches
-  production, and names the attribute. Nothing depends on it, so like `GenerateManuals` it can
-  never delay or block a deploy. It is not gated on "did `infra/terraform/**` change": `Prepare`
-  checks out shallow so there is no reliable parent to diff against, and a file-diff gate is
-  blind to drift introduced in the Contabo panel. `terraform plan`'s own exit code is the more
-  accurate gate — no changes means one line of output. The plan runs with `-lock=false` so it
-  can never block a real apply.
+  fail alone. The host itself is provisioned by the `Infrastructure` stage above, in this same
+  run.
+- **Infrastructure** is Terraform for the Contabo host, and it sits between the promotion gate
+  and both production deploys so the machine is what `infra/terraform` says it is before a
+  release lands on it. Three jobs: **Plan** always runs and `terraform plan -detailed-exitcode`
+  decides the rest — exit 0 (nothing to change) ends the stage and the deploys carry on as if it
+  were not there; **Approve** is an agentless `ManualValidation` job that parks the run in the
+  ADO UI, and only exists when the plan found changes; **Apply** applies *the saved plan file*
+  from the Plan job, not a fresh one, so what runs is exactly what was reviewed. Rejecting the
+  approval cancels the stage, which blocks **both** production deploys — `skipInfrastructure`
+  is the way past that (see below). The Plan job also names any change to an attribute that
+  reinstalls the host (`image_id`, `ssh_keys`, `user_data`, `root_password`), because Terraform
+  renders that reinstall as an unremarkable `~ update in-place`.
 - **GenerateManuals** depends on `Prepare` alone and is routed by commit message or the manual
   `forceGenerateManuals` override — see below.
 
@@ -128,6 +126,11 @@ pipeline parameters.
   the stage with an empty `docs:` commit.
 - **`deployToContabo`** — run `DeployProductionContabo` on this one run regardless of
   `CONTABO_DEPLOY_ENABLED`. For trying the new host out before committing it to the rotation.
+- **`skipInfrastructure`** — skip the `Infrastructure` stage entirely: no plan, no approval, no
+  apply, straight to deploying. The hotfix escape hatch, deliberately the same shape as
+  `forceProduction` bypassing the staging gate. Use it when code has to ship and unrelated
+  infrastructure drift is standing in the way. The drift does not go away — it just stops
+  holding the release hostage, and the next run without the flag will ask about it again.
 - **`contaboBackgroundJobs`** — on the Contabo host only, enable the legacy-migration cron and
   the INEM worker. **Off by default, deliberately**: while vm-redcross is live, a second
   instance with the same credentials means two machines pulling from one legacy MySQL and two
