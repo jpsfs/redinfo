@@ -1,0 +1,86 @@
+{{- if .Values.basemap.enabled -}}
+{{- /*
+  Self-hosted basemap tiles (#247 stage 4) — same-origin PMTiles behind the
+  frontend's own nginx (see configmap-nginx.yaml's /tiles/ location, mirroring
+  nginx/nginx.conf's compose-equivalent). Never a third-party tile host — same
+  reasoning as OsrmRoutingService keeping routing/geocoding self-hosted.
+
+  The initContainer replaces scripts/prepare-basemap.sh for a cluster: there's
+  no human to run it against a pod, so it extracts straight onto the basemap
+  PVC before nginx starts, gating the tiles pod's own readiness on it rather
+  than racing a Job against the Deployment. It re-runs on every pod (re)start
+  instead of skipping when the file already exists like the script does —
+  verified `go-pmtiles extract` overwrites an existing output cleanly (exit
+  0), and the go-pmtiles image is a bare static binary with no shell, so a
+  skip-if-exists check can't run in it anyway. Norte Portugal at maxzoom 14 is
+  ~75MB and well under a minute, cheap enough to always redo.
+
+  replicas fixed at 1, not .Values.replicaCount: the basemap PVC is
+  ReadWriteOnce and the initContainer above writes to it on every pod start,
+  so two generations extracting into the same file at once is a real race —
+  same posture as deployment-backend.yaml's Recreate strategy over its own
+  ReadWriteOnce uploads PVC.
+*/ -}}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "redinfo.fullname" . }}-tiles
+  labels:
+    app.kubernetes.io/name: {{ include "redinfo.name" . }}
+    app.kubernetes.io/component: tiles
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: {{ include "redinfo.name" . }}
+      app.kubernetes.io/component: tiles
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: {{ include "redinfo.name" . }}
+        app.kubernetes.io/component: tiles
+    spec:
+      initContainers:
+        - name: extract-basemap
+          image: "{{ .Values.image.pmtilesExtract.repository }}:{{ .Values.image.pmtilesExtract.tag }}"
+          imagePullPolicy: {{ .Values.image.pmtilesExtract.pullPolicy }}
+          args:
+            - extract
+            - {{ .Values.basemap.buildUrl | quote }}
+            - /data/portugal.pmtiles
+            - --bbox={{ .Values.basemap.bbox }}
+            - --maxzoom={{ .Values.basemap.maxzoom }}
+          volumeMounts:
+            - name: basemap-data
+              mountPath: /data
+      containers:
+        - name: tiles
+          image: "{{ .Values.image.tiles.repository }}:{{ .Values.image.tiles.tag }}"
+          imagePullPolicy: {{ .Values.image.tiles.pullPolicy }}
+          ports:
+            - containerPort: 80
+          volumeMounts:
+            - name: basemap-data
+              mountPath: /usr/share/nginx/html
+              readOnly: true
+          {{- if .Values.probes.enabled }}
+          readinessProbe:
+            tcpSocket:
+              port: 80
+            initialDelaySeconds: 2
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 20
+          {{- end }}
+          resources:
+{{ toYaml .Values.resources.tiles | indent 12 }}
+      volumes:
+        - name: basemap-data
+          persistentVolumeClaim:
+            claimName: {{ include "redinfo.fullname" . }}-basemap
+{{- end -}}

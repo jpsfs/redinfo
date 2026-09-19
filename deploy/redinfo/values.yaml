@@ -23,6 +23,24 @@ image:
     repository: jpsfs/redinfo-inem-worker
     tag: "dev"
     pullPolicy: IfNotPresent
+  # Stock, unbuilt images for the tiles Deployment (templates/deployment-tiles.yaml)
+  # — nginx serves the extract as-is, and go-pmtiles is a public single-binary
+  # tool, so neither needs a place in the pipeline's own `images=(...)` build list.
+  # Irrelevant while basemap.enabled is false (the default).
+  tiles:
+    repository: nginx
+    tag: "1.27-alpine"
+    pullPolicy: IfNotPresent
+  # Verified this image is a bare static binary with no shell (`exec: "sh":
+  # executable file not found`) — that's why the initContainer below can't
+  # replicate scripts/prepare-basemap.sh's "look up the latest build" curl
+  # step or its skip-if-exists check, and instead runs `extract` unconditionally
+  # against a pinned build on every pod (re)start. Verified `extract` itself
+  # overwrites an existing output file cleanly (exit 0), so that's safe to redo.
+  pmtilesExtract:
+    repository: protomaps/go-pmtiles
+    tag: "v1.31.2"
+    pullPolicy: IfNotPresent
 
 service:
   backend:
@@ -42,6 +60,10 @@ ingress:
 resources:
   backend: {}
   frontend: {}
+  # Static file serving off a PVC — the same small footprint as frontend's
+  # own nginx. The extractor initContainer intentionally gets no resources
+  # block, matching job-seed.yaml's own one-off-Job convention.
+  tiles: {}
   # A browser, not an API server (#215's own guidance) — real headroom by
   # default rather than {}, even though the Deployment itself stays disabled
   # (inemWorker.enabled: false) until an environment opts in.
@@ -99,6 +121,26 @@ uploads:
   size: 5Gi
   storageClass: ""
   mountPath: /app/uploads
+
+# Self-hosted basemap tiles (#247 stage 4) — see templates/deployment-tiles.yaml,
+# templates/pvc-basemap.yaml, templates/service-tiles.yaml, and
+# scripts/prepare-basemap.sh (the local-dev/docker-compose equivalent this
+# replaces for a cluster: there's no human to run a script against a pod).
+# Off by default: MapPanel already degrades to a plain notice when the
+# extract isn't there, so an environment opts in once it's ready to serve it.
+basemap:
+  enabled: false
+  size: 2Gi
+  storageClass: ""
+  # min_lon,min_lat,max_lon,max_lat — same Norte Portugal default as
+  # scripts/prepare-basemap.sh's own BASEMAP_BBOX.
+  bbox: "-9.05,40.95,-7.85,42.15"
+  maxzoom: 14
+  # Pinned Protomaps daily build — see image.pmtilesExtract's comment on why
+  # this can't auto-discover "latest" in-cluster the way the script does.
+  # Bump by hand (re-run the script's own discovery curl, or check
+  # https://maps.protomaps.com/builds) when a fresher extract is wanted.
+  buildUrl: "https://build.protomaps.com/20260919.pmtiles"
 
 probes:
   enabled: true

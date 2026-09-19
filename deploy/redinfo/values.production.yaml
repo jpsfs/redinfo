@@ -60,6 +60,13 @@ resources:
     limits:
       cpu: 150m
       memory: 128Mi
+  tiles:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
 
 env:
   backend:
@@ -101,6 +108,11 @@ uploads:
   enabled: true
   size: 20Gi
   mountPath: /app/uploads
+
+# Self-hosted basemap tiles (#247 stage 4) — see values.yaml's own comment on
+# `basemap` for what buildUrl needs bumping to periodically.
+basemap:
+  enabled: true
 
 # Same seed job as staging (admin user + PT geography/hospitals reference data —
 # see templates/job-seed.yaml, packages/backend/prisma/seed.ts). Idempotent and
