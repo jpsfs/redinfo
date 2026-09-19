@@ -17,6 +17,6 @@ import { AuditInterceptor } from '../auth/interceptors/audit.interceptor';
   imports: [AvailabilityModule, PaidStaffScheduleModule],
   providers: [VolunteerHoursService, VolunteerHoursSummaryService, AuditInterceptor],
   controllers: [VolunteerHoursController],
-  exports: [VolunteerHoursService],
+  exports: [VolunteerHoursService, VolunteerHoursSummaryService],
 })
 export class VolunteerHoursModule {}

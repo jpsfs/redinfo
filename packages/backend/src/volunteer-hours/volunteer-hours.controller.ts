@@ -193,7 +193,7 @@ export class VolunteerHoursController {
 }
 
 /** Defaults to the calendar month to date when no range is given. */
-function resolveRange(
+export function resolveRange(
   from?: string,
   to?: string,
 ): { resolvedFrom: string; resolvedTo: string } {

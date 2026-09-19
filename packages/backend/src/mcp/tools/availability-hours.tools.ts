@@ -4,6 +4,8 @@ import { Action } from '@redinfo/shared';
 import { AvailabilityService } from '../../availability/availability.service';
 import { AvailabilityWindowsService } from '../../availability/availability-windows.service';
 import { VolunteerHoursService } from '../../volunteer-hours/volunteer-hours.service';
+import { VolunteerHoursSummaryService } from '../../volunteer-hours/volunteer-hours-summary.service';
+import { resolveRange } from '../../volunteer-hours/volunteer-hours.controller';
 import { MCP_READ_SCOPE, MCP_WRITE_SCOPE } from '../../oauth/oauth-scopes';
 import type { McpToolDefinition, McpToolProvider } from '../mcp-tool.types';
 
@@ -13,7 +15,10 @@ import type { McpToolDefinition, McpToolProvider } from '../mcp-tool.types';
  * ungated there (`GET availability-windows/open`), the "my" tools require
  * `SUBMIT_AVAILABILITY` the same way `availability/me` does, and the review
  * tools require `VIEW_VOLUNTEER_HOURS`/`MANAGE_VOLUNTEER_HOURS` the same way
- * `volunteer-hours/review` and `.../:id/approve` do.
+ * `volunteer-hours/review` and `.../:id/approve` do. `get_volunteer_hours_summary`
+ * mirrors `GET volunteer-hours/summary` — same `VIEW_VOLUNTEER_HOURS` gate, which
+ * `ROLE_PERMISSIONS` grants to `SYSTEM_ADMIN` (implicitly, via every `Action`) and
+ * `EMERGENCY_COORDINATOR`.
  */
 @Injectable()
 export class AvailabilityHoursToolsProvider implements McpToolProvider {
@@ -21,6 +26,7 @@ export class AvailabilityHoursToolsProvider implements McpToolProvider {
     private readonly availability: AvailabilityService,
     private readonly availabilityWindows: AvailabilityWindowsService,
     private readonly volunteerHours: VolunteerHoursService,
+    private readonly volunteerHoursSummary: VolunteerHoursSummaryService,
   ) {}
 
   getTools(): McpToolDefinition[] {
@@ -131,6 +137,25 @@ export class AvailabilityHoursToolsProvider implements McpToolProvider {
             minutes: args.minutes,
             correctionReason: args.correctionReason,
           }),
+      },
+      {
+        name: 'get_volunteer_hours_summary',
+        title: 'Get volunteer hours summary for all members',
+        description:
+          "Approved vs. pending minutes per member over a period, broken down by activity type. " +
+          "Defaults to the calendar month to date when no range is given. Requires the " +
+          "volunteer-hours view permission.",
+        scope: MCP_READ_SCOPE,
+        requiredActions: [Action.VIEW_VOLUNTEER_HOURS],
+        inputSchema: {
+          from: z.string().optional().describe('ISO date, YYYY-MM-DD, inclusive. Defaults to the 1st of the month "to" falls in.'),
+          to: z.string().optional().describe('ISO date, YYYY-MM-DD, inclusive. Defaults to today.'),
+        },
+        annotations: { readOnlyHint: true },
+        handler: async (args) => {
+          const { resolvedFrom, resolvedTo } = resolveRange(args.from, args.to);
+          return this.volunteerHoursSummary.getSummary(resolvedFrom, resolvedTo);
+        },
       },
     ];
   }
