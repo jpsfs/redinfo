@@ -73,6 +73,7 @@ import { StaffAbsencesPage } from './pages/StaffAbsencesPage';
 import { TransportReferralsPage } from './pages/TransportReferralsPage';
 import { TransportConfigPage } from './pages/TransportConfigPage';
 import { TransportPlanningPage } from './pages/TransportPlanningPage';
+import { TransportPlanningBuildPage } from './pages/TransportPlanningBuildPage';
 import { TransportPlanningJourneyPage } from './pages/TransportPlanningJourneyPage';
 import { TransportPlanningVehiclePage } from './pages/TransportPlanningVehiclePage';
 import { TransportPlanningCrewPage } from './pages/TransportPlanningCrewPage';
@@ -215,6 +216,10 @@ export default function App() {
             board Feature #219 builds ahead of any route optimisation, gated
             by PLAN_TRANSPORT_TRIPS in the drawer manifest. */}
         <Route path="/transport-planning" element={<TransportPlanningPage />} />
+        {/* "Montar o dia" (planner feedback) — the construction counterpart to
+            the board above: resources first, demand second, no time axis.
+            Same PLAN_TRANSPORT_TRIPS gating, and no endpoint of its own. */}
+        <Route path="/transport-planning/build" element={<TransportPlanningBuildPage />} />
         {/* One journey's own page and printable crew sheet (#247 stage 3),
             reached from the board's inspector ("Open journey") or a direct
             link — no separate drawer entry, same as any other record's

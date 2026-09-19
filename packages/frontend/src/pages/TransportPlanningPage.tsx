@@ -30,7 +30,6 @@ import ZoomOutIcon from '@mui/icons-material/ZoomOut';
 import {
   TransportPlanningBoard,
   TransportPlanningLane,
-  TransportPlanningLeg,
   TripStopKind,
   VehicleOccupancy,
   VehicleOccupancySource,
@@ -50,6 +49,7 @@ import { WaitReleaseDialog, WaitReleaseTarget } from './transportPlanning/WaitRe
 import { PlanningLegend } from './transportPlanning/PlanningLegend';
 import { UnplannedGroup, groupUnplannedLegs } from './transportPlanning/unplannedGroups';
 import { UNASSIGNED_RAIL_WIDTH, UnassignedRail } from './transportPlanning/UnassignedRail';
+import { DEFAULT_LEG_DURATION_MINUTES, assignTargetForLeg } from './transportPlanning/assignTarget';
 import { VehicleGroup } from './transportPlanning/VehicleGroup';
 import { WeekStrip } from './transportPlanning/WeekStrip';
 import { LANE_LABEL_WIDTH } from './transportPlanning/PlanningLane';
@@ -65,7 +65,6 @@ import {
 } from './transportPlanning/planningTime';
 
 const ISSUE_RANK: Record<string, number> = { ERROR: 0, WARNING: 1, NOTE: 2 };
-const DEFAULT_LEG_DURATION_MINUTES = 30;
 
 /**
  * How long the vehicle is occupied by this leg, best information first: the
@@ -87,19 +86,6 @@ function legDurationMinutes(board: TransportPlanningBoard, legId: string): numbe
   if (leg?.plannedPickupAt && leg?.plannedDropoffAt) return diffMinutes(leg.plannedPickupAt, leg.plannedDropoffAt);
   if (leg?.travelMinutes != null && leg.travelMinutes > 0) return leg.travelMinutes;
   return DEFAULT_LEG_DURATION_MINUTES;
-}
-
-/** The dialog target for a fresh assignment out of the unassigned rail —
- * shared by the flat "por pessoa" card and a group card's per-person row,
- * so the two ever disagree on a leg's default pickup/dropoff. */
-function assignTargetForLeg(legId: string, leg: TransportPlanningLeg) {
-  return {
-    legId,
-    tripId: '',
-    pickupPlannedAt: leg.plannedPickupAt ?? leg.suggested.pickupAt ?? new Date().toISOString(),
-    dropoffPlannedAt:
-      leg.plannedDropoffAt ?? leg.suggested.dropoffAt ?? new Date(Date.now() + DEFAULT_LEG_DURATION_MINUTES * 60_000).toISOString(),
-  };
 }
 
 /** One group per vehicle, each holding that vehicle's journeys in the order

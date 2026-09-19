@@ -530,6 +530,7 @@ const MESSAGES = {
   'nav.transportRequests': { pt: 'Pedidos', en: 'Referrals' },
   'nav.transportReferrals': { pt: 'Decidir', en: 'Decide' },
   'nav.transportPlanning': { pt: 'Planeamento', en: 'Planning' },
+  'nav.transportBuild': { pt: 'Montar o dia', en: 'Build the day' },
   'nav.transportConfig': { pt: 'Política de planeamento', en: 'Planning policy' },
   'nav.holidays': { pt: 'Feriados', en: 'Holidays' },
   'nav.myProfile': { pt: 'O meu perfil', en: 'My Profile' },
@@ -2990,6 +2991,7 @@ const MESSAGES = {
   // interpolating it into one string — the number is a landmark you scan for,
   // the word is context you read once.
   'transportPlanning.journeyWord': { pt: 'Jornada', en: 'Journey' },
+  'transportPlanning.journeyLabel': { pt: 'Jornada %{number}', en: 'Journey %{number}' },
   'transportPlanning.vehicleType.EMERGENCY': { pt: 'Ambulância de socorro', en: 'Emergency ambulance' },
   'transportPlanning.vehicleType.TRANSPORT': { pt: 'Viatura de transporte', en: 'Transport vehicle' },
   'transportPlanning.addJourneyButton': { pt: 'Nova jornada', en: 'New journey' },
@@ -3188,6 +3190,45 @@ const MESSAGES = {
     pt: 'Sem lugares sentados',
     en: 'Not enough seats',
   },
+
+  // ── "Montar o dia" — the planner-first construction page ──────────────
+  'transportBuild.pageTitle': { pt: 'Montar o dia', en: 'Build the day' },
+  'transportBuild.pageSubtitle': {
+    pt: 'Primeiro os recursos, depois a procura — e o quadro para conferir.',
+    en: 'Resources first, demand second — and the board to check the result.',
+  },
+  'transportBuild.openBoard': { pt: 'Ver no quadro', en: 'Open the board' },
+  'transportBuild.statUnplaced': { pt: 'Por colocar', en: 'Still to place' },
+  'transportBuild.statVehicles': { pt: 'Viaturas em serviço', en: 'Vehicles in service' },
+  'transportBuild.statCrewShort': { pt: 'Jornadas sem tripulação', en: 'Journeys short of crew' },
+  'transportBuild.statConflicts': { pt: 'Conflitos', en: 'Conflicts' },
+  'transportBuild.progressLabel': {
+    pt: '%{placed} de %{total} pessoas colocadas',
+    en: '%{placed} of %{total} people placed',
+  },
+  'transportBuild.step1Title': { pt: '1 · Recursos do dia', en: '1 · Today’s resources' },
+  'transportBuild.step1Hint': {
+    pt: 'Uma viatura sem tripulação não pode levar ninguém. %{count} pessoas disponíveis ainda sem jornada.',
+    en: 'A vehicle with no crew cannot carry anyone. %{count} available people are not on a journey yet.',
+  },
+  'transportBuild.step2Title': { pt: '2 · Colocar a procura', en: '2 · Place the demand' },
+  'transportBuild.step2Hint': {
+    pt: 'Cada cartão é uma decisão: um destino, uma janela de chegada, as pessoas que a partilham.',
+    en: 'Each card is one decision: one destination, one arrival window, the people who share it.',
+  },
+  'transportBuild.step3Title': { pt: '3 · O dia até agora', en: '3 · The day so far' },
+  'transportBuild.crewButton': { pt: 'Tripulação', en: 'Crew' },
+  'transportBuild.vehicleCapacity': {
+    pt: '%{seats} sentados · %{wheelchairs} cadeira de rodas · %{stretchers} maca',
+    en: '%{seats} seated · %{wheelchairs} wheelchair · %{stretchers} stretcher',
+  },
+  'transportBuild.noVehicles': {
+    pt: 'Ainda não há viaturas em serviço neste dia.',
+    en: 'No vehicles are in service on this date yet.',
+  },
+  'transportBuild.allPlaced': { pt: 'Está tudo colocado neste dia.', en: 'Everything is placed for this date.' },
+  'transportBuild.journeyEmpty': { pt: 'Ainda sem passageiros', en: 'No passengers yet' },
+  'transportBuild.openJourney': { pt: 'Abrir', en: 'Open' },
 
   // ── Journey inspector panel (#247 stage 2) ──
   'transportPlanning.inspectorTitle': { pt: 'Viagem %{number} · %{vehicle}', en: 'Journey %{number} · %{vehicle}' },

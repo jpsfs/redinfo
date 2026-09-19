@@ -161,6 +161,7 @@ describe('RedInfoMenu', () => {
       '/transport-requests',
       '/transport-referrals',
       '/transport-planning',
+      '/transport-planning/build',
       '/transport-config',
       '/users',
       '/staff-absences',
