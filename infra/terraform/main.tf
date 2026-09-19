@@ -63,11 +63,18 @@ resource "contabo_instance" "this" {
 # Contabo panel: 443 from anywhere, 22 from ssh_allowed_cidrs, everything else
 # dropped.
 #
-# The "block all traffic / DROP / Any" row visible in the panel has no
-# equivalent here on purpose: Contabo's model is a list of accept rules with an
-# implicit default-deny behind it — the provider's `action` accepts only
-# "accept" — and the panel simply renders that default as a row. There is also
-# no outbound rule support, in the panel or here; outbound is unrestricted.
+# The "block all traffic / DROP / Any" row visible in the panel is NOT cosmetic
+# — despite the provider's own docs saying `action` "currently there is just
+# `accept`", adopting the hand-made firewall (see the `import` block below)
+# reads back a real third `inbound` rule with action = "drop" alongside the
+# two accept rules below. Leaving it undeclared made every single plan propose
+# removing it (0 to add, 1 to change), which meant every production deploy
+# stopped at the manual-approval gate for a change that was never really
+# there: the previous apply that "removed" it completed in 0s and changed
+# nothing, because the API hands the same implicit-default row back on the
+# next read regardless. Declaring it here makes the plan match reality: no
+# diff, no approval needed, on every run after this one. There is also no
+# outbound rule support, in the panel or here; outbound is unrestricted.
 #
 # If the hand-made firewall is to be kept (rather than a second one created
 # beside it), import it first — see var.firewall_name.
@@ -101,6 +108,20 @@ resource "contabo_firewall" "this" {
       dest_ports = var.public_tcp_ports
       src_cidr {
         ipv4 = ["0.0.0.0/0"]
+      }
+    }
+
+    # The panel's implicit "block everything else" row — see the comment
+    # above. `protocol` is left unset (optional+computed) rather than guessed,
+    # so Terraform matches this block to the existing state entry by its other
+    # fields and inherits whatever the API actually has there.
+    inbound {
+      action     = "drop"
+      status     = "active"
+      dest_ports = []
+      src_cidr {
+        ipv4 = []
+        ipv6 = []
       }
     }
   }
