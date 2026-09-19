@@ -1,0 +1,23 @@
+{{- if .Values.basemap.enabled -}}
+{{- /*
+  Unlike pvc-uploads.yaml, no `helm.sh/resource-policy: keep` — the extract is
+  reproducible from `.Values.basemap.buildUrl` (see deployment-tiles.yaml's
+  initContainer), not user data, so there's nothing to lose on `helm uninstall`.
+*/ -}}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "redinfo.fullname" . }}-basemap
+  labels:
+    app.kubernetes.io/name: {{ include "redinfo.name" . }}
+    app.kubernetes.io/component: tiles
+spec:
+  accessModes:
+    - ReadWriteOnce
+  {{- if .Values.basemap.storageClass }}
+  storageClassName: {{ .Values.basemap.storageClass }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ .Values.basemap.size }}
+{{- end -}}

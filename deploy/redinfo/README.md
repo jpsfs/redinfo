@@ -45,6 +45,21 @@ the deploy host. Never commit a real value into `values.<env>.yaml` itself.
 a PersistentVolumeClaim (`templates/pvc-uploads.yaml`) with `helm.sh/resource-policy: keep`, so
 `helm uninstall` never takes it down with the release.
 
+## Basemap tiles
+
+When `basemap.enabled: true`, `templates/deployment-tiles.yaml` runs a stock `nginx:1.27-alpine`
+serving a PMTiles basemap extract off a PersistentVolumeClaim (`templates/pvc-basemap.yaml`),
+proxied same-origin at `/tiles/` by the frontend's own nginx (`templates/configmap-nginx.yaml`) —
+never a third-party tile host, see `MapPanel`/`routing.module.ts`. An initContainer
+(`extract-basemap`, image `protomaps/go-pmtiles`) fetches the extract onto the PVC before nginx
+starts, replacing `scripts/prepare-basemap.sh`'s manual step for a cluster (there's no human to run
+it against a pod). It re-runs on every pod (re)start against a pinned `basemap.buildUrl` rather than
+the script's own "look up the latest build" + skip-if-exists logic — the `go-pmtiles` image is a
+bare static binary with no shell, so neither can run in it; `extract` itself overwrites an existing
+output cleanly, so redoing it (~75MB for the Norte Portugal default bbox) is cheap and safe. Bump
+`buildUrl` by hand (re-run the script's discovery step, or check https://maps.protomaps.com/builds)
+when a fresher extract is wanted. `MapPanel` degrades to a plain notice if this is left disabled.
+
 ## Seeding
 
 When `seed.enabled: true`, a post-install/post-upgrade Job (`templates/job-seed.yaml`) runs

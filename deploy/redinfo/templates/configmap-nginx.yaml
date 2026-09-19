@@ -38,6 +38,17 @@ data:
             proxy_cache_bypass $http_upgrade;
         }
 
+        {{- if .Values.basemap.enabled }}
+        # Self-hosted basemap tiles (#247 stage 4) — mirrors nginx/nginx.conf's
+        # own /tiles/ block, templated to this release's tiles Service instead
+        # of the compose service name "tiles", same reasoning as /api/ above.
+        location /tiles/ {
+            proxy_pass http://{{ include "redinfo.fullname" . }}-tiles:80/;
+            proxy_set_header Host $host;
+            proxy_set_header X-Real-IP $remote_addr;
+        }
+        {{- end }}
+
         # The SPA's own OAuth landing route, not a backend one — it must serve
         # index.html rather than be proxied like the rest of /auth/*, which
         # would 404. The backend redirects to the hash form
