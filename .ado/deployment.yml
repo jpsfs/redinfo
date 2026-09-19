@@ -380,7 +380,19 @@ stages:
     # explicitly in dependsOn for the same reason — this one was the one
     # exception.
     dependsOn: [Prepare, DeployStaging]
-    condition: succeeded()
+    # Bare `succeeded()` looks like it only checks the two stages listed above,
+    # but it actually walks the transitive dependency graph — and DeployStaging
+    # depends on Build, which is legitimately SKIPPED whenever the commit's
+    # images already exist (see the comment on DeployStaging's own condition
+    # above). succeeded() treats that Skipped as "not succeeded", so this stage
+    # silently never ran on any staging deploy that reused an existing image —
+    # which in practice was every recent one. Enumerate the two direct
+    # dependencies explicitly instead, the same way every other stage below does.
+    condition: |
+      and(
+        in(dependencies.Prepare.result, 'Succeeded', 'SucceededWithIssues'),
+        eq(dependencies.DeployStaging.result, 'Succeeded')
+      )
     variables:
       shortSha: $[ stageDependencies.Prepare.Resolve.outputs['EmitVars.shortSha'] ]
     jobs:
