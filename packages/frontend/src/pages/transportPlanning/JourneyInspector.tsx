@@ -1,0 +1,204 @@
+import { useNavigate } from 'react-router-dom';
+import { Box, Button, Chip, IconButton, Paper, Stack, Tooltip, Typography } from '@mui/material';
+import CloseIcon from '@mui/icons-material/Close';
+import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import GroupIcon from '@mui/icons-material/Group';
+import OpenInNewIcon from '@mui/icons-material/OpenInNew';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
+import { CERTIFICATION_LABEL, TransportPlanningLane, TransportPlanningLeg, TripStop, TripStopKind } from '@redinfo/shared';
+import { useT } from '../../i18n/useT';
+import { journeyColorForOrdinal } from './journeyColor';
+import { legFacilityName } from './legFacts';
+import { timeLabel } from './planningTime';
+
+const STOP_LABEL_KEY: Record<TripStopKind, string> = {
+  [TripStopKind.PICKUP]: 'transportPlanning.inspectorStopPickup',
+  [TripStopKind.DROPOFF]: 'transportPlanning.inspectorStopDropoff',
+  [TripStopKind.WAIT]: 'transportPlanning.inspectorStopWait',
+  [TripStopKind.RETURN_TO_BASE]: 'transportPlanning.inspectorStopReturnToBase',
+  [TripStopKind.DEPART_FROM_BASE]: 'transportPlanning.inspectorStopDepartFromBase',
+};
+
+/**
+ * The right-hand panel for the journey focus mode selects (#247 stage 2) —
+ * metrics, ordered stops, issues and actions for one journey, so selecting
+ * it does more than dim the rest of the board. See
+ * `docs/plans/planeamento-transportes-redesign.md` §2: "New right-hand
+ * inspector shows the selected journey: metrics, ordered stops, issues,
+ * actions."
+ */
+export const JourneyInspector = ({
+  lane,
+  legsById,
+  onClose,
+  onEditCrew,
+}: {
+  lane: TransportPlanningLane;
+  legsById: Record<string, TransportPlanningLeg>;
+  onClose: () => void;
+  onEditCrew: () => void;
+}) => {
+  const t = useT();
+  const navigate = useNavigate();
+  const journeyColor = journeyColorForOrdinal(lane.journeyNumber);
+  const orderedStops = [...lane.stops].sort((a, b) => new Date(a.plannedAt).getTime() - new Date(b.plannedAt).getTime());
+  // Split by kind rather than read as one chronological list — grouped this
+  // way, a row no longer needs to spell out "Recolha"/"Entrega" itself (the
+  // section heading already says it), which is the room the patient's name
+  // needed. `WAIT`/`RETURN_TO_BASE` stops aren't a pickup or a delivery, so
+  // they stay in their own group with the original inline kind label.
+  const pickupStops = orderedStops.filter((stop) => stop.kind === TripStopKind.PICKUP);
+  const dropoffStops = orderedStops.filter((stop) => stop.kind === TripStopKind.DROPOFF);
+  const otherStops = orderedStops.filter(
+    (stop) => stop.kind !== TripStopKind.PICKUP && stop.kind !== TripStopKind.DROPOFF,
+  );
+  const errorCount = lane.issues.filter((issue) => issue.level === 'ERROR').length;
+  const warningCount = lane.issues.filter((issue) => issue.level === 'WARNING').length;
+
+  return (
+    <Paper variant="outlined" sx={{ p: 2, minWidth: 0 }}>
+      <Stack direction="row" alignItems="flex-start" justifyContent="space-between" spacing={1}>
+        <Stack direction="row" spacing={1} alignItems="center" sx={{ minWidth: 0 }}>
+          <Box sx={{ width: 12, height: 12, borderRadius: '50%', flexShrink: 0, bgcolor: journeyColor }} />
+          <Typography variant="subtitle1" sx={{ fontWeight: 700 }} noWrap>
+            {t('transportPlanning.inspectorTitle', { number: lane.journeyNumber, vehicle: lane.vehicle.numeroCauda })}
+          </Typography>
+        </Stack>
+        <IconButton size="small" aria-label={t('transportPlanning.inspectorClose')} onClick={onClose}>
+          <CloseIcon fontSize="small" />
+        </IconButton>
+      </Stack>
+
+      <Stack direction="row" spacing={1} sx={{ mt: 1, mb: 1.5 }} flexWrap="wrap" useFlexGap>
+        {lane.occupancyWindow && (
+          <Chip
+            size="small"
+            label={`${timeLabel(lane.occupancyWindow.startsAt)} – ${timeLabel(lane.occupancyWindow.endsAt)}`}
+          />
+        )}
+        {lane.crewMembers.length === 0 ? (
+          <Chip size="small" icon={<GroupIcon fontSize="small" />} label={t('transportPlanning.noCrew')} />
+        ) : (
+          lane.crewMembers.map((member) => (
+            <Chip
+              key={member.id}
+              size="small"
+              icon={<GroupIcon fontSize="small" />}
+              label={`${member.firstName} ${member.lastName}`.trim()}
+              onClick={() =>
+                navigate(
+                  `/transport-planning/crew/${member.userId}?date=${lane.trip.date}&name=${encodeURIComponent(`${member.firstName} ${member.lastName}`.trim())}`,
+                )
+              }
+              clickable
+            />
+          ))
+        )}
+        {errorCount > 0 && (
+          <Chip size="small" color="error" icon={<ErrorOutlineIcon fontSize="small" />} label={errorCount} />
+        )}
+        {warningCount > 0 && (
+          <Chip size="small" color="warning" icon={<WarningAmberIcon fontSize="small" />} label={warningCount} />
+        )}
+      </Stack>
+
+      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+        {t('transportPlanning.inspectorStopsTitle')}
+      </Typography>
+      {orderedStops.length === 0 ? (
+        <Typography variant="body2" color="text.disabled" sx={{ mb: 1.5 }}>
+          {t('transportPlanning.journeyEmpty')}
+        </Typography>
+      ) : (
+        <Stack spacing={1} sx={{ mb: 1.5 }}>
+          {pickupStops.length > 0 && (
+            <StopGroup title={t('transportPlanning.inspectorStopsPickupTitle')} stops={pickupStops} legsById={legsById} />
+          )}
+          {dropoffStops.length > 0 && (
+            <StopGroup title={t('transportPlanning.inspectorStopsDropoffTitle')} stops={dropoffStops} legsById={legsById} />
+          )}
+          {otherStops.length > 0 && (
+            <StopGroup
+              title={t('transportPlanning.inspectorStopsOtherTitle')}
+              stops={otherStops}
+              legsById={legsById}
+              showKindLabel
+            />
+          )}
+        </Stack>
+      )}
+
+      {lane.issues.length > 0 && (
+        <>
+          <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mb: 0.5 }}>
+            {t('transportPlanning.issuesTitle')}
+          </Typography>
+          <Stack spacing={0.25} sx={{ mb: 1.5 }}>
+            {lane.issues.map((issue, index) => (
+              <Typography key={index} variant="body2" color={issue.level === 'ERROR' ? 'error.main' : 'text.secondary'}>
+                {issue.message}
+              </Typography>
+            ))}
+          </Stack>
+        </>
+      )}
+
+      <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
+        <Tooltip title={t('transportPlanning.crewRequirementHint', { requirement: `${lane.crewRequirement.minimumCrew}× ${CERTIFICATION_LABEL[lane.crewRequirement.minimumCertification]}` })}>
+          <Button size="small" onClick={onEditCrew}>
+            {t('transportPlanning.inspectorEditCrew')}
+          </Button>
+        </Tooltip>
+        <Button
+          size="small"
+          variant="outlined"
+          endIcon={<OpenInNewIcon fontSize="small" />}
+          onClick={() => navigate(`/transport-planning/journeys/${lane.trip.id}`)}
+        >
+          {t('transportPlanning.inspectorOpenJourney')}
+        </Button>
+      </Stack>
+    </Paper>
+  );
+};
+
+/** One stop section — pickups, deliveries, or the "other" catch-all
+ * (waits and returns to base). `showKindLabel` is only true for the last of
+ * those: a pickup/delivery row omits it since the section heading above
+ * already says which one, freeing the row for the patient's own name. */
+function StopGroup({
+  title,
+  stops,
+  legsById,
+  showKindLabel = false,
+}: {
+  title: string;
+  stops: TripStop[];
+  legsById: Record<string, TransportPlanningLeg>;
+  showKindLabel?: boolean;
+}) {
+  const t = useT();
+  return (
+    <Stack spacing={0.5}>
+      <Typography variant="caption" sx={{ fontWeight: 600 }}>
+        {title}
+      </Typography>
+      {stops.map((stop) => {
+        const leg = stop.transportLegId ? legsById[stop.transportLegId] : undefined;
+        const facilityName = leg ? legFacilityName(leg) : null;
+        return (
+          <Stack key={stop.id} direction="row" spacing={1} alignItems="baseline">
+            <Typography variant="caption" sx={{ fontVariantNumeric: 'tabular-nums', width: 44, flexShrink: 0 }}>
+              {timeLabel(stop.plannedAt)}
+            </Typography>
+            <Typography variant="body2" sx={{ minWidth: 0 }} noWrap>
+              {showKindLabel ? `${t(STOP_LABEL_KEY[stop.kind])}${leg?.patientName ? ' — ' : ''}` : ''}
+              {leg?.patientName ?? ''}
+              {facilityName ? ` (${facilityName})` : ''}
+            </Typography>
+          </Stack>
+        );
+      })}
+    </Stack>
+  );
+}

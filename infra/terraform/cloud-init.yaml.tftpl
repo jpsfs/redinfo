@@ -1,0 +1,253 @@
+#cloud-config
+# Rendered by main.tf (templatefile) and handed to Contabo as the instance's
+# user_data. CAUTION: to Terraform this whole file is one attribute of
+# contabo_instance, and changing that attribute REINSTALLS the machine. Once
+# this environment is real, treat edits here as "rebuild the server", and use
+# /opt/redinfo/bootstrap.sh (installed below, idempotent) for anything that
+# needs to change on a live host.
+#
+# Note on templating: the firewall CIDR lists arrive as space-separated
+# strings and are looped over in bash rather than with `%%{ for }` directives.
+# A `~}` directive trims *all* following whitespace, including the leading
+# indentation of the next line — which inside the `content: |` block scalar
+# below would silently end the block and produce invalid YAML.
+hostname: ${hostname}
+prefer_fqdn_over_hostname: false
+manage_etc_hosts: true
+timezone: ${timezone}
+
+package_update: true
+package_upgrade: true
+packages:
+  - ufw
+  - fail2ban
+  - unattended-upgrades
+  - jq
+  - curl
+  - ca-certificates
+
+%{ if disable_ssh_password_auth ~}
+# Key-only SSH. ssh_public_key is a required Terraform variable, so there is
+# always a key installed; the break-glass path if it is wrong is the VNC
+# console in the Contabo panel.
+ssh_pwauth: false
+%{ endif ~}
+
+write_files:
+  - path: /opt/redinfo/bootstrap.sh
+    owner: root:root
+    permissions: "0750"
+    content: |
+      #!/usr/bin/env bash
+      # Brings this host from "fresh Ubuntu" to "microk8s cluster ready to run
+      # the redinfo Helm chart". Run by cloud-init at first boot, and safe to
+      # re-run by hand afterwards (`sudo /opt/redinfo/bootstrap.sh`) — every
+      # step is idempotent, which matters because the first boot is the one
+      # most likely to hit a transient snap/apt failure.
+      set -euo pipefail
+
+      ADMIN_USER="${admin_user}"
+      MICROK8S_CHANNEL="${microk8s_channel}"
+      ADDONS="${microk8s_addons}"
+      SSH_CIDRS="${ssh_allowed_cidrs}"
+      KUBE_API_CIDRS="${kube_api_allowed_cidrs}"
+      AGENT_DIR="/opt/ado-agent"
+      ADO_AGENT_VERSION="${ado_agent_version}"
+
+      log() { echo "[redinfo-bootstrap] $(date -Is) $*"; }
+
+      # ── microk8s ──────────────────────────────────────────────────────────
+      if snap list microk8s >/dev/null 2>&1; then
+        log "microk8s already installed, skipping install"
+      else
+        log "installing microk8s from $${MICROK8S_CHANNEL}"
+        snap install microk8s --classic --channel="$${MICROK8S_CHANNEL}"
+      fi
+
+      # `snap install` returns as soon as the snap is unpacked; the control
+      # plane takes appreciably longer. Everything below assumes a live API.
+      log "waiting for the control plane"
+      microk8s status --wait-ready --timeout 600
+
+      # ── cluster access for the admin user ────────────────────────────────
+      # Membership of the `microk8s` group is what lets kubectl/helm talk to
+      # the cluster without sudo. It only takes effect on a *new* login
+      # session, so an already-open SSH session will still see permission
+      # errors until it reconnects.
+      if id -u "$${ADMIN_USER}" >/dev/null 2>&1; then
+        log "granting $${ADMIN_USER} cluster access"
+        usermod -aG microk8s "$${ADMIN_USER}"
+        install -d -o "$${ADMIN_USER}" -g "$${ADMIN_USER}" -m 0700 "/home/$${ADMIN_USER}/.kube"
+        microk8s config > "/home/$${ADMIN_USER}/.kube/config"
+        chown "$${ADMIN_USER}:$${ADMIN_USER}" "/home/$${ADMIN_USER}/.kube/config"
+        chmod 0600 "/home/$${ADMIN_USER}/.kube/config"
+      fi
+
+      # Plain `kubectl` and `helm` on PATH in addition to the microk8s.* names.
+      # The deploy pipeline probes `microk8s.helm3`/`microk8s.kubectl` first and
+      # falls back to the bare names (.ado/templates/deploy-env.yml), so having
+      # both resolve is what makes an ADO agent on this box work either way.
+      snap alias microk8s.kubectl kubectl || true
+      snap alias microk8s.helm3 helm || true
+
+      # ── addons ───────────────────────────────────────────────────────────
+      # `microk8s enable` is a no-op on an already-enabled addon, so this
+      # whole loop is re-runnable.
+      for addon in $${ADDONS}; do
+        log "enabling addon: $${addon}"
+        microk8s enable "$${addon}"
+      done
+      microk8s status --wait-ready --timeout 600
+
+      # The ingress addon is the piece that actually puts 80/443 on the public
+      # interface (a host-network DaemonSet), so the host is not really
+      # "ready" until its pods are. Looked up by listing the namespace rather
+      # than by hard-coded name, so a microk8s rename does not fail a boot.
+      ingress_ds="$(microk8s kubectl -n ingress get daemonset -o name 2>/dev/null | head -n1 || true)"
+      if [ -n "$${ingress_ds}" ]; then
+        log "waiting for $${ingress_ds}"
+        microk8s kubectl -n ingress rollout status "$${ingress_ds}" --timeout=600s
+      else
+        log "WARNING: no DaemonSet found in the 'ingress' namespace"
+      fi
+
+      # ── host firewall ────────────────────────────────────────────────────
+      log "configuring ufw"
+      ufw default deny incoming
+      ufw default allow outgoing
+
+      # The three rules every microk8s+ufw setup needs. Kubernetes routes pod
+      # and service traffic *through* the host, so with ufw's default FORWARD
+      # policy of deny, in-cluster DNS and pod-to-pod calls fail — with no
+      # error anywhere near the firewall. Calico (microk8s' CNI) uses
+      # vxlan.calico and cali* interfaces; cni0 is there for older/flannel
+      # setups and is harmless when absent.
+      ufw default allow routed
+      ufw allow in on cni0 || true
+      ufw allow out on cni0 || true
+      ufw allow in on vxlan.calico || true
+      ufw allow out on vxlan.calico || true
+
+      for cidr in $${SSH_CIDRS}; do
+        ufw allow from "$${cidr}" to any port 22 proto tcp
+      done
+
+      # 443 is the point of the exercise; 80 is not decoration — it carries
+      # the HTTP→HTTPS redirect and any future ACME HTTP-01 challenge.
+      ufw allow 80/tcp
+      ufw allow 443/tcp
+
+      # Remote Kubernetes API access, only for what
+      # var.kube_api_allowed_cidrs explicitly opted into (empty by default,
+      # in which case this loop does nothing and 16443 stays local).
+      for cidr in $${KUBE_API_CIDRS}; do
+        ufw allow from "$${cidr}" to any port 16443 proto tcp
+      done
+
+      ufw --force enable
+      ufw status verbose
+
+      # ── Azure DevOps self-hosted agent ───────────────────────────────────
+      # Staged, not registered. Registration needs a PAT, and a PAT has no
+      # business in user_data: this file is one attribute of
+      # contabo_instance, so it is stored in Terraform state and visible in
+      # the Contabo panel, and changing it REINSTALLS the machine — which
+      # would make "rotate the PAT" mean "rebuild production". So cloud-init
+      # does the slow, credential-free part (download, unpack, dependencies)
+      # and leaves a one-command script for the rest.
+      #
+      # This is what lets .ado/deployment.yml's Contabo deploy stage run *on* this
+      # box and reuse .ado/templates/deploy-env.yml unchanged, exactly as
+      # vm-redcross does today — no SSH hop, no exposed Kubernetes API.
+      if [ ! -x "$${AGENT_DIR}/config.sh" ]; then
+        log "staging the Azure DevOps agent ($${ADO_AGENT_VERSION})"
+        install -d -o "$${ADMIN_USER}" -g "$${ADMIN_USER}" -m 0755 "$${AGENT_DIR}"
+        curl -fsSL -o /tmp/ado-agent.tar.gz \
+          "https://download.agent.dev.azure.com/agent/$${ADO_AGENT_VERSION}/vsts-agent-linux-x64-$${ADO_AGENT_VERSION}.tar.gz"
+        tar xzf /tmp/ado-agent.tar.gz -C "$${AGENT_DIR}"
+        rm -f /tmp/ado-agent.tar.gz
+        chown -R "$${ADMIN_USER}:$${ADMIN_USER}" "$${AGENT_DIR}"
+        # Pulls in libicu and friends; the agent will not start without them
+        # and the failure message is unhelpful if it is missing.
+        "$${AGENT_DIR}/bin/installdependencies.sh"
+      else
+        log "Azure DevOps agent already staged"
+      fi
+
+      # ── the rest ─────────────────────────────────────────────────────────
+      systemctl enable --now fail2ban || true
+      systemctl enable --now unattended-upgrades || true
+
+      # Marker the smoke check looks for — "cloud-init finished" and "this
+      # script finished" are not the same claim.
+      date -Is > /var/lib/redinfo-bootstrap.done
+      log "bootstrap complete"
+
+  - path: /opt/redinfo/register-ado-agent.sh
+    owner: root:root
+    permissions: "0750"
+    content: |
+      #!/usr/bin/env bash
+      # Registers this host as an Azure DevOps self-hosted agent in the
+      # ${ado_agent_pool} pool. Run ONCE, as root, with a PAT scoped to
+      # "Agent Pools (read, manage)":
+      #
+      #   sudo /opt/redinfo/register-ado-agent.sh <PAT>
+      #
+      # The PAT is used only for this call and is never written anywhere: from
+      # here on the agent authenticates with its own credentials, stored in
+      # $${AGENT_DIR}/.credentials. That is the whole reason registration is
+      # not done from cloud-init — see the staging block in bootstrap.sh.
+      #
+      # Re-running is safe: --replace takes over the existing registration of
+      # the same agent name rather than creating a duplicate.
+      set -euo pipefail
+
+      PAT="$${1:-}"
+      if [ -z "$${PAT}" ]; then
+        echo "usage: $${0} <azure-devops-pat>" >&2
+        exit 2
+      fi
+
+      AGENT_DIR="/opt/ado-agent"
+      RUN_USER="${admin_user}"
+      ORG_URL="${ado_organization_url}"
+      POOL="${ado_agent_pool}"
+      AGENT_NAME="$(uname -n)"
+
+      if [ ! -x "$${AGENT_DIR}/config.sh" ]; then
+        echo "agent not staged at $${AGENT_DIR} — run /opt/redinfo/bootstrap.sh first" >&2
+        exit 1
+      fi
+
+      cd "$${AGENT_DIR}"
+
+      # config.sh refuses to run as root; svc.sh requires it. Hence the split.
+      sudo -u "$${RUN_USER}" ./config.sh \
+        --unattended \
+        --acceptTeeEula \
+        --url "$${ORG_URL}" \
+        --auth pat \
+        --token "$${PAT}" \
+        --pool "$${POOL}" \
+        --agent "$${AGENT_NAME}" \
+        --work "_work" \
+        --replace
+
+      ./svc.sh install "$${RUN_USER}"
+      ./svc.sh start
+      ./svc.sh status
+
+      # The agent must be able to reach the cluster, which means the microk8s
+      # group — the exact thing .ado/templates/deploy-env.yml's preflight step
+      # checks for and names in its error message. bootstrap.sh already added
+      # this user, but group membership only applies to new processes, and the
+      # service was just started, so this is the moment it actually takes.
+      if ! id -nG "$${RUN_USER}" | tr " " "\n" | grep -qx microk8s; then
+        echo "WARNING: $${RUN_USER} is not in the microk8s group; deploys will fail." >&2
+      fi
+
+      echo "Registered '$${AGENT_NAME}' into pool '$${POOL}'."
+
+runcmd:
+  - [bash, -c, "/opt/redinfo/bootstrap.sh 2>&1 | tee -a /var/log/redinfo-bootstrap.log"]

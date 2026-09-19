@@ -10,27 +10,34 @@ import {
   DEFAULT_DELEGATION_SETTINGS,
   DRIVER_ROLE_NAME,
   EmploymentContractKind,
+  EstimatedEndSource,
   EventLocationType,
   EventReportType,
   Gender,
   InemSupportUnitType,
   LegCancellationSource,
+  LegDirection,
+  LegStatus,
   LiveRunState,
   PatientMobility,
   StaffAbsenceKind,
   TransportRequestDecision,
   TransportRequestOccurrenceType,
   TransportRequestVehicleType,
+  TripStatus,
+  TripStopKind,
   UserRole,
+  VehicleOccupancySource,
   VehicleType,
   VictimDestinationKind,
   VolunteerActivityType,
+  computeTripOccupancyWindow,
   emergencyWindowName,
   foldForSearch,
   toMinuteOfDay,
 } from '@redinfo/shared';
 import { PrismaService } from '../src/prisma/prisma.service';
-import { addDays, isoDateRange, parseIsoDate, toIsoDate } from '../src/utils/date.util';
+import { addDays, isoDateRange, isoDayOfWeek, parseIsoDate, toIsoDate } from '../src/utils/date.util';
 import { HolidaysService } from '../src/availability/holidays.service';
 import { ShiftScheduleService } from '../src/availability/shift-schedule.service';
 import { AvailabilityWindowsService } from '../src/availability/availability-windows.service';
@@ -62,6 +69,9 @@ import { CreateTransportRequestDto } from '../src/transport-requests/dto/create-
 import { TransportRequestLegsService } from '../src/transport-requests/transport-request-legs.service';
 import { TransportRequestTreatmentPlansService } from '../src/transport-requests/transport-request-treatment-plans.service';
 import { CreateTreatmentPlanDto } from '../src/transport-requests/dto/create-treatment-plan.dto';
+import { TripCrewService } from '../src/trips/trip-crew.service';
+import { TripStopsService } from '../src/trips/trip-stops.service';
+import { shiftBoundaryToInstant } from '../src/utils/timezone.util';
 
 /**
  * Rich fixtures for manual testing against the running dev stack — the
@@ -571,6 +581,90 @@ async function main() {
       stretcherPositions: 0,
       hasRampOrLift: true,
     },
+    {
+      key: 'transport2',
+      licensePlate: 'AA-44-EE',
+      numeroCauda: '04',
+      vehicleType: VehicleType.TRANSPORT,
+      manufacturer: 'Renault',
+      model: 'Master',
+      notes: 'Ambulância de Transporte — configuração de cadeiras de rodas.',
+      insuranceRenewalDate: isoAhead(120),
+      nextImtInspectionDate: isoAhead(260),
+      template: transportTemplate,
+      shortfallItem: null as string | null,
+      unchecked: null as string | null,
+      // Two wheelchair positions and fewer seats: the delegation's dialysis
+      // rounds routinely carry two wheelchair patients at once, which a
+      // single-position vehicle can never do — a real constraint the planner
+      // has to route around, not a cosmetic difference.
+      seatedCapacity: 4,
+      wheelchairPositions: 2,
+      stretcherPositions: 0,
+      hasRampOrLift: true,
+    },
+    {
+      key: 'transport3',
+      licensePlate: 'AA-55-FF',
+      numeroCauda: '05',
+      vehicleType: VehicleType.TRANSPORT,
+      manufacturer: 'Ford',
+      model: 'Transit',
+      notes: 'Carrinha de transporte de doentes — deslocações longas.',
+      insuranceRenewalDate: isoAhead(210),
+      nextImtInspectionDate: isoAhead(95),
+      template: transportTemplate,
+      shortfallItem: null as string | null,
+      unchecked: null as string | null,
+      // The long-haul vehicle: all seats, no wheelchair position, so the
+      // Porto runs land here and the wheelchair rounds cannot.
+      seatedCapacity: 8,
+      wheelchairPositions: 0,
+      stretcherPositions: 0,
+      hasRampOrLift: false,
+    },
+    {
+      key: 'transport4',
+      licensePlate: 'AA-66-GG',
+      numeroCauda: '06',
+      vehicleType: VehicleType.TRANSPORT,
+      manufacturer: 'Mercedes-Benz',
+      model: 'Vito',
+      notes: 'Ambulância de Transporte.',
+      insuranceRenewalDate: isoAhead(170),
+      nextImtInspectionDate: isoAhead(140),
+      template: transportTemplate,
+      shortfallItem: null as string | null,
+      unchecked: null as string | null,
+      // A second everyday transport van, on the road most of the week
+      // alongside transport1/transport2 — this is the delegation growing its
+      // fleet, not a special-purpose unit.
+      seatedCapacity: 5,
+      wheelchairPositions: 1,
+      stretcherPositions: 0,
+      hasRampOrLift: true,
+    },
+    {
+      key: 'transport5',
+      licensePlate: 'AA-77-HH',
+      numeroCauda: '07',
+      vehicleType: VehicleType.TRANSPORT,
+      manufacturer: 'Citroën',
+      model: 'Jumper',
+      notes: 'Carrinha de transporte de doentes — deslocações longas.',
+      insuranceRenewalDate: isoAhead(230),
+      nextImtInspectionDate: isoAhead(110),
+      template: transportTemplate,
+      shortfallItem: null as string | null,
+      unchecked: null as string | null,
+      // A second long-haul van, alongside transport3 — the busiest days send
+      // more than one vehicle up to Porto and still need capacity left over
+      // for the local rounds.
+      seatedCapacity: 7,
+      wheelchairPositions: 0,
+      stretcherPositions: 0,
+      hasRampOrLift: false,
+    },
   ];
 
   const vehicles: Record<string, { id: string }> = {};
@@ -1044,7 +1138,63 @@ async function main() {
       isTransportDestination: true,
     },
   });
-  console.log('✅ Two transport destinations: Hospital de Braga (upgraded) and a dedicated dialysis clinic.');
+  // The local hospital, a door away from most of the pool's addresses — the
+  // short hop that makes the long ones legible by contrast.
+  const hospitalBarcelos = await hospital('Hospital Santa Maria Maior');
+  await prisma.facility.update({
+    where: { id: hospitalBarcelos.id },
+    data: {
+      isTransportDestination: true,
+      addressLine: 'Campo da República',
+      postalCode: '4750-269',
+      latitude: 41.5314,
+      longitude: -8.6205,
+    },
+  });
+
+  // Porto: an hour each way from Barcelos, which is the whole point of
+  // seeding it. A referral to São João or the IPO ties one vehicle up for
+  // most of a morning, so it is the case where "which vehicle can still take
+  // this?" stops being obvious — exactly what the planning board is for, and
+  // what a Barcelos-only fixture set could never show.
+  const saoJoao = await hospital('Centro Hospitalar Universitário de São João');
+  await prisma.facility.update({
+    where: { id: saoJoao.id },
+    data: {
+      isTransportDestination: true,
+      addressLine: 'Alameda Prof. Hernâni Monteiro',
+      postalCode: '4200-319',
+      latitude: 41.1812,
+      longitude: -8.6008,
+    },
+  });
+  const santoAntonio = await hospital('Centro Hospitalar Universitário de Santo António');
+  await prisma.facility.update({
+    where: { id: santoAntonio.id },
+    data: {
+      isTransportDestination: true,
+      addressLine: 'Largo do Prof. Abel Salazar',
+      postalCode: '4099-001',
+      latitude: 41.1494,
+      longitude: -8.6181,
+    },
+  });
+  const portoMunicipality = await prisma.municipality.findFirstOrThrow({ where: { name: 'Porto' } });
+  const ipoPorto = await prisma.facility.create({
+    data: {
+      name: 'IPO Porto — Instituto Português de Oncologia',
+      municipalityId: portoMunicipality.id,
+      addressLine: 'Rua Dr. António Bernardino de Almeida, 865',
+      postalCode: '4200-072',
+      latitude: 41.1797,
+      longitude: -8.5945,
+      isTransportDestination: true,
+    },
+  });
+  console.log(
+    '✅ Six transport destinations: Hospital de Braga, the dialysis clinic, Santa Maria Maior (Barcelos), ' +
+      'and three in Porto (São João, Santo António, IPO).',
+  );
 
   // Organisations: a requesting health unit, the SNS as payer, and an
   // insurer that both requests and pays for its own referrals — the same
@@ -1114,10 +1264,14 @@ async function main() {
   console.log('✅ Two agreements, one per payer.');
 
   // Patients: one of each mobility, so the vehicle-type/feasibility logic has
-  // something to actually discriminate on. Identity is sealed for two of the
-  // three, exercising `VIEW_PATIENT_IDENTITY` in the patients list/detail.
+  // something to actually discriminate on, plus two more so the referral
+  // queue and planning board aren't all leaning on the same three people.
+  // Identity is sealed for three of the five, exercising
+  // `VIEW_PATIENT_IDENTITY` in the patients list/detail.
   const airo = await locality('Airó', 'Barcelos');
   const manhente = await locality('Manhente', 'Barcelos');
+  const barcelinhos = await locality('Barcelinhos', 'Barcelos');
+  const arcozelo = await locality('Arcozelo', 'Barcelos');
 
   const patientAna = await patients.create(
     {
@@ -1173,7 +1327,40 @@ async function main() {
     } satisfies CreatePatientDto,
     transportsCoordinator,
   );
-  console.log('✅ Three patients: wheelchair, stretcher + oxygen + escort, and ambulatory.');
+  const patientJoaquim = await patients.create(
+    {
+      mobility: PatientMobility.AMBULATORY,
+      defaultLatitude: barcelinhos.latitude ?? undefined,
+      defaultLongitude: barcelinhos.longitude ?? undefined,
+      localityId: barcelinhos.id,
+      contactAuthorisationRecorded: true,
+      contactAuthorisationNote: 'Autorizado pelo doente em ficha de admissão.',
+      identity: {
+        fullName: 'Joaquim Pereira Costa',
+        telephone: '+351919345678',
+        homeAddressLine: 'Rua de Santo António, 40',
+        homePostalCode: '4750-011',
+        homeLocality: 'Barcelinhos',
+        referenceContactName: 'Marta Costa',
+        referenceContactRelationship: 'Esposa',
+        referenceContactTelephone: '+351919345679',
+      },
+    } satisfies CreatePatientDto,
+    transportsCoordinator,
+  );
+  const patientRosa = await patients.create(
+    {
+      mobility: PatientMobility.WHEELCHAIR,
+      escortRequired: true,
+      defaultLatitude: arcozelo.latitude ?? undefined,
+      defaultLongitude: arcozelo.longitude ?? undefined,
+      localityId: arcozelo.id,
+    } satisfies CreatePatientDto,
+    transportsCoordinator,
+  );
+  console.log(
+    '✅ Five patients: wheelchair, stretcher + oxygen + escort, ambulatory, and two more (ambulatory, wheelchair + escort) for referral variety.',
+  );
 
   // Four referrals, covering every decision state plus the recurring plan:
   // pending, accepted-awaiting-external-registration, rejected, and
@@ -1292,6 +1479,133 @@ async function main() {
     '✅ Four referrals: pending, accepted (awaiting external registration), rejected, and accepted+registered.',
   );
 
+  // Three more one-off referrals, spread out to (and just short of) the
+  // 30-day planning horizon — a second pending one, a second accepted+
+  // registered one (its leg left unassigned, so the planning board's
+  // unassigned rail has something in it too), and one exercising the
+  // otherwise-untouched `OUTRO` occurrence/vehicle type.
+  await transportRequests.create(
+    {
+      batchReference: 'EMAIL-2026-0410',
+      communicatedAt: `${isoAgo(1)}T09:00:00.000Z`,
+      requesterAccountCode: 'ULSB-0007',
+      responseDueAt: `${isoAhead(6)}T17:00:00.000Z`,
+      externalServiceNumber: 'ULSB-0410-06',
+      appointmentAt: `${isoAhead(9)}T10:00:00.000Z`,
+      requestingOrganisationId: orgUls.id,
+      payingOrganisationId: orgArsNorte.id,
+      agreementId: agreementSns.id,
+      patientId: patientRosa.id,
+      occurrenceType: TransportRequestOccurrenceType.CONSULTA,
+      requestedVehicleType: TransportRequestVehicleType.TRANSPORTE,
+      originAddress: 'Rua de Arcozelo, 22, 4750-201 Arcozelo',
+      originLatitude: arcozelo.latitude,
+      originLongitude: arcozelo.longitude,
+      destinationFacilityId: hospitalBraga.id,
+      freeTextMessage: 'Consulta de ortopedia, seguimento.',
+    } satisfies CreateTransportRequestDto,
+    transportsCoordinator,
+  );
+
+  const requestFutureExame = await transportRequests.create(
+    {
+      batchReference: 'AXA-OUT-2026-0142',
+      communicatedAt: `${isoAgo(1)}T11:00:00.000Z`,
+      requesterAccountCode: 'AXA-PT-778',
+      responseDueAt: `${isoAhead(10)}T12:00:00.000Z`,
+      externalServiceNumber: 'AXA-0142-03',
+      appointmentAt: `${isoAhead(16)}T09:30:00.000Z`,
+      requestingOrganisationId: orgAxa.id,
+      payingOrganisationId: orgAxa.id,
+      agreementId: agreementAxa.id,
+      patientId: patientRosa.id,
+      occurrenceType: TransportRequestOccurrenceType.EXAME,
+      requestedVehicleType: TransportRequestVehicleType.TRANSPORTE,
+      originAddress: 'Rua de Arcozelo, 22, 4750-201 Arcozelo',
+      originLatitude: arcozelo.latitude,
+      originLongitude: arcozelo.longitude,
+      destinationFacilityId: hospitalBraga.id,
+      freeTextMessage: 'Ressonância magnética.',
+    } satisfies CreateTransportRequestDto,
+    transportsCoordinator,
+  );
+  await transportRequests.decide(
+    requestFutureExame.id,
+    { decision: TransportRequestDecision.ACCEPTED },
+    transportsCoordinator,
+  );
+  await transportRequests.registerExternally(requestFutureExame.id);
+  await transportLegs.generateOneOff(requestFutureExame.id);
+
+  await transportRequests.create(
+    {
+      batchReference: 'EMAIL-2026-0455',
+      communicatedAt: `${isoAgo(1)}T15:00:00.000Z`,
+      requesterAccountCode: 'ULSB-0007',
+      responseDueAt: `${isoAhead(25)}T17:00:00.000Z`,
+      externalServiceNumber: 'ULSB-0455-01',
+      appointmentAt: `${isoAhead(28)}T09:00:00.000Z`,
+      requestingOrganisationId: orgUls.id,
+      payingOrganisationId: orgArsNorte.id,
+      agreementId: agreementSns.id,
+      patientId: patientAna.id,
+      occurrenceType: TransportRequestOccurrenceType.OUTRO,
+      requestedVehicleType: TransportRequestVehicleType.OUTRO,
+      originAddress: 'Rua de Aldreu, 118, 4750-215 Aldreu',
+      originLatitude: aldreu.latitude,
+      originLongitude: aldreu.longitude,
+      destinationFacilityId: hospitalBraga.id,
+      freeTextMessage: 'Transporte para levantamento de material ortopédico.',
+    } satisfies CreateTransportRequestDto,
+    transportsCoordinator,
+  );
+  console.log(
+    '✅ Three more referrals out to the 30-day horizon: pending, accepted+registered (leg left unassigned), and OUTRO/OUTRO.',
+  );
+
+  // A second recurring series — weekly wound care, Tuesdays, a different
+  // patient/destination/time-of-day than the dialysis plan below, so the
+  // legs list and planning board see more than one recurrence shape.
+  const requestWoundCare = await transportRequests.create(
+    {
+      batchReference: 'EMAIL-2026-0388',
+      communicatedAt: `${isoAgo(8)}T09:00:00.000Z`,
+      requesterAccountCode: 'ULSB-0007',
+      responseDueAt: `${isoAgo(3)}T17:00:00.000Z`,
+      externalServiceNumber: 'ULSB-0388-01',
+      appointmentAt: `${isoAgo(7)}T09:00:00.000Z`,
+      requestingOrganisationId: orgUls.id,
+      payingOrganisationId: orgArsNorte.id,
+      agreementId: agreementSns.id,
+      patientId: patientJoaquim.id,
+      occurrenceType: TransportRequestOccurrenceType.TRATAMENTO,
+      requestedVehicleType: TransportRequestVehicleType.TRANSPORTE,
+      isRoundTrip: true,
+      originAddress: 'Rua de Santo António, 40, 4750-011 Barcelinhos',
+      originLatitude: barcelinhos.latitude,
+      originLongitude: barcelinhos.longitude,
+      destinationFacilityId: hospitalBraga.id,
+      freeTextMessage: 'Penso semanal, ferida cirúrgica, consulta de cirurgia geral.',
+    } satisfies CreateTransportRequestDto,
+    transportsCoordinator,
+  );
+  await transportRequests.decide(
+    requestWoundCare.id,
+    { decision: TransportRequestDecision.ACCEPTED },
+    transportsCoordinator,
+  );
+  await transportRequests.registerExternally(requestWoundCare.id);
+  await treatmentPlans.create(requestWoundCare.id, {
+    destinationFacilityId: hospitalBraga.id,
+    daysOfWeek: [2], // Tuesday
+    treatmentStartTime: '09:00',
+    treatmentEndTime: '09:30',
+    validFrom: isoAgo(7),
+    validTo: isoAhead(30),
+    notes: 'Penso semanal, ferida cirúrgica, HB.',
+  } satisfies CreateTreatmentPlanDto);
+  console.log('✅ Second recurring series: weekly wound care, Tuesdays, Hospital de Braga.');
+
   // The dialysis referral's recurring series — `treatmentPlans.create`
   // materialises every leg the validity period + `daysOfWeek` implies, past
   // and future alike, the same call the plan's own edit screen makes.
@@ -1301,7 +1615,7 @@ async function main() {
     treatmentStartTime: '08:30',
     treatmentEndTime: '12:30',
     validFrom: isoAgo(14),
-    validTo: isoAhead(21),
+    validTo: isoAhead(30),
     notes: 'Hemodiálise, 3x/semana, HD Barcelos.',
   } satisfies CreateTreatmentPlanDto);
 
@@ -1323,6 +1637,1123 @@ async function main() {
     await transportLegs.markNoShow(pastLegs[2].id);
   }
   console.log('✅ Treatment plan generated its legs; one cancelled, one no-show, for the legs list to show history.');
+
+  // ── Transport volume: five to fifteen people a day (#219) ────────────────
+  //
+  // Everything above exercises the *states* a referral can be in. None of it
+  // produces a day's *work* — and a planning board carrying three legs looks
+  // solved whatever shape it has. The questions the board exists to answer
+  // ("which vehicle can still take this?", "what does the run to Porto cost
+  // the rest of the morning?", "who could share this journey?") only appear
+  // at the volume a delegation this size actually moves: five to fifteen
+  // people a day, every day, with the occasional long haul out of district.
+  //
+  // So below: a pool of chronic patients around Barcelos, the recurring
+  // series that fill a normal week, and then a per-date top-up of one-off
+  // referrals that brings every date in the horizon up to a target between
+  // five and fifteen people — at least one of whom travels to Porto.
+  // 15 days back, 15 days ahead — a month either side of today, always.
+  const horizonFrom = isoAgo(15);
+  const horizonTo = isoAhead(15);
+  const horizonDates = isoDateRange(horizonFrom, horizonTo);
+
+  /** A wall-clock time-of-day on `date`, resolved to a real instant the same
+   * way `TripsService.checkArrivalTiming` does. */
+  const instantAt = (date: string, time: string): Date => {
+    const [hours, minutes] = time.split(':').map(Number);
+    return shiftBoundaryToInstant(date, hours * 60 + minutes);
+  };
+  const plusMinutes = (instant: Date, minutes: number): string =>
+    new Date(instant.getTime() + minutes * 60_000).toISOString();
+
+  /**
+   * A stable number per date, so the daily targets vary the way real demand
+   * does without the fixtures changing shape between two seed runs. A seed
+   * that reshuffles itself is a seed nobody can report a bug against.
+   */
+  const hashOf = (value: string): number => {
+    let hash = 2166136261;
+    for (let i = 0; i < value.length; i++) {
+      hash ^= value.charCodeAt(i);
+      hash = Math.imul(hash, 16777619);
+    }
+    return Math.abs(hash);
+  };
+
+  const poolFixtures: Array<{
+    fullName: string;
+    telephone: string;
+    addressLine: string;
+    postalCode: string;
+    localityName: string;
+    mobility: PatientMobility;
+    needsOxygen?: boolean;
+    escortRequired?: boolean;
+  }> = [
+    { fullName: 'Amélia Sousa Braga', telephone: '+351915000101', addressLine: 'Rua da Igreja, 14', postalCode: '4750-021', localityName: 'Aborim', mobility: PatientMobility.WHEELCHAIR },
+    { fullName: 'Adelino Faria Lopes', telephone: '+351915000102', addressLine: 'Rua de Abade de Neiva, 210', postalCode: '4750-021', localityName: 'Abade de Neiva', mobility: PatientMobility.AMBULATORY },
+    { fullName: 'Belmira Antunes Cruz', telephone: '+351915000103', addressLine: 'Travessa do Cruzeiro, 3', postalCode: '4755-005', localityName: 'Alvelos', mobility: PatientMobility.AMBULATORY },
+    { fullName: 'Custódio Neves Pinheiro', telephone: '+351915000104', addressLine: 'Rua das Areias, 96', postalCode: '4750-101', localityName: 'Areias', mobility: PatientMobility.WHEELCHAIR },
+    { fullName: 'Deolinda Ramos Barros', telephone: '+351915000105', addressLine: 'Rua de Balugães, 7', postalCode: '4755-011', localityName: 'Balugães', mobility: PatientMobility.AMBULATORY },
+    { fullName: 'Eduardo Machado Lima', telephone: '+351915000106', addressLine: 'Rua de Carapeços, 88', postalCode: '4750-051', localityName: 'Carapeços', mobility: PatientMobility.AMBULATORY },
+    { fullName: 'Fátima Nogueira Dias', telephone: '+351915000107', addressLine: 'Rua Nova de Cristelo, 22', postalCode: '4750-061', localityName: 'Cristelo', mobility: PatientMobility.WHEELCHAIR },
+    { fullName: 'Gustavo Teixeira Moreira', telephone: '+351915000108', addressLine: 'Rua de Fornelos, 150', postalCode: '4755-070', localityName: 'Fornelos', mobility: PatientMobility.AMBULATORY },
+    { fullName: 'Helena Barbosa Sampaio', telephone: '+351915000109', addressLine: 'Rua do Facho, 31', postalCode: '4750-081', localityName: 'Fragoso', mobility: PatientMobility.AMBULATORY },
+    { fullName: 'Isidro Carvalho Maia', telephone: '+351915000110', addressLine: 'Rua de Gilmonde, 44', postalCode: '4755-081', localityName: 'Gilmonde', mobility: PatientMobility.AMBULATORY },
+    { fullName: 'Júlia Mendes Vieira', telephone: '+351915000111', addressLine: 'Rua de Lijó, 505', postalCode: '4750-461', localityName: 'Lijó', mobility: PatientMobility.AMBULATORY },
+    { fullName: 'Lucínio Pires Rego', telephone: '+351915000112', addressLine: 'Rua de Martim, 18', postalCode: '4750-471', localityName: 'Martim', mobility: PatientMobility.STRETCHER, needsOxygen: true, escortRequired: true },
+    { fullName: 'Manuela Cardoso Torres', telephone: '+351915000113', addressLine: 'Rua de Palme, 260', postalCode: '4750-541', localityName: 'Palme', mobility: PatientMobility.AMBULATORY },
+    { fullName: 'Norberto Silva Amorim', telephone: '+351915000114', addressLine: 'Rua de Pereira, 12', postalCode: '4750-551', localityName: 'Pereira', mobility: PatientMobility.AMBULATORY },
+    { fullName: 'Olívia Gomes Rodrigues', telephone: '+351915000115', addressLine: 'Rua do Perelhal, 77', postalCode: '4750-561', localityName: 'Perelhal', mobility: PatientMobility.WHEELCHAIR },
+    { fullName: 'Paulo Jorge Ferreira', telephone: '+351915000116', addressLine: 'Rua de Roriz, 133', postalCode: '4750-591', localityName: 'Roriz', mobility: PatientMobility.AMBULATORY },
+    { fullName: 'Quitéria Lopes Marques', telephone: '+351915000117', addressLine: 'Rua da Silva, 9', postalCode: '4750-601', localityName: 'Silva', mobility: PatientMobility.AMBULATORY },
+    { fullName: 'Rogério Martins Abreu', telephone: '+351915000118', addressLine: 'Rua de Ucha, 402', postalCode: '4750-631', localityName: 'Ucha', mobility: PatientMobility.AMBULATORY },
+  ];
+
+  interface PoolPatient {
+    id: string;
+    name: string;
+    address: string;
+    latitude: number | null;
+    longitude: number | null;
+    mobility: PatientMobility;
+  }
+
+  const pool: PoolPatient[] = [];
+  for (const fixture of poolFixtures) {
+    const home = await locality(fixture.localityName, 'Barcelos');
+    // Identity recorded for all of them, unlike the three hand-written
+    // patients above: the planning board prints the patient's name on every
+    // block, and a board of eleven unnamed blocks tells a planner nothing.
+    // The `VIEW_PATIENT_IDENTITY` degrade is still exercised — by the sealed
+    // patients above, and by logging in as someone without it.
+    const created = await patients.create(
+      {
+        mobility: fixture.mobility,
+        needsOxygen: fixture.needsOxygen,
+        escortRequired: fixture.escortRequired,
+        defaultLatitude: home.latitude ?? undefined,
+        defaultLongitude: home.longitude ?? undefined,
+        localityId: home.id,
+        contactAuthorisationRecorded: true,
+        identity: {
+          fullName: fixture.fullName,
+          telephone: fixture.telephone,
+          homeAddressLine: fixture.addressLine,
+          homePostalCode: fixture.postalCode,
+          homeLocality: fixture.localityName,
+          referenceContactName: 'Contacto de referência',
+          referenceContactRelationship: 'Familiar',
+          referenceContactTelephone: fixture.telephone,
+        },
+      } satisfies CreatePatientDto,
+      transportsCoordinator,
+    );
+    pool.push({
+      id: created.id,
+      name: fixture.fullName,
+      address: `${fixture.addressLine}, ${fixture.postalCode} ${fixture.localityName}`,
+      latitude: home.latitude,
+      longitude: home.longitude,
+      mobility: fixture.mobility,
+    });
+  }
+  console.log(`✅ ${pool.length} more patients across ${pool.length} Barcelos freguesias, for transport volume.`);
+
+  /** The Porto destinations, as a set — "did this date already send someone
+   * to Porto?" is asked once per date below. */
+  const portoFacilityIds = new Set([saoJoao.id, santoAntonio.id, ipoPorto.id]);
+
+  let referralCounter = 0;
+  /** A referral, accepted and registered unless asked otherwise, with its
+   * legs materialised — the state a transport is in by the time it reaches
+   * the planning board. */
+  async function seedReferral(input: {
+    patient: PoolPatient;
+    appointmentAt: string;
+    occurrenceType: TransportRequestOccurrenceType;
+    destinationFacilityId: string;
+    isRoundTrip?: boolean;
+    originAddress?: string;
+    message?: string;
+    /** Materialise the referral's own leg(s) — a one-off with no recurrence
+     * above it. Left off for a referral a `TreatmentPlan` is about to be
+     * hung on. */
+    oneOff?: boolean;
+    /** Left `PENDING` — no legs, so it only ever shows in the referral queue. */
+    pending?: boolean;
+  }) {
+    referralCounter += 1;
+    const viaAxa = referralCounter % 3 === 0;
+    const isStretcher = input.patient.mobility === PatientMobility.STRETCHER;
+    const appointmentDate = input.appointmentAt.slice(0, 10);
+    const request = await transportRequests.create(
+      {
+        batchReference: viaAxa ? `AXA-OUT-${appointmentDate}` : `EMAIL-${appointmentDate}`,
+        communicatedAt: `${toIsoDate(addDays(parseIsoDate(appointmentDate), -5))}T09:00:00.000Z`,
+        requesterAccountCode: viaAxa ? 'AXA-PT-778' : 'ULSB-0007',
+        responseDueAt: `${toIsoDate(addDays(parseIsoDate(appointmentDate), -2))}T17:00:00.000Z`,
+        externalServiceNumber: `${viaAxa ? 'AXA' : 'ULSB'}-${appointmentDate.replace(/-/g, '')}-${referralCounter}`,
+        appointmentAt: input.appointmentAt,
+        requestingOrganisationId: viaAxa ? orgAxa.id : orgUls.id,
+        payingOrganisationId: viaAxa ? orgAxa.id : orgArsNorte.id,
+        agreementId: viaAxa ? agreementAxa.id : agreementSns.id,
+        patientId: input.patient.id,
+        occurrenceType: input.occurrenceType,
+        requestedVehicleType: isStretcher
+          ? TransportRequestVehicleType.AMBULANCIA
+          : TransportRequestVehicleType.TRANSPORTE,
+        escortTravels: isStretcher,
+        isRoundTrip: input.isRoundTrip ?? true,
+        originAddress: input.originAddress ?? input.patient.address,
+        // An origin the patient was collected *from* a hospital at (a
+        // discharge) has no home coordinates to carry — the facility's own
+        // are what routing will use.
+        originLatitude: input.originAddress ? undefined : (input.patient.latitude ?? undefined),
+        originLongitude: input.originAddress ? undefined : (input.patient.longitude ?? undefined),
+        destinationFacilityId: input.destinationFacilityId,
+        freeTextMessage: input.message,
+      } satisfies CreateTransportRequestDto,
+      transportsCoordinator,
+    );
+    if (input.pending) return request;
+    await transportRequests.decide(request.id, { decision: TransportRequestDecision.ACCEPTED }, transportsCoordinator);
+    await transportRequests.registerExternally(request.id);
+    // A referral that carries its own recurrence gets its legs from
+    // `treatmentPlans.create` instead — calling both would add a stray
+    // one-off leg on the appointment date alongside the generated series.
+    if (input.oneOff) await transportLegs.generateOneOff(request.id);
+    return request;
+  }
+
+  // The recurring series that make up a normal week. Weekday-heavy and
+  // weekend-light on purpose: a planner's Saturday genuinely is quieter, and
+  // a board that looks identical seven days a week teaches them nothing.
+  const seriesFixtures: Array<{
+    patients: number[];
+    daysOfWeek: number[];
+    start: string;
+    end: string;
+    destinationFacilityId: string;
+    occurrenceType: TransportRequestOccurrenceType;
+    notes: string;
+  }> = [
+    { patients: [0, 1, 2], daysOfWeek: [1, 3, 5], start: '08:00', end: '12:00', destinationFacilityId: dialysisClinic.id, occurrenceType: TransportRequestOccurrenceType.TRATAMENTO, notes: 'Hemodiálise — turno da manhã, 2ª/4ª/6ª.' },
+    { patients: [3, 4], daysOfWeek: [1, 3, 5], start: '13:30', end: '17:30', destinationFacilityId: dialysisClinic.id, occurrenceType: TransportRequestOccurrenceType.TRATAMENTO, notes: 'Hemodiálise — turno da tarde, 2ª/4ª/6ª.' },
+    { patients: [5, 6, 7], daysOfWeek: [2, 4, 6], start: '08:00', end: '12:00', destinationFacilityId: dialysisClinic.id, occurrenceType: TransportRequestOccurrenceType.TRATAMENTO, notes: 'Hemodiálise — turno da manhã, 3ª/5ª/sábado.' },
+    // The daily Porto run: radiotherapy is a short session at the end of a
+    // long drive, which is precisely the journey that cannot be shared and
+    // still ties a vehicle up for half a day.
+    { patients: [8], daysOfWeek: [1, 2, 3, 4, 5], start: '10:30', end: '11:00', destinationFacilityId: ipoPorto.id, occurrenceType: TransportRequestOccurrenceType.TRATAMENTO, notes: 'Radioterapia diária — IPO Porto, doente sozinho na viatura.' },
+    { patients: [9], daysOfWeek: [2, 4], start: '09:00', end: '13:00', destinationFacilityId: saoJoao.id, occurrenceType: TransportRequestOccurrenceType.TRATAMENTO, notes: 'Hospital de dia — oncologia, São João.' },
+    { patients: [10, 13], daysOfWeek: [1, 3, 5], start: '15:00', end: '16:00', destinationFacilityId: hospitalBarcelos.id, occurrenceType: TransportRequestOccurrenceType.TRATAMENTO, notes: 'Fisioterapia — Santa Maria Maior.' },
+    { patients: [12], daysOfWeek: [4], start: '09:30', end: '10:30', destinationFacilityId: hospitalBraga.id, occurrenceType: TransportRequestOccurrenceType.CONSULTA, notes: 'Consulta de seguimento semanal — Hospital de Braga.' },
+  ];
+
+  for (const series of seriesFixtures) {
+    for (const index of series.patients) {
+      const patient = pool[index];
+      const request = await seedReferral({
+        patient,
+        appointmentAt: `${horizonFrom}T${series.start}:00.000Z`,
+        occurrenceType: series.occurrenceType,
+        destinationFacilityId: series.destinationFacilityId,
+        isRoundTrip: true,
+        message: series.notes,
+      });
+      await treatmentPlans.create(request.id, {
+        destinationFacilityId: series.destinationFacilityId,
+        daysOfWeek: series.daysOfWeek,
+        treatmentStartTime: series.start,
+        treatmentEndTime: series.end,
+        validFrom: horizonFrom,
+        validTo: horizonTo,
+        notes: series.notes,
+      } satisfies CreateTreatmentPlanDto);
+
+      // A plan's `treatmentEndTime` deliberately doesn't flow into the legs
+      // it generates — a leg carries its own end time, which is the thing
+      // that can differ on the day. Without one, every leg falls back to the
+      // occurrence type's 30-minute floor, and a four-hour dialysis session
+      // would show a patient ready to come home half an hour after arriving.
+      // So the fixture records what the unit told the delegation, the same
+      // edit a coordinator makes on the leg itself.
+      for (const leg of await transportLegs.findAllForRequest(request.id)) {
+        await prisma.transportLeg.update({
+          where: { id: leg.id },
+          data: {
+            estimatedEndAt: instantAt(leg.date, series.end),
+            estimatedEndSource: EstimatedEndSource.FACILITY_SUPPLIED as never,
+          },
+        });
+      }
+    }
+  }
+  console.log(`✅ ${seriesFixtures.length} recurring series (dialysis, radiotherapy, day hospital, physiotherapy).`);
+
+  // Top-up: whatever the series already put on a date, bring it up to that
+  // date's target, and never leave a date without a Porto run.
+  const legsInHorizon = await prisma.transportLeg.findMany({
+    where: {
+      date: { gte: parseIsoDate(horizonFrom), lte: parseIsoDate(horizonTo) },
+      status: { notIn: [LegStatus.CANCELLED as never, LegStatus.NO_SHOW as never] },
+    },
+    select: {
+      date: true,
+      originFacilityId: true,
+      destinationFacilityId: true,
+      transportRequest: { select: { patientId: true } },
+    },
+  });
+
+  const peopleByDate = new Map<string, Set<string>>();
+  const portoByDate = new Set<string>();
+  for (const leg of legsInHorizon) {
+    const date = toIsoDate(leg.date);
+    const people = peopleByDate.get(date) ?? new Set<string>();
+    people.add(leg.transportRequest.patientId);
+    peopleByDate.set(date, people);
+    if (
+      (leg.destinationFacilityId && portoFacilityIds.has(leg.destinationFacilityId)) ||
+      (leg.originFacilityId && portoFacilityIds.has(leg.originFacilityId))
+    ) {
+      portoByDate.add(date);
+    }
+  }
+
+  // Weighted towards the two local hospitals on purpose: the Porto runs are
+  // the exception a planner works around, and a day with eight of them would
+  // be a fixture nobody recognises.
+  const topUpDestinations = [hospitalBraga.id, hospitalBarcelos.id, hospitalBraga.id, hospitalBarcelos.id, saoJoao.id];
+  // Consultations and exams only. A discharge (`ALTA`) is a hospital-to-home
+  // journey, and an outbound leg runs address → *facility* — so modelling one
+  // properly means editing the generated leg's destination afterwards, which
+  // the hand-written `requestAwaitingRegistration` above already demonstrates
+  // once. Repeating it a hundred times here would only put a hundred
+  // hospital-to-the-same-hospital lines on the planner's map.
+  const topUpOccurrences = [
+    TransportRequestOccurrenceType.CONSULTA,
+    TransportRequestOccurrenceType.EXAME,
+    TransportRequestOccurrenceType.CONSULTA,
+    TransportRequestOccurrenceType.EXAME,
+  ];
+
+  let topUpCount = 0;
+  let pendingCount = 0;
+  for (const date of horizonDates) {
+    const people = peopleByDate.get(date) ?? new Set<string>();
+    peopleByDate.set(date, people);
+    // Five to fifteen, stable per date. A day already busier than its target
+    // is left alone — the series are the floor, never trimmed to fit.
+    const target = 5 + (hashOf(date) % 11);
+    // Each pool patient is offered this date at most once, in an order that
+    // is stable per date but different between dates — so the same four
+    // people aren't the ones travelling every single day.
+    const candidates = [...pool].sort((a, b) => hashOf(`${date}:${a.id}`) - hashOf(`${date}:${b.id}`));
+    let attempt = 0;
+    for (const patient of candidates) {
+      if (people.size >= target && portoByDate.has(date)) break;
+      attempt += 1;
+      if (people.has(patient.id)) continue;
+
+      // Porto first, until the date has one — then whatever the rotation
+      // says. The guarantee is per date, not per horizon: the long run is
+      // the constraint a planner faces *every* morning.
+      const needsPorto = !portoByDate.has(date);
+      const destinationFacilityId = needsPorto
+        ? [ipoPorto.id, saoJoao.id, santoAntonio.id][hashOf(date) % 3]
+        : topUpDestinations[attempt % topUpDestinations.length];
+      const occurrenceType = needsPorto
+        ? TransportRequestOccurrenceType.CONSULTA
+        : topUpOccurrences[attempt % topUpOccurrences.length];
+      // Shared per destination, not per patient: 08:30 through 16:30,
+      // half-hour apart, but everyone topped up onto the same facility on
+      // the same date leaves at the same time — so the planning board gets
+      // journeys of several people through several localities, rather than
+      // one patient alone in every timeslot.
+      const minutes = 8 * 60 + 30 + ((hashOf(`${date}:${destinationFacilityId}`) % 17) * 30);
+      const appointmentAt =
+        `${date}T${pad2(Math.floor(minutes / 60))}:${pad2(minutes % 60)}:00.000Z`;
+
+      // One in nine is left pending, so the referral queue keeps a working
+      // backlog instead of being empty the moment the seed finishes.
+      const pending = referralCounter % 9 === 8;
+      await seedReferral({
+        patient,
+        appointmentAt,
+        occurrenceType,
+        destinationFacilityId,
+        isRoundTrip: true,
+        message: needsPorto ? 'Consulta externa no Porto.' : undefined,
+        oneOff: true,
+        pending,
+      });
+      if (pending) {
+        pendingCount += 1;
+        continue;
+      }
+      people.add(patient.id);
+      if (portoFacilityIds.has(destinationFacilityId)) portoByDate.add(date);
+      topUpCount += 1;
+    }
+  }
+
+  const dailyCounts = horizonDates.map((date) => peopleByDate.get(date)?.size ?? 0);
+  console.log(
+    `✅ ${topUpCount} one-off referrals topped every date up to its target: ` +
+      `${Math.min(...dailyCounts)}–${Math.max(...dailyCounts)} people a day across ${horizonDates.length} days, ` +
+      `each with at least one Porto run (${pendingCount} more left pending in the queue).`,
+  );
+
+  // ── Trip planning board (#234-236) ───────────────────────────────────────
+  // Gives the board actual lanes to look at: one COMPLETED run from before
+  // today (trip history), and several PLANNED ones spread through the next
+  // 30 days — the two recurring series above plus the AMBULANCIA referral,
+  // each on the vehicle class its patient's mobility actually calls for.
+  // Several future legs are deliberately left off a trip, so the board's
+  // unassigned-legs rail has something in it too.
+  const tripCrewService = new TripCrewService(prisma, staffAbsences);
+  const tripStopsService = new TripStopsService(prisma, delegationSettingsForFacilities, vehicleOccupancy);
+
+  async function buildTrip(input: {
+    vehicleId: string;
+    date: string;
+    status?: TripStatus;
+    notes?: string;
+    crew: { userId: string; role: CertificationType }[];
+    legs: { legId: string; pickupPlannedAt: string; dropoffPlannedAt: string }[];
+  }): Promise<string> {
+    const trip = await prisma.trip.create({
+      data: {
+        date: parseIsoDate(input.date),
+        vehicleId: input.vehicleId,
+        notes: input.notes ?? null,
+        status: input.status ?? TripStatus.PLANNED,
+      },
+    });
+    for (const member of input.crew) {
+      try {
+        await tripCrewService.add(trip.id, { userId: member.userId, role: member.role });
+      } catch {
+        // The only reason `add` refuses is a recorded absence on the date,
+        // and that is a warning a coordinator overrides by hand every week —
+        // so the fixture takes the same route rather than silently dropping
+        // the crew member and leaving an uncrewed journey behind.
+        await tripCrewService.add(trip.id, {
+          userId: member.userId,
+          role: member.role,
+          overrideReason: 'Ausência registada; disponibilidade confirmada com a coordenação.',
+        });
+      }
+    }
+    for (const leg of input.legs) {
+      await tripStopsService.assignLegToTrip(trip.id, {
+        transportLegId: leg.legId,
+        pickupPlannedAt: leg.pickupPlannedAt,
+        dropoffPlannedAt: leg.dropoffPlannedAt,
+      });
+    }
+    return trip.id;
+  }
+
+  /** A request's `OUTBOUND`+`RETURN` legs, grouped by date, keeping only
+   * dates where both are still active — a cancelled/no-show day is never
+   * half-planned onto a trip. */
+  async function activeRoundTripsByDate(requestId: string) {
+    const legs = await transportLegs.findAllForRequest(requestId);
+    const byDate = new Map<string, typeof legs>();
+    for (const leg of legs) {
+      if (leg.status === LegStatus.CANCELLED || leg.status === LegStatus.NO_SHOW) continue;
+      byDate.set(leg.date, [...(byDate.get(leg.date) ?? []), leg]);
+    }
+    return [...byDate.entries()]
+      .filter(([, dateLegs]) => dateLegs.length === 2)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, [outbound, returnLeg]]) => ({ date, outbound, return: returnLeg }));
+  }
+
+  const dialysisCrew = [
+    { userId: transportsCoordinator.id, role: CertificationType.DRIVER },
+    { userId: diogo.id, role: CertificationType.TAS },
+  ];
+  const dialysisRoundTrips = await activeRoundTripsByDate(requestDialysis.id);
+  const pastDialysis = dialysisRoundTrips.filter((rt) => rt.date < today);
+  const futureDialysis = dialysisRoundTrips.filter((rt) => rt.date >= today);
+
+  /**
+   * A round trip's outbound and return legs, as two separate journeys on
+   * the same vehicle — never one trip carrying both. The two are routinely
+   * hours apart (the patient's own appointment in between), and a single
+   * trip spanning that gap would read as pickup, dropoff, pickup, dropoff:
+   * two journeys wearing one trip id, exactly the shape a crew's own
+   * "journey" never takes (see `mergeChainedTrips`'s own doc comment for
+   * the same rule applied to `planDay`'s bulk-generated trips).
+   */
+  async function buildRoundTripJourneys(input: {
+    vehicleId: string;
+    date: string;
+    status?: TripStatus;
+    notesPrefix: string;
+    crew: { userId: string; role: CertificationType }[];
+    outboundLegId: string;
+    returnLegId: string;
+    arrival: Date;
+    departure: Date;
+  }): Promise<void> {
+    await buildTrip({
+      vehicleId: input.vehicleId,
+      date: input.date,
+      status: input.status,
+      notes: `${input.notesPrefix} — ida.`,
+      crew: input.crew,
+      legs: [
+        { legId: input.outboundLegId, pickupPlannedAt: plusMinutes(input.arrival, -45), dropoffPlannedAt: plusMinutes(input.arrival, -15) },
+      ],
+    });
+    await buildTrip({
+      vehicleId: input.vehicleId,
+      date: input.date,
+      status: input.status,
+      notes: `${input.notesPrefix} — volta.`,
+      crew: input.crew,
+      legs: [
+        { legId: input.returnLegId, pickupPlannedAt: plusMinutes(input.departure, 0), dropoffPlannedAt: plusMinutes(input.departure, 30) },
+      ],
+    });
+  }
+
+  if (pastDialysis[0]) {
+    const { date, outbound, return: ret } = pastDialysis[0];
+    await buildRoundTripJourneys({
+      vehicleId: vehicles.transport1.id,
+      date,
+      status: TripStatus.COMPLETED,
+      notesPrefix: 'Hemodiálise — HD Barcelos.',
+      crew: dialysisCrew,
+      outboundLegId: outbound.id,
+      returnLegId: ret.id,
+      arrival: instantAt(date, '08:30'),
+      departure: instantAt(date, '12:30'),
+    });
+  }
+  for (const { date, outbound, return: ret } of futureDialysis.slice(0, 2)) {
+    await buildRoundTripJourneys({
+      vehicleId: vehicles.transport1.id,
+      date,
+      notesPrefix: 'Hemodiálise — HD Barcelos.',
+      crew: dialysisCrew,
+      outboundLegId: outbound.id,
+      returnLegId: ret.id,
+      arrival: instantAt(date, '08:30'),
+      departure: instantAt(date, '12:30'),
+    });
+  }
+
+  const woundCareRoundTrips = await activeRoundTripsByDate(requestWoundCare.id);
+  const nextWoundCare = woundCareRoundTrips.find((rt) => rt.date >= today);
+  if (nextWoundCare) {
+    const { date, outbound, return: ret } = nextWoundCare;
+    await buildRoundTripJourneys({
+      vehicleId: vehicles.transport1.id,
+      date,
+      notesPrefix: 'Penso semanal — Hospital de Braga.',
+      crew: dialysisCrew,
+      outboundLegId: outbound.id,
+      returnLegId: ret.id,
+      arrival: instantAt(date, '09:00'),
+      departure: instantAt(date, '09:30'),
+    });
+  }
+
+  const [carlosLeg] = await transportLegs.findAllForRequest(requestAwaitingRegistration.id);
+  if (carlosLeg) {
+    const arrival = new Date(`${isoAhead(2)}T08:00:00.000Z`);
+    await buildTrip({
+      vehicleId: vehicles.ambulance2.id,
+      date: carlosLeg.date,
+      notes: 'Alta hospitalar — doente acamado, com escolta.',
+      crew: [
+        { userId: joaoP.id, role: CertificationType.TAT },
+        { userId: mariana.id, role: CertificationType.TAS },
+      ],
+      legs: [{ legId: carlosLeg.id, pickupPlannedAt: plusMinutes(arrival, -45), dropoffPlannedAt: plusMinutes(arrival, -15) }],
+    });
+  }
+
+  const plannedTripCount = Math.min(futureDialysis.length, 2) + (nextWoundCare ? 1 : 0) + (carlosLeg ? 1 : 0);
+  const unassignedDialysisCount = Math.max(futureDialysis.length - 2, 0);
+  console.log(
+    `✅ Planning board: ${pastDialysis[0] ? 1 : 0} completed run, ${plannedTripCount} planned trips, and ` +
+      `${unassignedDialysisCount} more future dialysis round trips (plus the EXAME referral's leg) left ` +
+      'unassigned for the board\'s rail.',
+  );
+
+  // ── Whole days planned onto the board (#235) ─────────────────────────────
+  //
+  // The volume block leaves every leg it creates unassigned, which is the
+  // honest starting state and a poor fixture: the board only shows what it
+  // is for once journeys exist on it. So four dates are planned end to end —
+  // yesterday (completed), today, and the two after — and everything past
+  // that stays in the rail, which is also what a real planner's week looks
+  // like: the near days settled, the far ones still loose.
+  //
+  // This is deliberately the dumbest possible planner: group by destination
+  // and arrival time, split into vehicle-sized chunks, take the first
+  // vehicle whose capacity fits and whose day is still free. It is not a
+  // preview of an optimiser — it exists so the screens have something real
+  // to draw, and a chunk it can't place simply stays unplanned.
+  const fleet = await prisma.vehicle.findMany({
+    select: {
+      id: true,
+      numeroCauda: true,
+      vehicleType: true,
+      seatedCapacity: true,
+      wheelchairPositions: true,
+      stretcherPositions: true,
+    },
+    orderBy: { numeroCauda: 'asc' },
+  });
+
+  /**
+   * Straight-line kilometres between two points, with a 1.3 detour factor —
+   * the same crude-on-purpose approximation `travelMinutesBetween` turns
+   * into a duration; also used on its own to decide whether two groups'
+   * destinations are close enough to chain onto one journey (below). Null
+   * when either point isn't geocoded, since "close enough" can't be judged
+   * without both doors.
+   */
+  const beelineKm = (
+    from: { latitude: number | null; longitude: number | null },
+    to: { latitude: number | null; longitude: number | null },
+  ): number | null => {
+    if (from.latitude == null || from.longitude == null || to.latitude == null || to.longitude == null) return null;
+    const toRadians = (degrees: number) => (degrees * Math.PI) / 180;
+    const meanLatitude = toRadians((from.latitude + to.latitude) / 2);
+    const dx = toRadians(to.longitude - from.longitude) * Math.cos(meanLatitude) * 6371;
+    const dy = toRadians(to.latitude - from.latitude) * 6371;
+    return Math.hypot(dx, dy) * 1.3;
+  };
+
+  /**
+   * Minutes on the road between two points, straight-line at 55 km/h.
+   *
+   * Crude on purpose: the real number comes from OSRM at read time
+   * (`TripLegTravelService`), and a seed that called it would need the
+   * routing container up to produce fixtures. All this has to get right is
+   * the order of magnitude — that Aldreu to the Barcelos clinic is fifteen
+   * minutes and Barcelos to the IPO is an hour — because that difference is
+   * what makes a day's plan feasible or not.
+   */
+  const travelMinutesBetween = (
+    from: { latitude: number | null; longitude: number | null },
+    to: { latitude: number | null; longitude: number | null },
+  ): number => {
+    const kilometres = beelineKm(from, to);
+    if (kilometres == null) return 20;
+    return Math.max(10, Math.round((kilometres / 55) * 60));
+  };
+
+  // Only these vehicles are offered to the planner below, each with the crew
+  // that works it: a vehicle with nobody to crew it is not a lane, and
+  // `ambulance1` is deliberately held back as the emergency reserve. Most of
+  // these journeys are a single driver — non-urgent transport, unlike an
+  // emergency crew, routinely rolls with just the one person — so only the
+  // stretcher vehicle keeps a second crew member, for the medical escort a
+  // bedridden patient actually needs.
+  const crewByVehicleId: Record<string, { userId: string; role: CertificationType }[]> = {
+    [vehicles.transport1.id]: [{ userId: ines.id, role: CertificationType.DRIVER }],
+    [vehicles.transport2.id]: [{ userId: diogo.id, role: CertificationType.DRIVER }],
+    [vehicles.transport3.id]: [{ userId: transportsCoordinator.id, role: CertificationType.DRIVER }],
+    [vehicles.transport4.id]: [{ userId: hugo.id, role: CertificationType.DRIVER }],
+    [vehicles.transport5.id]: [{ userId: tiago.id, role: CertificationType.DRIVER }],
+    [vehicles.ambulance2.id]: [
+      { userId: joaoP.id, role: CertificationType.TAT },
+      { userId: mariana.id, role: CertificationType.TAS },
+    ],
+  };
+
+  /** `order`, rotated by a stable amount derived from `seed` — so which
+   * vehicle a group prefers first varies by date/facility/direction instead
+   * of every non-overlapping journey of the day piling onto the same first
+   * pick. That's what puts several vehicles on the road on a single busy
+   * day rather than one vehicle working the whole day's local rounds. */
+  const rotate = (order: string[], seed: string): string[] => {
+    const offset = hashOf(seed) % order.length;
+    return [...order.slice(offset), ...order.slice(0, offset)];
+  };
+
+  const destinations = new Map(
+    (
+      await prisma.facility.findMany({
+        where: { isTransportDestination: true },
+        select: { id: true, name: true, latitude: true, longitude: true },
+      })
+    ).map((facility) => [facility.id, facility]),
+  );
+
+  // Fetched once and reused across every date below — the same base
+  // `DEPART_FROM_BASE`/`RETURN_TO_BASE` target every day's first and last
+  // journey, so there is no reason to re-read `DelegationSettings` per date.
+  const base = await delegationSettingsForFacilities.get();
+  const basePoint = { latitude: base.baseLatitude, longitude: base.baseLongitude };
+
+  /** Everything a chunk needs to know about one leg, resolved once. */
+  interface PlannableLeg {
+    id: string;
+    facilityId: string;
+    /** The instant the plan is built around: the appointment for an outbound
+     * leg, the estimated end of treatment for a return one. */
+    anchorAt: Date;
+    mobility: PatientMobility;
+    /** The patient's own end of the journey — their door, whichever
+     * direction the leg runs in. */
+    door: { latitude: number | null; longitude: number | null };
+  }
+
+  /** One already-built chunk trip, kept around after `buildTrip` so the
+   * merge pass below can chain a same-vehicle, same-direction, nearby-in-
+   * time-and-space trip onto it instead of leaving the vehicle's day as a
+   * pile of separate single-destination journeys — see the "Whole days
+   * planned onto the board" banner comment for why that matters. */
+  interface BuiltTripMeta {
+    tripId: string;
+    vehicleId: string;
+    direction: LegDirection;
+    /** A stretcher or a Porto-bound run — never a merge candidate, on either
+     * side of the pair, for the same reason it was built solo to begin with. */
+    solo: boolean;
+    legTimes: { legId: string; pickupPlannedAt: string; dropoffPlannedAt: string }[];
+    firstPickupAt: number;
+    lastStopAt: number;
+    /** Where the vehicle actually is right after its first pickup / right
+     * before its last stop — the two ends a `DEPART_FROM_BASE`/
+     * `RETURN_TO_BASE` stop or a merge candidate's distance is judged
+     * against. */
+    firstDoor: { latitude: number | null; longitude: number | null };
+    lastAnchor: { latitude: number | null; longitude: number | null };
+    demand: { seated: number; wheelchairs: number; stretchers: number };
+  }
+
+  // Two groups chain onto one journey only when the gap between them is a
+  // plausible in-between drive, not a lunch break or a different round
+  // entirely, and their destinations are close enough that the detour reads
+  // as "on the way" rather than a cross-district special trip.
+  const MERGE_MAX_GAP_MINUTES = 45;
+  const MERGE_MAX_DISTANCE_KM = 20;
+
+  async function planDay(date: string, status: TripStatus): Promise<{ journeys: number; vehicleIds: Set<string> }> {
+    const unassigned = await transportLegs.findUnassignedForDate(date);
+    if (!unassigned.length) return { journeys: 0, vehicleIds: new Set() };
+
+    const requests = await prisma.transportRequest.findMany({
+      where: { id: { in: [...new Set(unassigned.map((leg) => leg.transportRequestId))] } },
+      select: { id: true, patient: { select: { mobility: true } } },
+    });
+    const mobilityByRequest = new Map(requests.map((row) => [row.id, row.patient.mobility as PatientMobility]));
+
+    // Every existing commitment of every vehicle that day, from one place:
+    // shifts, maintenance and the journeys already built above all land in
+    // `VehicleOccupancy`, and overlapping it is exactly what `assignLegToTrip`
+    // refuses without an override.
+    const dayStart = parseIsoDate(date);
+    const dayEnd = addDays(dayStart, 1);
+    const busy = new Map<string, Array<{ from: number; to: number }>>();
+    for (const block of await prisma.vehicleOccupancy.findMany({
+      where: { startsAt: { lt: dayEnd }, endsAt: { gt: dayStart } },
+      select: { vehicleId: true, startsAt: true, endsAt: true },
+    })) {
+      busy.set(block.vehicleId, [
+        ...(busy.get(block.vehicleId) ?? []),
+        { from: block.startsAt.getTime(), to: block.endsAt.getTime() },
+      ]);
+    }
+    const isFree = (vehicleId: string, from: number, to: number) =>
+      !(busy.get(vehicleId) ?? []).some((block) => block.from < to && block.to > from);
+
+    // One group per "this vehicle is at this facility at this moment" — the
+    // only thing that makes two patients shareable at all.
+    const groups = new Map<string, { direction: LegDirection; facilityId: string; anchorAt: Date; legs: PlannableLeg[] }>();
+    for (const leg of unassigned) {
+      const outbound = leg.direction === LegDirection.OUTBOUND;
+      const facilityId = outbound ? leg.destinationFacilityId : leg.originFacilityId;
+      const mobility = mobilityByRequest.get(leg.transportRequestId);
+      if (!facilityId || !mobility) continue;
+      const anchorAt = new Date(outbound ? leg.appointmentAt : leg.effectiveEstimatedEndAt);
+      const door = outbound
+        ? { latitude: leg.originLatitude, longitude: leg.originLongitude }
+        : { latitude: leg.destinationLatitude, longitude: leg.destinationLongitude };
+      const key = `${leg.direction}|${facilityId}|${anchorAt.toISOString()}`;
+      const group = groups.get(key) ?? { direction: leg.direction, facilityId, anchorAt, legs: [] };
+      group.legs.push({ id: leg.id, facilityId, anchorAt, mobility, door });
+      groups.set(key, group);
+    }
+
+    let journeys = 0;
+    const vehicleIds = new Set<string>();
+    // One entry per trip actually built below — fed to the merge pass and
+    // the base depart/return pass once every group's chunks are placed.
+    const builtTrips: BuiltTripMeta[] = [];
+    const ordered = [...groups.values()].sort((a, b) => a.anchorAt.getTime() - b.anchorAt.getTime());
+    for (const group of ordered) {
+      // Porto is an hour each way: that patient travels alone, because
+      // nobody else's appointment survives the detour. A stretcher is alone
+      // for the physical reason instead — it is the whole vehicle.
+      const soloRun = portoFacilityIds.has(group.facilityId);
+      const chunks: PlannableLeg[][] = [];
+      for (const leg of group.legs) {
+        const solo = soloRun || leg.mobility === PatientMobility.STRETCHER;
+        const last = chunks[chunks.length - 1];
+        // Up to five to a chunk — a normal transport round picking up
+        // several people bound for the same place through several
+        // localities on the way, not a one-patient-per-vehicle taxi service.
+        const canShare =
+          !solo &&
+          last &&
+          last.length < 5 &&
+          !last.some((member) => member.mobility === PatientMobility.STRETCHER);
+        if (canShare) last.push(leg);
+        else chunks.push([leg]);
+      }
+
+      for (const chunk of chunks) {
+        const outbound = group.direction === LegDirection.OUTBOUND;
+        const anchor = group.anchorAt.getTime();
+        const at = (minutes: number) => new Date(anchor + minutes * 60_000).toISOString();
+
+        // Times built around the drive itself, not a flat guess: the last
+        // patient is collected a journey's-length before the appointment,
+        // everyone earlier ten minutes apart before that. It is the
+        // difference between a fifteen-minute hop to the Barcelos clinic and
+        // an hour down to the IPO that makes a day's plan hold together.
+        const facility = destinations.get(group.facilityId);
+        const legTravel = chunk.map((leg) => (facility ? travelMinutesBetween(leg.door, facility) : 20));
+        const longestTravel = Math.max(...legTravel);
+        const legTimes = chunk.map((leg, index) =>
+          outbound
+            ? {
+                legId: leg.id,
+                pickupPlannedAt: at(-10 - longestTravel - (chunk.length - 1 - index) * 10),
+                dropoffPlannedAt: at(-10),
+              }
+            : {
+                legId: leg.id,
+                pickupPlannedAt: at(5),
+                dropoffPlannedAt: at(5 + legTravel[index] + index * 10),
+              },
+        );
+        const from = new Date(legTimes[0].pickupPlannedAt).getTime() - 15 * 60_000;
+        const to = new Date(legTimes[legTimes.length - 1].dropoffPlannedAt).getTime() + 15 * 60_000;
+
+        const seated = chunk.filter((leg) => leg.mobility === PatientMobility.AMBULATORY).length;
+        const wheelchairs = chunk.filter((leg) => leg.mobility === PatientMobility.WHEELCHAIR).length;
+        const stretchers = chunk.filter((leg) => leg.mobility === PatientMobility.STRETCHER).length;
+        // Preference order, not just capacity: an emergency ambulance may
+        // physically seat an ambulatory patient, but sending one on a
+        // dialysis round is how a delegation ends up with no ambulance when
+        // it is called for. Stretcher work is the only thing that claims one;
+        // the long-haul vans take the out-of-district runs; everything else
+        // rotates through the rest of the transport fleet, which is what
+        // spreads a busy day across several vehicles instead of stacking
+        // them all onto the first one that fits.
+        const groupSeed = `${date}|${group.facilityId}|${group.direction}`;
+        const preferredOrder = stretchers
+          ? [vehicles.ambulance2.id]
+          : soloRun
+            ? rotate([vehicles.transport3.id, vehicles.transport5.id, vehicles.transport1.id, vehicles.transport4.id, vehicles.transport2.id], groupSeed)
+            : wheelchairs > 1
+              ? rotate([vehicles.transport2.id, vehicles.transport1.id, vehicles.transport4.id, vehicles.transport3.id, vehicles.transport5.id], groupSeed)
+              : rotate([vehicles.transport1.id, vehicles.transport4.id, vehicles.transport2.id, vehicles.transport5.id, vehicles.transport3.id], groupSeed);
+        const vehicle = preferredOrder
+          .map((id) => fleet.find((candidate) => candidate.id === id))
+          .find(
+            (candidate) =>
+              candidate &&
+              crewByVehicleId[candidate.id] &&
+              candidate.seatedCapacity >= seated &&
+              candidate.wheelchairPositions >= wheelchairs &&
+              candidate.stretcherPositions >= stretchers &&
+              isFree(candidate.id, from, to),
+          );
+        // Nothing fits: the chunk stays in the rail, which is a real outcome
+        // and a more useful fixture than a journey forced onto a vehicle
+        // that was never free.
+        if (!vehicle) continue;
+
+        const tripId = await buildTrip({
+          vehicleId: vehicle.id,
+          date,
+          status,
+          notes: `${facility?.name ?? ''} — ${outbound ? 'ida' : 'volta'}`.trim(),
+          crew: crewByVehicleId[vehicle.id],
+          legs: legTimes,
+        });
+        busy.set(vehicle.id, [...(busy.get(vehicle.id) ?? []), { from, to }]);
+        vehicleIds.add(vehicle.id);
+        journeys += 1;
+
+        // Where the vehicle actually is right after its first stop and right
+        // before its last: an outbound chunk's first stop is the earliest
+        // patient's own door and its last is the shared destination facility
+        // (every leg in the group drops off there); a return chunk runs the
+        // other way — first stop is that same shared facility, and the last
+        // is whichever patient's own door the latest dropoff belongs to.
+        const facilityPoint = facility ? { latitude: facility.latitude, longitude: facility.longitude } : { latitude: null, longitude: null };
+        const dropoffTimes = legTimes.map((legTime) => new Date(legTime.dropoffPlannedAt).getTime());
+        const lastDropoffIndex = dropoffTimes.indexOf(Math.max(...dropoffTimes));
+        builtTrips.push({
+          tripId,
+          vehicleId: vehicle.id,
+          direction: group.direction,
+          solo: soloRun || stretchers > 0,
+          legTimes,
+          firstPickupAt: Math.min(...legTimes.map((legTime) => new Date(legTime.pickupPlannedAt).getTime())),
+          lastStopAt: dropoffTimes[lastDropoffIndex],
+          firstDoor: outbound ? chunk[0].door : facilityPoint,
+          lastAnchor: outbound ? facilityPoint : chunk[lastDropoffIndex].door,
+          demand: { seated, wheelchairs, stretchers },
+        });
+      }
+    }
+
+    const mergedCount = await mergeChainedTrips(builtTrips);
+    await addBaseStops(builtTrips);
+    return { journeys: journeys - mergedCount, vehicleIds };
+  }
+
+  /**
+   * Chains a vehicle's next single-destination journey directly onto its
+   * previous one when the two are close enough in time and space to read as
+   * "picked up a few more people along the way to a second destination"
+   * rather than two unrelated rounds — see #219's own worked example (a run
+   * that starts in one locality, collects several people, and drops some at
+   * one facility and the rest at another).
+   *
+   * A journey the crew recognises never puts a dropoff before a later
+   * pickup — it starts at base or a facility, moves through patient
+   * pickups, and only then ends at one or more destination facilities.
+   * Simply appending `next`'s own already-built pickup→dropoff pair after
+   * `current`'s own would produce exactly that wrong shape (pickup,
+   * dropoff, pickup, dropoff), reading as two journeys sharing a trip id
+   * rather than one journey serving two destinations. So `next`'s pickups
+   * are rescheduled to slot in *before* `current`'s dropoff instead — its
+   * passengers are collected a little early, on the way, and ride along
+   * until their own facility, same as anyone genuinely picked up along a
+   * milk run's route; `next`'s own dropoffs are untouched, since they're
+   * still anchored to that facility's real appointment times.
+   *
+   * OUTBOUND only: `current.lastStopAt` (the point pickups must land
+   * before) is a single shared instant every leg in that chunk already
+   * arrives at together, which is exactly the room this needs. A RETURN
+   * chunk has no equivalent slack — its shared pickup instant is anchored
+   * to when its own facility actually releases its patients, which
+   * routinely isn't reachable before an earlier chunk's own house-by-house
+   * drops have even started, so it is never a merge candidate here.
+   *
+   * A raw multi-row move, not `assignLegToTrip`-per-leg: moving one leg at
+   * a time would widen `current`'s occupancy window before `next`'s own
+   * shrinks back down, and since every dropoff in an outbound chunk shares
+   * one identical instant, that transient state reliably self-conflicts
+   * with the vehicle's own still-there `next` booking — a false "double
+   * booking" `assignLegToTrip`'s public per-leg contract has no way to see
+   * past. Moving every stop in one transaction and recomputing `current`'s
+   * occupancy once, only after `next`'s own booking is gone, never passes
+   * through that state.
+   *
+   * Deliberately only chains *adjacent* pairs, never re-scans further ahead
+   * — a modest three-journey vehicle-day is exactly the target, not an
+   * aggressive route optimiser trying every combination.
+   */
+  async function mergeChainedTrips(builtTrips: BuiltTripMeta[]): Promise<number> {
+    const byVehicle = new Map<string, BuiltTripMeta[]>();
+    for (const trip of builtTrips) byVehicle.set(trip.vehicleId, [...(byVehicle.get(trip.vehicleId) ?? []), trip]);
+
+    let mergedCount = 0;
+    for (const [vehicleId, trips] of byVehicle) {
+      trips.sort((a, b) => a.firstPickupAt - b.firstPickupAt);
+      const vehicle = fleet.find((candidate) => candidate.id === vehicleId);
+      if (!vehicle) continue;
+
+      let current = trips[0];
+      for (let index = 1; index < trips.length; index++) {
+        const next = trips[index];
+        // Gated on the two *dropoffs*, not the old pickup-to-dropoff gap:
+        // `next`'s own pickup time is about to be discarded and rebuilt
+        // below, so it says nothing about how much of a detour this second
+        // destination actually is. That's the gap between when each
+        // destination's own appointment is due — a big one means asking
+        // `next`'s passengers to ride along for a long time before their
+        // own stop, which stops reading as "along the way".
+        const gapMinutes = (next.lastStopAt - current.lastStopAt) / 60_000;
+        const distanceKm = beelineKm(current.lastAnchor, next.firstDoor);
+        const combinedDemand = {
+          seated: current.demand.seated + next.demand.seated,
+          wheelchairs: current.demand.wheelchairs + next.demand.wheelchairs,
+          stretchers: current.demand.stretchers + next.demand.stretchers,
+        };
+        // The combined demand has to fit the vehicle for real here, not
+        // just as a conservative over-count: once `next`'s pickups move
+        // before `current`'s dropoff (below), both chunks' passengers are
+        // genuinely onboard at once for that stretch.
+        const canChain =
+          !current.solo &&
+          !next.solo &&
+          current.direction === LegDirection.OUTBOUND &&
+          next.direction === LegDirection.OUTBOUND &&
+          gapMinutes > 0 &&
+          gapMinutes <= MERGE_MAX_GAP_MINUTES &&
+          distanceKm != null &&
+          distanceKm <= MERGE_MAX_DISTANCE_KM &&
+          combinedDemand.seated <= vehicle.seatedCapacity &&
+          combinedDemand.wheelchairs <= vehicle.wheelchairPositions &&
+          combinedDemand.stretchers <= vehicle.stretcherPositions;
+
+        if (!canChain) {
+          current = next;
+          continue;
+        }
+
+        // `next`'s pickups, moved to land before `current`'s dropoff —
+        // spread ten minutes apart, the last one a ten-minute buffer ahead
+        // of that dropoff, the same cadence `planDay` already spaces a
+        // single chunk's own pickups by.
+        const PICKUP_BUFFER_MINUTES = 10;
+        const PICKUP_SPACING_MINUTES = 10;
+        const rescheduledLegTimes = next.legTimes.map((legTime, legIndex) => ({
+          ...legTime,
+          pickupPlannedAt: new Date(
+            current.lastStopAt -
+              (PICKUP_BUFFER_MINUTES + (next.legTimes.length - 1 - legIndex) * PICKUP_SPACING_MINUTES) * 60_000,
+          ).toISOString(),
+        }));
+        const rescheduledPickupByLegId = new Map(
+          rescheduledLegTimes.map((legTime) => [legTime.legId, legTime.pickupPlannedAt]),
+        );
+
+        const nextStops = await prisma.tripStop.findMany({ where: { tripId: next.tripId }, orderBy: { sequence: 'asc' } });
+        const currentMaxSequence = (await prisma.tripStop.aggregate({ where: { tripId: current.tripId }, _max: { sequence: true } }))._max.sequence ?? 0;
+        await prisma.$transaction(
+          nextStops.map((stop, stopIndex) => {
+            const reschedule = stop.kind === TripStopKind.PICKUP && stop.transportLegId
+              ? rescheduledPickupByLegId.get(stop.transportLegId)
+              : undefined;
+            return prisma.tripStop.update({
+              where: { id: stop.id },
+              data: {
+                tripId: current.tripId,
+                sequence: currentMaxSequence + stopIndex + 1,
+                ...(reschedule ? { plannedAt: new Date(reschedule) } : {}),
+              },
+            });
+          }),
+        );
+        await vehicleOccupancy.removeForSource(VehicleOccupancySource.TRANSPORT_TRIP, next.tripId);
+        const currentStops = await prisma.tripStop.findMany({ where: { tripId: current.tripId } });
+        const window = computeTripOccupancyWindow(
+          currentStops.map((stop) => ({ plannedAt: stop.plannedAt.toISOString(), dwellMinutes: stop.dwellMinutes })),
+        );
+        await vehicleOccupancy.rebookForSource(VehicleOccupancySource.TRANSPORT_TRIP, current.tripId, {
+          vehicleId: current.vehicleId,
+          startsAt: new Date(window.startsAt),
+          endsAt: new Date(window.endsAt),
+        });
+        await prisma.trip.delete({ where: { id: next.tripId } });
+        mergedCount += 1;
+
+        current.legTimes = [...current.legTimes, ...rescheduledLegTimes];
+        current.firstPickupAt = Math.min(
+          current.firstPickupAt,
+          ...rescheduledLegTimes.map((legTime) => new Date(legTime.pickupPlannedAt).getTime()),
+        );
+        current.lastStopAt = next.lastStopAt;
+        current.lastAnchor = next.lastAnchor;
+        current.demand = combinedDemand;
+        // `next`'s trip row is gone — empty its own record so `addBaseStops`
+        // (which shares this same `builtTrips` array) skips it rather than
+        // adding a base stop to a deleted trip.
+        next.legTimes = [];
+        // `current` absorbed `next` and keeps scanning for a third journey
+        // to chain on — `current` itself doesn't advance.
+      }
+    }
+    return mergedCount;
+  }
+
+  /**
+   * The day's first journey leaves base to reach its first stop, and the
+   * last one returns to it afterwards (#247's own seed-realism ask) — never
+   * every journey in between, since a vehicle routinely goes straight from
+   * dropping people off at one facility to the next journey's first pickup
+   * without swinging back to Campo in the middle of the day. Scoped to each
+   * vehicle's own **surviving** trips, so a trip `mergeChainedTrips` deleted
+   * is never targeted.
+   */
+  async function addBaseStops(builtTrips: BuiltTripMeta[]): Promise<void> {
+    const byVehicle = new Map<string, BuiltTripMeta[]>();
+    for (const trip of builtTrips) byVehicle.set(trip.vehicleId, [...(byVehicle.get(trip.vehicleId) ?? []), trip]);
+
+    for (const trips of byVehicle.values()) {
+      // A trip `mergeChainedTrips` absorbed into another has its own
+      // `legTimes` emptied out — see that function's own comment — which is
+      // what excludes it here without needing a second, parallel "was this
+      // one deleted" flag.
+      const surviving = trips.filter((trip) => trip.legTimes.length > 0);
+      if (surviving.length === 0) continue;
+      surviving.sort((a, b) => a.firstPickupAt - b.firstPickupAt);
+      const first = surviving[0];
+      const last = surviving[surviving.length - 1];
+
+      // `addStop` has no override-reason parameter to fall back on (unlike
+      // `buildTrip`'s crew add above) — widening a boundary trip's own
+      // occupancy window by a plausible base-to-door travel time almost
+      // never collides with anything else on a fixture vehicle's day, but a
+      // conflict here is a missing base stop, not a reason to abort the
+      // whole date's plan.
+      try {
+        await tripStopsService.addStop(first.tripId, {
+          kind: TripStopKind.DEPART_FROM_BASE,
+          plannedAt: new Date(first.firstPickupAt - travelMinutesBetween(basePoint, first.firstDoor) * 60_000).toISOString(),
+        });
+      } catch (cause) {
+        console.warn(`  (skipped DEPART_FROM_BASE for trip ${first.tripId}: ${String(cause)})`);
+      }
+      try {
+        await tripStopsService.addStop(last.tripId, {
+          kind: TripStopKind.RETURN_TO_BASE,
+          plannedAt: new Date(last.lastStopAt + travelMinutesBetween(last.lastAnchor, basePoint) * 60_000).toISOString(),
+        });
+      } catch (cause) {
+        console.warn(`  (skipped RETURN_TO_BASE for trip ${last.tripId}: ${String(cause)})`);
+      }
+    }
+  }
+
+  // Every work day in the horizon gets a real plan, not just a handful of
+  // days near today — Sunday is the delegation's one day off, so it is the
+  // only date left entirely to the rail.
+  let plannedJourneys = 0;
+  let plannedDayCount = 0;
+  const vehicleCountsByDate: number[] = [];
+  const plannedDates = horizonDates.filter((date) => isoDayOfWeek(date) !== 0);
+  for (const date of plannedDates) {
+    const { journeys, vehicleIds } = await planDay(date, date < today ? TripStatus.COMPLETED : TripStatus.PLANNED);
+    plannedJourneys += journeys;
+    if (journeys > 0) {
+      plannedDayCount += 1;
+      vehicleCountsByDate.push(vehicleIds.size);
+    }
+  }
+  const stillUnassigned = await prisma.transportLeg.count({
+    where: {
+      date: { gte: parseIsoDate(today), lte: parseIsoDate(horizonTo) },
+      status: { notIn: [LegStatus.CANCELLED as never, LegStatus.NO_SHOW as never] },
+      tripStops: { none: {} },
+    },
+  });
+  console.log(
+    `✅ ${plannedJourneys} journeys planned across ${plannedDayCount} work days ` +
+      `(${Math.min(...vehicleCountsByDate)}–${Math.max(...vehicleCountsByDate)} vehicles a day); ` +
+      `${stillUnassigned} legs from today onwards left unassigned for the board's rail.`,
+  );
 
   console.log(`\n🎉 Dev fixtures loaded. Everyone above logs in with the password: ${DEV_PASSWORD}`);
 }

@@ -1,5 +1,5 @@
 import { ApiPropertyOptional, ApiProperty } from '@nestjs/swagger';
-import { IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsBoolean, IsEnum, IsOptional, IsString, MaxLength } from 'class-validator';
 import { CertificationType, MAX_OVERRIDE_REASON_LENGTH } from '@redinfo/shared';
 
 /** Adding a crew member unavailable per a `StaffAbsence` throws unless
@@ -19,4 +19,12 @@ export class AddTripCrewMemberDto {
   @IsString()
   @MaxLength(MAX_OVERRIDE_REASON_LENGTH)
   overrideReason?: string | null;
+
+  @ApiPropertyOptional({
+    description:
+      "Add them to every journey this vehicle runs on the trip's date, not just this one. Journeys they already crew are skipped.",
+  })
+  @IsOptional()
+  @IsBoolean()
+  applyToVehicleDay?: boolean;
 }

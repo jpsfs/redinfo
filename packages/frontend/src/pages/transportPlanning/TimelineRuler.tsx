@@ -72,8 +72,15 @@ export const TimelineRuler = ({
   );
 };
 
-/** The same hour gridlines, drawn behind a lane's blocks so a block's position
- * stays readable away from the ruler at the top of a tall board. */
+/**
+ * The same hour gridlines, drawn behind a lane's blocks so a block's position
+ * stays readable away from the ruler at the top of a tall board.
+ *
+ * Deliberately fainter than the ruler's own ticks. At full divider strength
+ * every hour reads as a table cell border, and the board stops looking like a
+ * timeline and starts looking like a spreadsheet — the blocks are the content,
+ * and the grid is only there to be measured against when you look for it.
+ */
 export const TimelineGridlines = ({ timelineWindow }: { timelineWindow: TimelineWindow }) => (
   <>
     {hourTicks(timelineWindow).map((tick) => (
@@ -86,8 +93,8 @@ export const TimelineGridlines = ({ timelineWindow }: { timelineWindow: Timeline
           top: 0,
           bottom: 0,
           borderLeft: 1,
-          borderColor: tick.labelled ? 'divider' : 'action.hover',
-          opacity: 0.6,
+          borderColor: 'divider',
+          opacity: tick.labelled ? 0.45 : 0.22,
           pointerEvents: 'none',
         }}
       />

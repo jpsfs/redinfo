@@ -244,6 +244,20 @@ describe('TripStopsService', () => {
       const result = await service.addStop('trip-1', { kind: TripStopKind.RETURN_TO_BASE, plannedAt: '2026-09-15T18:00:00.000Z' });
       expect(result).toMatchObject({ sequence: 1, address: 'Campo base', latitude: 41.6, longitude: -8.6, facilityId: null });
     });
+
+    it('creates a DEPART_FROM_BASE stop prepended before the trip\'s existing stops', async () => {
+      const prisma = buildPrismaStub({ tripStop: { findMany: jest.fn().mockResolvedValue([tripStop({ sequence: 3 })]), create: jest.fn().mockImplementation((args) => Promise.resolve({ id: 'dfb-1', createdAt: new Date(), updatedAt: new Date(), ...args.data })) } });
+      const { service } = makeService(prisma);
+      const result = await service.addStop('trip-1', { kind: TripStopKind.DEPART_FROM_BASE, plannedAt: '2026-09-15T06:30:00.000Z' });
+      expect(result).toMatchObject({ sequence: 2, address: 'Campo base', latitude: 41.6, longitude: -8.6, facilityId: null });
+    });
+
+    it('sequences a DEPART_FROM_BASE stop at 1 when the trip has no other stops yet', async () => {
+      const prisma = buildPrismaStub({ tripStop: { findMany: jest.fn().mockResolvedValue([]), create: jest.fn().mockImplementation((args) => Promise.resolve({ id: 'dfb-1', createdAt: new Date(), updatedAt: new Date(), ...args.data })) } });
+      const { service } = makeService(prisma);
+      const result = await service.addStop('trip-1', { kind: TripStopKind.DEPART_FROM_BASE, plannedAt: '2026-09-15T06:30:00.000Z' });
+      expect(result).toMatchObject({ sequence: 1 });
+    });
   });
 
   describe('deleteStop', () => {

@@ -20,12 +20,14 @@ import { VehicleOccupancyService } from '../vehicle-occupancy/vehicle-occupancy.
 import { OccurrenceTypePoliciesService } from '../transport-config/occurrence-type-policies.service';
 import { TransportRequestLegsService } from '../transport-requests/transport-request-legs.service';
 import { PatientsService } from '../patients/patients.service';
+import { GeographyService } from '../geography/geography.service';
 import { IdentityCipher } from '../common/identity-cipher';
 import { TripsService } from './trips.service';
 import { TripCrewService } from './trip-crew.service';
 import { TripStopsService } from './trip-stops.service';
 import { TripCrewManifestService } from './trip-crew-manifest.service';
 import { TripLegTravelService } from './trip-leg-travel.service';
+import { TripPlacementSuggestionsService } from './trip-placement-suggestions.service';
 
 /**
  * Integration coverage for #234's model/API against a real Postgres — the
@@ -64,6 +66,18 @@ describeIntegration('TripsService/TripStopsService/TripCrewService (integration)
       corridorFactorSource: null,
     }),
   } as never);
+  // Same reasoning as `legTravel` above — a fixed stub rather than a real
+  // OSRM `/route`/`/table` call, since this suite is about what the database
+  // does (#247 stage 4's routing itself is covered by
+  // `routing.integration.spec.ts`). One flat duration/distance for every
+  // cell is enough for `suggest`'s own tests below, which assert on
+  // `blockedBy` and `tripId`, never on the exact routed cost.
+  const routing = {
+    routeGeometry: async () => null,
+    distanceMatrix: async (origins: unknown[], destinations: unknown[]) =>
+      origins.map(() => destinations.map(() => ({ durationSeconds: 600, distanceMeters: 5_000, estimated: false }))),
+  } as never;
+  const geography = new GeographyService(prisma, delegationSettings);
   const trips = new TripsService(
     prisma,
     delegationSettings,
@@ -72,27 +86,52 @@ describeIntegration('TripsService/TripStopsService/TripCrewService (integration)
     transportRequestLegs,
     patients,
     legTravel,
+    geography,
+    routing,
   );
   const crew = new TripCrewService(prisma, staffAbsences);
   const stops = new TripStopsService(prisma, delegationSettings, vehicleOccupancy);
   const crewManifest = new TripCrewManifestService(prisma, transportRequestLegs, patients);
+  const placementSuggestions = new TripPlacementSuggestionsService(
+    prisma,
+    transportRequestLegs,
+    patients,
+    delegationSettings,
+    legTravel,
+    vehicleOccupancy,
+    routing,
+  );
 
   let coordinator: { id: string };
+  /** `getDetail`'s caller (#247 stage 3) — a function, not a constant,
+   * since `coordinator` itself is only assigned inside `beforeAll`. */
+  const callerUser = () => ({ id: coordinator.id, roles: [UserRole.TRANSPORT_COORDINATOR] });
   let crewMember: { id: string };
   let municipality: { id: string };
   let requester: { id: string };
   let payer: { id: string };
   let patient: { id: string };
+  /** A "maca" patient — what triggers the stricter crew requirement (#235). */
+  let stretcherPatient: { id: string };
   let facility: { id: string };
   let vehicleA: { id: string };
   let vehicleB: { id: string };
+  /** Physically able to carry a stretcher, but not an emergency ambulance —
+   * the exact vehicle the maca rule is about (#235). Capacity is a hard
+   * write-time block, so the leg could not be assigned to a van without a
+   * stretcher position at all, and the crew rule would never be reached. */
+  let vehicleC: { id: string };
 
   const tripIds: string[] = [];
   const legIds: string[] = [];
   const requestIds: string[] = [];
   const absenceIds: string[] = [];
 
-  async function makeLeg(suffix: string, direction: LegDirection = LegDirection.OUTBOUND) {
+  async function makeLeg(
+    suffix: string,
+    direction: LegDirection = LegDirection.OUTBOUND,
+    forPatientId: string = patient.id,
+  ) {
     const request = await prisma.transportRequest.create({
       data: {
         batchReference: `Email ${RUN}`,
@@ -103,7 +142,7 @@ describeIntegration('TripsService/TripStopsService/TripCrewService (integration)
         appointmentAt: new Date('2026-09-16T09:00:00.000Z'),
         requestingOrganisationId: requester.id,
         payingOrganisationId: payer.id,
-        patientId: patient.id,
+        patientId: forPatientId,
         occurrenceType: 'CONSULTA' as never,
         requestedVehicleType: 'TRANSPORTE' as never,
         originAddress: `Rua de Teste, ${suffix}, ${RUN}`,
@@ -141,6 +180,9 @@ describeIntegration('TripsService/TripStopsService/TripCrewService (integration)
     patient = await prisma.patient.create({
       data: { mobility: PatientMobility.WHEELCHAIR as never, createdById: coordinator.id },
     });
+    stretcherPatient = await prisma.patient.create({
+      data: { mobility: PatientMobility.STRETCHER as never, createdById: coordinator.id },
+    });
     facility = await prisma.facility.create({
       data: { name: `Hospital ${RUN}`, municipalityId: municipality.id, isTransportDestination: true, latitude: 41.1, longitude: -8.1 },
     });
@@ -166,9 +208,22 @@ describeIntegration('TripsService/TripStopsService/TripCrewService (integration)
         seatedCapacity: 2,
       },
     });
+    vehicleC = await prisma.vehicle.create({
+      data: {
+        licensePlate: `${RUN}-C`,
+        numeroCauda: `${RUN}-C`,
+        vehicleType: VehicleType.TRANSPORT,
+        insuranceRenewalDate: new Date('2099-12-31'),
+        nextImtInspectionDate: new Date('2099-12-31'),
+        wheelchairPositions: 1,
+        seatedCapacity: 2,
+        stretcherPositions: 1,
+      },
+    });
   });
 
   afterAll(async () => {
+    await prisma.userCertification.deleteMany({ where: { userId: { in: [coordinator.id, crewMember.id] } } });
     await prisma.tripCrewMember.deleteMany({ where: { tripId: { in: tripIds } } });
     await prisma.tripStop.deleteMany({ where: { tripId: { in: tripIds } } });
     await prisma.vehicleOccupancy.deleteMany({ where: { source: VehicleOccupancySource.TRANSPORT_TRIP, sourceId: { in: tripIds } } });
@@ -176,11 +231,11 @@ describeIntegration('TripsService/TripStopsService/TripCrewService (integration)
     await prisma.transportLeg.deleteMany({ where: { id: { in: legIds } } });
     await prisma.transportRequest.deleteMany({ where: { id: { in: requestIds } } });
     await prisma.staffAbsence.deleteMany({ where: { id: { in: absenceIds } } });
-    await prisma.patient.delete({ where: { id: patient.id } });
+    await prisma.patient.deleteMany({ where: { id: { in: [patient.id, stretcherPatient.id] } } });
     await prisma.facility.delete({ where: { id: facility.id } });
     await prisma.organisation.deleteMany({ where: { id: { in: [requester.id, payer.id] } } });
     await prisma.municipality.delete({ where: { id: municipality.id } });
-    await prisma.vehicle.deleteMany({ where: { id: { in: [vehicleA.id, vehicleB.id] } } });
+    await prisma.vehicle.deleteMany({ where: { id: { in: [vehicleA.id, vehicleB.id, vehicleC.id] } } });
     await prisma.user.deleteMany({ where: { id: { in: [coordinator.id, crewMember.id] } } });
     await prisma.$disconnect();
   });
@@ -202,7 +257,7 @@ describeIntegration('TripsService/TripStopsService/TripCrewService (integration)
     expect(occupancy?.startsAt.toISOString()).toBe('2026-09-16T08:00:00.000Z');
     expect(occupancy?.endsAt.toISOString()).toBe('2026-09-16T08:30:00.000Z');
 
-    const detailBefore = await trips.getDetail(trip.id);
+    const detailBefore = await trips.getDetail(trip.id, callerUser());
     const dropoffStop = detailBefore.stops.find((s) => s.kind === TripStopKind.DROPOFF)!;
 
     await stops.addStop(trip.id, {
@@ -299,7 +354,7 @@ describeIntegration('TripsService/TripStopsService/TripCrewService (integration)
     });
     expect(added.overrideReason).toBe('Asked to come in despite the recorded leave');
 
-    const detail = await trips.getDetail(trip.id);
+    const detail = await trips.getDetail(trip.id, callerUser());
     expect(detail.issues.some((issue) => issue.code === 'CREW_UNAVAILABLE')).toBe(false);
   });
 
@@ -336,6 +391,71 @@ describeIntegration('TripsService/TripStopsService/TripCrewService (integration)
     await prisma.vehicleOccupancy.delete({ where: { id: shift.id } });
   });
 
+  it('integration: suggest-placements ranks an idle vehicle clean and flags one already booked over the group window', async () => {
+    // A date this suite touches nowhere else, so a leftover `VehicleOccupancy`
+    // from an earlier test in this file (vehicleA/B carry real trips on
+    // 09-16/09-21/09-22 above) can never leak a false conflict in here.
+    const date = '2026-09-30';
+    const request = await prisma.transportRequest.create({
+      data: {
+        batchReference: `Email ${RUN}`,
+        communicatedAt: new Date('2026-09-10T17:00:00.000Z'),
+        requesterAccountCode: `ACC-${RUN}`,
+        responseDueAt: new Date('2026-09-11T05:00:00.000Z'),
+        externalServiceNumber: `SVC-${RUN}-suggest-01`,
+        appointmentAt: new Date(`${date}T09:00:00.000Z`),
+        requestingOrganisationId: requester.id,
+        payingOrganisationId: payer.id,
+        patientId: patient.id,
+        occurrenceType: 'CONSULTA' as never,
+        requestedVehicleType: 'TRANSPORTE' as never,
+        originAddress: `Rua de Teste, suggest-01, ${RUN}`,
+        destinationFacilityId: facility.id,
+        createdById: coordinator.id,
+      },
+    });
+    requestIds.push(request.id);
+    const leg = await prisma.transportLeg.create({
+      data: {
+        transportRequestId: request.id,
+        date: new Date(`${date}T00:00:00.000Z`),
+        generatedForDate: new Date(`${date}T00:00:00.000Z`),
+        direction: LegDirection.OUTBOUND as never,
+        // The leg's own literal override, so this test resolves a door
+        // without needing the patient's own geocoded home too — see
+        // `endpointCoordinates` in shared for why the leg's own columns win
+        // when present.
+        originAddress: `Rua de Teste, suggest-01, ${RUN}`,
+        originLatitude: 41.55,
+        originLongitude: -8.62,
+        destinationFacilityId: facility.id,
+      },
+    });
+    legIds.push(leg.id);
+
+    const maintenance = await prisma.vehicleOccupancy.create({
+      data: {
+        vehicleId: vehicleB.id,
+        startsAt: new Date(`${date}T07:00:00.000Z`),
+        endsAt: new Date(`${date}T10:00:00.000Z`),
+        source: VehicleOccupancySource.MAINTENANCE,
+        sourceId: `maint-${RUN}`,
+      },
+    });
+
+    try {
+      const placements = await placementSuggestions.suggest([leg.id], callerUser());
+      const forA = placements.find((p) => p.vehicle.id === vehicleA.id && p.tripId === null);
+      const forB = placements.find((p) => p.vehicle.id === vehicleB.id && p.tripId === null);
+      expect(forA?.blockedBy).toEqual([]);
+      expect(forB?.blockedBy).toContain('VEHICLE_UNAVAILABLE');
+      // Feasible candidates rank ahead of blocked ones (`compareCandidates`).
+      expect(placements.indexOf(forA!)).toBeLessThan(placements.indexOf(forB!));
+    } finally {
+      await prisma.vehicleOccupancy.delete({ where: { id: maintenance.id } });
+    }
+  });
+
   it('integration: crew manifest (#236) is scoped to the caller and reads the real facility/leg/treatment-window joins', async () => {
     const trip = await trips.create({ date: '2026-09-22', vehicleId: vehicleA.id });
     tripIds.push(trip.id);
@@ -363,5 +483,89 @@ describeIntegration('TripsService/TripStopsService/TripCrewService (integration)
     // No `estimatedEndAt` was ever supplied on this leg — `treatmentEndAt`
     // still reads the appointment-plus-floor fallback, never blank.
     expect(dropoffStop.treatmentEndAt).not.toBeNull();
+  });
+
+  it("integration: applyToVehicleDay crews every journey that vehicle runs that date, and skips the one they're already on", async () => {
+    const morning = await trips.create({ date: '2026-09-23', vehicleId: vehicleA.id });
+    const afternoon = await trips.create({ date: '2026-09-23', vehicleId: vehicleA.id });
+    // A different vehicle the same day, and the same vehicle a different day —
+    // neither should be touched. This is the reason the test is here rather
+    // than against a mocked Prisma: the `where` is the whole behaviour.
+    const otherVehicle = await trips.create({ date: '2026-09-23', vehicleId: vehicleB.id });
+    const otherDay = await trips.create({ date: '2026-09-24', vehicleId: vehicleA.id });
+    tripIds.push(morning.id, afternoon.id, otherVehicle.id, otherDay.id);
+
+    // Already on the afternoon round before the day-wide add.
+    await crew.add(afternoon.id, { userId: crewMember.id, role: CertificationType.DRIVER });
+
+    await crew.add(morning.id, {
+      userId: crewMember.id,
+      role: CertificationType.DRIVER,
+      applyToVehicleDay: true,
+    });
+
+    const crewed = await prisma.tripCrewMember.findMany({
+      where: { userId: crewMember.id, tripId: { in: [morning.id, afternoon.id, otherVehicle.id, otherDay.id] } },
+      select: { tripId: true },
+    });
+    expect(crewed.map((row) => row.tripId).sort()).toEqual([morning.id, afternoon.id].sort());
+  });
+
+  it('integration: a stretcher patient demands an emergency vehicle and a second TAT, against real certification rows', async () => {
+    const trip = await trips.create({ date: '2026-09-25', vehicleId: vehicleC.id });
+    tripIds.push(trip.id);
+    const leg = await makeLeg('maca-01', LegDirection.OUTBOUND, stretcherPatient.id);
+
+    await stops.assignLegToTrip(trip.id, {
+      transportLegId: leg.id,
+      pickupPlannedAt: '2026-09-25T08:00:00.000Z',
+      dropoffPlannedAt: '2026-09-25T08:30:00.000Z',
+    });
+
+    // A TAS: the ladder must resolve it as satisfying the TAT requirement.
+    await prisma.userCertification.create({
+      data: {
+        userId: crewMember.id,
+        type: CertificationType.TAS,
+        validUntil: new Date('2099-12-31'),
+        createdById: coordinator.id,
+      },
+    });
+    await crew.add(trip.id, { userId: crewMember.id, role: CertificationType.TAS });
+
+    const short = await trips.getDetail(trip.id, callerUser());
+    expect(short.crewRequirement).toMatchObject({ minimumCrew: 2, minimumCertification: CertificationType.TAT });
+    // vehicleC carries a stretcher but is a TRANSPORT vehicle, and one
+    // qualified crew member is one short of the two a maca needs.
+    expect(short.issues).toContainEqual(expect.objectContaining({ code: 'VEHICLE_NOT_EMERGENCY' }));
+    expect(short.issues).toContainEqual(expect.objectContaining({ code: 'CREW_TOO_FEW' }));
+
+    // The coordinator holds nothing — adding them does not clear the count.
+    await crew.add(trip.id, { userId: coordinator.id, role: CertificationType.DRIVER });
+    const stillShort = await trips.getDetail(trip.id, callerUser());
+    expect(stillShort.issues).toContainEqual(expect.objectContaining({ code: 'CREW_TOO_FEW' }));
+
+    // Certify them and the shortfall clears without anything else changing.
+    await prisma.userCertification.create({
+      data: {
+        userId: coordinator.id,
+        type: CertificationType.TAT,
+        validUntil: new Date('2099-12-31'),
+        createdById: coordinator.id,
+      },
+    });
+    const crewed = await trips.getDetail(trip.id, callerUser());
+    expect(crewed.issues.some((issue) => issue.code === 'CREW_TOO_FEW')).toBe(false);
+    // The board gets each member already joined to their name and effective
+    // certifications, so it never has to ask `users` a second time. Compared
+    // by user id — `crewMembers` carries no ordering guarantee.
+    const byUser = new Map(crewed.crewMembers.map((member) => [member.userId, member]));
+    expect(byUser.get(crewMember.id)?.certifications.sort()).toEqual([
+      CertificationType.SBV,
+      CertificationType.TAS,
+      CertificationType.TAT,
+    ]);
+    expect(byUser.get(coordinator.id)?.certifications.sort()).toEqual([CertificationType.SBV, CertificationType.TAT]);
+    expect(byUser.get(crewMember.id)?.lastName).toBe('Member');
   });
 });

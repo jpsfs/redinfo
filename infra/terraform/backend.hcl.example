@@ -1,0 +1,14 @@
+# Copy to backend.hcl (gitignored) and pass it at init time:
+#   terraform init -backend-config=backend.hcl
+#
+# The bucket is created out of band by infra/scripts/bootstrap-state-bucket.sh
+# — it cannot be managed by this state, since it is what stores this state.
+bucket = "redinfo-terraform-state"
+key    = "contabo/production.tfstate"
+region = "eu-central-1"
+
+# Server-side encryption, and S3-native locking (conditional writes) instead
+# of a DynamoDB lock table — Terraform 1.10+ only, hence the required_version
+# floor in versions.tf.
+encrypt      = true
+use_lockfile = true

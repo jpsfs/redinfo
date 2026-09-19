@@ -530,6 +530,7 @@ const MESSAGES = {
   'nav.transportRequests': { pt: 'Pedidos', en: 'Referrals' },
   'nav.transportReferrals': { pt: 'Decidir', en: 'Decide' },
   'nav.transportPlanning': { pt: 'Planeamento', en: 'Planning' },
+  'nav.transportBuild': { pt: 'Montar o dia', en: 'Build the day' },
   'nav.transportConfig': { pt: 'Política de planeamento', en: 'Planning policy' },
   'nav.holidays': { pt: 'Feriados', en: 'Holidays' },
   'nav.myProfile': { pt: 'O meu perfil', en: 'My Profile' },
@@ -1732,6 +1733,7 @@ const MESSAGES = {
   'myTransportTrips.stopKind.DROPOFF': { pt: 'Entrega', en: 'Drop-off' },
   'myTransportTrips.stopKind.WAIT': { pt: 'Espera', en: 'Wait' },
   'myTransportTrips.stopKind.RETURN_TO_BASE': { pt: 'Regresso à base', en: 'Return to base' },
+  'myTransportTrips.stopKind.DEPART_FROM_BASE': { pt: 'Partida da base', en: 'Depart from base' },
   'myTransportTrips.waitsHere': { pt: 'A equipa espera aqui', en: 'Crew waits here' },
   'myTransportTrips.treatmentWindow': {
     pt: 'Tratamento: %{start} – %{end}',
@@ -1866,6 +1868,13 @@ const MESSAGES = {
   'transportConfig.arrivalWindowEarliestMinutes': { pt: 'Não chegar mais de X minutos antes', en: 'Do not arrive more than X minutes early' },
   'transportConfig.arrivalWindowLatestMinutes': { pt: 'Não chegar depois de X minutos antes', en: 'Do not arrive later than X minutes before' },
   'transportConfig.arrivalToleranceMinutes': { pt: 'Tolerância de atraso', en: 'Late-arrival tolerance' },
+  'transportConfig.handlingHeading': { pt: 'Tempo de embarque e desembarque', en: 'Pickup and drop-off handling time' },
+  'transportConfig.handlingSubheading': {
+    pt: 'Quanto tempo demora, por doente, a colocá-lo no veículo ou a retirá-lo — incluído nas horas de recolha/entrega sugeridas no quadro de planeamento.',
+    en: 'How long it takes, per patient, to get them into or out of the vehicle — folded into the pickup/drop-off times the planning board suggests.',
+  },
+  'transportConfig.pickupHandlingMinutes': { pt: 'Recolha (min)', en: 'Pickup (min)' },
+  'transportConfig.dropoffHandlingMinutes': { pt: 'Entrega (min)', en: 'Drop-off (min)' },
   'transportConfig.policiesHeading': { pt: 'Duração por tipo de ocorrência', en: 'Duration by occurrence type' },
   'transportConfig.policiesSubheading': {
     pt: 'O mínimo é o tempo mais cedo em que o veículo pode ficar livre quando não há uma hora de fim indicada para a viagem; o valor por omissão é apenas uma sugestão de planeamento.',
@@ -2953,6 +2962,9 @@ const MESSAGES = {
   'transportPlanning.loadFailed': { pt: 'Não foi possível carregar o plano do dia.', en: "Could not load the day's plan." },
   'transportPlanning.railTitle': { pt: 'Por atribuir', en: 'Unassigned' },
   'transportPlanning.railEmpty': { pt: 'Nada por atribuir neste dia.', en: 'Nothing unassigned on this day.' },
+  'transportPlanning.railCollapse': { pt: 'Colapsar o painel', en: 'Collapse the panel' },
+  'transportPlanning.railExpand': { pt: 'Expandir o painel', en: 'Expand the panel' },
+  'transportPlanning.railDock': { pt: 'Fixar o painel ao lado do quadro', en: 'Dock the panel beside the board' },
   'transportPlanning.assignButton': { pt: 'Atribuir', en: 'Assign' },
   'transportPlanning.reassignButton': { pt: 'Reatribuir', en: 'Reassign' },
   'transportPlanning.addVehicleButton': { pt: 'Adicionar viatura', en: 'Add vehicle' },
@@ -2965,6 +2977,8 @@ const MESSAGES = {
   'transportPlanning.releaseLabel': { pt: 'Libertada', en: 'Released' },
   'transportPlanning.issuesTitle': { pt: 'Avisos', en: 'Warnings' },
   'transportPlanning.issuesEmpty': { pt: 'Sem avisos.', en: 'No warnings.' },
+  'transportPlanning.issuesButtonAria': { pt: '%{count} avisos', en: '%{count} warnings' },
+  'transportPlanning.issuesClose': { pt: 'Fechar', en: 'Close' },
   'transportPlanning.occupancyLegend.MAINTENANCE': { pt: 'Manutenção', en: 'Maintenance' },
   'transportPlanning.occupancyLegend.SCHEDULE_SHIFT': { pt: 'Turno', en: 'Shift' },
   'transportPlanning.occupancyLegend.SUPPORT_EVENT': { pt: 'Evento de apoio', en: 'Support event' },
@@ -2973,14 +2987,29 @@ const MESSAGES = {
   // The board's own vocabulary. "Jornada" is the delegation's word for one
   // round of the vehicle's day — the sections the printed daily sheet
   // separates with a heavy rule, one `Trip` each.
+  // The lane prints the ordinal as a badge beside this word rather than
+  // interpolating it into one string — the number is a landmark you scan for,
+  // the word is context you read once.
+  'transportPlanning.journeyWord': { pt: 'Jornada', en: 'Journey' },
   'transportPlanning.journeyLabel': { pt: 'Jornada %{number}', en: 'Journey %{number}' },
+  'transportPlanning.vehicleType.EMERGENCY': { pt: 'Ambulância de socorro', en: 'Emergency ambulance' },
+  'transportPlanning.vehicleType.TRANSPORT': { pt: 'Viatura de transporte', en: 'Transport vehicle' },
   'transportPlanning.addJourneyButton': { pt: 'Nova jornada', en: 'New journey' },
+  'transportPlanning.openVehicleDay': { pt: 'Abrir dia da viatura', en: 'Open vehicle day' },
   'transportPlanning.journeyEmpty': { pt: 'Jornada vazia — arraste uma viagem para aqui.', en: 'Empty journey — drag a leg here.' },
   'transportPlanning.noCrew': { pt: 'Sem tripulação', en: 'No crew' },
   'transportPlanning.dropHere': { pt: 'Largar às %{time}', en: 'Drop at %{time}' },
   'transportPlanning.zoomIn': { pt: 'Aproximar', en: 'Zoom in' },
   'transportPlanning.zoomOut': { pt: 'Afastar', en: 'Zoom out' },
   'transportPlanning.zoomFit': { pt: 'Dia inteiro', en: 'Whole day' },
+
+  // The week strip (#247 stage 6) — per-date counts so a heavy day is a
+  // Monday decision, not a Thursday-morning one.
+  'transportPlanning.weekStripToggle': { pt: 'Tira da semana', en: 'Week strip' },
+  'transportPlanning.weekStripJourneys': { pt: 'viagens', en: 'journeys' },
+  'transportPlanning.weekStripUnplanned': { pt: 'por planear', en: 'unplanned' },
+  'transportPlanning.weekStripOutOfDistrict': { pt: '%{count} fora do distrito', en: '%{count} out of district' },
+  'transportPlanning.weekStripLoadFailed': { pt: 'Não foi possível carregar a tira da semana.', en: 'Could not load the week strip.' },
 
   // H.I. and H.F. as they are printed on the delegation's daily service sheet
   // — kept as the crews' own abbreviations rather than renamed, since the
@@ -3000,7 +3029,10 @@ const MESSAGES = {
     en: 'Straight-line estimate — outside the routed area.',
   },
   'transportPlanning.destinationUnknown': { pt: 'Sem destino', en: 'No destination' },
+  'transportPlanning.destinationPlusMore': { pt: '%{name} +%{count}', en: '%{name} +%{count}' },
   'transportPlanning.returnToBaseLabel': { pt: 'Regresso à base', en: 'Return to base' },
+  'transportPlanning.departFromBaseLabel': { pt: 'Partida da base', en: 'Depart from base' },
+  'transportPlanning.onboardLabel': { pt: 'Na viatura', en: 'In the vehicle' },
 
   // Assign/reassign dialog — also the keyboard equivalent to dragging (#235's
   // own accessibility requirement) and the override-reason prompt after a
@@ -3035,6 +3067,46 @@ const MESSAGES = {
   'transportPlanning.addVehicleDialogConfirm': { pt: 'Adicionar', en: 'Add' },
   'transportPlanning.addVehicleFailed': { pt: 'Não foi possível adicionar a viatura.', en: 'Could not add the vehicle.' },
 
+  // Crew dialog (#235) — who crews one journey. Composition is ranked by the
+  // backend (`checkTripCrew`) and shown here, never enforced by this dialog:
+  // a journey is crewed one person at a time.
+  'transportPlanning.crewDialogTitle': { pt: 'Tripulação da jornada %{number}', en: 'Crew for journey %{number}' },
+  'transportPlanning.crewDialogClose': { pt: 'Fechar', en: 'Close' },
+  'transportPlanning.crewCurrentTitle': { pt: 'Tripulação atual', en: 'Current crew' },
+  'transportPlanning.crewAddTitle': { pt: 'Adicionar à tripulação', en: 'Add to the crew' },
+  'transportPlanning.crewAddButton': { pt: 'Adicionar', en: 'Add' },
+  'transportPlanning.crewRemoveButton': { pt: 'Remover da tripulação', en: 'Remove from the crew' },
+  'transportPlanning.crewPersonLabel': { pt: 'Pessoa', en: 'Person' },
+  'transportPlanning.crewRoleLabel': { pt: 'Função nesta jornada', en: 'Role on this journey' },
+  'transportPlanning.crewApplyToVehicleDay': {
+    pt: 'Aplicar a todas as jornadas desta viatura no dia',
+    en: "Apply to every journey of this vehicle on this day",
+  },
+  'transportPlanning.crewRequirementHint': { pt: 'Mínimo exigido: %{requirement}', en: 'Minimum required: %{requirement}' },
+  'transportPlanning.crewRequiresEmergencyVehicle': {
+    pt: 'Transporte em maca — exige ambulância de socorro.',
+    en: 'Stretcher transport — requires an emergency ambulance.',
+  },
+  'transportPlanning.crewAbsent': { pt: 'Ausente', en: 'Absent' },
+  'transportPlanning.crewAbsentHint': {
+    pt: 'Esta pessoa está registada como ausente neste dia. Indique o motivo para a adicionar mesmo assim.',
+    en: 'This person is recorded absent on this date. Give a reason to add them anyway.',
+  },
+  'transportPlanning.crewAlreadyCrewing': { pt: 'Já em %{count} jornada(s)', en: 'Already on %{count} journey(s)' },
+  'transportPlanning.crewOnRoster': { pt: 'De escala neste dia', en: 'On the roster this day' },
+  'transportPlanning.crewOffRoster': { pt: 'Restantes', en: 'Everyone else' },
+  'transportPlanning.crewNoCertifications': { pt: 'Sem certificações válidas', en: 'No valid certifications' },
+  'transportPlanning.crewCandidatesFailed': {
+    pt: 'Não foi possível carregar as pessoas disponíveis.',
+    en: 'Could not load the available people.',
+  },
+  'transportPlanning.crewAddFailed': { pt: 'Não foi possível adicionar à tripulação.', en: 'Could not add to the crew.' },
+  'transportPlanning.crewRemoveFailed': {
+    pt: 'Não foi possível remover da tripulação.',
+    en: 'Could not remove from the crew.',
+  },
+  'transportPlanning.crewSaved': { pt: 'Tripulação atualizada.', en: 'Crew updated.' },
+
   // Wait-or-release dialog (#219) — data only, the board never decides for
   // the planner.
   'transportPlanning.waitReleaseButton': { pt: 'Esperar ou libertar', en: 'Wait or release' },
@@ -3065,6 +3137,232 @@ const MESSAGES = {
     pt: 'Chegada atrasada, fora da tolerância',
     en: 'Arrival late, beyond tolerance',
   },
+
+  // ── Journey identity and focus mode (#247 stage 1) ──
+  'transportPlanning.selectJourneyLabel': { pt: 'Selecionar viagem %{number}', en: 'Select journey %{number}' },
+
+  // ── Grouped unplanned rail (#247 stage 2) ──
+  'transportPlanning.railViewGrouped': { pt: 'Agrupado', en: 'Grouped' },
+  'transportPlanning.railViewPerPerson': { pt: 'Por pessoa', en: 'Per person' },
+  'transportPlanning.groupSize': {
+    pt: '%{smart_count} pessoa |||| %{smart_count} pessoas',
+    en: '%{smart_count} person |||| %{smart_count} people',
+  },
+  'transportPlanning.assignPersonAction': { pt: 'Atribuir %{name}', en: 'Assign %{name}' },
+  'transportPlanning.assignGroupButton': { pt: 'Atribuir o grupo', en: 'Assign group' },
+  'transportPlanning.assignGroupDialogTitle': {
+    pt: 'Atribuir %{count} pessoas a uma viagem',
+    en: 'Assign %{count} people to a journey',
+  },
+  'transportPlanning.assignGroupDialogHint': {
+    pt: 'Todas ficam com a mesma recolha e entrega — para tratar alguém em separado, usa a vista "Por pessoa".',
+    en: 'Everyone gets the same pickup and dropoff — to place someone separately, use the "Per person" view.',
+  },
+  'transportPlanning.assignGroupPartial': {
+    pt: '%{count} já atribuídas.',
+    en: '%{count} already assigned.',
+  },
+  'transportPlanning.groupInfeasible.WHEELCHAIR': {
+    pt: 'Nenhuma viatura de hoje tem lugares de cadeira de rodas suficientes para o grupo todo.',
+    en: 'No vehicle on today’s board has enough wheelchair positions for the whole group.',
+  },
+  'transportPlanning.groupInfeasible.STRETCHER': {
+    pt: 'Nenhuma viatura de hoje tem lugares de maca suficientes para o grupo todo.',
+    en: 'No vehicle on today’s board has enough stretcher positions for the whole group.',
+  },
+  'transportPlanning.groupInfeasible.SEATS': {
+    pt: 'Nenhuma viatura de hoje tem lugares sentados suficientes para o grupo todo.',
+    en: 'No vehicle on today’s board has enough seats for the whole group.',
+  },
+  // The same three verdicts as a single line. On a real day most cards in the
+  // rail carry the same one, and repeating the full sentence six times down a
+  // narrow column says nothing the first one didn't — the full wording stays,
+  // one hover away.
+  'transportPlanning.groupInfeasibleShort.WHEELCHAIR': {
+    pt: 'Sem lugares de cadeira de rodas',
+    en: 'No wheelchair positions',
+  },
+  'transportPlanning.groupInfeasibleShort.STRETCHER': {
+    pt: 'Sem lugares de maca',
+    en: 'No stretcher positions',
+  },
+  'transportPlanning.groupInfeasibleShort.SEATS': {
+    pt: 'Sem lugares sentados',
+    en: 'Not enough seats',
+  },
+
+  // ── "Montar o dia" — the planner-first construction page ──────────────
+  'transportBuild.pageTitle': { pt: 'Montar o dia', en: 'Build the day' },
+  'transportBuild.pageSubtitle': {
+    pt: 'Primeiro os recursos, depois a procura — e o quadro para conferir.',
+    en: 'Resources first, demand second — and the board to check the result.',
+  },
+  'transportBuild.openBoard': { pt: 'Ver no quadro', en: 'Open the board' },
+  'transportBuild.statUnplaced': { pt: 'Por colocar', en: 'Still to place' },
+  'transportBuild.statVehicles': { pt: 'Viaturas em serviço', en: 'Vehicles in service' },
+  'transportBuild.statCrewShort': { pt: 'Jornadas sem tripulação', en: 'Journeys short of crew' },
+  'transportBuild.statConflicts': { pt: 'Conflitos', en: 'Conflicts' },
+  'transportBuild.progressLabel': {
+    pt: '%{placed} de %{total} pessoas colocadas',
+    en: '%{placed} of %{total} people placed',
+  },
+  'transportBuild.step1Title': { pt: '1 · Recursos do dia', en: '1 · Today’s resources' },
+  'transportBuild.step1Hint': {
+    pt: 'Uma viatura sem tripulação não pode levar ninguém. %{count} pessoas disponíveis ainda sem jornada.',
+    en: 'A vehicle with no crew cannot carry anyone. %{count} available people are not on a journey yet.',
+  },
+  'transportBuild.step2Title': { pt: '2 · Colocar a procura', en: '2 · Place the demand' },
+  'transportBuild.step2Hint': {
+    pt: 'Cada cartão é uma decisão: um destino, uma janela de chegada, as pessoas que a partilham.',
+    en: 'Each card is one decision: one destination, one arrival window, the people who share it.',
+  },
+  'transportBuild.step3Title': { pt: '3 · O dia até agora', en: '3 · The day so far' },
+  'transportBuild.crewButton': { pt: 'Tripulação', en: 'Crew' },
+  'transportBuild.vehicleCapacity': {
+    pt: '%{seats} sentados · %{wheelchairs} cadeira de rodas · %{stretchers} maca',
+    en: '%{seats} seated · %{wheelchairs} wheelchair · %{stretchers} stretcher',
+  },
+  'transportBuild.noVehicles': {
+    pt: 'Ainda não há viaturas em serviço neste dia.',
+    en: 'No vehicles are in service on this date yet.',
+  },
+  'transportBuild.allPlaced': { pt: 'Está tudo colocado neste dia.', en: 'Everything is placed for this date.' },
+  'transportBuild.journeyEmpty': { pt: 'Ainda sem passageiros', en: 'No passengers yet' },
+  'transportBuild.openJourney': { pt: 'Abrir', en: 'Open' },
+
+  // ── Journey inspector panel (#247 stage 2) ──
+  'transportPlanning.inspectorTitle': { pt: 'Viagem %{number} · %{vehicle}', en: 'Journey %{number} · %{vehicle}' },
+  'transportPlanning.inspectorClose': { pt: 'Fechar', en: 'Close' },
+  'transportPlanning.inspectorStopsTitle': { pt: 'Paragens', en: 'Stops' },
+  'transportPlanning.inspectorStopsPickupTitle': { pt: 'Recolhas', en: 'Pickups' },
+  'transportPlanning.inspectorStopsDropoffTitle': { pt: 'Entregas', en: 'Deliveries' },
+  'transportPlanning.inspectorStopsOtherTitle': { pt: 'Outras paragens', en: 'Other stops' },
+  'transportPlanning.inspectorStopPickup': { pt: 'Recolha', en: 'Pickup' },
+  'transportPlanning.inspectorStopDropoff': { pt: 'Entrega', en: 'Drop-off' },
+  'transportPlanning.inspectorStopWait': { pt: 'Espera', en: 'Wait' },
+  'transportPlanning.inspectorStopReturnToBase': { pt: 'Regresso à base', en: 'Return to base' },
+  'transportPlanning.inspectorStopDepartFromBase': { pt: 'Partida da base', en: 'Depart from base' },
+  'transportPlanning.inspectorEditCrew': { pt: 'Editar equipa', en: 'Edit crew' },
+  'transportPlanning.inspectorOpenJourney': { pt: 'Abrir a viagem', en: 'Open journey' },
+
+  // ── Map panel (#247 stage 4) ──
+  'transportPlanning.mapUnavailable': {
+    pt: 'O mapa base não está disponível nesta instalação.',
+    en: 'The basemap is not available on this install.',
+  },
+  'transportPlanning.mapUnavailableHint': {
+    pt: 'Peça a um administrador para correr scripts/prepare-basemap.sh. O quadro continua totalmente utilizável sem o mapa.',
+    en: 'Ask an administrator to run scripts/prepare-basemap.sh. The board stays fully usable without the map.',
+  },
+  'transportPlanning.mapLoading': { pt: 'A carregar o mapa…', en: 'Loading the map…' },
+  'transportPlanning.mapFitToDay': { pt: 'Enquadrar o dia todo', en: 'Fit the whole day' },
+  'transportPlanning.mapLegendRoute': { pt: 'percurso de uma viagem', en: 'a journey’s route' },
+  'transportPlanning.mapLegendStop': { pt: 'paragem planeada', en: 'planned stop' },
+  'transportPlanning.mapLegendUnplanned': { pt: 'por planear', en: 'unplanned' },
+  'transportPlanning.mapOffFrame': { pt: '%{distanceKm} km · viagem %{number}', en: '%{distanceKm} km · journey %{number}' },
+  'transportPlanning.mapOverlapHintTitle': { pt: 'Possíveis partilhas de percurso', en: 'Possible corridor overlaps' },
+  'transportPlanning.mapOverlapHint': {
+    pt: 'Viagem %{a} e viagem %{b} passam a menos de %{distanceKm} km uma da outra.',
+    en: 'Journey %{a} and journey %{b} pass within %{distanceKm} km of each other.',
+  },
+  'transportPlanning.mapOverlapDismiss': { pt: 'Dispensar aviso', en: 'Dismiss' },
+  'transportPlanning.mapFullscreen': { pt: 'Ecrã inteiro', en: 'Fullscreen' },
+  'transportPlanning.mapExitFullscreen': { pt: 'Sair de ecrã inteiro', en: 'Exit fullscreen' },
+
+  // ── Journey page and crew sheet (#247 stage 3) ──
+  'transportJourney.pageTitle': { pt: 'Viagem %{number}', en: 'Journey %{number}' },
+  'transportJourney.pageTitleLoading': { pt: 'Viagem', en: 'Journey' },
+  'transportJourney.backToBoard': { pt: 'Voltar ao quadro', en: 'Back to board' },
+  'transportJourney.printButton': { pt: 'Imprimir', en: 'Print' },
+  'transportJourney.loadFailed': { pt: 'Não foi possível carregar a viagem.', en: 'Could not load the journey.' },
+  'transportJourney.dateLabel': { pt: 'Data:', en: 'Date:' },
+  'transportJourney.mapTitle': { pt: 'Percurso', en: 'Route' },
+  'transportJourney.mapCollapse': { pt: 'Fechar o mapa', en: 'Collapse the map' },
+  'transportJourney.mapExpand': { pt: 'Mostrar o mapa', en: 'Expand the map' },
+  'transportJourney.blockDistance': { pt: 'Distância', en: 'Distance' },
+  'transportJourney.blockOccupied': { pt: 'Viatura ocupada', en: 'Vehicle occupied' },
+  'transportJourney.blockPatients': { pt: 'Doente', en: 'Patient' },
+  'transportJourney.roundTripBadge': { pt: 'Ida e volta', en: 'Round trip' },
+  'transportJourney.crewCompleteBadge': { pt: 'Tripulação completa', en: 'Crew complete' },
+  'transportJourney.crewIncompleteBadge': { pt: 'Tripulação incompleta', en: 'Crew incomplete' },
+  'transportJourney.stopsTitle': { pt: 'Paragens', en: 'Stops' },
+  'transportJourney.stopColumnTime': { pt: 'Hora', en: 'Time' },
+  'transportJourney.stopColumnKind': { pt: 'Paragem', en: 'Stop' },
+  'transportJourney.stopColumnPatient': { pt: 'Pessoa', en: 'Person' },
+  'transportJourney.stopColumnDistance': { pt: 'Distância', en: 'Distance' },
+  'transportJourney.stopColumnDwell': { pt: 'Espera', en: 'Dwell' },
+  'transportJourney.stopPickup': { pt: 'Recolha', en: 'Pickup' },
+  'transportJourney.stopDropoff': { pt: 'Entrega', en: 'Drop-off' },
+  'transportJourney.stopWait': { pt: 'Espera', en: 'Wait' },
+  'transportJourney.stopReturnToBase': { pt: 'Regresso à base', en: 'Return to base' },
+  'transportJourney.stopDepartFromBase': { pt: 'Partida da base', en: 'Depart from base' },
+  'transportJourney.patientNameHidden': { pt: '(identidade não visível)', en: '(identity hidden)' },
+  'transportJourney.dwellDecision.WAIT': { pt: 'A equipa espera no local', en: 'Crew waits on site' },
+  'transportJourney.dwellDecision.RELEASE': { pt: 'Viatura libertada', en: 'Vehicle released' },
+  'transportJourney.dwellDecision.PENDING': { pt: 'Decisão por tomar', en: 'Decision pending' },
+  'transportJourney.decideWaitRelease': { pt: 'Esperar ou libertar', en: 'Decide wait/release' },
+
+  // ── Vehicle day page (#247 stage 5) ──
+  'transportVehicleDay.pageTitle': { pt: 'Dia da viatura', en: 'Vehicle day' },
+  'transportVehicleDay.pageTitleLoading': { pt: 'Dia da viatura', en: 'Vehicle day' },
+  'transportVehicleDay.loadFailed': { pt: 'Não foi possível carregar o dia da viatura.', en: 'Could not load the vehicle day.' },
+  'transportVehicleDay.journeysCount': { pt: '%{count} jornadas', en: '%{count} journeys' },
+  'transportVehicleDay.journeysTitle': { pt: 'Jornadas', en: 'Journeys' },
+  'transportVehicleDay.noJourneys': { pt: 'Sem jornadas nesta data.', en: 'No journeys on this date.' },
+  'transportVehicleDay.openJourney': { pt: 'Abrir jornada', en: 'Open journey' },
+
+  // ── Crew day page (#247 stage 6) — planner-side counterpart to My
+  // Transport Trips, reached from the journey inspector's crew chips ──
+  'transportCrewDay.pageTitle': { pt: 'Dia da tripulação', en: 'Crew day' },
+  'transportCrewDay.dateLabel': { pt: 'Data:', en: 'Date:' },
+  'transportCrewDay.noTrips': { pt: 'Sem viagens nesta data.', en: 'No trips on this date.' },
+  'transportCrewDay.loadFailed': { pt: 'Não foi possível carregar o dia da tripulação.', en: 'Could not load the crew day.' },
+
+  // ── Placement suggestions (#247 Suggestions stage) ──
+  'transportPlanning.suggestPlacementsButton': { pt: 'Sugerir colocação', en: 'Suggest placement' },
+  'transportPlanning.suggestPlacementsDialogTitle': {
+    pt: 'Onde colocar %{count} pessoas',
+    en: 'Where to place %{count} people',
+  },
+  'transportPlanning.suggestPlacementsHint': {
+    pt: 'Só classifica — nada é aplicado até escolheres uma opção. Uma opção bloqueada continua listada, para saberes que foi considerada.',
+    en: 'Ranking only — nothing is applied until you pick one. A blocked option still shows, so you know it was considered.',
+  },
+  'transportPlanning.suggestPlacementsEmpty': { pt: 'Não há viaturas para hoje.', en: 'No vehicles on today’s board.' },
+  'transportPlanning.suggestPlacementsFailed': {
+    pt: 'Não foi possível obter sugestões de colocação.',
+    en: 'Could not get placement suggestions.',
+  },
+  'transportPlanning.suggestPlacementsNewJourney': { pt: 'Nova viagem', en: 'New journey' },
+  'transportPlanning.suggestPlacementsExistingJourney': { pt: 'Viagem %{number}', en: 'Journey %{number}' },
+  'transportPlanning.suggestPlacementsDeltaKm': { pt: '%{km} km a mais', en: '%{km} km extra' },
+  'transportPlanning.suggestPlacementsDeltaMinutes': { pt: '%{minutes} min a mais', en: '%{minutes} min extra' },
+  'transportPlanning.suggestPlacementsUnrouted': { pt: 'sem percurso conhecido', en: 'no known route' },
+  'transportPlanning.suggestPlacementsMarginAhead': { pt: '%{minutes} min de folga', en: '%{minutes} min to spare' },
+  'transportPlanning.suggestPlacementsMarginLate': { pt: '%{minutes} min de atraso', en: '%{minutes} min late' },
+  'transportPlanning.suggestPlacementsApply': { pt: 'Aplicar', en: 'Apply' },
+  'transportPlanning.placementBlockReason.CAPACITY_SEATS': { pt: 'sem lugares sentados suficientes', en: 'not enough seats' },
+  'transportPlanning.placementBlockReason.CAPACITY_WHEELCHAIR': {
+    pt: 'sem lugares de cadeira de rodas suficientes',
+    en: 'not enough wheelchair positions',
+  },
+  'transportPlanning.placementBlockReason.CAPACITY_STRETCHER': {
+    pt: 'sem lugares de maca suficientes',
+    en: 'not enough stretcher positions',
+  },
+  'transportPlanning.placementBlockReason.VEHICLE_UNAVAILABLE': {
+    pt: 'viatura já comprometida nesta janela',
+    en: 'vehicle already committed over this window',
+  },
+  'transportPlanning.placementBlockReason.ROUTE_UNKNOWN': {
+    pt: 'percurso não pôde ser calculado',
+    en: 'route could not be calculated',
+  },
+
+  // ── Trip status (#234) ──
+  'tripStatus.PLANNED': { pt: 'Planeada', en: 'Planned' },
+  'tripStatus.COMPLETED': { pt: 'Concluída', en: 'Completed' },
+  'tripStatus.CANCELLED': { pt: 'Cancelada', en: 'Cancelled' },
 
   // ── Rich text editor (#180 phase 3) — shared by crew and coordinator forms ──
   'richText.bold': { pt: 'Negrito', en: 'Bold' },

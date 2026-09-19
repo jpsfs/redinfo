@@ -1,32 +1,48 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import {
   ArrivalWindowWarning,
   LegDirection,
+  LegStatus,
   PatientMobility,
+  TransportLeg,
   TransportPlanningBoard,
+  TransportPlanningCrewMember,
   TransportPlanningLane,
   TransportPlanningLeg,
+  TripCrewRequirement,
+  TripJourneyDetail,
   TripPlanIssue,
   TripStopKind,
   TripStopSegment,
   TripStopWalkInput,
+  TripsWeekOverview,
+  VehicleDayJourneys,
   VehicleOccupancySource,
+  VehicleType,
+  WeekDateSummary,
   arrivalWindowWarning,
+  carriesStretcherPassenger,
   checkTripCapacity,
+  checkTripCrew,
   computeEmptyLegs,
   computeTripOccupancyWindow,
+  effectiveCertifications,
   resolveArrivalWindowThresholds,
+  tripCrewRequirement,
   walkTripStops,
 } from '@redinfo/shared';
 import { PrismaService } from '../prisma/prisma.service';
-import { parseIsoDate } from '../utils/date.util';
+import { Coordinates, ROUTING_SERVICE, RoutingService } from '../routing/routing.interface';
+import { CERT_HELD_SELECT, toHeldCertifications } from '../users/certifications.util';
+import { addIsoDays, isoDateRange, parseIsoDate, toIsoDate } from '../utils/date.util';
 import { shiftBoundaryToInstant } from '../utils/timezone.util';
 import { DelegationSettingsService } from '../live-runs/delegation-settings.service';
 import { StaffAbsencesService } from '../staff-absences/staff-absences.service';
 import { VehicleOccupancyService } from '../vehicle-occupancy/vehicle-occupancy.service';
 import { TransportRequestLegsService } from '../transport-requests/transport-request-legs.service';
 import { PatientsService, RequestUser } from '../patients/patients.service';
+import { GeographyService } from '../geography/geography.service';
 import { CreateTripDto } from './dto/create-trip.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
 import { TripRow, TripStopRow, serializeTrip, serializeTripCrewMember, serializeTripStop } from './trip.serializer';
@@ -54,12 +70,56 @@ type TripDetailRow = Prisma.TripGetPayload<{ include: typeof TRIP_INCLUDE }>;
 
 export interface TripDetail {
   trip: ReturnType<typeof serializeTrip>;
-  crewMembers: ReturnType<typeof serializeTripCrewMember>[];
+  crewMembers: TransportPlanningCrewMember[];
+  /** What this trip's crew must look like given what it carries — see
+   * `tripCrewRequirement`. Served alongside the issues so a caller can show
+   * the bar as well as the shortfall. */
+  crewRequirement: TripCrewRequirement;
   stops: ReturnType<typeof serializeTripStop>[];
   /** Null when the trip has no stops yet. */
   occupancyWindow: { startsAt: string; endsAt: string } | null;
   emptyLegs: TripStopSegment[];
   issues: TripPlanIssue[];
+}
+
+/** A crew member with everything both `checkTripCrew` and the board need —
+ * the serialized row, the name, and certifications in both the shared
+ * `HeldCertification` form (for the check, which needs expiry dates) and the
+ * flattened type list the board renders. */
+type LoadedCrewMember = TransportPlanningCrewMember & {
+  name: string;
+  held: ReturnType<typeof toHeldCertifications>;
+};
+
+/** The `vehicle` field both `getBoard`'s lanes and `getDetail`'s journey
+ * carry — `TRIP_INCLUDE`'s selected columns, reshaped once instead of
+ * inline at each call site. */
+function vehicleSummary(row: TripDetailRow): TransportPlanningLane['vehicle'] {
+  return {
+    id: row.vehicleId,
+    licensePlate: row.vehicle.licensePlate,
+    numeroCauda: row.vehicle.numeroCauda,
+    vehicleType: row.vehicle.vehicleType as never,
+    seatedCapacity: row.vehicle.seatedCapacity,
+    wheelchairPositions: row.vehicle.wheelchairPositions,
+    stretcherPositions: row.vehicle.stretcherPositions,
+  };
+}
+
+/**
+ * The 1-based ordinal `TransportPlanningLane.journeyNumber` carries, one
+ * vehicle's trips at a time — earliest first stop first, same as
+ * `groupLanesByVehicle`/`VehicleGroup` order the lanes for display on the
+ * frontend board. Computed here, once, so `getDetail`'s single-trip journey
+ * page (which has no sibling trip loaded to sort against) lands on the same
+ * number as the board does for the same trip, rather than a second,
+ * independent implementation of this sort drifting from this one.
+ */
+export function journeyNumbersByTripId(rows: { id: string; stops: { plannedAt: Date }[] }[]): Map<string, number> {
+  const firstStopAt = (row: { stops: { plannedAt: Date }[] }) =>
+    row.stops.length ? Math.min(...row.stops.map((s) => s.plannedAt.getTime())) : Number.MAX_SAFE_INTEGER;
+  const ordered = [...rows].sort((a, b) => firstStopAt(a) - firstStopAt(b));
+  return new Map(ordered.map((row, index) => [row.id, index + 1]));
 }
 
 /** Maps the leg-level arrival-timing read (#233) onto this story's ranked
@@ -79,6 +139,8 @@ function toIssueLevel(warning: ArrivalWindowWarning): 'NOTE' | 'WARNING' | null 
  */
 @Injectable()
 export class TripsService {
+  private readonly logger = new Logger(TripsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly delegationSettings: DelegationSettingsService,
@@ -87,6 +149,8 @@ export class TripsService {
     private readonly transportRequestLegs: TransportRequestLegsService,
     private readonly patients: PatientsService,
     private readonly legTravel: TripLegTravelService,
+    private readonly geography: GeographyService,
+    @Inject(ROUTING_SERVICE) private readonly routing: RoutingService,
   ) {}
 
   async create(dto: CreateTripDto) {
@@ -126,10 +190,36 @@ export class TripsService {
     await this.vehicleOccupancy.removeForSource(VehicleOccupancySource.TRANSPORT_TRIP, id);
   }
 
-  async getDetail(id: string): Promise<TripDetail> {
+  /**
+   * One journey's own page (#247 stage 3) — the same ranked validation the
+   * board computes for this trip, plus what a standalone page needs and the
+   * board gets for free by being loaded alongside every other lane: the
+   * vehicle, this journey's `journeyNumber` (via a small sibling query — the
+   * one extra round trip a single-trip page can't avoid) and `legsById` for
+   * its own stops.
+   */
+  async getDetail(id: string, user: RequestUser): Promise<TripJourneyDetail> {
     const row = await this.prisma.trip.findUnique({ where: { id }, include: TRIP_INCLUDE });
     if (!row) throw new NotFoundException(`Trip ${id} not found`);
-    return this.buildDetail(row);
+    const detail = await this.buildDetail(row);
+
+    const siblings = await this.prisma.trip.findMany({
+      where: { vehicleId: row.vehicleId, date: row.date },
+      select: { id: true, stops: { select: { plannedAt: true } } },
+    });
+    const journeyNumber = journeyNumbersByTripId(siblings).get(row.id) ?? 1;
+
+    const legIds = [
+      ...new Set((row.stops as TripStopRow[]).map((stop) => stop.transportLegId).filter((legId): legId is string => !!legId)),
+    ];
+    const legs = await this.transportRequestLegs.findByIds(legIds);
+    const legsById = await this.loadLegsById(legs, user);
+
+    const lane = await this.attachRouteGeometry(
+      { ...detail, journeyNumber, vehicle: vehicleSummary(row) },
+      legsById,
+    );
+    return { ...lane, legsById };
   }
 
   /**
@@ -147,18 +237,19 @@ export class TripsService {
       orderBy: [{ createdAt: 'asc' }],
     });
 
-    const lanes: TransportPlanningLane[] = await Promise.all(
+    // Per vehicle, not across the whole date — see `journeyNumbersByTripId`.
+    const journeyNumberByTripId = new Map<string, number>();
+    const rowsByVehicle = new Map<string, typeof rows>();
+    for (const row of rows) rowsByVehicle.set(row.vehicleId, [...(rowsByVehicle.get(row.vehicleId) ?? []), row]);
+    for (const vehicleRows of rowsByVehicle.values()) {
+      for (const [tripId, number] of journeyNumbersByTripId(vehicleRows)) journeyNumberByTripId.set(tripId, number);
+    }
+
+    const lanes: Array<Omit<TransportPlanningLane, 'routeGeometry'>> = await Promise.all(
       rows.map(async (row) => ({
         ...(await this.buildDetail(row)),
-        vehicle: {
-          id: row.vehicleId,
-          licensePlate: row.vehicle.licensePlate,
-          numeroCauda: row.vehicle.numeroCauda,
-          vehicleType: row.vehicle.vehicleType as never,
-          seatedCapacity: row.vehicle.seatedCapacity,
-          wheelchairPositions: row.vehicle.wheelchairPositions,
-          stretcherPositions: row.vehicle.stretcherPositions,
-        },
+        journeyNumber: journeyNumberByTripId.get(row.id) ?? 1,
+        vehicle: vehicleSummary(row),
       })),
     );
 
@@ -171,9 +262,198 @@ export class TripsService {
       this.transportRequestLegs.findByIds(assignedLegIds),
       this.transportRequestLegs.findUnassignedForDate(date),
     ]);
-    const allLegs = [...assignedLegs, ...unassignedLegs];
+    const legsById = await this.loadLegsById([...assignedLegs, ...unassignedLegs], user);
 
-    const requestIds = [...new Set(allLegs.map((leg) => leg.transportRequestId))];
+    const lanesWithGeometry = await Promise.all(
+      lanes.map((lane) => this.attachRouteGeometry(lane, legsById)),
+    );
+
+    return {
+      date,
+      lanes: lanesWithGeometry,
+      legsById,
+      unassignedLegIds: unassignedLegs.map((leg) => leg.id),
+    };
+  }
+
+  /**
+   * One vehicle's whole day (#247 stage 5) — the vehicle-day page's one
+   * call, reached from the board by clicking a vehicle's own icon. Same
+   * per-lane computation `getBoard` does, scoped to a single vehicle via the
+   * `vehicleId` filter `list` already supports, rather than the whole
+   * fleet. A vehicle with nothing planned that date returns empty `lanes`
+   * rather than 404ing — only an unknown `vehicleId` is a 404, resolved via
+   * a `Vehicle` lookup since there is no trip row to read it off in that
+   * case.
+   */
+  async getVehicleDay(vehicleId: string, date: string, user: RequestUser): Promise<VehicleDayJourneys> {
+    const rows = await this.prisma.trip.findMany({
+      where: { vehicleId, date: parseIsoDate(date) },
+      include: TRIP_INCLUDE,
+      orderBy: [{ createdAt: 'asc' }],
+    });
+
+    if (rows.length === 0) {
+      const vehicle = await this.prisma.vehicle.findUnique({
+        where: { id: vehicleId },
+        select: {
+          id: true,
+          licensePlate: true,
+          numeroCauda: true,
+          vehicleType: true,
+          seatedCapacity: true,
+          wheelchairPositions: true,
+          stretcherPositions: true,
+        },
+      });
+      if (!vehicle) throw new NotFoundException(`Vehicle ${vehicleId} not found`);
+      return { date, vehicle: { ...vehicle, vehicleType: vehicle.vehicleType as never }, lanes: [], legsById: {} };
+    }
+
+    const journeyNumberByTripId = journeyNumbersByTripId(rows);
+    const lanes: Array<Omit<TransportPlanningLane, 'routeGeometry'>> = await Promise.all(
+      rows.map(async (row) => ({
+        ...(await this.buildDetail(row)),
+        journeyNumber: journeyNumberByTripId.get(row.id) ?? 1,
+        vehicle: vehicleSummary(row),
+      })),
+    );
+
+    const legIds = [
+      ...new Set(rows.flatMap((row) => (row.stops as TripStopRow[]).map((stop) => stop.transportLegId).filter((id): id is string => !!id))),
+    ];
+    const legs = await this.transportRequestLegs.findByIds(legIds);
+    const legsById = await this.loadLegsById(legs, user);
+    const lanesWithGeometry = await Promise.all(lanes.map((lane) => this.attachRouteGeometry(lane, legsById)));
+
+    return { date, vehicle: vehicleSummary(rows[0]), lanes: lanesWithGeometry, legsById };
+  }
+
+  /**
+   * The week strip's one call (#247 stage 6) — seven per-date summaries
+   * starting at `from`, so a heavy day is a Monday decision rather than a
+   * Thursday-morning one (`docs/plans/planeamento-transportes-redesign.md`
+   * §6/§8). Deliberately lighter than `getBoard`: no ranked validation, no
+   * route geometry, no per-leg travel estimate — just counts, computed
+   * straight off Prisma rather than through `buildDetail`'s per-trip
+   * machinery, seven times over.
+   */
+  async getWeek(from: string): Promise<TripsWeekOverview> {
+    const homeDistrict = await this.geography.homeDistrict();
+    const dates = isoDateRange(from, addIsoDays(from, 6));
+    const days = await Promise.all(dates.map((date) => this.getWeekDateSummary(date, homeDistrict)));
+    return { from, days };
+  }
+
+  private async getWeekDateSummary(date: string, homeDistrict: string): Promise<WeekDateSummary> {
+    const parsedDate = parseIsoDate(date);
+
+    const [trips, dueLegs] = await Promise.all([
+      this.prisma.trip.findMany({
+        where: { date: parsedDate },
+        select: {
+          id: true,
+          stops: {
+            select: {
+              transportLeg: {
+                select: {
+                  originFacility: { select: { municipality: { select: { district: true } } } },
+                  destinationFacility: { select: { municipality: { select: { district: true } } } },
+                },
+              },
+            },
+          },
+        },
+      }),
+      this.prisma.transportLeg.findMany({
+        where: { date: parsedDate, status: { notIn: [LegStatus.CANCELLED, LegStatus.NO_SHOW] } },
+        select: { tripStops: { select: { id: true } }, transportRequest: { select: { patientId: true } } },
+      }),
+    ]);
+
+    const tripIds = trips.map((trip) => trip.id);
+    const occupancy = await this.vehicleOccupancy.findManyForSource(VehicleOccupancySource.TRANSPORT_TRIP, tripIds);
+    const committedVehicleHours = occupancy.reduce(
+      (total, row) => total + (row.endsAt.getTime() - row.startsAt.getTime()) / 3_600_000,
+      0,
+    );
+
+    const outOfDistrictJourneyCount = trips.filter((trip) =>
+      trip.stops.some((stop) => {
+        const districts = [
+          stop.transportLeg?.originFacility?.municipality.district,
+          stop.transportLeg?.destinationFacility?.municipality.district,
+        ];
+        return districts.some((district) => district !== undefined && district !== null && district !== homeDistrict);
+      }),
+    ).length;
+
+    return {
+      date,
+      peopleCount: new Set(dueLegs.map((leg) => leg.transportRequest.patientId)).size,
+      journeyCount: trips.length,
+      unplannedLegCount: dueLegs.filter((leg) => leg.tripStops.length === 0).length,
+      outOfDistrictJourneyCount,
+      committedVehicleHours: Math.round(committedVehicleHours * 10) / 10,
+    };
+  }
+
+  /**
+   * This journey's road path, one continuous line through every stop in
+   * plan order (#247 stage 4's map panel). Deliberately one line for the
+   * whole trip rather than one dashed segment per leg direction: OSRM's
+   * `/route` returns a single geometry for the sequence it's given, and
+   * splitting it back into per-leg direction segments would mean one OSRM
+   * call per leg instead of one per journey — for a corridor-overlap map,
+   * a milk-run's full path is the thing worth drawing; direction already
+   * reads off the numbered stop markers and the timeline/inspector next to
+   * it. A `PICKUP`/`DROPOFF` stop takes its point from the leg's own
+   * resolved `door` (its own coordinates rarely carry one, see
+   * `TripLegTravelService`'s doc comment); `WAIT`/`RETURN_TO_BASE`/`DEPART_FROM_BASE` already
+   * carry their own resolved point (`TripStopsService` copies it from the
+   * facility or the base at creation).
+   */
+  private async attachRouteGeometry(
+    lane: Omit<TransportPlanningLane, 'routeGeometry'>,
+    legsById: Record<string, TransportPlanningLeg>,
+  ): Promise<TransportPlanningLane> {
+    const points: Coordinates[] = [];
+    for (const stop of lane.stops) {
+      if (stop.kind === TripStopKind.PICKUP || stop.kind === TripStopKind.DROPOFF) {
+        const leg = stop.transportLegId ? legsById[stop.transportLegId] : undefined;
+        const point = stop.kind === TripStopKind.PICKUP ? leg?.door.origin : leg?.door.destination;
+        if (point) points.push(point);
+      } else if (stop.latitude != null && stop.longitude != null) {
+        points.push({ latitude: stop.latitude, longitude: stop.longitude });
+      }
+    }
+
+    if (points.length < 2) return { ...lane, routeGeometry: null };
+
+    try {
+      const routeGeometry = await this.routing.routeGeometry(points);
+      return { ...lane, routeGeometry };
+    } catch (cause) {
+      // The board is still a usable board without a drawn route — same
+      // fail-soft posture as `TripLegTravelService.estimate`.
+      this.logger.warn(`Route geometry failed for trip ${lane.trip.id}: ${String(cause)}`);
+      return { ...lane, routeGeometry: null };
+    }
+  }
+
+  /**
+   * Every already-loaded `TransportLeg` joined to what a board card (or a
+   * journey page's stop table) needs to display it: the patient's id, name
+   * (degraded per `VIEW_PATIENT_IDENTITY`, same as `findManyForDisplay`
+   * itself) and mobility, and the advisory travel estimate (#219/#247).
+   * Shared by `getBoard` (the whole date's legs, assigned and not) and
+   * `getDetail` (one trip's own assigned legs only) so the two surfaces
+   * never compute a leg's facts two different ways.
+   */
+  private async loadLegsById(legs: TransportLeg[], user: RequestUser): Promise<Record<string, TransportPlanningLeg>> {
+    if (legs.length === 0) return {};
+
+    const requestIds = [...new Set(legs.map((leg) => leg.transportRequestId))];
     const requests = await this.prisma.transportRequest.findMany({
       where: { id: { in: requestIds } },
       select: { id: true, patientId: true },
@@ -186,9 +466,9 @@ export class TripsService {
     // (#219) — advisory only, and never allowed to fail the board: see
     // `TripLegTravelService`.
     const travel = await this.legTravel.estimateMany(
-      allLegs,
+      legs,
       new Map(
-        allLegs.map((leg) => {
+        legs.map((leg) => {
           const patient = patientDisplay.get(patientIdByRequestId.get(leg.transportRequestId) ?? '');
           return [
             leg.id,
@@ -204,7 +484,7 @@ export class TripsService {
     );
 
     const legsById: Record<string, TransportPlanningLeg> = {};
-    for (const leg of allLegs) {
+    for (const leg of legs) {
       const patientId = patientIdByRequestId.get(leg.transportRequestId) ?? '';
       const display = patientDisplay.get(patientId);
       const estimate = travel.get(leg.id);
@@ -215,24 +495,22 @@ export class TripsService {
         ...(display?.fullName ? { patientName: display.fullName } : {}),
         travelMinutes: estimate?.travelMinutes ?? null,
         travelEstimated: estimate?.travelEstimated ?? false,
+        travelDistanceMeters: estimate?.travelDistanceMeters ?? null,
         suggested: estimate?.suggested ?? { pickupAt: null, dropoffAt: null },
+        door: estimate?.door ?? { origin: null, destination: null },
       };
     }
-
-    return {
-      date,
-      lanes,
-      legsById,
-      unassignedLegIds: unassignedLegs.map((leg) => leg.id),
-    };
+    return legsById;
   }
 
   private async buildDetail(row: TripDetailRow): Promise<TripDetail> {
     const stops = row.stops as TripStopRow[];
-    const [passengerRequirements, absences, occupancyConflicts] = await Promise.all([
+    const date = toIsoDate(row.date);
+    const [passengerRequirements, absences, occupancyConflicts, crew] = await Promise.all([
       loadPassengerRequirements(this.prisma, pickupLegIds(stops)),
-      this.staffAbsences.findOverlapping(row.date.toISOString().slice(0, 10), row.date.toISOString().slice(0, 10)),
+      this.staffAbsences.findOverlapping(date, date),
       this.checkVehicleAvailability(row.id, row.vehicleId, stops),
+      this.loadCrew(row.crewMembers, date),
     ]);
 
     const walkInputs: TripStopWalkInput[] = stops.map((stop) => ({
@@ -248,17 +526,28 @@ export class TripsService {
           : undefined,
     }));
     const segments = walkTripStops(walkInputs);
+    const crewRequirement = tripCrewRequirement(carriesStretcherPassenger(segments));
 
     const issues: TripPlanIssue[] = [
       ...checkTripCapacity(segments, row.vehicle),
       ...occupancyConflicts,
-      ...(await this.checkCrewAvailability(row.crewMembers, absentUserIds(absences))),
+      ...this.checkCrewAvailability(crew, absentUserIds(absences)),
+      ...checkTripCrew({
+        crew: crew.map((member) => ({ userId: member.userId, certifications: member.held })),
+        requirement: crewRequirement,
+        vehicleType: row.vehicle.vehicleType as VehicleType,
+        date,
+        // A lane with nothing aboard yet has no crew to fall short of — see
+        // `checkTripCrew`. `WAIT`/`RETURN_TO_BASE`/`DEPART_FROM_BASE`-only trips count as empty.
+        hasPassengers: segments.some((segment) => segment.onboardLegIds.length > 0),
+      }),
       ...(await this.checkArrivalTiming(stops)),
     ];
 
     return {
       trip: serializeTrip(row as TripRow),
-      crewMembers: row.crewMembers.map((member) => serializeTripCrewMember(member)),
+      crewMembers: crew.map(({ name: _name, held: _held, ...member }) => member),
+      crewRequirement,
       stops: stops.map((stop) => serializeTripStop(stop)),
       occupancyWindow: stops.length
         ? computeTripOccupancyWindow(stops.map((s) => ({ plannedAt: s.plannedAt.toISOString(), dwellMinutes: s.dwellMinutes })))
@@ -301,16 +590,52 @@ export class TripsService {
     ];
   }
 
-  private async checkCrewAvailability(
-    crewMembers: { id: string; userId: string; overrideReason: string | null }[],
+  /**
+   * The crew rows joined to the people they name, with certifications resolved
+   * against the **trip's own date** rather than today — planning three weeks
+   * out must not accept a certificate that expires next Tuesday, and reading
+   * back a past trip must not retro-fail a crew whose certificate has lapsed
+   * since. One query for the whole crew, never one per member.
+   */
+  private async loadCrew(
+    crewMembers: TripDetailRow['crewMembers'],
+    date: string,
+  ): Promise<LoadedCrewMember[]> {
+    if (crewMembers.length === 0) return [];
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: crewMembers.map((member) => member.userId) } },
+      select: { id: true, firstName: true, lastName: true, certifications: { select: CERT_HELD_SELECT } },
+    });
+    const userById = new Map(users.map((user) => [user.id, user]));
+
+    return crewMembers.map((member) => {
+      const user = userById.get(member.userId);
+      const held = toHeldCertifications(user?.certifications ?? []);
+      return {
+        ...serializeTripCrewMember(member),
+        firstName: user?.firstName ?? '',
+        lastName: user?.lastName ?? '',
+        // Falls back to the id so a message about a user deleted since never
+        // reads as being about nobody at all.
+        name: user ? `${user.firstName} ${user.lastName}`.trim() : member.userId,
+        held,
+        certifications: effectiveCertifications(held, date)
+          .filter((cert) => cert.status !== 'EXPIRED')
+          .map((cert) => cert.type),
+      };
+    });
+  }
+
+  private checkCrewAvailability(
+    crewMembers: LoadedCrewMember[],
     absentUserIds: Set<string>,
-  ): Promise<TripPlanIssue[]> {
+  ): TripPlanIssue[] {
     return crewMembers
       .filter((member) => !member.overrideReason && absentUserIds.has(member.userId))
       .map((member) => ({
         level: 'ERROR' as const,
         code: 'CREW_UNAVAILABLE',
-        message: `Crew member ${member.userId} is recorded absent on this trip's date.`,
+        message: `${member.name} is recorded absent on this trip's date.`,
       }));
   }
 

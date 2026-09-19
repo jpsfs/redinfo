@@ -1,5 +1,6 @@
 import {
   DEFAULT_ARRIVAL_WINDOW_THRESHOLDS,
+  DEFAULT_PATIENT_HANDLING_THRESHOLDS,
   LegDirection,
   TransportLeg,
   suggestLegTimes,
@@ -8,6 +9,8 @@ import {
 import { TripLegTravelService } from './trip-leg-travel.service';
 
 const THRESHOLDS = DEFAULT_ARRIVAL_WINDOW_THRESHOLDS;
+const HANDLING = DEFAULT_PATIENT_HANDLING_THRESHOLDS;
+const DEFAULTS = { ...THRESHOLDS, ...HANDLING };
 
 /** The patient's own geocoded home point and the locality its corridor is
  * keyed by — both unsealed columns on `Patient`. */
@@ -80,9 +83,12 @@ describe('suggestLegTimes', () => {
       effectiveEstimatedEndAt: '2026-09-15T10:30:00.000Z',
       travelMinutes: 45,
       thresholds: THRESHOLDS,
+      handling: HANDLING,
     });
+    // Arrival stays anchored on the target; departure moves earlier by
+    // travel *and* the combined 4 minutes of handling (3 pickup + 1 dropoff).
     expect(times.dropoffAt).toBe('2026-09-15T08:42:30.000Z');
-    expect(times.pickupAt).toBe('2026-09-15T07:57:30.000Z');
+    expect(times.pickupAt).toBe('2026-09-15T07:53:30.000Z');
   });
 
   it('builds a return forwards from the estimated end — the patient cannot leave before they are ready', () => {
@@ -92,9 +98,36 @@ describe('suggestLegTimes', () => {
       effectiveEstimatedEndAt: '2026-09-15T10:30:00.000Z',
       travelMinutes: 45,
       thresholds: THRESHOLDS,
+      handling: HANDLING,
     });
+    // Departure stays anchored on H.F.; arrival home moves later by travel
+    // plus the same 4 minutes of handling.
     expect(times.pickupAt).toBe('2026-09-15T10:30:00.000Z');
-    expect(times.dropoffAt).toBe('2026-09-15T11:15:00.000Z');
+    expect(times.dropoffAt).toBe('2026-09-15T11:19:00.000Z');
+  });
+
+  it('widens the unanchored end by the combined handling time, not the anchored one', () => {
+    const noHandling = { pickupHandlingMinutes: 0, dropoffHandlingMinutes: 0 };
+    const withHandling = suggestLegTimes({
+      direction: LegDirection.OUTBOUND,
+      appointmentAt: '2026-09-15T09:00:00.000Z',
+      effectiveEstimatedEndAt: '2026-09-15T10:30:00.000Z',
+      travelMinutes: 45,
+      thresholds: THRESHOLDS,
+      handling: HANDLING,
+    });
+    const withoutHandling = suggestLegTimes({
+      direction: LegDirection.OUTBOUND,
+      appointmentAt: '2026-09-15T09:00:00.000Z',
+      effectiveEstimatedEndAt: '2026-09-15T10:30:00.000Z',
+      travelMinutes: 45,
+      thresholds: THRESHOLDS,
+      handling: noHandling,
+    });
+    expect(withHandling.dropoffAt).toBe(withoutHandling.dropoffAt);
+    expect(new Date(withHandling.pickupAt!).getTime()).toBe(
+      new Date(withoutHandling.pickupAt!).getTime() - 4 * 60_000,
+    );
   });
 
   it('returns nothing rather than a fabricated time when the leg cannot be routed', () => {
@@ -105,6 +138,7 @@ describe('suggestLegTimes', () => {
         effectiveEstimatedEndAt: '2026-09-15T10:30:00.000Z',
         travelMinutes: null,
         thresholds: THRESHOLDS,
+        handling: HANDLING,
       }),
     ).toEqual({ pickupAt: null, dropoffAt: null });
   });
@@ -116,7 +150,7 @@ describe('TripLegTravelService', () => {
     const result = await serviceWith(plan).estimateMany(
       [leg()],
       new Map([['leg-1', PATIENT]]),
-      THRESHOLDS,
+      DEFAULTS,
     );
 
     const [origin, destination] = plan.mock.calls[0];
@@ -126,6 +160,9 @@ describe('TripLegTravelService', () => {
     expect(origin.corridor).toEqual({ kind: 'locality', localityId: 'loc-1' });
     expect(destination.corridor).toEqual({ kind: 'facility', facilityId: 'fac-1' });
     expect(result.get('leg-1')?.travelMinutes).toBe(45);
+    // `planBetweenPoints` already computed this; carried through rather than
+    // discarded, for #247 stage 3's journey page distance column.
+    expect(result.get('leg-1')?.travelDistanceMeters).toBe(30_000);
   });
 
   it('puts the facility at the origin end of a return leg, where it actually is', async () => {
@@ -133,7 +170,7 @@ describe('TripLegTravelService', () => {
     await serviceWith(plan).estimateMany(
       [leg({ direction: LegDirection.RETURN, originFacilityId: 'fac-1', destinationFacilityId: null })],
       new Map([['leg-1', PATIENT]]),
-      THRESHOLDS,
+      DEFAULTS,
     );
 
     const [origin, destination] = plan.mock.calls[0];
@@ -156,7 +193,7 @@ describe('TripLegTravelService', () => {
         }),
       ],
       new Map([['leg-1', PATIENT]]),
-      THRESHOLDS,
+      DEFAULTS,
     );
 
     const [origin, destination] = plan.mock.calls[0];
@@ -169,7 +206,7 @@ describe('TripLegTravelService', () => {
     await serviceWith(plan).estimateMany(
       [leg({ originLatitude: 41.9, originLongitude: -8.9 })],
       new Map([['leg-1', PATIENT]]),
-      THRESHOLDS,
+      DEFAULTS,
     );
 
     expect(plan.mock.calls[0][0].coordinates).toEqual({ latitude: 41.9, longitude: -8.9 });
@@ -177,13 +214,38 @@ describe('TripLegTravelService', () => {
 
   it('skips routing entirely when an endpoint has no coordinates anywhere', async () => {
     const plan = jest.fn();
-    const result = await serviceWith(plan).estimateMany([leg({ originLatitude: null })], new Map(), THRESHOLDS);
+    const result = await serviceWith(plan).estimateMany([leg({ originLatitude: null })], new Map(), DEFAULTS);
 
     expect(plan).not.toHaveBeenCalled();
     expect(result.get('leg-1')).toEqual({
       travelMinutes: null,
       travelEstimated: false,
+      travelDistanceMeters: null,
       suggested: { pickupAt: null, dropoffAt: null },
+      // The origin genuinely has no coordinates anywhere (no leg column, no
+      // patient in the map); the destination's own columns still resolve —
+      // door is per-end, never all-or-nothing (#247 stage 4).
+      door: { origin: null, destination: { latitude: 41.18, longitude: -8.6 } },
+    });
+  });
+
+  it('carries the door through even when routing itself fails, since both endpoints were already known', async () => {
+    const plan = jest.fn().mockRejectedValue(new Error('OSRM unreachable'));
+    const result = await serviceWith(plan).estimateMany([leg()], new Map([['leg-1', PATIENT]]), DEFAULTS);
+
+    expect(result.get('leg-1')?.door).toEqual({
+      origin: { latitude: 41.53, longitude: -8.62 },
+      destination: { latitude: 41.18, longitude: -8.6 },
+    });
+  });
+
+  it('carries the door through on a routed leg too', async () => {
+    const plan = jest.fn().mockResolvedValue(planned(45 * 60));
+    const result = await serviceWith(plan).estimateMany([leg()], new Map([['leg-1', PATIENT]]), DEFAULTS);
+
+    expect(result.get('leg-1')?.door).toEqual({
+      origin: { latitude: 41.53, longitude: -8.62 },
+      destination: { latitude: 41.18, longitude: -8.6 },
     });
   });
 
@@ -192,7 +254,7 @@ describe('TripLegTravelService', () => {
     const result = await serviceWith(plan).estimateMany(
       [leg()],
       new Map([['leg-1', PATIENT]]),
-      THRESHOLDS,
+      DEFAULTS,
     );
 
     expect(result.get('leg-1')?.travelMinutes).toBeNull();
@@ -204,7 +266,7 @@ describe('TripLegTravelService', () => {
     const result = await serviceWith(plan).estimateMany(
       [leg()],
       new Map([['leg-1', PATIENT]]),
-      THRESHOLDS,
+      DEFAULTS,
     );
 
     expect(result.get('leg-1')?.travelEstimated).toBe(true);
@@ -213,7 +275,7 @@ describe('TripLegTravelService', () => {
 
   it('leaves the factor unapplied, rather than guessing, when the patient has no locality', async () => {
     const plan = jest.fn().mockResolvedValue(planned(45 * 60));
-    await serviceWith(plan).estimateMany([leg()], new Map([['leg-1', { ...PATIENT, localityId: null }]]), THRESHOLDS);
+    await serviceWith(plan).estimateMany([leg()], new Map([['leg-1', { ...PATIENT, localityId: null }]]), DEFAULTS);
 
     expect(plan.mock.calls[0][0].corridor).toBeNull();
   });

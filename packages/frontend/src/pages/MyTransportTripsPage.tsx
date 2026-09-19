@@ -28,6 +28,7 @@ const STOP_ICON: Record<TripStopKind, typeof PersonPinCircleIcon> = {
   [TripStopKind.DROPOFF]: LocalHospitalIcon,
   [TripStopKind.WAIT]: HourglassEmptyIcon,
   [TripStopKind.RETURN_TO_BASE]: HomeIcon,
+  [TripStopKind.DEPART_FROM_BASE]: HomeIcon,
 };
 
 const StopRow = ({ stop }: { stop: CrewManifestStop }) => {
@@ -99,7 +100,10 @@ const StopRow = ({ stop }: { stop: CrewManifestStop }) => {
   );
 };
 
-const TripCard = ({ trip }: { trip: CrewManifestTrip }) => {
+/** Exported for `TransportPlanningCrewPage` (#247 stage 6) — the planner's
+ * read of someone else's day reuses the same manifest card this page built
+ * for a crew member's own, rather than a second implementation of it. */
+export const TripCard = ({ trip }: { trip: CrewManifestTrip }) => {
   const t = useT();
   return (
     <Card variant="outlined" className="my-transport-trip-card" sx={{ mb: 2 }}>

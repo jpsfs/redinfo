@@ -2044,6 +2044,14 @@ model DelegationSettings {
   arrivalWindowLatestMinutes   Int @default(5)
   arrivalToleranceMinutes      Int @default(10)
 
+  /// Per-patient loading/unloading time — policy, not physics, same reason
+  /// the arrival window thresholds above are a table rather than a constant.
+  /// Distinct from `TripStop.dwellMinutes`, which is the WAIT-at-facility
+  /// decision, not the seconds-to-minutes of getting someone in or out of
+  /// the vehicle at its door.
+  pickupHandlingMinutes  Int @default(3)
+  dropoffHandlingMinutes Int @default(1)
+
   updatedAt DateTime @updatedAt
 }
 
@@ -2883,7 +2891,8 @@ model TransportLeg {
 // A trip is not a patient's round journey: a leg's `PICKUP`+`DROPOFF` pair
 // moves between trips in one call, so the outbound and return legs of the
 // same patient on the same day may sit on different trips, with different
-// vehicles and different crews. `WAIT`/`RETURN_TO_BASE` stops carry no leg.
+// vehicles and different crews. `WAIT`/`RETURN_TO_BASE`/`DEPART_FROM_BASE`
+// stops carry no leg.
 
 enum TripStatus {
   PLANNED
@@ -2896,6 +2905,9 @@ enum TripStopKind {
   DROPOFF
   WAIT
   RETURN_TO_BASE
+  /// The vehicle leaving base to start the day's first journey —
+  /// `RETURN_TO_BASE`'s counterpart at the other end of the day.
+  DEPART_FROM_BASE
 }
 
 /// Decided in advance and recorded, never inferred after the fact — the two
@@ -2955,11 +2967,12 @@ model TripStop {
   sequence Int
   kind     TripStopKind
 
-  /// Null for `WAIT`/`RETURN_TO_BASE` — those carry no leg.
+  /// Null for `WAIT`/`RETURN_TO_BASE`/`DEPART_FROM_BASE` — those carry no leg.
   transportLegId String?
   transportLeg   TransportLeg? @relation(fields: [transportLegId], references: [id], onDelete: SetNull)
-  /// The facility being waited at (`WAIT`) — not used for `RETURN_TO_BASE`,
-  /// which always targets `DelegationSettings`' own base.
+  /// The facility being waited at (`WAIT`) — not used for
+  /// `RETURN_TO_BASE`/`DEPART_FROM_BASE`, which always target
+  /// `DelegationSettings`' own base.
   facilityId     String?
   facility       Facility?     @relation(fields: [facilityId], references: [id], onDelete: SetNull)
   address        String?

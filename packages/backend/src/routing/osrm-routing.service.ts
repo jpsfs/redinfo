@@ -3,6 +3,7 @@ import { distanceInKm } from '@redinfo/shared';
 import { GeocodeCacheService } from './geocode-cache.service';
 import { NominatimGeocodingClient } from './nominatim-geocoding.client';
 import { OsrmMatrixClient } from './osrm-matrix.client';
+import { OsrmRouteClient } from './osrm-route.client';
 import { Coordinates, RoutingMatrixCell, RoutingService } from './routing.interface';
 
 /**
@@ -32,6 +33,7 @@ export class OsrmRoutingService implements RoutingService {
   constructor(
     private readonly geocodingClient: NominatimGeocodingClient,
     private readonly matrixClient: OsrmMatrixClient,
+    private readonly routeClient: OsrmRouteClient,
     private readonly cache: GeocodeCacheService,
   ) {}
 
@@ -67,6 +69,10 @@ export class OsrmRoutingService implements RoutingService {
         return this.straightLineEstimate(origin, destination);
       }),
     );
+  }
+
+  routeGeometry(points: Coordinates[]): Promise<string | null> {
+    return this.routeClient.route(points);
   }
 
   /**

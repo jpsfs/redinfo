@@ -111,7 +111,9 @@ per-facility override of the thresholds lives on `Facility` itself
 
 `trips` (#234) is the model/API behind the planning board — the board itself is #235. Split by
 concern: `TripsService` (CRUD + `getDetail`'s read-time ranked validation), `TripCrewService`
-(crew assignment), `TripStopsService` (assign/unassign a leg's `PICKUP`+`DROPOFF` pair, `WAIT`/
+(crew assignment, plus `listCandidates` — `GET /trips/crew-candidates?date=`, the crew dialog's
+picker, which flags an absent/already-committed person rather than hiding them),
+`TripStopsService` (assign/unassign a leg's `PICKUP`+`DROPOFF` pair, `WAIT`/
 `RETURN_TO_BASE` stops, reordering), `TripBreakEvenService` (the wait-vs-release helper),
 `TripLegTravelService` (#235 — the pickup and home-arrival times the board suggests, routing
 between the leg's own precise points via `PlannedDurationService.planBetweenPoints` while the
@@ -133,6 +135,53 @@ precedent: ungated, scoped to the caller inside the service (trips where they're
 `PatientsService.findManyForCrewManifest`, not `findManyForDisplay` — see that method's doc
 comment for why the crew executing a trip see the patient's name regardless of
 `VIEW_PATIENT_IDENTITY`, structurally scoped rather than capability-gated.
+
+The planning board redesign's first three stages (#247, journey identity/focus mode, the
+grouped rail + inspector, and the standalone journey page) widen two existing endpoints rather
+than adding new ones. `GET /trips/board?date=` now attaches a server-computed `journeyNumber`
+per lane and `travelDistanceMeters` per leg (`journeyNumbersByTripId`, `TripLegTravelService`'s
+now-unwasted `PlannedDurationService.planBetweenPoints` distance) — the ordinal is computed once
+per vehicle, grouped from the same `rows` the board already loaded, so it costs no extra query.
+`GET /trips/:id` (`TripsService.getDetail`) now returns `TripJourneyDetail`: the same ranked
+lane shape plus `vehicle` and a `legsById` scoped to just this trip's own stops, built through
+the new shared `loadLegsById` helper both `getBoard` and `getDetail` call — one small extra
+`trip.findMany` for `getDetail`'s own `journeyNumber` (its one unavoidable second query, since a
+single-trip load has no sibling rows to sort against).
+
+Stage 4 (map panel) widens the same two endpoints again, still no new route: a leg gains `door`
+(`TripLegTravelService`'s already-resolved origin/destination coordinates, carried through
+independently of whether the pair could be routed — see that service's doc comment) and a lane
+gains `routeGeometry` (`TripsService.attachRouteGeometry`, one `RoutingService.routeGeometry`
+polyline6 call per lane, through the ordered stop sequence's resolved points — `null` on fewer
+than two resolvable points or a routing outage, the board stays usable either way). The tile
+infrastructure itself (self-hosted PMTiles behind the `tiles` compose service, proxied at
+`/tiles/` exactly like `/api/`) is frontend/ops, not this module — see
+`scripts/prepare-basemap.sh` and `nginx/nginx.conf`. Stage 5 (vehicle-day page, collapsible map
+pane) adds the one genuinely new route in this story: `GET /trips/vehicle/:vehicleId?date=`
+(`TripsService.getVehicleDay`, `VehicleDayJourneys` in shared) — the board icon's own drill-down,
+same per-lane computation as `getBoard` scoped to one vehicle via the `vehicleId` filter `list`
+already supported. Empty `lanes` for a vehicle with nothing planned that date, never a 404 — only
+an unknown `vehicleId` is, resolved via a plain `Vehicle` lookup since there's no trip row to read
+it off in that case. The design doc's own Suggestions stage adds the other genuinely new route:
+`POST /trips/suggest-placements` (`TripPlacementSuggestionsService`, `RankedPlacement` in shared)
+ranks every vehicle/journey a group of unplanned legs could go onto — existing journeys (prepend
+before the first stop or append after the last, whichever routes cheaper) plus a fresh journey per
+idle vehicle, one batched `RoutingService.distanceMatrix` call for the whole request rather than
+one per candidate. Ranking only, nothing is written; a candidate that fails capacity (hard,
+unoverridable) or collides with another `VehicleOccupancy` booking (hard but overridable) is still
+returned with its `blockedBy` filled in, never dropped. The week strip (#247 stage 6) adds the
+story's last two routes: `GET /trips/week?from=` (`TripsService.getWeek`, `WeekDateSummary`/
+`TripsWeekOverview` in shared) returns seven per-date counts — people, journeys, unplanned legs,
+out-of-district journeys, committed vehicle hours — computed directly off Prisma (plus one
+batched `VehicleOccupancyService.findManyForSource` call for the hours) rather than through
+`buildDetail`'s per-trip ranked-validation machinery, since a strip needs counts, not a board;
+"out of district" compares a leg's origin/destination facility municipality against
+`GeographyService.homeDistrict()` (nearest municipality to the delegation's base point, there
+being no district column on `DelegationSettings` itself). `GET /trips/crew/:userId?date=`
+(`TripCrewManifestService.getForCrewMember`) is the planner-side counterpart to the self-scoped
+`GET /trips/me` — same stop assembly via a shared private `build`, but patient identity degrades
+per the *viewer's* `VIEW_PATIENT_IDENTITY` (`PatientsService.findManyForDisplay`) rather than
+`getMyTrips`' structural bypass, which only holds for a crew member reading their own day.
 
 ## Controller pattern
 

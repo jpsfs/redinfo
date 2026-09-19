@@ -73,6 +73,10 @@ import { StaffAbsencesPage } from './pages/StaffAbsencesPage';
 import { TransportReferralsPage } from './pages/TransportReferralsPage';
 import { TransportConfigPage } from './pages/TransportConfigPage';
 import { TransportPlanningPage } from './pages/TransportPlanningPage';
+import { TransportPlanningBuildPage } from './pages/TransportPlanningBuildPage';
+import { TransportPlanningJourneyPage } from './pages/TransportPlanningJourneyPage';
+import { TransportPlanningVehiclePage } from './pages/TransportPlanningVehiclePage';
+import { TransportPlanningCrewPage } from './pages/TransportPlanningCrewPage';
 import PeopleIcon from '@mui/icons-material/People';
 import DirectionsCarIcon from '@mui/icons-material/DirectionsCar';
 import BuildIcon from '@mui/icons-material/Build';
@@ -212,6 +216,26 @@ export default function App() {
             board Feature #219 builds ahead of any route optimisation, gated
             by PLAN_TRANSPORT_TRIPS in the drawer manifest. */}
         <Route path="/transport-planning" element={<TransportPlanningPage />} />
+        {/* "Montar o dia" (planner feedback) — the construction counterpart to
+            the board above: resources first, demand second, no time axis.
+            Same PLAN_TRANSPORT_TRIPS gating, and no endpoint of its own. */}
+        <Route path="/transport-planning/build" element={<TransportPlanningBuildPage />} />
+        {/* One journey's own page and printable crew sheet (#247 stage 3),
+            reached from the board's inspector ("Open journey") or a direct
+            link — no separate drawer entry, same as any other record's
+            detail page; `GET /trips/:id` still gates on
+            PLAN_TRANSPORT_TRIPS. */}
+        <Route path="/transport-planning/journeys/:tripId" element={<TransportPlanningJourneyPage />} />
+        {/* One vehicle's whole day (#247 stage 5), reached from the board by
+            clicking a vehicle's own icon — same no-drawer-entry precedent as
+            the journey page above; `GET /trips/vehicle/:vehicleId` also
+            gates on PLAN_TRANSPORT_TRIPS. */}
+        <Route path="/transport-planning/vehicle/:vehicleId" element={<TransportPlanningVehiclePage />} />
+        {/* A named crew member's whole day (#247 stage 6), reached from the
+            journey inspector by clicking their own name — same no-drawer-entry
+            precedent as the journey and vehicle-day pages above; `GET
+            /trips/crew/:userId` also gates on PLAN_TRANSPORT_TRIPS. */}
+        <Route path="/transport-planning/crew/:userId" element={<TransportPlanningCrewPage />} />
         {/* The delegation's INEM units — availability toggle, INOP reason,
             syncing badge and degraded-session banner (#216), gated by
             MANAGE_INEM_STATUS in the drawer manifest. Not react-admin CRUD:

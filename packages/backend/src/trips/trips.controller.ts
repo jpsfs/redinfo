@@ -12,6 +12,7 @@ import { TripCrewService } from './trip-crew.service';
 import { TripStopsService } from './trip-stops.service';
 import { TripBreakEvenService } from './trip-break-even.service';
 import { TripCrewManifestService } from './trip-crew-manifest.service';
+import { TripPlacementSuggestionsService } from './trip-placement-suggestions.service';
 import { CreateTripDto } from './dto/create-trip.dto';
 import { UpdateTripDto } from './dto/update-trip.dto';
 import { AddTripCrewMemberDto } from './dto/add-trip-crew-member.dto';
@@ -19,6 +20,7 @@ import { AssignTransportLegDto } from './dto/assign-transport-leg.dto';
 import { CreateTripStopDto } from './dto/create-trip-stop.dto';
 import { UpdateTripStopDto } from './dto/update-trip-stop.dto';
 import { ReorderTripStopsDto } from './dto/reorder-trip-stops.dto';
+import { SuggestPlacementsDto } from './dto/suggest-placements.dto';
 
 /**
  * The model and API behind the planning board (#234) — the board itself is
@@ -37,6 +39,7 @@ export class TripsController {
     private readonly stops: TripStopsService,
     private readonly breakEven: TripBreakEvenService,
     private readonly crewManifest: TripCrewManifestService,
+    private readonly placementSuggestions: TripPlacementSuggestionsService,
   ) {}
 
   @Get()
@@ -57,6 +60,27 @@ export class TripsController {
     return this.trips.getBoard(date, user);
   }
 
+  /** Everyone the crew dialog may offer for a journey on `date` (#235) —
+   * flagged, never filtered, see `TripCrewService.listCandidates`. Declared
+   * before `:id` so `crew-candidates` is never swallowed as an id. */
+  @Get('crew-candidates')
+  @Actions(Action.PLAN_TRANSPORT_TRIPS)
+  @ApiQuery({ name: 'date', required: true, description: 'ISO date' })
+  getCrewCandidates(@Query('date') date: string) {
+    return this.crew.listCandidates(date);
+  }
+
+  /** One vehicle's whole day (#247 stage 5) — the vehicle-day page, reached
+   * from the board by clicking a vehicle's own icon. Declared before `:id`
+   * for readability alongside `board`/`crew-candidates`, though it can't
+   * actually collide: `:id` matches exactly one path segment. */
+  @Get('vehicle/:vehicleId')
+  @Actions(Action.PLAN_TRANSPORT_TRIPS)
+  @ApiQuery({ name: 'date', required: true, description: 'ISO date' })
+  getVehicleDay(@Param('vehicleId') vehicleId: string, @Query('date') date: string, @CurrentUser() user: RequestUser) {
+    return this.trips.getVehicleDay(vehicleId, date, user);
+  }
+
   /**
    * A crew member's own manifest for `date` (#236) — `MyTransportTripsPage`'s
    * one call. Ungated on purpose, same reasoning as `SchedulesController
@@ -70,16 +94,53 @@ export class TripsController {
     return this.crewManifest.getMyTrips(user.id, date);
   }
 
+  /** Seven per-date summaries starting at `from` (#247 stage 6) — the
+   * planning board's week strip, so a heavy day is a Monday decision rather
+   * than a Thursday-morning one. Declared before `:id` so `week` is never
+   * read as a trip id. */
+  @Get('week')
+  @Actions(Action.PLAN_TRANSPORT_TRIPS)
+  @ApiQuery({ name: 'from', required: true, description: 'ISO date — the first of the seven days returned' })
+  getWeek(@Query('from') from: string) {
+    return this.trips.getWeek(from);
+  }
+
+  /** Planner-side counterpart to `GET /trips/me` (#247 stage 6) — a named
+   * crew member's own manifest for `date`, for the week strip's crew-day
+   * drill-down. Unlike `/me`, gated: the caller is reading someone else's
+   * day, not their own, so identity degrades per the caller's own
+   * `VIEW_PATIENT_IDENTITY` (see `TripCrewManifestService.getForCrewMember`).
+   * Declared before `:id` so `crew` is never read as a trip id. */
+  @Get('crew/:userId')
+  @Actions(Action.PLAN_TRANSPORT_TRIPS)
+  @ApiQuery({ name: 'date', required: true, description: 'ISO date' })
+  getCrewDay(@Param('userId') userId: string, @Query('date') date: string, @CurrentUser() user: RequestUser) {
+    return this.crewManifest.getForCrewMember(userId, date, user);
+  }
+
+  /** One journey's own page (#247 stage 3) — vehicle, crew, ordered stops
+   * with the legs they carry, issues, and a printable crew sheet. */
   @Get(':id')
   @Actions(Action.PLAN_TRANSPORT_TRIPS)
-  getDetail(@Param('id') id: string) {
-    return this.trips.getDetail(id);
+  getDetail(@Param('id') id: string, @CurrentUser() user: RequestUser) {
+    return this.trips.getDetail(id, user);
   }
 
   @Post()
   @Actions(Action.PLAN_TRANSPORT_TRIPS)
   create(@Body() dto: CreateTripDto) {
     return this.trips.create(dto);
+  }
+
+  /** Ranked candidate journeys for a group of unplanned legs (#247's
+   * Suggestions stage) — see `TripPlacementSuggestionsService`. Ranking
+   * only; applying a candidate is the same `POST /trips` +
+   * `POST /trips/:id/legs` calls the board's own drag/dialog paths already
+   * make. */
+  @Post('suggest-placements')
+  @Actions(Action.PLAN_TRANSPORT_TRIPS)
+  suggestPlacements(@Body() dto: SuggestPlacementsDto, @CurrentUser() user: RequestUser) {
+    return this.placementSuggestions.suggest(dto.legIds, user);
   }
 
   @Patch(':id')
@@ -120,7 +181,7 @@ export class TripsController {
     return this.stops.unassignLeg(tripId, legId);
   }
 
-  /** A `WAIT`/`RETURN_TO_BASE` stop — see `TripStopsService.addStop`. */
+  /** A `WAIT`/`RETURN_TO_BASE`/`DEPART_FROM_BASE` stop — see `TripStopsService.addStop`. */
   @Post(':id/stops')
   @Actions(Action.PLAN_TRANSPORT_TRIPS)
   addStop(@Param('id') tripId: string, @Body() dto: CreateTripStopDto) {

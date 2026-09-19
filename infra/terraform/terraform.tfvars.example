@@ -1,0 +1,32 @@
+# Copy to terraform.tfvars (gitignored) and fill in. Nothing here is secret —
+# the Contabo API credentials are environment variables, never tfvars (see
+# providers.tf).
+
+# Newest Ubuntu LTS standard image. Find it with:
+#   infra/scripts/contabo-images.sh --latest
+# CAUTION: changing this on an existing instance reinstalls the machine.
+image_id = "00000000-0000-0000-0000-000000000000"
+
+# The key you will SSH in with. Also reinstall-on-change.
+ssh_public_key = "ssh-ed25519 AAAA... you@example.org"
+
+# Set this to adopt a VPS that was bought in the Contabo panel instead of
+# ordering a new one. CAUTION: an apply with this set REINSTALLS that machine.
+# existing_instance_id = "203588098"
+
+# Defaults worth knowing about (uncomment to override):
+# name             = "redinfo-prod"   # also becomes the panel display name
+# product_id       = "V154"        # Cloud VPS 6 — 6 vCPU / 12 GB / 200 GB SSD
+# region           = "EU"
+# period           = 12            # months; this is a real purchase.
+#                                  # product_id/region/period are ignored when
+#                                  # existing_instance_id is set.
+# microk8s_channel = "1.35/stable"
+
+# Narrow SSH to known addresses if they are static. Getting this wrong means
+# a trip to the Contabo VNC console.
+# ssh_allowed_cidrs = ["0.0.0.0/0"]
+
+# Leave empty unless you deliberately want remote kubectl/helm against this
+# cluster; deploys are expected to run on the box itself.
+# kube_api_allowed_cidrs = []

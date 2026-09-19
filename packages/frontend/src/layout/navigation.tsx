@@ -26,6 +26,7 @@ import CampaignIcon from '@mui/icons-material/Campaign';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import BusinessIcon from '@mui/icons-material/Business';
 import AltRouteIcon from '@mui/icons-material/AltRoute';
+import PlaylistAddCheckIcon from '@mui/icons-material/PlaylistAddCheck';
 import HandshakeIcon from '@mui/icons-material/Handshake';
 import AssignmentIcon from '@mui/icons-material/Assignment';
 import RuleIcon from '@mui/icons-material/Rule';
@@ -230,6 +231,14 @@ export const NAV_SECTIONS: NavSection[] = [
         to: '/transport-planning',
         label: 'nav.transportPlanning',
         icon: <AltRouteIcon />,
+        requires: [Action.PLAN_TRANSPORT_TRIPS],
+      },
+      {
+        // The construction view of the same day — resources, then demand.
+        // Same gating as the board; it reads the very same endpoints.
+        to: '/transport-planning/build',
+        label: 'nav.transportBuild',
+        icon: <PlaylistAddCheckIcon />,
         requires: [Action.PLAN_TRANSPORT_TRIPS],
       },
       {

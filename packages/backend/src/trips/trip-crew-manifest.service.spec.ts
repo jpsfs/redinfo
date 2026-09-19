@@ -57,7 +57,10 @@ function buildPrismaStub(overrides: Record<string, unknown> = {}) {
 function buildDeps(overrides: Record<string, unknown> = {}) {
   return {
     transportRequestLegs: { findByIds: jest.fn().mockResolvedValue([]) },
-    patients: { findManyForCrewManifest: jest.fn().mockResolvedValue(new Map()) },
+    patients: {
+      findManyForCrewManifest: jest.fn().mockResolvedValue(new Map()),
+      findManyForDisplay: jest.fn().mockResolvedValue(new Map()),
+    },
     ...overrides,
   };
 }
@@ -200,5 +203,95 @@ describe('TripCrewManifestService', () => {
       appointmentAt: null,
       treatmentEndAt: null,
     });
+  });
+});
+
+// ── Planner-side crew day (#247 stage 6) ────────────────────────────────────
+//
+// `getForCrewMember` reuses the exact same trip/stop assembly `getMyTrips`
+// does — same `build` — but calls `findManyForDisplay(ids, viewer)` instead
+// of `findManyForCrewManifest`, so identity degrades per the *viewer's*
+// `VIEW_PATIENT_IDENTITY` rather than the structural, always-on bypass a
+// crew member reading their own day gets.
+
+describe('TripCrewManifestService.getForCrewMember', () => {
+  const pickupStop = stop({
+    id: 'stop-pickup',
+    kind: TripStopKind.PICKUP,
+    transportLegId: 'leg-1',
+    facility: { name: 'Hospital de Braga' },
+  });
+
+  function buildFixture() {
+    return {
+      prisma: buildPrismaStub({
+        trip: { findMany: jest.fn().mockResolvedValue([buildTripRow({ stops: [pickupStop] })]) },
+        transportRequest: {
+          findMany: jest
+            .fn()
+            .mockResolvedValue([{ id: 'req-1', patientId: 'patient-1', appointmentAt: new Date('2026-09-15T09:00:00.000Z') }]),
+        },
+      }),
+      deps: buildDeps({
+        transportRequestLegs: {
+          findByIds: jest.fn().mockResolvedValue([
+            {
+              id: 'leg-1',
+              transportRequestId: 'req-1',
+              direction: LegDirection.OUTBOUND,
+              effectiveEstimatedEndAt: '2026-09-15T09:30:00.000Z',
+            },
+          ]),
+        },
+      }),
+    };
+  }
+
+  it('calls findManyForDisplay with the viewer, not findManyForCrewManifest', async () => {
+    const { prisma, deps } = buildFixture();
+    const viewer = { id: 'planner-1', roles: [] };
+    const service = makeService(prisma, deps);
+
+    await service.getForCrewMember('crew-member-1', '2026-09-15', viewer as never);
+
+    expect(deps.patients.findManyForDisplay).toHaveBeenCalledWith(['patient-1'], viewer);
+    expect(deps.patients.findManyForCrewManifest).not.toHaveBeenCalled();
+  });
+
+  it("scopes to the named crew member's own trips, not the viewer's", async () => {
+    const { prisma, deps } = buildFixture();
+    const service = makeService(prisma, deps);
+
+    await service.getForCrewMember('crew-member-1', '2026-09-15', { id: 'planner-1', roles: [] } as never);
+
+    expect(prisma.trip.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ crewMembers: { some: { userId: 'crew-member-1' } } }),
+      }),
+    );
+  });
+
+  it("degrades the patient name when findManyForDisplay withholds it (viewer lacks VIEW_PATIENT_IDENTITY)", async () => {
+    const { prisma, deps } = buildFixture();
+    (deps.patients.findManyForDisplay as jest.Mock).mockResolvedValue(
+      new Map([['patient-1', { mobility: PatientMobility.WHEELCHAIR, fullName: null }]]),
+    );
+    const service = makeService(prisma, deps);
+
+    const result = await service.getForCrewMember('crew-member-1', '2026-09-15', { id: 'planner-1', roles: [] } as never);
+
+    expect(result.trips[0].stops[0].patientName).toBeNull();
+  });
+
+  it('shows the patient name when findManyForDisplay grants it (viewer holds VIEW_PATIENT_IDENTITY)', async () => {
+    const { prisma, deps } = buildFixture();
+    (deps.patients.findManyForDisplay as jest.Mock).mockResolvedValue(
+      new Map([['patient-1', { mobility: PatientMobility.WHEELCHAIR, fullName: 'Maria Silva' }]]),
+    );
+    const service = makeService(prisma, deps);
+
+    const result = await service.getForCrewMember('crew-member-1', '2026-09-15', { id: 'planner-1', roles: [] } as never);
+
+    expect(result.trips[0].stops[0].patientName).toBe('Maria Silva');
   });
 });

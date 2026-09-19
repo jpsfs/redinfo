@@ -335,4 +335,27 @@ export class GeographyService {
     });
     return rows.map(serializeMunicipality);
   }
+
+  /**
+   * The delegation's own district — the district of whichever municipality
+   * is nearest the base coordinates (`resolveOrigin`'s same fallback), since
+   * `DelegationSettings` carries a base point, not a district directly. Used
+   * by the week strip's "out of district" count (#247 stage 6): a run counts
+   * as out of district when its facility endpoint's municipality doesn't
+   * match this one — the Porto-run case.
+   */
+  async homeDistrict(): Promise<string> {
+    const origin = await this.resolveOrigin();
+    const municipalities = await this.loadMunicipalities();
+    let nearest: MunicipalityRow | null = null;
+    let nearestDistance = Number.POSITIVE_INFINITY;
+    for (const municipality of municipalities) {
+      const distance = distanceInKm(origin, municipality);
+      if (distance < nearestDistance) {
+        nearestDistance = distance;
+        nearest = municipality;
+      }
+    }
+    return nearest?.district ?? '';
+  }
 }

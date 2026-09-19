@@ -2,14 +2,16 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { IsEnum, IsISO8601, IsInt, IsOptional, IsString, Min } from 'class-validator';
 import { TripStopDwell, TripStopKind } from '@redinfo/shared';
 
-/** `POST /trips/:id/stops` — a `WAIT` or `RETURN_TO_BASE` stop, the only two
- * kinds ever added directly; `PICKUP`/`DROPOFF` only ever arrive as a pair,
- * via `AssignTransportLegDto`. Always appended at the end of the current
- * sequence — see `PUT /trips/:id/stops/order` for reordering. */
+/** `POST /trips/:id/stops` — a `WAIT`, `RETURN_TO_BASE` or `DEPART_FROM_BASE`
+ * stop, the only three kinds ever added directly; `PICKUP`/`DROPOFF` only
+ * ever arrive as a pair, via `AssignTransportLegDto`. `WAIT`/`RETURN_TO_BASE`
+ * are appended at the end of the current sequence; `DEPART_FROM_BASE` is
+ * prepended before the first — see `TripStopsService.addStop`. Either way,
+ * see `PUT /trips/:id/stops/order` for reordering afterwards. */
 export class CreateTripStopDto {
-  @ApiProperty({ enum: [TripStopKind.WAIT, TripStopKind.RETURN_TO_BASE] })
+  @ApiProperty({ enum: [TripStopKind.WAIT, TripStopKind.RETURN_TO_BASE, TripStopKind.DEPART_FROM_BASE] })
   @IsEnum(TripStopKind)
-  kind: TripStopKind.WAIT | TripStopKind.RETURN_TO_BASE;
+  kind: TripStopKind.WAIT | TripStopKind.RETURN_TO_BASE | TripStopKind.DEPART_FROM_BASE;
 
   @ApiProperty({ description: 'ISO datetime' })
   @IsISO8601()

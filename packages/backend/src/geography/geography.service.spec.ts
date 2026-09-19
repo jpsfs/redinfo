@@ -413,3 +413,30 @@ describe('nearest localities', () => {
     await expect(service.nearestLocalities(Number.NaN, 0)).rejects.toThrow(/must be numbers/i);
   });
 });
+
+describe('home district', () => {
+  // #247 stage 6's week strip out-of-district count: `DelegationSettings`
+  // carries a base point, not a district column, so this is the district of
+  // whichever municipality is nearest that point — same fallback-to-base
+  // `resolveOrigin` uses everywhere else in this service.
+
+  it("is the nearest municipality's district, standing at the delegation base", async () => {
+    const { service } = makeService([], {
+      municipalities: [FARO, COIMBRA, BARCELOS],
+      base: { baseLatitude: BARCELOS.latitude, baseLongitude: BARCELOS.longitude },
+    });
+
+    await expect(service.homeDistrict()).resolves.toBe('Braga');
+  });
+
+  it('picks the closest municipality, not the first in the list', async () => {
+    const { service } = makeService([], {
+      // Listed Faro-first on purpose — the result must still be Coimbra's
+      // district, because the base sits in Coimbra, not Faro.
+      municipalities: [FARO, COIMBRA],
+      base: { baseLatitude: COIMBRA.latitude, baseLongitude: COIMBRA.longitude },
+    });
+
+    await expect(service.homeDistrict()).resolves.toBe('Coimbra');
+  });
+});

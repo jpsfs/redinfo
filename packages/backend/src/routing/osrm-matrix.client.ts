@@ -3,7 +3,9 @@ import { assertInternalRoutingHost } from './routing-host-guard';
 import { Coordinates } from './routing.interface';
 
 export const ROUTING_BASE_URL_ENV = 'ROUTING_BASE_URL';
-const DEFAULT_BASE_URL = 'http://osrm:5000';
+// Exported for `OsrmRouteClient`'s own default constructor arg — same base
+// URL, a different endpoint.
+export const DEFAULT_BASE_URL = 'http://osrm:5000';
 
 /**
  * How far OSRM is allowed to snap a requested point to the nearest road

@@ -1,0 +1,23 @@
+/**
+ * Print stylesheet for the journey page's crew sheet (#247 stage 3) — the
+ * same choice `myTransportTrips.css` and `schedulePrint.css` made: the live
+ * screen printed as-is, minus its own chrome, rather than a second
+ * server-rendered layout. One journey, one page.
+ */
+@media print {
+  /* The back/print buttons and the crew-edit action — never printed. */
+  .journey-page-toolbar {
+    display: none !important;
+  }
+
+  /* A WebGL canvas has nothing to hand a printer — the crew sheet stays the
+     text-only artefact it always was. */
+  .journey-page-map {
+    display: none !important;
+  }
+
+  .journey-page-sheet {
+    box-shadow: none !important;
+    border: none !important;
+  }
+}

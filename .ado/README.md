@@ -25,8 +25,8 @@ gap.
 ```
 Prepare ──┬─▶ Build ──┬─▶ DeployStaging ──▶ MarkStagingVerified
           │           │
-          │           ├─▶ PromotionGate ──▶ DeployProduction
-          │           │        ▲
+          │           ├─▶ PromotionGate ─▶ Infrastructure ─┬─▶ DeployProduction        (vm-redcross)
+          │           │        ▲                           └─▶ DeployProductionContabo (Contabo host)
           │           └────────┘ (both read Build's result)
           │
           └─▶ GenerateManuals
@@ -50,6 +50,25 @@ Prepare ──┬─▶ Build ──┬─▶ DeployStaging ──▶ MarkStagin
 - **MarkStagingVerified** stamps the `staging-ok-<shortSha>` marker described below — the only
   thing standing between "staging deploy succeeded" and "this commit is allowed to production".
 - **PromotionGate** enforces that marker on the way to production, `forceProduction` bypasses it.
+- **DeployProductionContabo** is the second production host, running in parallel with
+  `DeployProduction` during the vm-redcross → Contabo migration: same commit, same images, same
+  `redinfo-production` secrets, same gate — a different machine, on its own
+  `contabo-production` pool. It is off unless `CONTABO_DEPLOY_ENABLED` is `'true'` in the
+  `redinfo-contabo` variable group, so a host joins or leaves the production rotation by editing
+  one variable rather than by a commit. Neither production stage depends on the other; either can
+  fail alone. The host itself is provisioned by the `Infrastructure` stage above, in this same
+  run.
+- **Infrastructure** is Terraform for the Contabo host, and it sits between the promotion gate
+  and both production deploys so the machine is what `infra/terraform` says it is before a
+  release lands on it. Three jobs: **Plan** always runs and `terraform plan -detailed-exitcode`
+  decides the rest — exit 0 (nothing to change) ends the stage and the deploys carry on as if it
+  were not there; **Approve** is an agentless `ManualValidation` job that parks the run in the
+  ADO UI, and only exists when the plan found changes; **Apply** applies *the saved plan file*
+  from the Plan job, not a fresh one, so what runs is exactly what was reviewed. Rejecting the
+  approval cancels the stage, which blocks **both** production deploys — `skipInfrastructure`
+  is the way past that (see below). The Plan job also names any change to an attribute that
+  reinstalls the host (`image_id`, `ssh_keys`, `user_data`, `root_password`), because Terraform
+  renders that reinstall as an unremarkable `~ update in-place`.
 - **GenerateManuals** depends on `Prepare` alone and is routed by commit message or the manual
   `forceGenerateManuals` override — see below.
 
@@ -89,7 +108,7 @@ commit anywhere near `DeployProduction`.
 
 ## Force parameters
 
-All three are pipeline parameters (`type: boolean, default: false`) settable only from a
+All of them are pipeline parameters (`type: boolean, default: false`) settable only from a
 **manual** run ("Run pipeline" in the UI, `az pipelines run --parameters`, or the REST API's
 `templateParameters`) — a push can never set them, there is no `trigger:`-side mechanism for
 pipeline parameters.
@@ -105,6 +124,30 @@ pipeline parameters.
 - **`forceGenerateManuals`** — run `GenerateManuals` even though the tip commit isn't a `docs`
   commit. This is the intended way to regenerate the manuals on demand — it replaces triggering
   the stage with an empty `docs:` commit.
+- **`deployToContabo`** — run `DeployProductionContabo` on this one run regardless of
+  `CONTABO_DEPLOY_ENABLED`. For trying the new host out before committing it to the rotation.
+- **`skipInfrastructure`** — skip the `Infrastructure` stage entirely: no plan, no approval, no
+  apply, straight to deploying. The hotfix escape hatch, deliberately the same shape as
+  `forceProduction` bypassing the staging gate. Use it when code has to ship and unrelated
+  infrastructure drift is standing in the way. The drift does not go away — it just stops
+  holding the release hostage, and the next run without the flag will ask about it again.
+- **`reportContaboImages`** — not an escape hatch but a lookup, and the only parameter that
+  stops the pipeline rather than steering it: it runs the `ContaboImages` stage and skips
+  `Prepare`, which every other stage gates on, so nothing is built and nothing is deployed.
+  It exists because `TF_VAR_image_id` has to be pinned by hand and the Contabo API credentials
+  that resolve it are write-only secrets in `redinfo-contabo` — this pipeline is the only place
+  that can read them. Runs on any branch. See `infra/README.md`.
+- **`infrastructureOnly`** — the mirror of `skipInfrastructure`: run the `Infrastructure` stage
+  and nothing else. It skips `Prepare`, so no images are built and nothing is deployed, and it
+  works on any branch rather than only on `env/production`. Use it to provision or repair the
+  host outside a release — most importantly the very first time, when there is no release to
+  attach the work to and no host to deploy to yet. Where the two flags disagree,
+  `infrastructureOnly` wins.
+- **`contaboBackgroundJobs`** — on the Contabo host only, enable the legacy-migration cron and
+  the INEM worker. **Off by default, deliberately**: while vm-redcross is live, a second
+  instance with the same credentials means two machines pulling from one legacy MySQL and two
+  headless browsers fighting over one INEM session. Neither fails at deploy time. Turn it on at
+  cutover — see `infra/README.md`.
 
 ## Manuals
 
@@ -128,3 +171,8 @@ there), not a click in ADO. The only in-pipeline gate is `PromotionGate`: produc
 commit without a `staging-ok-<sha>` marker, short of `forceProduction`. Once a push to
 `env/production` lands, the pipeline runs straight through to a deploy with no pause for
 approval — that's the intended behavior, not a bug.
+
+`DeployProductionContabo` uses a *second* Environment, `redinfo-production-contabo`, and the
+same reasoning applies to it. Two Environments rather than one because the two stages deploy the
+same release to two different machines, and a single Environment's deployment history would blur
+them together — which is exactly the history you want to read during a migration.

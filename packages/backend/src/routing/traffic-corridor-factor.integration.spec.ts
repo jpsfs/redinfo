@@ -6,6 +6,7 @@ import { CorridorEndpointResolver } from './corridor-endpoint-resolver.service';
 import { GeocodeCacheService } from './geocode-cache.service';
 import { NominatimGeocodingClient } from './nominatim-geocoding.client';
 import { OsrmMatrixClient } from './osrm-matrix.client';
+import { OsrmRouteClient } from './osrm-route.client';
 import { OsrmRoutingService } from './osrm-routing.service';
 import { PlannedDurationService } from './planned-duration.service';
 import { CorridorEndpoint } from './traffic-corridor-key.util';
@@ -45,8 +46,9 @@ describeIntegration('Traffic correction table (integration)', () => {
   const holidays = new HolidaysService(prisma);
   const geocodingClient = new NominatimGeocodingClient();
   const matrixClient = new OsrmMatrixClient();
+  const routeClient = new OsrmRouteClient();
   const cache = new GeocodeCacheService(prisma);
-  const routing = new OsrmRoutingService(geocodingClient, matrixClient, cache);
+  const routing = new OsrmRoutingService(geocodingClient, matrixClient, routeClient, cache);
   const planner = new PlannedDurationService(routing, resolver, factors, holidays);
 
   const RUN = `${Date.now().toString(36)}${Math.floor(Math.random() * 1e6).toString(36)}`;

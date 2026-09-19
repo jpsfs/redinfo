@@ -3,6 +3,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { GeocodeCacheService } from './geocode-cache.service';
 import { NominatimGeocodingClient } from './nominatim-geocoding.client';
 import { OsrmMatrixClient } from './osrm-matrix.client';
+import { OsrmRouteClient } from './osrm-route.client';
 import { OsrmRoutingService } from './osrm-routing.service';
 
 /**
@@ -31,8 +32,9 @@ describeIntegration('Routing and geocoding (integration)', () => {
   const prisma = new PrismaClient() as unknown as PrismaService;
   const geocodingClient = new NominatimGeocodingClient();
   const matrixClient = new OsrmMatrixClient();
+  const routeClient = new OsrmRouteClient();
   const cache = new GeocodeCacheService(prisma);
-  const service = new OsrmRoutingService(geocodingClient, matrixClient, cache);
+  const service = new OsrmRoutingService(geocodingClient, matrixClient, routeClient, cache);
 
   let osrmUp = false;
   let nominatimUp = false;
@@ -106,5 +108,19 @@ describeIntegration('Routing and geocoding (integration)', () => {
 
     const [[cell]] = await service.distanceMatrix([porto], [madrid]);
     expect(cell.estimated).toBe(true);
+  });
+
+  it('returns a drawable polyline6 route through an ordered stop sequence (#247 stage 4)', async () => {
+    if (!osrmUp) {
+      console.warn('OSRM not reachable — skipping.');
+      return;
+    }
+
+    const braga = { latitude: 41.5454, longitude: -8.4265 };
+    const barcelos = { latitude: 41.5388, longitude: -8.6151 };
+
+    const geometry = await service.routeGeometry([braga, barcelos]);
+    expect(typeof geometry).toBe('string');
+    expect(geometry!.length).toBeGreaterThan(0);
   });
 });

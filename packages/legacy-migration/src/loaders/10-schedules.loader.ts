@@ -207,7 +207,37 @@ async function loadAssignmentsForRow(
         )?.id ?? null,
       create: async () => (await tx.scheduleAssignment.create({ data })).id,
       update: async (id) => {
-        await tx.scheduleAssignment.update({ where: { id }, data: { roleId } });
+        // `date`/`slot`/`scheduleId` can't change for a given `legacyId` — they're
+        // baked into the key itself (`legacyKey('escala', mes, turno, ano, dia,
+        // slotKey)`) — so `userId` and `roleId` are the only two fields legacy can
+        // actually revise on an already-mapped seat. A coordinator swapping who
+        // holds a slot on the old platform (not clearing it — see the retraction
+        // path below for that) is exactly this: same key, new crew number. Without
+        // `userId` here, `adoptOrCreate` still finds this row via `LegacyIdMap` and
+        // still calls this `update()`, but it silently re-applies only `roleId` —
+        // legacy's new crew member is dropped on the floor forever, even though
+        // the run reports the row as `'updated'`. Confirmed live 2026-09-17: a
+        // driver reassigned on the old platform never synced to today's schedule.
+        //
+        // A raw UPDATE changing `userId` can itself collide with this table's own
+        // `@@unique([scheduleId, date, slot, userId])` — unlike the P2025 case this
+        // module's doc talks about, a UNIQUE violation aborts the whole surrounding
+        // transaction (see the natural-key-collision hotfix's own caveat), so it's
+        // checked with a plain read first rather than caught after the fact.
+        const seatTaken = await tx.scheduleAssignment.findUnique({
+          where: { scheduleId_date_slot_userId: { scheduleId, date, slot: row.turno, userId } },
+        });
+        if (seatTaken && seatTaken.id !== id) {
+          // Someone else already occupies this exact seat under a different row —
+          // most likely a coordinator's own manual assignment made directly in the
+          // app. Legacy still wins on this mapped row's `roleId`, but repointing
+          // `userId` here would 23505 against that other row. Leave it be; the
+          // mismatch keeps reporting this row as `'updated'` every run instead of
+          // settling to `'unchanged'`, which is the visible smell that flags it.
+          await tx.scheduleAssignment.update({ where: { id }, data: { roleId } });
+          return;
+        }
+        await tx.scheduleAssignment.update({ where: { id }, data: { userId, roleId } });
       },
     });
 

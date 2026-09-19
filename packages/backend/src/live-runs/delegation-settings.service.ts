@@ -34,6 +34,8 @@ export class DelegationSettingsService {
       arrivalWindowEarliestMinutes: row.arrivalWindowEarliestMinutes,
       arrivalWindowLatestMinutes: row.arrivalWindowLatestMinutes,
       arrivalToleranceMinutes: row.arrivalToleranceMinutes,
+      pickupHandlingMinutes: row.pickupHandlingMinutes,
+      dropoffHandlingMinutes: row.dropoffHandlingMinutes,
     };
   }
 
@@ -60,6 +62,8 @@ export class DelegationSettingsService {
       arrivalWindowEarliestMinutes: row.arrivalWindowEarliestMinutes,
       arrivalWindowLatestMinutes: row.arrivalWindowLatestMinutes,
       arrivalToleranceMinutes: row.arrivalToleranceMinutes,
+      pickupHandlingMinutes: row.pickupHandlingMinutes,
+      dropoffHandlingMinutes: row.dropoffHandlingMinutes,
     };
   }
 }

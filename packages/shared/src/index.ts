@@ -5892,6 +5892,41 @@ export function targetArrivalAt(appointmentAt: string, thresholds: ArrivalWindow
 }
 
 /**
+ * How long it actually takes to get a patient into or out of the vehicle —
+ * distinct from `TripStopDwell`'s WAIT-at-facility decision, which is about
+ * whether the crew stays with the vehicle while the patient is *inside* the
+ * facility, not the seconds-to-minutes of loading/unloading them at the
+ * vehicle's door. Policy, not physics, hence adjustable the same way
+ * `ArrivalWindowThresholds` is (#233's precedent): a coordinator can widen
+ * or narrow it without a deploy as the fleet's own wheelchair/stretcher mix
+ * changes.
+ */
+export interface PatientHandlingThresholds {
+  /** Minutes to get the patient aboard at a `PICKUP` stop. */
+  pickupHandlingMinutes: number;
+  /** Minutes to get the patient off at a `DROPOFF` stop. */
+  dropoffHandlingMinutes: number;
+}
+
+export const DEFAULT_PATIENT_HANDLING_THRESHOLDS: PatientHandlingThresholds = {
+  pickupHandlingMinutes: 3,
+  dropoffHandlingMinutes: 1,
+};
+
+/** Same "message or null" shape as `validateArrivalWindowThresholds`. */
+export function validatePatientHandlingThresholds(
+  input: Partial<Record<keyof PatientHandlingThresholds, number | null | undefined>>,
+): string | null {
+  for (const value of Object.values(input)) {
+    if (value === null || value === undefined) continue;
+    if (!Number.isInteger(value) || value < 0) {
+      return 'Patient handling times must be whole numbers of minutes, zero or more.';
+    }
+  }
+  return null;
+}
+
+/**
  * The two times the crew currently works out from experience, and the reason
  * the planning board exists: when to collect the patient, and when they get
  * home again. Neither is on the delegation's printed daily sheet today — it
@@ -5913,6 +5948,13 @@ export function targetArrivalAt(appointmentAt: string, thresholds: ArrivalWindow
  * `null` travel time (no route, no coordinates) yields `null` times rather
  * than a fabricated guess: a blank the planner fills in is honest, a made-up
  * time is not.
+ *
+ * The anchored end (arrival for `OUTBOUND`, departure for `RETURN`) is a
+ * fact the plan is built around and stays exactly where the raw travel time
+ * puts it; `handling` only widens the *other* end, so the suggested span
+ * between `pickupAt` and `dropoffAt` reflects the whole time the leg
+ * realistically consumes — travel plus actually getting the patient aboard
+ * and off again — rather than pretending loading is instantaneous.
  */
 export interface SuggestedLegTimes {
   /** ISO datetime — leaving the origin. Home for `OUTBOUND`, the facility for `RETURN`. */
@@ -5930,22 +5972,25 @@ export function suggestLegTimes(input: {
   /** Planned travel time for this leg, traffic-corrected. Null when unroutable. */
   travelMinutes: number | null;
   thresholds: ArrivalWindowThresholds;
+  /** Per-patient loading/unloading time — adjustable, see `DEFAULT_PATIENT_HANDLING_THRESHOLDS`. */
+  handling: PatientHandlingThresholds;
 }): SuggestedLegTimes {
-  const { direction, appointmentAt, effectiveEstimatedEndAt, travelMinutes, thresholds } = input;
+  const { direction, appointmentAt, effectiveEstimatedEndAt, travelMinutes, thresholds, handling } = input;
   if (travelMinutes == null) return { pickupAt: null, dropoffAt: null };
   const travelMs = travelMinutes * 60_000;
+  const handlingMs = (handling.pickupHandlingMinutes + handling.dropoffHandlingMinutes) * 60_000;
 
   if (direction === LegDirection.RETURN) {
     const pickup = new Date(effectiveEstimatedEndAt);
     return {
       pickupAt: pickup.toISOString(),
-      dropoffAt: new Date(pickup.getTime() + travelMs).toISOString(),
+      dropoffAt: new Date(pickup.getTime() + travelMs + handlingMs).toISOString(),
     };
   }
 
   const dropoff = new Date(targetArrivalAt(appointmentAt, thresholds));
   return {
-    pickupAt: new Date(dropoff.getTime() - travelMs).toISOString(),
+    pickupAt: new Date(dropoff.getTime() - travelMs - handlingMs).toISOString(),
     dropoffAt: dropoff.toISOString(),
   };
 }
@@ -5957,7 +6002,7 @@ export function suggestLegTimes(input: {
  * run, and changeable without a deploy when the delegation moves or the
  * freephone number changes.
  */
-export interface DelegationSettings extends ArrivalWindowThresholds {
+export interface DelegationSettings extends ArrivalWindowThresholds, PatientHandlingThresholds {
   baseName: string;
   baseLatitude: number;
   baseLongitude: number;
@@ -5977,6 +6022,7 @@ export const DEFAULT_DELEGATION_SETTINGS: DelegationSettings = {
   baseLongitude: -8.6117829,
   coduDadosPhone: '+351800203264',
   ...DEFAULT_ARRIVAL_WINDOW_THRESHOLDS,
+  ...DEFAULT_PATIENT_HANDLING_THRESHOLDS,
 };
 
 // ─── Live emergency runs ──────────────────────────────────────────────────────
@@ -8134,8 +8180,8 @@ export function validateCancelTransportLeg(input: CancelTransportLegInput): stri
 // a patient's round journey: a leg's `PICKUP`/`DROPOFF` pair moves between
 // trips in one call (`AssignTransportLegInput`), so the outbound and return
 // legs of the same patient on the same day may sit on different trips, with
-// different vehicles and different crews. `WAIT`/`RETURN_TO_BASE` stops
-// carry no leg at all.
+// different vehicles and different crews. `WAIT`/`RETURN_TO_BASE`/
+// `DEPART_FROM_BASE` stops carry no leg at all.
 //
 // Validation follows the override precedent used everywhere else in this
 // schema (`ScheduleAssignment.isOverride`/`certificationOverrideReason`,
@@ -8156,6 +8202,10 @@ export enum TripStopKind {
   DROPOFF = 'DROPOFF',
   WAIT = 'WAIT',
   RETURN_TO_BASE = 'RETURN_TO_BASE',
+  /** The vehicle leaving the delegation's own base to start the day's first
+   * journey — `RETURN_TO_BASE`'s counterpart at the other end of the day.
+   * Carries no leg, same as `RETURN_TO_BASE`/`WAIT`. */
+  DEPART_FROM_BASE = 'DEPART_FROM_BASE',
 }
 
 /**
@@ -8212,6 +8262,15 @@ export interface AddTripCrewMemberInput {
   userId: string;
   role: CertificationType;
   overrideReason?: string | null;
+  /**
+   * Add them to every journey this vehicle runs on this date, not just this
+   * one. The same crew normally works the same vehicle all day, so that is
+   * the default the dialog offers — but crew stays a per-`Trip` fact, because
+   * "all day" is a habit and not a rule, and the afternoon round genuinely
+   * does change hands. Journeys they are already on are skipped, never
+   * duplicated or treated as a conflict.
+   */
+  applyToVehicleDay?: boolean;
 }
 
 export function validateAddTripCrewMember(input: AddTripCrewMemberInput): string | null {
@@ -8262,22 +8321,27 @@ export function validateAssignTransportLeg(input: AssignTransportLegInput): stri
   return null;
 }
 
-/** `POST /trips/:id/stops` — a `WAIT` or `RETURN_TO_BASE` stop, the only two
- * kinds ever added directly; `PICKUP`/`DROPOFF` only ever arrive as a pair,
- * via `AssignTransportLegInput`. */
+/** `POST /trips/:id/stops` — a `WAIT`, `RETURN_TO_BASE` or `DEPART_FROM_BASE`
+ * stop, the only three kinds ever added directly; `PICKUP`/`DROPOFF` only
+ * ever arrive as a pair, via `AssignTransportLegInput`. */
 export interface CreateTripStopInput {
-  kind: TripStopKind.WAIT | TripStopKind.RETURN_TO_BASE;
+  kind: TripStopKind.WAIT | TripStopKind.RETURN_TO_BASE | TripStopKind.DEPART_FROM_BASE;
   plannedAt: string;
   /** Required for `WAIT` — the facility being waited at. Ignored for
-   * `RETURN_TO_BASE`, which always targets the delegation's own base. */
+   * `RETURN_TO_BASE`/`DEPART_FROM_BASE`, which always target the
+   * delegation's own base. */
   facilityId?: string | null;
   dwellDecision?: TripStopDwell | null;
   dwellMinutes?: number | null;
 }
 
 export function validateCreateTripStop(input: CreateTripStopInput): string | null {
-  if (input.kind !== TripStopKind.WAIT && input.kind !== TripStopKind.RETURN_TO_BASE) {
-    return 'Only a WAIT or RETURN_TO_BASE stop may be added directly.';
+  if (
+    input.kind !== TripStopKind.WAIT &&
+    input.kind !== TripStopKind.RETURN_TO_BASE &&
+    input.kind !== TripStopKind.DEPART_FROM_BASE
+  ) {
+    return 'Only a WAIT, RETURN_TO_BASE or DEPART_FROM_BASE stop may be added directly.';
   }
   if (!input.plannedAt) return 'Give the planned time.';
   if (input.kind === TripStopKind.WAIT && !input.facilityId) {
@@ -8497,7 +8561,215 @@ export function computeDwellBreakEven(expectedDwellMinutes: number, travelToBase
   };
 }
 
+// ─── Crew composition ───────────────────────────────────────────────────────
+//
+// What a journey's crew has to look like, decided by what is actually in the
+// vehicle rather than by what the referral asked for: a stretcher ("maca")
+// patient needs an emergency vehicle and two crew at TAT or above, anything
+// else needs one crew member with a valid SBV.
+//
+// Keyed on `PatientMobility.STRETCHER` — the physical fact that already drives
+// the stretcher-position capacity check — and not on
+// `TransportRequestVehicleType.AMBULANCIA`, which is the requesting hospital's
+// opinion and routinely disagrees with the patient in front of the crew.
+//
+// Ranked, never thrown. Unlike capacity or a double-booked vehicle, this is a
+// constraint a journey *grows into*: a `Trip` is created empty and crewed a
+// field at a time, so a write-time check would reject the first crew member
+// for not yet being the second. `TripsService.buildDetail` re-derives these on
+// every read instead, which also catches a certification that lapsed, or a
+// stretcher patient dragged onto a van, long after the crew was set.
+
+/** The crew a journey needs, given what it carries. */
+export interface TripCrewRequirement {
+  /** How many crew members must hold `minimumCertification`. */
+  minimumCrew: number;
+  /** The lowest certification each of those must hold. Implied grants count —
+   * a TAS satisfies a TAT requirement, see `CERTIFICATION_IMPLIES`. */
+  minimumCertification: CertificationType;
+  /** True when the journey must run on a `VehicleType.EMERGENCY` vehicle. */
+  requiresEmergencyVehicle: boolean;
+}
+
+/** A stretcher patient: emergency vehicle, two crew at TAT or above. */
+export const STRETCHER_TRIP_CREW_REQUIREMENT: TripCrewRequirement = {
+  minimumCrew: 2,
+  minimumCertification: CertificationType.TAT,
+  requiresEmergencyVehicle: true,
+};
+
+/** Everything else: one crew member with a valid SBV. */
+export const STANDARD_TRIP_CREW_REQUIREMENT: TripCrewRequirement = {
+  minimumCrew: 1,
+  minimumCertification: CertificationType.SBV,
+  requiresEmergencyVehicle: false,
+};
+
+export function tripCrewRequirement(carriesStretcher: boolean): TripCrewRequirement {
+  return carriesStretcher ? STRETCHER_TRIP_CREW_REQUIREMENT : STANDARD_TRIP_CREW_REQUIREMENT;
+}
+
+/**
+ * Whether any stretcher passenger is aboard at any point in the journey — the
+ * requirement applies to the whole trip, not to the stretch the patient is
+ * actually in the vehicle for. The same crew and the same vehicle serve the
+ * whole journey, so one maca leg sets the bar for all of it.
+ */
+export function carriesStretcherPassenger(segments: TripStopSegment[]): boolean {
+  return segments.some((segment) => segment.demand.stretcherPositions > 0);
+}
+
+/** One crew member as the composition check needs to see them. */
+export interface TripCrewCertifications {
+  userId: string;
+  certifications: HeldCertification[];
+}
+
+/**
+ * Ranked crew-composition findings for one journey. Certifications are
+ * checked against the **trip's own date**, not today: planning three weeks out
+ * must not accept a certificate that expires next Tuesday.
+ */
+export function checkTripCrew(input: {
+  crew: TripCrewCertifications[];
+  requirement: TripCrewRequirement;
+  vehicleType: VehicleType;
+  /** ISO date — the trip's date. */
+  date: string;
+  /** False for a journey with nothing aboard yet. An empty lane has no crew
+   * requirement to fall short of, and flagging one is pure noise on a board
+   * whose lanes are routinely created before anything is dragged onto them. */
+  hasPassengers: boolean;
+}): TripPlanIssue[] {
+  if (!input.hasPassengers) return [];
+
+  const { requirement } = input;
+  const required = CERTIFICATION_LABEL[requirement.minimumCertification];
+  const issues: TripPlanIssue[] = [];
+
+  if (requirement.requiresEmergencyVehicle && input.vehicleType !== VehicleType.EMERGENCY) {
+    issues.push({
+      level: 'ERROR',
+      code: 'VEHICLE_NOT_EMERGENCY',
+      message: 'A stretcher patient needs an emergency vehicle; this journey is planned on a transport vehicle.',
+    });
+  }
+
+  // "At least N holding X" — never "all of them". A standard transport needs
+  // one SBV; the second person in the vehicle may be a driver and nothing
+  // else, and flagging them would be wrong. Where the rule really does bind
+  // everyone (a maca's two TAT) the count says so on its own: with exactly two
+  // crew, "two must hold TAT" and "both must hold TAT" are the same sentence.
+  // Who specifically is short is a question the crew dialog answers, where
+  // every member is listed with the certifications they actually hold.
+  const qualified = input.crew.filter((member) =>
+    holdsCertification(member.certifications, requirement.minimumCertification, input.date),
+  ).length;
+
+  if (qualified < requirement.minimumCrew) {
+    issues.push({
+      level: 'ERROR',
+      code: 'CREW_TOO_FEW',
+      // Phrased as counts rather than a verb, so it stays grammatical at
+      // every combination of "0 of 1" through "2 of 3".
+      message:
+        `This journey needs ${requirement.minimumCrew} crew member${requirement.minimumCrew > 1 ? 's' : ''} ` +
+        `holding ${required}; ${qualified} qualified of ${input.crew.length} assigned.`,
+    });
+  }
+
+  return issues;
+}
+
+/**
+ * A person the crew dialog can offer for a journey (`GET
+ * /trips/crew-candidates?date=`). Nobody is filtered out here — an absent or
+ * already-committed person is still listed, flagged, and addable with a
+ * recorded reason, the same override precedent the rest of this schema uses.
+ */
+export interface TripCrewCandidate {
+  userId: string;
+  firstName: string;
+  lastName: string;
+  /** Effective certifications (held or implied) not expired on the date. */
+  certifications: CertificationType[];
+  /** A `StaffAbsence` covers the date — addable only with an override reason. */
+  absent: boolean;
+  /** Trips on the same date this person already crews, so the dialog can say
+   * "already on journey 1" rather than silently double-booking them. */
+  crewingTripIds: string[];
+  /** On a published `ScheduleAssignment` that date — the people a planner
+   * expects to reach for first, so they sort to the top. */
+  onRoster: boolean;
+}
+
 // ─── Planning board (#235) ──────────────────────────────────────────────────
+//
+/**
+ * Decodes a Google-encoded polyline into an ordered list of coordinates.
+ * `precision` matches the encoder's own digit count — 6 for polyline6, the
+ * format `RoutingService.routeGeometry` always asks OSRM for (#247 stage 4),
+ * so a lane's `routeGeometry` decodes with the default. Pure and dependency-free
+ * on purpose: both the map panel (decoding to draw a route) and a future test
+ * fixture need this, and it is a well-known, stable algorithm — not worth a
+ * third frontend dependency alongside maplibre-gl and pmtiles.
+ */
+export function decodePolyline(encoded: string, precision = 6): Array<{ latitude: number; longitude: number }> {
+  const factor = 10 ** precision;
+  const coordinates: Array<{ latitude: number; longitude: number }> = [];
+  let index = 0;
+  let lat = 0;
+  let lng = 0;
+
+  while (index < encoded.length) {
+    let result = 0;
+    let shift = 0;
+    let byte: number;
+    do {
+      byte = encoded.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20);
+    lat += result & 1 ? ~(result >> 1) : result >> 1;
+
+    result = 0;
+    shift = 0;
+    do {
+      byte = encoded.charCodeAt(index++) - 63;
+      result |= (byte & 0x1f) << shift;
+      shift += 5;
+    } while (byte >= 0x20);
+    lng += result & 1 ? ~(result >> 1) : result >> 1;
+
+    coordinates.push({ latitude: lat / factor, longitude: lng / factor });
+  }
+
+  return coordinates;
+}
+
+/**
+ * A lane's own driven distance, in kilometres — the sum of consecutive
+ * decoded-polyline vertices' great-circle distances, not a per-leg sum.
+ *
+ * `journeySummary`'s total distance used to add up each carried leg's own
+ * `travelDistanceMeters` — the distance *that patient's* pickup→dropoff would
+ * cover driven alone — which double-counts every road segment two
+ * co-routed patients happen to share and, just as often, undercounts the
+ * empty runs between stops the plan never routes stand-alone. `routeGeometry`
+ * is already the vehicle's one real path through every stop in sequence
+ * (`TripsService.attachRouteGeometry`), so walking its own vertices is the
+ * only distance that actually matches what the crew drives. A dense
+ * polyline's vertex-to-vertex chord length converges on the road distance
+ * closely enough that this needs no OSRM round trip of its own.
+ */
+export function polylineDistanceKm(encoded: string, precision = 6): number {
+  const points = decodePolyline(encoded, precision);
+  let total = 0;
+  for (let i = 1; i < points.length; i++) {
+    total += distanceInKm(points[i - 1], points[i]);
+  }
+  return total;
+}
 //
 // `GET /trips/board?date=` — everything `TransportPlanningPage` needs for one
 // date in a single call. The board never re-derives `TripsService.getDetail`'s
@@ -8530,10 +8802,44 @@ export interface TransportPlanningLeg extends TransportLeg {
    * routed one (out-of-region), so the board can say so instead of implying a
    * precision it does not have. */
   travelEstimated: boolean;
+  /** The same routed pair's distance, alongside `travelMinutes` — null under
+   * the same conditions (#247 stage 3, the journey page's "distance"
+   * column). `PlannedDurationService.planBetweenPoints` already computed
+   * this; `TripLegTravelService` only had to stop discarding it. */
+  travelDistanceMeters: number | null;
   /** The pickup/dropoff times the crew infers by experience today, computed —
    * see `suggestLegTimes`. Advisory: `plannedPickupAt`/`plannedDropoffAt` are
    * what the plan actually commits to once the planner has placed the block. */
   suggested: SuggestedLegTimes;
+  /**
+   * This leg's two endpoints, resolved the same way `travelMinutes` is —
+   * the leg's own address if it has one, else the facility's own entrance or
+   * the patient's own geocoded home (#247 stage 4). Null on whichever end
+   * couldn't be resolved; a leg still carries whichever door it does know,
+   * independent of whether the pair as a whole could be routed. This is what
+   * lets the map panel drop an unplanned pin at a patient's home before a
+   * vehicle has ever been suggested for them.
+   */
+  door: {
+    origin: { latitude: number; longitude: number } | null;
+    destination: { latitude: number; longitude: number } | null;
+  };
+}
+
+/**
+ * A journey's crew member as the board shows them — `TripCrewMember` plus the
+ * name the lane header prints and the certifications the crew dialog ranks
+ * by.
+ *
+ * `TripsService.buildDetail` has to load both anyway to run `checkTripCrew`,
+ * so serving them costs nothing beyond the bytes and saves the board a second
+ * round trip to `users` purely to turn a set of ids into names.
+ */
+export interface TransportPlanningCrewMember extends TripCrewMember {
+  firstName: string;
+  lastName: string;
+  /** Effective certifications (held or implied) not expired on the trip's date. */
+  certifications: CertificationType[];
 }
 
 /** One vehicle's lane for a day — a `Trip` plus everything
@@ -8541,6 +8847,17 @@ export interface TransportPlanningLeg extends TransportLeg {
  * re-derives capacity/availability/arrival-timing issues itself. */
 export interface TransportPlanningLane {
   trip: Trip;
+  /**
+   * This journey's 1-based ordinal among its vehicle's journeys for the
+   * date, earliest-first-stop first — the same order `VehicleGroup` stacks
+   * the lanes in. Computed server-side (#247 stage 1) rather than left to
+   * each surface's own array index, because it also drives the journey's
+   * colour (`journeyColorForOrdinal`): the board, the inspector and the
+   * standalone journey page (`TripJourneyDetail`) must all land on the same
+   * number for the same trip, and two independent sort implementations
+   * would eventually drift.
+   */
+  journeyNumber: number;
   vehicle: {
     id: string;
     licensePlate: string;
@@ -8550,12 +8867,27 @@ export interface TransportPlanningLane {
     wheelchairPositions: number;
     stretcherPositions: number;
   };
-  crewMembers: TripCrewMember[];
+  crewMembers: TransportPlanningCrewMember[];
+  /** What this journey's crew must look like given what it carries — shown on
+   * the lane so a planner knows the bar *before* falling short of it, rather
+   * than only meeting it as an error afterwards. */
+  crewRequirement: TripCrewRequirement;
   stops: TripStop[];
   /** Null when the lane has no stops yet. */
   occupancyWindow: { startsAt: string; endsAt: string } | null;
   emptyLegs: TripStopSegment[];
   issues: TripPlanIssue[];
+  /**
+   * This journey's road path, one continuous line through every stop in
+   * sequence, encoded as a polyline6 (`decodePolyline` above decodes it) —
+   * the map panel's route layer (#247 stage 4). Null with fewer than two
+   * resolvable stop coordinates, or when OSRM couldn't route the pair; a
+   * lane is still fully usable without it; see `RoutingService.routeGeometry`.
+   * Deliberately one line for the whole trip rather than one dashed segment
+   * per leg direction — see `TripsService.attachRouteGeometry`'s doc comment
+   * for why that's the line this stage draws.
+   */
+  routeGeometry: string | null;
 }
 
 /**
@@ -8569,6 +8901,92 @@ export interface TransportPlanningBoard {
   lanes: TransportPlanningLane[];
   legsById: Record<string, TransportPlanningLeg>;
   unassignedLegIds: string[];
+}
+
+/**
+ * `GET /trips/:id` (#247 stage 3) — one journey's own page and printable
+ * crew sheet. The same `TransportPlanningLane` shape the board already
+ * computes for this trip, plus the legs its stops carry (keyed exactly like
+ * the board's own `legsById`) since a standalone page has no board-wide map
+ * to look them up in. Still no new endpoint: `GET /trips/:id` already
+ * existed for `TripsService.getDetail`'s ranked validation — this only
+ * widens what it returns.
+ */
+export interface TripJourneyDetail extends TransportPlanningLane {
+  legsById: Record<string, TransportPlanningLeg>;
+}
+
+/**
+ * One vehicle's whole day (#247 stage 5) — every journey it runs on `date`,
+ * the vehicle-day page's one call (`GET /trips/vehicle/:vehicleId?date=`).
+ * `lanes` is empty for a vehicle with nothing planned that date rather than
+ * 404ing, so the page can still say "no journeys" for a known vehicle; an
+ * unknown `vehicleId` is the only 404. Shaped like `TripJourneyDetail` — one
+ * shared `legsById` rather than one per lane — since a vehicle-day page has
+ * no board-wide map to look legs up in either.
+ */
+export interface VehicleDayJourneys {
+  /** ISO date. */
+  date: string;
+  vehicle: TransportPlanningLane['vehicle'];
+  /** This vehicle's journeys for the date, in `journeyNumber` order. */
+  lanes: TransportPlanningLane[];
+  legsById: Record<string, TransportPlanningLeg>;
+}
+
+/**
+ * `POST /trips/suggest-placements` (the redesign's "Suggestions" stage,
+ * `docs/plans/planeamento-transportes-redesign.md` §6/§8) — everywhere a
+ * group of unplanned legs could go, ranked by how much it costs the fleet.
+ * Ranking only: #219's deferral of automatic optimisation stands, so nothing
+ * here ever applies itself, and a blocked candidate is still returned rather
+ * than filtered out — the planner needs to know it was considered.
+ */
+export interface SuggestPlacementsRequest {
+  /** The unplanned rail's own group — every person boards together, so
+   * they're placed together (mirrors `AssignGroupDialog`'s one dialog, one
+   * pickup/dropoff pair per leg, same instant). */
+  legIds: string[];
+}
+
+/** Why a candidate can't be applied as computed. Never blocks the candidate
+ * from being returned — see `RankedPlacement`'s own doc comment. */
+export type PlacementBlockReason =
+  | 'CAPACITY_SEATS'
+  | 'CAPACITY_WHEELCHAIR'
+  | 'CAPACITY_STRETCHER'
+  | 'VEHICLE_UNAVAILABLE'
+  | 'ROUTE_UNKNOWN';
+
+/**
+ * One place the group could go: an existing journey to insert into, or a
+ * fresh one to start on a vehicle with nothing planned yet (`tripId: null`).
+ * `deltaKm`/`deltaMinutes` are the detour this insertion costs the vehicle's
+ * *existing* route — the straight cost of the new stretch for a fresh trip,
+ * since there is no route yet to detour from. `arrivalMarginMinutes` is the
+ * slack left before the group's own outbound appointment once that detour's
+ * travel time is added; negative means the candidate would arrive late.
+ * Both are `null` when a point on the route couldn't be resolved or routed —
+ * an honest blank, never a fabricated number, same posture as
+ * `TransportPlanningLeg.travelMinutes`. Never meaningful for a `RETURN`
+ * group, which has no appointment to be on time for.
+ */
+export interface RankedPlacement {
+  vehicle: { id: string; numeroCauda: string; licensePlate: string };
+  /** Null for a fresh journey on this vehicle rather than an existing one. */
+  tripId: string | null;
+  /** This existing journey's ordinal for the vehicle that date — the same
+   * numbering `TransportPlanningLane.journeyNumber` uses. Null alongside
+   * `tripId`. */
+  journeyNumber: number | null;
+  /** Where the group would land among the trip's stops in calendar-time
+   * order, 0-based, 0 meaning before every stop the trip already has.
+   * Always 0 for a fresh trip. */
+  insertPosition: number;
+  deltaKm: number | null;
+  deltaMinutes: number | null;
+  arrivalMarginMinutes: number | null;
+  blockedBy: PlacementBlockReason[];
 }
 
 // ─── Crew manifest (#236) ───────────────────────────────────────────────────
@@ -8616,6 +9034,42 @@ export interface MyTransportTripsResponse {
   /** ISO date. */
   date: string;
   trips: CrewManifestTrip[];
+}
+
+// ─── Week strip (#247 stage 6) ────────────────────────────────────────────────
+//
+// `GET /trips/week?from=` — one row per date, the seven days starting at
+// `from`, feeding the planning board's week strip
+// (`docs/plans/planeamento-transportes-redesign.md` §6/§8): a heavy day is a
+// Monday decision, not a Thursday-morning one. `GET /trips/crew/:userId?date=`
+// is this stage's other endpoint but adds no new shape — it's the planner-side
+// counterpart to `GET /trips/me?date=` and returns the same
+// `MyTransportTripsResponse` above, just for someone else's day and with
+// patient identity gated by the *viewer's* `VIEW_PATIENT_IDENTITY` rather than
+// the structural bypass `/trips/me` uses for a crew member reading their own.
+
+export interface WeekDateSummary {
+  /** ISO date. */
+  date: string;
+  /** Distinct patients with a leg due this date, planned or not. */
+  peopleCount: number;
+  /** Trips (journeys) on this date. */
+  journeyCount: number;
+  /** Legs due this date with no `TripStop` yet — same criterion the board's
+   * unassigned rail (`GET /trips/board?date=`) uses. */
+  unplannedLegCount: number;
+  /** Journeys carrying at least one leg whose origin or destination facility
+   * sits outside the delegation's own district — the Porto-run case. */
+  outOfDistrictJourneyCount: number;
+  /** Hours of vehicle time already committed to a trip this date, summed
+   * across every `VehicleOccupancy` interval a `Trip` on this date owns. */
+  committedVehicleHours: number;
+}
+
+export interface TripsWeekOverview {
+  /** ISO date — the first of the seven days returned. */
+  from: string;
+  days: WeekDateSummary[];
 }
 
 // ─── API error codes (#180 phase 4) ───────────────────────────────────────────

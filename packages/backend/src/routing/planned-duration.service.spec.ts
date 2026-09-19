@@ -25,6 +25,7 @@ describe('PlannedDurationService', () => {
       distanceMatrix: jest
         .fn()
         .mockResolvedValue([[{ durationSeconds: 1000, distanceMeters: 20000, estimated: false }]]),
+      routeGeometry: jest.fn(),
     };
     endpoints = {
       resolve: jest.fn().mockImplementation(async (endpoint: CorridorEndpoint) =>

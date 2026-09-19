@@ -8,9 +8,15 @@ describe('OsrmRoutingService', () => {
   const buildService = () => {
     const geocodingClient = { geocode: jest.fn() };
     const matrixClient = { table: jest.fn() };
+    const routeClient = { route: jest.fn() };
     const cache = { get: jest.fn(), put: jest.fn() };
-    const service = new OsrmRoutingService(geocodingClient as any, matrixClient as any, cache as any);
-    return { service, geocodingClient, matrixClient, cache };
+    const service = new OsrmRoutingService(
+      geocodingClient as any,
+      matrixClient as any,
+      routeClient as any,
+      cache as any,
+    );
+    return { service, geocodingClient, matrixClient, routeClient, cache };
   };
 
   describe('geocode', () => {
@@ -69,6 +75,16 @@ describe('OsrmRoutingService', () => {
 
       const [[cell]] = await service.distanceMatrix([PORTO], [BRAGA]);
       expect(cell.estimated).toBe(true);
+    });
+  });
+
+  describe('routeGeometry', () => {
+    it('delegates straight to the route client', async () => {
+      const { service, routeClient } = buildService();
+      routeClient.route.mockResolvedValue('abc123');
+
+      await expect(service.routeGeometry([PORTO, BRAGA])).resolves.toBe('abc123');
+      expect(routeClient.route).toHaveBeenCalledWith([PORTO, BRAGA]);
     });
   });
 });

@@ -26,6 +26,7 @@ describe('TrafficCorridorSamplerService', () => {
     routing = {
       geocode: jest.fn(),
       distanceMatrix: jest.fn().mockResolvedValue([[{ durationSeconds: 1000, distanceMeters: 20000, estimated: false }]]),
+      routeGeometry: jest.fn(),
     };
     samplingClient = { sampleTravelTime: jest.fn().mockResolvedValue(null) };
     corridorFactors = { lookup: jest.fn(), upsert: jest.fn().mockResolvedValue(undefined) };

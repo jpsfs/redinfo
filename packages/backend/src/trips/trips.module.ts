@@ -7,12 +7,14 @@ import { TransportConfigModule } from '../transport-config/transport-config.modu
 import { RoutingModule } from '../routing/routing.module';
 import { TransportRequestsModule } from '../transport-requests/transport-requests.module';
 import { PatientsModule } from '../patients/patients.module';
+import { GeographyModule } from '../geography/geography.module';
 import { TripsService } from './trips.service';
 import { TripCrewService } from './trip-crew.service';
 import { TripStopsService } from './trip-stops.service';
 import { TripBreakEvenService } from './trip-break-even.service';
 import { TripCrewManifestService } from './trip-crew-manifest.service';
 import { TripLegTravelService } from './trip-leg-travel.service';
+import { TripPlacementSuggestionsService } from './trip-placement-suggestions.service';
 import { TripsController } from './trips.controller';
 
 /**
@@ -26,7 +28,14 @@ import { TripsController } from './trips.controller';
  * `TransportRequestsModule` (`TransportRequestLegsService`) and
  * `PatientsModule` feed `getBoard` (#235) — the planning board's leg cards,
  * assigned and unassigned alike. `RoutingModule` serves `TripLegTravelService`
- * on that same path, for the pickup and home-arrival times the board suggests.
+ * on that same path, for the pickup and home-arrival times the board suggests
+ * — and, directly on `TripsService` itself (#247 stage 4), for each lane's
+ * drawn route (`TripsService.attachRouteGeometry`, `ROUTING_SERVICE`).
+ * `TripPlacementSuggestionsService` (#247's Suggestions stage) reuses the
+ * same three modules again, batching one `distanceMatrix` call across every
+ * candidate rather than routing each one separately. `GeographyModule`
+ * (#247 stage 6) serves `TripsService.getWeek`'s `homeDistrict` lookup for
+ * the week strip's out-of-district count.
  */
 @Module({
   imports: [
@@ -37,6 +46,7 @@ import { TripsController } from './trips.controller';
     RoutingModule,
     TransportRequestsModule,
     PatientsModule,
+    GeographyModule,
   ],
   providers: [
     TripsService,
@@ -45,6 +55,7 @@ import { TripsController } from './trips.controller';
     TripBreakEvenService,
     TripCrewManifestService,
     TripLegTravelService,
+    TripPlacementSuggestionsService,
     AuditInterceptor,
   ],
   controllers: [TripsController],
