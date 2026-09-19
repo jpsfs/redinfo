@@ -11,19 +11,17 @@ import {
   DialogActions,
   DialogContent,
   DialogTitle,
+  Drawer,
   IconButton,
   Paper,
   Stack,
   TextField,
-  ToggleButton,
-  ToggleButtonGroup,
   Tooltip,
   Typography,
 } from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import CalendarViewWeekIcon from '@mui/icons-material/CalendarViewWeek';
-import ChevronLeftIcon from '@mui/icons-material/ChevronLeft';
-import ChevronRightIcon from '@mui/icons-material/ChevronRight';
+import GroupsIcon from '@mui/icons-material/Groups';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import WarningAmberIcon from '@mui/icons-material/WarningAmber';
@@ -50,9 +48,8 @@ import { JourneyInspector } from './transportPlanning/JourneyInspector';
 import { MapPanel } from './transportPlanning/map/MapPanel';
 import { WaitReleaseDialog, WaitReleaseTarget } from './transportPlanning/WaitReleaseDialog';
 import { PlanningLegend } from './transportPlanning/PlanningLegend';
-import { UnassignedLegCard } from './transportPlanning/UnassignedLegCard';
 import { UnplannedGroup, groupUnplannedLegs } from './transportPlanning/unplannedGroups';
-import { UnplannedGroupCard } from './transportPlanning/UnplannedGroupCard';
+import { UNASSIGNED_RAIL_WIDTH, UnassignedRail } from './transportPlanning/UnassignedRail';
 import { VehicleGroup } from './transportPlanning/VehicleGroup';
 import { WeekStrip } from './transportPlanning/WeekStrip';
 import { LANE_LABEL_WIDTH } from './transportPlanning/PlanningLane';
@@ -168,10 +165,13 @@ export const TransportPlanningPage = () => {
   const [perPersonView, setPerPersonView] = useState(false);
   const [assignGroupTarget, setAssignGroupTarget] = useState<UnplannedGroup | null>(null);
   const [suggestTarget, setSuggestTarget] = useState<UnplannedGroup | null>(null);
-  // The unassigned rail's own collapse (distinct from react-admin's nav
-  // drawer) — a planner with every lane already assigned wants the map and
-  // timeline wider more often than they want this list open.
-  const [railCollapsed, setRailCollapsed] = useState(false);
+  // The unassigned rail's own hide (distinct from react-admin's nav drawer) —
+  // a planner with every lane already assigned wants the map and timeline
+  // wider more often than they want this list open. Hidden gives the board the
+  // full width; the toolbar's "Por atribuir" button brings the list back as a
+  // drawer, and its pin docks it again.
+  const [railHidden, setRailHidden] = useState(false);
+  const [railDrawerOpen, setRailDrawerOpen] = useState(false);
   const [issuesOpen, setIssuesOpen] = useState(false);
   // The week strip (#247 stage 6) — closed by default, same reasoning as the
   // rail's own collapse: most sessions are spent on one date's board, not
@@ -304,6 +304,17 @@ export const TransportPlanningPage = () => {
     setSelectedTripId((current) => (current === tripId ? null : tripId));
   }, []);
 
+  /** Open the assignment dialog for one person — shared by the rail's flat
+   * "por pessoa" card and a group card's per-person row, so the two can never
+   * disagree about a leg's default pickup/dropoff. */
+  const assignLeg = useCallback(
+    (legId: string) => {
+      const leg = board?.legsById[legId];
+      if (leg) setAssignTarget(assignTargetForLeg(legId, leg));
+    },
+    [board],
+  );
+
   const handleAddJourney = useCallback(
     async (vehicleId: string) => {
       try {
@@ -328,6 +339,23 @@ export const TransportPlanningPage = () => {
       <Stack direction="row" justifyContent="space-between" alignItems="center" flexWrap="wrap" gap={1} sx={{ mb: 2 }}>
         <Typography variant="h5">{t('transportPlanning.pageTitle')}</Typography>
         <Stack direction="row" alignItems="center" gap={1}>
+          {/* Only while the rail is hidden — when it is docked it is already
+              on screen, and a button to summon what you can see is noise. */}
+          {railHidden && (
+            <Button
+              size="small"
+              variant="outlined"
+              startIcon={<GroupsIcon />}
+              onClick={() => setRailDrawerOpen(true)}
+            >
+              {t('transportPlanning.railTitle')}
+              <Badge
+                badgeContent={board?.unassignedLegIds.length ?? 0}
+                color="primary"
+                sx={{ ml: 1.5, mr: 0.5 }}
+              />
+            </Button>
+          )}
           <Tooltip title={t('transportPlanning.issuesTitle')}>
             <IconButton
               size="small"
@@ -393,84 +421,26 @@ export const TransportPlanningPage = () => {
 
       {!loading && board && (
         <Stack direction={{ xs: 'column', lg: 'row' }} spacing={2} sx={{ minWidth: 0, alignItems: 'flex-start' }}>
-          <Box sx={{ width: { xs: '100%', lg: railCollapsed ? 40 : 280 }, flexShrink: 0, minWidth: 0 }}>
-            {railCollapsed ? (
-              <Stack alignItems="center" spacing={1}>
-                <Tooltip title={t('transportPlanning.railExpand')}>
-                  <IconButton size="small" onClick={() => setRailCollapsed(false)}>
-                    <Badge badgeContent={board.unassignedLegIds.length} color="primary">
-                      <ChevronRightIcon fontSize="small" />
-                    </Badge>
-                  </IconButton>
-                </Tooltip>
-              </Stack>
-            ) : (
-              <>
-                <Stack direction="row" alignItems="center" justifyContent="space-between" sx={{ mb: 1 }} gap={1}>
-                  <Stack direction="row" alignItems="center" spacing={0.5} sx={{ minWidth: 0 }}>
-                    <Tooltip title={t('transportPlanning.railCollapse')}>
-                      <IconButton size="small" onClick={() => setRailCollapsed(true)}>
-                        <ChevronLeftIcon fontSize="small" />
-                      </IconButton>
-                    </Tooltip>
-                    <Typography variant="subtitle1" noWrap>
-                      {t('transportPlanning.railTitle')}
-                    </Typography>
-                  </Stack>
-                  {board.unassignedLegIds.length > 0 && (
-                    <ToggleButtonGroup
-                      size="small"
-                      exclusive
-                      value={perPersonView ? 'person' : 'group'}
-                      onChange={(_e, value) => value && setPerPersonView(value === 'person')}
-                    >
-                      <ToggleButton value="group" aria-label={t('transportPlanning.railViewGrouped')}>
-                        {t('transportPlanning.railViewGrouped')}
-                      </ToggleButton>
-                      <ToggleButton value="person" aria-label={t('transportPlanning.railViewPerPerson')}>
-                        {t('transportPlanning.railViewPerPerson')}
-                      </ToggleButton>
-                    </ToggleButtonGroup>
-                  )}
-                </Stack>
-                {board.unassignedLegIds.length === 0 && (
-                  <Typography variant="body2" color="text.secondary">
-                    {t('transportPlanning.railEmpty')}
-                  </Typography>
-                )}
-                <Stack spacing={1}>
-                  {perPersonView
-                    ? board.unassignedLegIds.map((legId) => {
-                        const leg = board.legsById[legId];
-                        if (!leg) return null;
-                        return (
-                          <UnassignedLegCard
-                            key={legId}
-                            leg={leg}
-                            onDragStart={() => setDragActive(true)}
-                            onDragEnd={() => setDragActive(false)}
-                            onAssign={() => setAssignTarget(assignTargetForLeg(legId, leg))}
-                          />
-                        );
-                      })
-                    : unplannedGroups.map((group) => (
-                        <UnplannedGroupCard
-                          key={group.key}
-                          group={group}
-                          legsById={board.legsById}
-                          vehicles={board.lanes.map((lane) => lane.vehicle)}
-                          onAssignGroup={() => setAssignGroupTarget(group)}
-                          onAssignPerson={(legId) => {
-                            const leg = board.legsById[legId];
-                            if (leg) setAssignTarget(assignTargetForLeg(legId, leg));
-                          }}
-                          onSuggestPlacements={() => setSuggestTarget(group)}
-                        />
-                      ))}
-                </Stack>
-              </>
-            )}
-          </Box>
+          {/* Hidden means *gone*, not a 40px stub: the collapsed rail used to
+              keep a whole column for a single chevron. What replaces it is the
+              "Por atribuir" button in the toolbar above, which reopens this
+              same list in a drawer. */}
+          {!railHidden && (
+            <Box sx={{ width: { xs: '100%', lg: UNASSIGNED_RAIL_WIDTH }, flexShrink: 0, minWidth: 0 }}>
+              <UnassignedRail
+                board={board}
+                unplannedGroups={unplannedGroups}
+                perPersonView={perPersonView}
+                onPerPersonViewChange={setPerPersonView}
+                onDragStart={() => setDragActive(true)}
+                onDragEnd={() => setDragActive(false)}
+                onAssignLeg={assignLeg}
+                onAssignGroup={setAssignGroupTarget}
+                onSuggestPlacements={setSuggestTarget}
+                onHide={() => setRailHidden(true)}
+              />
+            </Box>
+          )}
 
           {/*
             `minmax(0, 1fr)` is what actually keeps this page inside the
@@ -611,6 +581,41 @@ export const TransportPlanningPage = () => {
           )}
         </Stack>
       )}
+
+      {/* The hidden rail, on demand. Temporary rather than persistent: a
+          planner who hid it wants the board wide, so this is for picking the
+          next thing to place and getting out of the way again — or pinning it
+          back, which is what `onDock` does. */}
+      <Drawer anchor="left" open={railDrawerOpen} onClose={() => setRailDrawerOpen(false)}>
+        <Box sx={{ width: UNASSIGNED_RAIL_WIDTH, p: 1.5 }}>
+          {board && (
+            <UnassignedRail
+              board={board}
+              unplannedGroups={unplannedGroups}
+              perPersonView={perPersonView}
+              onPerPersonViewChange={setPerPersonView}
+              onDragStart={() => setDragActive(true)}
+              onDragEnd={() => setDragActive(false)}
+              onAssignLeg={(legId) => {
+                setRailDrawerOpen(false);
+                assignLeg(legId);
+              }}
+              onAssignGroup={(group) => {
+                setRailDrawerOpen(false);
+                setAssignGroupTarget(group);
+              }}
+              onSuggestPlacements={(group) => {
+                setRailDrawerOpen(false);
+                setSuggestTarget(group);
+              }}
+              onDock={() => {
+                setRailDrawerOpen(false);
+                setRailHidden(false);
+              }}
+            />
+          )}
+        </Box>
+      </Drawer>
 
       <Dialog open={issuesOpen} onClose={() => setIssuesOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>{t('transportPlanning.issuesTitle')}</DialogTitle>

@@ -116,3 +116,15 @@ export function needsWaitReleaseDecision(
     (s) => s.kind === TripStopKind.WAIT && s.facilityId === stop.facilityId && s.plannedAt >= stop.plannedAt,
   );
 }
+
+/**
+ * "Quitéria Lopes Marques" → "Quitéria L." — the form a bar too narrow for the
+ * full name shows. First name plus the initial of the *first* surname, because
+ * Portuguese names commonly carry three or four, and the last one is the least
+ * distinguishing in a delegation where families share it.
+ */
+export function shortenPatientName(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length < 2) return name.trim();
+  return `${parts[0]} ${parts[1][0]}.`;
+}

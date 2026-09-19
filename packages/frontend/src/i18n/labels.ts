@@ -2963,6 +2963,7 @@ const MESSAGES = {
   'transportPlanning.railEmpty': { pt: 'Nada por atribuir neste dia.', en: 'Nothing unassigned on this day.' },
   'transportPlanning.railCollapse': { pt: 'Colapsar o painel', en: 'Collapse the panel' },
   'transportPlanning.railExpand': { pt: 'Expandir o painel', en: 'Expand the panel' },
+  'transportPlanning.railDock': { pt: 'Fixar o painel ao lado do quadro', en: 'Dock the panel beside the board' },
   'transportPlanning.assignButton': { pt: 'Atribuir', en: 'Assign' },
   'transportPlanning.reassignButton': { pt: 'Reatribuir', en: 'Reassign' },
   'transportPlanning.addVehicleButton': { pt: 'Adicionar viatura', en: 'Add vehicle' },
@@ -3141,7 +3142,11 @@ const MESSAGES = {
   // ── Grouped unplanned rail (#247 stage 2) ──
   'transportPlanning.railViewGrouped': { pt: 'Agrupado', en: 'Grouped' },
   'transportPlanning.railViewPerPerson': { pt: 'Por pessoa', en: 'Per person' },
-  'transportPlanning.groupSize': { pt: '%{count} pessoas', en: '%{count} people' },
+  'transportPlanning.groupSize': {
+    pt: '%{smart_count} pessoa |||| %{smart_count} pessoas',
+    en: '%{smart_count} person |||| %{smart_count} people',
+  },
+  'transportPlanning.assignPersonAction': { pt: 'Atribuir %{name}', en: 'Assign %{name}' },
   'transportPlanning.assignGroupButton': { pt: 'Atribuir o grupo', en: 'Assign group' },
   'transportPlanning.assignGroupDialogTitle': {
     pt: 'Atribuir %{count} pessoas a uma viagem',
@@ -3166,6 +3171,22 @@ const MESSAGES = {
   'transportPlanning.groupInfeasible.SEATS': {
     pt: 'Nenhuma viatura de hoje tem lugares sentados suficientes para o grupo todo.',
     en: 'No vehicle on today’s board has enough seats for the whole group.',
+  },
+  // The same three verdicts as a single line. On a real day most cards in the
+  // rail carry the same one, and repeating the full sentence six times down a
+  // narrow column says nothing the first one didn't — the full wording stays,
+  // one hover away.
+  'transportPlanning.groupInfeasibleShort.WHEELCHAIR': {
+    pt: 'Sem lugares de cadeira de rodas',
+    en: 'No wheelchair positions',
+  },
+  'transportPlanning.groupInfeasibleShort.STRETCHER': {
+    pt: 'Sem lugares de maca',
+    en: 'No stretcher positions',
+  },
+  'transportPlanning.groupInfeasibleShort.SEATS': {
+    pt: 'Sem lugares sentados',
+    en: 'Not enough seats',
   },
 
   // ── Journey inspector panel (#247 stage 2) ──

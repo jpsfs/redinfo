@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { LegDirection, PatientMobility, TransportPlanningLeg, TripStopKind } from '@redinfo/shared';
-import { stopLocationLabel } from './legFacts';
+import { shortenPatientName, stopLocationLabel } from './legFacts';
 
 const FACILITY = { id: 'fac-1', name: 'Clínica de Hemodiálise de Barcelos' };
 const HOME_ADDRESS = 'Rua das Flores, 12, Barcelos';
@@ -108,5 +108,20 @@ describe('stopLocationLabel', () => {
   it('is blank for a WAIT/RETURN_TO_BASE stop or a stop with no leg', () => {
     expect(stopLocationLabel(stop({ kind: TripStopKind.WAIT }), leg())).toBeNull();
     expect(stopLocationLabel(stop({ kind: TripStopKind.PICKUP }), undefined)).toBeNull();
+  });
+});
+
+describe('shortenPatientName', () => {
+  it('keeps the first name and the initial of the first surname', () => {
+    expect(shortenPatientName('Quitéria Lopes Marques')).toBe('Quitéria L.');
+    expect(shortenPatientName('Maria Costa')).toBe('Maria C.');
+  });
+
+  it('leaves a single-word name alone, since there is nothing to shorten', () => {
+    expect(shortenPatientName('Belmira')).toBe('Belmira');
+  });
+
+  it('tolerates the padding and double spacing a typed-in name arrives with', () => {
+    expect(shortenPatientName('  Custódio   Neves Fernandes ')).toBe('Custódio N.');
   });
 });

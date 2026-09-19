@@ -1,12 +1,14 @@
-import { Alert, Button, Chip, Paper, Stack, Typography } from '@mui/material';
+import { Button, Chip, IconButton, Paper, Stack, Tooltip, Typography } from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
 import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import GroupsIcon from '@mui/icons-material/Groups';
 import PlaceIcon from '@mui/icons-material/Place';
 import TipsAndUpdatesIcon from '@mui/icons-material/TipsAndUpdates';
+import WarningAmberIcon from '@mui/icons-material/WarningAmber';
 import { LegDirection, TransportPlanningLane, TransportPlanningLeg } from '@redinfo/shared';
 import { useT } from '../../i18n/useT';
-import { MobilityChip } from '../../resources/patients/patientChips';
+import { MOBILITY_ICON } from './mobilityIcon';
 import { groupDemand, groupFeasibility, UnplannedGroup } from './unplannedGroups';
 import { timeLabel } from './planningTime';
 
@@ -19,6 +21,13 @@ import { timeLabel } from './planningTime';
  * §8, "assignable whole (one drag, one suggestion, one dialog)". Opened out
  * to one row per person with the "per pessoa" toggle, which is
  * `TransportPlanningPage`'s to render, not this card's.
+ *
+ * Laid out so the **patient's name gets a whole line**. The first cut put the
+ * name, a spelled-out mobility chip and a text button on one 280px row, which
+ * truncated real names to about ten characters ("Custódio …") — the one piece
+ * of information on the card a planner cannot work without. Mobility is now an
+ * icon, the per-person action an icon button, and the two group actions are
+ * ranked (filled primary + icon) rather than two identical outlined buttons.
  */
 export const UnplannedGroupCard = ({
   group,
@@ -42,7 +51,7 @@ export const UnplannedGroupCard = ({
   const people = group.legIds.map((legId) => legsById[legId]).filter((leg): leg is TransportPlanningLeg => !!leg);
 
   return (
-    <Paper variant="outlined" sx={{ p: 1 }}>
+    <Paper variant="outlined" sx={{ p: 1.25 }}>
       <Stack spacing={0.75}>
         <Stack direction="row" spacing={0.5} alignItems="center" sx={{ minWidth: 0 }}>
           {isOutbound ? (
@@ -66,40 +75,71 @@ export const UnplannedGroupCard = ({
 
         <Stack direction="row" spacing={0.5} alignItems="center" color="text.secondary">
           <GroupsIcon fontSize="small" />
-          <Typography variant="caption">{t('transportPlanning.groupSize', { count: people.length })}</Typography>
+          <Typography variant="caption">{t('transportPlanning.groupSize', { smart_count: people.length })}</Typography>
         </Stack>
 
-        <Stack spacing={0.5} sx={{ borderTop: 1, borderColor: 'divider', pt: 0.5 }}>
-          {people.map((leg) => (
-            <Stack key={leg.id} direction="row" spacing={0.5} alignItems="center" sx={{ minWidth: 0 }}>
-              <Typography variant="body2" noWrap title={leg.patientName ?? undefined} sx={{ flexGrow: 1, minWidth: 0 }}>
-                {leg.patientName ?? t(`transportLeg.direction.${leg.direction}`)}
-              </Typography>
-              <MobilityChip value={leg.patientMobility} />
-              {/* No `Tooltip` here on purpose — it would inject an
-                  `aria-label` that overrides this button's own visible text
-                  as its accessible name, so it would stop reading as
-                  "Assign" like the flat card's identical button does. */}
-              <Button size="small" onClick={() => onAssignPerson(leg.id)} sx={{ minWidth: 0, px: 0.75 }}>
-                {t('transportPlanning.assignButton')}
-              </Button>
-            </Stack>
-          ))}
+        <Stack sx={{ borderTop: 1, borderColor: 'divider', pt: 0.25 }}>
+          {people.map((leg) => {
+            const MobilityIcon = MOBILITY_ICON[leg.patientMobility];
+            const name = leg.patientName ?? t(`transportLeg.direction.${leg.direction}`);
+            return (
+              <Stack key={leg.id} direction="row" spacing={0.75} alignItems="center" sx={{ minWidth: 0, py: 0.25 }}>
+                {/* Mobility as an icon, not a spelled-out chip: it is the
+                    single thing that made the name unreadable, and it is
+                    already a shape everywhere else on the board. */}
+                <Tooltip title={t(`patientMobility.${leg.patientMobility}`)}>
+                  <MobilityIcon fontSize="small" sx={{ color: 'text.secondary', flexShrink: 0 }} />
+                </Tooltip>
+                <Typography variant="body2" noWrap title={name} sx={{ flexGrow: 1, minWidth: 0 }}>
+                  {name}
+                </Typography>
+                {/* Named for the person rather than a bare "Assign": with
+                    three people in a card, three buttons all called the same
+                    thing is a screen reader dead end. */}
+                <Tooltip title={t('transportPlanning.assignPersonAction', { name })}>
+                  <IconButton
+                    size="small"
+                    aria-label={t('transportPlanning.assignPersonAction', { name })}
+                    onClick={() => onAssignPerson(leg.id)}
+                    sx={{ flexShrink: 0 }}
+                  >
+                    <AddIcon fontSize="small" />
+                  </IconButton>
+                </Tooltip>
+              </Stack>
+            );
+          })}
         </Stack>
 
+        {/* One short line, not a boxed Alert. On a real day this same verdict
+            repeats on most cards in the rail, and four stacked red boxes
+            spends the "red means a problem" budget the design doc reserves
+            without telling the planner anything the first one didn't. */}
         {!feasibility.fits && (
-          <Alert severity="error" variant="outlined" sx={{ py: 0 }}>
-            {t(`transportPlanning.groupInfeasible.${feasibility.reason}`)}
-          </Alert>
+          <Tooltip title={t(`transportPlanning.groupInfeasible.${feasibility.reason}`)}>
+            <Stack direction="row" spacing={0.5} alignItems="center" sx={{ color: 'error.main', minWidth: 0 }}>
+              <WarningAmberIcon sx={{ fontSize: 16, flexShrink: 0 }} />
+              <Typography variant="caption" fontWeight={600} noWrap sx={{ minWidth: 0 }}>
+                {t(`transportPlanning.groupInfeasibleShort.${feasibility.reason}`)}
+              </Typography>
+            </Stack>
+          </Tooltip>
         )}
 
-        <Stack direction="row" spacing={1} flexWrap="wrap" useFlexGap>
-          <Button size="small" variant="outlined" startIcon={<GroupsIcon />} onClick={onAssignGroup}>
+        <Stack direction="row" spacing={0.75} alignItems="center">
+          <Button size="small" variant="contained" disableElevation onClick={onAssignGroup} sx={{ flexGrow: 1 }}>
             {t('transportPlanning.assignGroupButton')}
           </Button>
-          <Button size="small" variant="outlined" startIcon={<TipsAndUpdatesIcon />} onClick={onSuggestPlacements}>
-            {t('transportPlanning.suggestPlacementsButton')}
-          </Button>
+          <Tooltip title={t('transportPlanning.suggestPlacementsButton')}>
+            <IconButton
+              size="small"
+              aria-label={t('transportPlanning.suggestPlacementsButton')}
+              onClick={onSuggestPlacements}
+              sx={{ flexShrink: 0, border: 1, borderColor: 'divider', borderRadius: 1 }}
+            >
+              <TipsAndUpdatesIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
         </Stack>
       </Stack>
     </Paper>

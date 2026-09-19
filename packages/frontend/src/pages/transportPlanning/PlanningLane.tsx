@@ -1,8 +1,5 @@
 import { DragEvent, useState } from 'react';
-import { Box, Chip, IconButton, Stack, Tooltip, Typography, alpha } from '@mui/material';
-import AccessibleIcon from '@mui/icons-material/Accessible';
-import AirlineSeatFlatIcon from '@mui/icons-material/AirlineSeatFlat';
-import DirectionsWalkIcon from '@mui/icons-material/DirectionsWalk';
+import { Box, Chip, IconButton, Stack, Tooltip, Typography, alpha, darken } from '@mui/material';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
 import HourglassEmptyIcon from '@mui/icons-material/HourglassEmpty';
 import HomeIcon from '@mui/icons-material/Home';
@@ -21,9 +18,15 @@ import {
   TripStopKind,
   VehicleOccupancy,
 } from '@redinfo/shared';
-import { colorWhite } from '../../layout/design-tokens';
 import { useT } from '../../i18n/useT';
-import { journeyDestinations, legFacilityName, needsWaitReleaseDecision, treatmentMinutes } from './legFacts';
+import { MOBILITY_ICON } from './mobilityIcon';
+import {
+  journeyDestinations,
+  legFacilityName,
+  needsWaitReleaseDecision,
+  shortenPatientName,
+  treatmentMinutes,
+} from './legFacts';
 import {
   TimelineWindow,
   clockLabel,
@@ -76,6 +79,13 @@ const LANE_BOTTOM_PADDING = 6;
  */
 const MIN_WIDTH_FOR_INLINE_LABEL = 96;
 
+/**
+ * Above this a bar can hold a full Portuguese name; between this and
+ * `MIN_WIDTH_FOR_INLINE_LABEL` it holds the shortened one. Both fall back to
+ * the same tooltip, which is where the full name and the times live.
+ */
+const MIN_WIDTH_FOR_FULL_NAME = 168;
+
 function passengerRowTop(index: number): number {
   return PASSENGER_ROW_TOP + index * (PASSENGER_ROW_HEIGHT + PASSENGER_ROW_GAP);
 }
@@ -85,12 +95,6 @@ function passengerRowTop(index: number): number {
 export function laneHeight(passengerCount: number): number {
   return passengerRowTop(Math.max(passengerCount, 1)) + VEHICLE_TRACK_HEIGHT + LANE_BOTTOM_PADDING;
 }
-
-const MOBILITY_ICON = {
-  [PatientMobility.STRETCHER]: AirlineSeatFlatIcon,
-  [PatientMobility.WHEELCHAIR]: AccessibleIcon,
-  [PatientMobility.AMBULATORY]: DirectionsWalkIcon,
-};
 
 interface LegBlock {
   legId: string;
@@ -528,6 +532,31 @@ export const PlanningLane = ({
           const MobilityIcon = MOBILITY_ICON[leg?.patientMobility ?? PatientMobility.AMBULATORY];
           const blockLabel = [leg?.patientName, facilityName].filter(Boolean).join(' ▸ ');
           const showInlineLabel = width >= MIN_WIDTH_FOR_INLINE_LABEL;
+          const fullName = leg?.patientName ?? legId;
+          // The bar shows as much of the name as it can hold; whatever it drops
+          // is in the tooltip, which every form of the label shares.
+          const shownName = width >= MIN_WIDTH_FOR_FULL_NAME ? fullName : shortenPatientName(fullName);
+          // One tooltip, shown from the bar and from the name printed beside a
+          // bar too narrow to hold one — whichever the planner's pointer finds
+          // first, they get the full name and the times the label dropped.
+          const legTooltip = (
+            <Box>
+              <Box sx={{ fontWeight: 700 }}>{fullName}</Box>
+              <div>
+                {t('transportPlanning.pickupLabel')} {timeLabel(pickup.plannedAt)} ▸ {facilityName ?? '—'}{' '}
+                {timeLabel(dropoff.plannedAt)}
+              </div>
+              <div>
+                {t('transportPlanning.onboardLabel')} {durationLabel(minutesOnboard)}
+              </div>
+              {leg && isOutbound && (
+                <div>
+                  {t('transportPlanning.treatmentStartShort')} {timeLabel(leg.appointmentAt)} ·{' '}
+                  {t('transportPlanning.treatmentEndShort')} {timeLabel(leg.effectiveEstimatedEndAt)}
+                </div>
+              )}
+            </Box>
+          );
 
           return (
             <Box key={legId}>
@@ -562,26 +591,7 @@ export const PlanningLane = ({
                 </Tooltip>
               )}
 
-              <Tooltip
-                title={
-                  <Box>
-                    <div>{leg?.patientName ?? legId}</div>
-                    <div>
-                      {t('transportPlanning.pickupLabel')} {timeLabel(pickup.plannedAt)} ▸ {facilityName ?? '—'}{' '}
-                      {timeLabel(dropoff.plannedAt)}
-                    </div>
-                    <div>
-                      {t('transportPlanning.onboardLabel')} {durationLabel(minutesOnboard)}
-                    </div>
-                    {leg && isOutbound && (
-                      <div>
-                        {t('transportPlanning.treatmentStartShort')} {timeLabel(leg.appointmentAt)} ·{' '}
-                        {t('transportPlanning.treatmentEndShort')} {timeLabel(leg.effectiveEstimatedEndAt)}
-                      </div>
-                    )}
-                  </Box>
-                }
-              >
+              <Tooltip title={legTooltip}>
                 <Box
                   draggable
                   onDragStart={(e) => {
@@ -605,20 +615,26 @@ export const PlanningLane = ({
                     width,
                     top: rowTop,
                     height: RIDE_HEIGHT,
-                    color: colorWhite,
-                    // The journey's own identity colour (#247 stage 1) — a
-                    // soft vertical gradient rather than a flat fill, round
-                    // on the alighting edge. Direction no longer lives here:
-                    // it's the border style below, so it survives
-                    // greyscale.
-                    background: `linear-gradient(180deg, ${alpha(journeyColor, 0.88)} 0%, ${journeyColor} 100%)`,
+                    // The journey's identity colour as a soft tint carrying
+                    // dark text, not as a saturated fill carrying white
+                    // 11px text — that was the least legible text on the
+                    // board, and a lane with four passengers read as a wall
+                    // of colour. The hue still identifies the journey; it
+                    // just stops shouting.
+                    color: darken(journeyColor, 0.28),
+                    bgcolor: alpha(journeyColor, 0.16),
+                    border: '1px solid',
+                    borderColor: alpha(journeyColor, 0.35),
                     // Solid outbound, dashed return — legible without colour.
-                    border: '1.5px solid',
-                    borderStyle: isOutbound ? 'solid' : 'dashed',
-                    borderColor: alpha(colorWhite, 0.55),
-                    // The boarding edge stays square and solid regardless of
-                    // direction; the alighting edge is what's rounded below.
-                    borderLeft: 3,
+                    // Not a hatch fill, which would collide with the empty
+                    // running the vehicle track already draws as one.
+                    borderTopStyle: isOutbound ? 'solid' : 'dashed',
+                    borderRightStyle: isOutbound ? 'solid' : 'dashed',
+                    borderBottomStyle: isOutbound ? 'solid' : 'dashed',
+                    // The boarding edge: a solid bar of the full-strength
+                    // colour, square, whatever the direction. The alighting
+                    // edge is the rounded one.
+                    borderLeft: '4px solid',
                     borderLeftColor: journeyColor,
                     borderRadius: '2px 10px 10px 2px',
                     // Status as an outline: a journey with an ERROR issue
@@ -632,7 +648,9 @@ export const PlanningLane = ({
                     overflow: 'hidden',
                     cursor: 'grab',
                     '&:active': { cursor: 'grabbing' },
-                    '&:hover': { filter: 'brightness(1.1)' },
+                    // Deepening the tint, not brightening it — `brightness`
+                    // on a near-white fill is invisible.
+                    '&:hover': { bgcolor: alpha(journeyColor, 0.28) },
                     '&:focus-visible': { outline: 2, outlineColor: 'text.primary', outlineOffset: 1 },
                     whiteSpace: 'nowrap',
                   }}
@@ -644,7 +662,7 @@ export const PlanningLane = ({
                       noWrap
                       sx={{ color: 'inherit', fontWeight: 600, minWidth: 0, fontSize: 11 }}
                     >
-                      {leg?.patientName ?? legId}
+                      {shownName}
                     </Typography>
                   )}
                   {leg?.arrivalWindowWarning && <ErrorOutlineIcon fontSize="inherit" />}
@@ -665,29 +683,49 @@ export const PlanningLane = ({
               </Tooltip>
 
               {/* The name beside the bar when the bar is too short to hold it.
-                  `pointerEvents: none` so it never shadows the lane's own drop
-                  target, and never intercepts a drag aimed at the track. */}
+                  It stays `pointerEvents: none` *while a drag is in flight*, so
+                  it never shadows the lane's own drop target — but it is
+                  hoverable at rest, because a short bar is exactly the case
+                  where the planner most needs the tooltip's times. Still
+                  `aria-hidden`: the bar beside it already carries this name as
+                  its accessible label, and the tooltip with it. */}
               {!showInlineLabel && (
-                <Typography
-                  variant="caption"
-                  noWrap
-                  aria-hidden
-                  sx={{
-                    position: 'absolute',
-                    left: left + width + 4,
-                    top: rowTop,
-                    height: RIDE_HEIGHT,
-                    display: 'flex',
-                    alignItems: 'center',
-                    fontWeight: 600,
-                    fontSize: 11,
-                    color: 'text.primary',
-                    pointerEvents: 'none',
-                    maxWidth: 180,
-                  }}
-                >
-                  {leg?.patientName ?? legId}
-                </Typography>
+                <Tooltip title={legTooltip}>
+                  <Stack
+                    direction="row"
+                    alignItems="center"
+                    spacing={0.5}
+                    aria-hidden
+                    sx={{
+                      position: 'absolute',
+                      left: left + width + 5,
+                      top: rowTop,
+                      height: RIDE_HEIGHT,
+                      maxWidth: 180,
+                      pointerEvents: isDragActive ? 'none' : 'auto',
+                    }}
+                  >
+                    {/* The journey's colour as its own element in the row, so
+                        it can never be painted over the first letters of the
+                        name the way an absolutely-placed dot would. */}
+                    <Box
+                      sx={{
+                        width: 7,
+                        height: 7,
+                        borderRadius: '50%',
+                        flexShrink: 0,
+                        bgcolor: journeyColor,
+                      }}
+                    />
+                    <Typography
+                      variant="caption"
+                      noWrap
+                      sx={{ fontWeight: 600, fontSize: 11, color: 'text.primary', minWidth: 0 }}
+                    >
+                      {shownName}
+                    </Typography>
+                  </Stack>
+                </Tooltip>
               )}
             </Box>
           );

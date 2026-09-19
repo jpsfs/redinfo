@@ -331,7 +331,7 @@ describe('TransportPlanningPage', () => {
     });
     renderPage();
 
-    await user.click(await screen.findByRole('button', { name: 'Assign' }));
+    await user.click(await screen.findByRole('button', { name: 'Assign Maria Costa' }));
     const dialog = await screen.findByRole('dialog');
     await user.click(within(dialog).getByLabelText('Vehicle'));
     await user.click(await screen.findByRole('option', { name: /101/ }));
@@ -365,7 +365,7 @@ describe('TransportPlanningPage', () => {
     });
     renderPage();
 
-    await user.click(await screen.findByRole('button', { name: 'Assign' }));
+    await user.click(await screen.findByRole('button', { name: 'Assign Maria Costa' }));
     const dialog = await screen.findByRole('dialog');
     await user.click(within(dialog).getByLabelText('Vehicle'));
     await user.click(await screen.findByRole('option', { name: /101/ }));
@@ -443,8 +443,13 @@ describe('TransportPlanningPage', () => {
       // how the first cut of this rendered a patient as the character "0".
       const maria = await screen.findByRole('button', { name: /Maria Costa/ });
       expect(maria).toHaveTextContent('');
-      // The name is still on the track, just outside the bar.
-      expect(screen.getAllByText('Maria Costa').length).toBeGreaterThan(0);
+      // The name is still on the track, just outside the bar — shortened to
+      // first name plus the initial of the first surname, because a name
+      // printed beside a bar has no more room than one printed inside it.
+      // The bar keeps the full name as its accessible name, and the tooltip
+      // carries it with the times.
+      expect(screen.getAllByText('Maria C.').length).toBeGreaterThan(0);
+      expect(maria).toHaveAccessibleName('Maria Costa ▸ Hospital de São João');
     });
 
     it('names the destination facility on the journey itself, not only in a tooltip', async () => {
@@ -676,8 +681,28 @@ describe('TransportPlanningPage', () => {
       await user.click(screen.getByRole('button', { name: 'Collapse the panel' }));
       expect(screen.queryByText('Maria Costa')).not.toBeInTheDocument();
 
-      await user.click(screen.getByRole('button', { name: 'Expand the panel' }));
+      // Hidden means gone, not a stub column — what brings it back is the
+      // toolbar button, which opens the same list in a drawer.
+      await user.click(screen.getByRole('button', { name: /Unassigned/ }));
       expect(await screen.findByText('Maria Costa')).toBeInTheDocument();
+    });
+
+    it('docks the rail back beside the board from inside the drawer', async () => {
+      const user = userEvent.setup();
+      mockApiFetch.mockImplementation((path: string) =>
+        Promise.resolve(path.startsWith('/trips/board') ? board() : []),
+      );
+      renderPage();
+
+      await screen.findByText('Maria Costa');
+      await user.click(screen.getByRole('button', { name: 'Collapse the panel' }));
+      await user.click(screen.getByRole('button', { name: /Unassigned/ }));
+      await user.click(await screen.findByRole('button', { name: 'Dock the panel beside the board' }));
+
+      // Docked again: the list is on the page and the summon button is gone,
+      // since there is nothing left for it to summon.
+      expect(await screen.findByText('Maria Costa')).toBeInTheDocument();
+      expect(screen.queryByRole('button', { name: /Unassigned/ })).not.toBeInTheDocument();
     });
   });
 
