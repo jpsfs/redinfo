@@ -1,5 +1,5 @@
 import { describe, expect, it, vi, beforeEach, type Mock } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { AdminContext, testDataProvider } from 'react-admin';
 import polyglotI18nProvider from 'ra-i18n-polyglot';
 import userEvent from '@testing-library/user-event';
@@ -181,9 +181,9 @@ const board = (overrides: Partial<TransportPlanningBoard> = {}): TransportPlanni
   ...overrides,
 });
 
-const renderPage = () =>
+const renderPage = (initialEntry = '/') =>
   render(
-    <MemoryRouter>
+    <MemoryRouter initialEntries={[initialEntry]}>
       <AdminContext dataProvider={testDataProvider()} i18nProvider={polyglotI18nProvider(messages, 'en')}>
         <TransportPlanningPage />
       </AdminContext>
@@ -193,6 +193,29 @@ const renderPage = () =>
 describe('TransportPlanningPage', () => {
   beforeEach(() => {
     mockApiFetch.mockReset();
+  });
+
+  it('loads the board for the date in the URL, so a board can be linked to', async () => {
+    mockApiFetch.mockImplementation((path: string) =>
+      Promise.resolve(path.startsWith('/trips/board') ? board() : []),
+    );
+    renderPage('/?date=2026-09-20');
+
+    await waitFor(() => expect(mockApiFetch).toHaveBeenCalledWith('/trips/board?date=2026-09-20'));
+    expect(screen.getByLabelText<HTMLInputElement>('Date').value).toBe('2026-09-20');
+  });
+
+  it('puts the date back in the URL when it is changed, rather than keeping it in component state', async () => {
+    mockApiFetch.mockImplementation((path: string) =>
+      Promise.resolve(path.startsWith('/trips/board') ? board() : []),
+    );
+    renderPage('/?date=2026-09-20');
+    await screen.findByText('101');
+
+    const input = screen.getByLabelText<HTMLInputElement>('Date');
+    fireEvent.change(input, { target: { value: '2026-09-21' } });
+
+    await waitFor(() => expect(mockApiFetch).toHaveBeenCalledWith('/trips/board?date=2026-09-21'));
   });
 
   it('loads the board and shows the unassigned leg and the vehicle lane', async () => {

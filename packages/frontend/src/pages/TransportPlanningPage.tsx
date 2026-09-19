@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Title, useNotify } from 'react-admin';
 import {
   Alert,
@@ -130,7 +131,22 @@ function groupLanesByVehicle(lanes: TransportPlanningLane[]) {
 export const TransportPlanningPage = () => {
   const t = useT();
   const notify = useNotify();
-  const [date, setDate] = useState(() => toIsoDate(new Date()));
+  // The date lives in the URL, not in component state, so a board is
+  // linkable — the same `?date=` the vehicle and crew pages already read, so
+  // the whole transport-planning family round-trips through one convention.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const date = searchParams.get('date') || toIsoDate(new Date());
+  const setDate = useCallback(
+    (next: string) => {
+      // A native date input reports '' while it is being retyped or when it
+      // is cleared; loading a board for no date at all would just 400.
+      if (!next) return;
+      const params = new URLSearchParams(searchParams);
+      params.set('date', next);
+      setSearchParams(params, { replace: true });
+    },
+    [searchParams, setSearchParams],
+  );
   const [board, setBoard] = useState<TransportPlanningBoard | null>(null);
   const [occupancy, setOccupancy] = useState<VehicleOccupancy[]>([]);
   const [loading, setLoading] = useState(true);
@@ -480,6 +496,13 @@ export const TransportPlanningPage = () => {
               alignSelf: 'stretch',
               display: 'grid',
               gridTemplateColumns: 'minmax(0, 1fr)',
+              // `alignSelf: stretch` above makes this column as tall as the
+              // unassigned rail beside it, and a grid's auto rows *share out*
+              // that surplus height — so a tall rail pushed the map, the
+              // toolbar and the timeline apart with hundreds of pixels of
+              // dead space between them. Packing the rows to the top leaves
+              // the surplus at the bottom, where it belongs.
+              alignContent: 'start',
             }}
           >
             {/*
